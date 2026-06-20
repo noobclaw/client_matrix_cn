@@ -197,12 +197,19 @@ function main() {
     const kSrc = path.join(ROOT, 'resources', kdir);
     const kDest = path.join(RESOURCES_DIR, kdir);
     if (fs.existsSync(kSrc)) {
-      const count = copyDirRecursive(kSrc, kDest);
       if (process.platform === 'darwin') {
+        // ⚠️ Chromium.app 含大量 symlink(framework Versions/Current 等),
+        // copyDirRecursive 会跟随/拷坏 → 必须用 cp -R 保留 symlink。
+        fs.rmSync(kDest, { recursive: true, force: true });
+        fs.mkdirSync(kDest, { recursive: true });
+        require('child_process').execSync(`cp -R "${kSrc}/." "${kDest}/"`, { stdio: 'inherit' });
         const exe = path.join(kDest, 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
         try { if (fs.existsSync(exe)) fs.chmodSync(exe, 0o755); } catch {}
+        console.log(`  ${kdir}: copied via cp -R (symlinks preserved)`);
+      } else {
+        const count = copyDirRecursive(kSrc, kDest);
+        console.log(`  ${kdir}: ${count} files`);
       }
-      console.log(`  ${kdir}: ${count} files`);
     } else {
       console.warn(`  ${kdir}: NOT FOUND (run "node scripts/fetch-fingerprint-chromium.js" first) — 矩阵互动会回落系统 Chrome(无真指纹隔离)。`);
     }
