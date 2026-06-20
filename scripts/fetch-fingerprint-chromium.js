@@ -87,9 +87,10 @@ function fetchWindows() {
 }
 
 function fetchMac() {
-  const dest = path.join(ROOT, 'resources', 'fingerprint-chromium-mac');
-  const appDest = path.join(dest, 'Chromium.app');
-  if (fs.existsSync(path.join(appDest, 'Contents', 'MacOS', 'Chromium'))) { console.log('[fpc] mac already present, skip'); return; }
+  // mac:打成 .tgz(数据文件,不参与公证) → 运行时首次本地解压。彻底绕开
+  // "给 notarized app 里的 Chromium 逐个嵌套签名" 的地狱。
+  const tgz = path.join(ROOT, 'resources', 'fingerprint-chromium-mac.tgz');
+  if (fs.existsSync(tgz)) { console.log('[fpc] mac tgz already present, skip'); return; }
   const tmp = scratch();
   const dmg = path.join(tmp, 'fpc-mac.dmg');
   console.log('[fpc] downloading mac', MAC_URL);
@@ -98,20 +99,23 @@ function fetchMac() {
   fs.mkdirSync(mnt, { recursive: true });
   console.log('[fpc] mounting dmg…');
   execSync(`hdiutil attach "${dmg}" -nobrowse -readonly -mountpoint "${mnt}"`, { stdio: 'inherit' });
+  const stage = path.join(tmp, 'stage');
+  fs.mkdirSync(stage, { recursive: true });
   try {
     const app = findDirEndingWith(mnt, '.app');
     if (!app) throw new Error('.app not found in mac dmg');
-    fs.rmSync(dest, { recursive: true, force: true });
-    fs.mkdirSync(dest, { recursive: true });
-    // 保留符号链接(framework 版本目录靠它),用 cp -R。统一命名 Chromium.app。
-    execSync(`cp -R "${app}" "${appDest}"`, { stdio: 'inherit' });
-    // 可执行名可能不是 Chromium —— 规整:若 MacOS/ 下不是 Chromium,建软链
-    const macosDir = path.join(appDest, 'Contents', 'MacOS');
+    // 统一命名 Chromium.app;cp -R 保留 framework 符号链接
+    const appStage = path.join(stage, 'Chromium.app');
+    execSync(`cp -R "${app}" "${appStage}"`, { stdio: 'inherit' });
+    const macosDir = path.join(appStage, 'Contents', 'MacOS');
     if (!fs.existsSync(path.join(macosDir, 'Chromium'))) {
       const first = fs.readdirSync(macosDir)[0];
       if (first) execSync(`ln -sf "${first}" "${path.join(macosDir, 'Chromium')}"`, { stdio: 'inherit' });
     }
-    console.log('[fpc] ✓ mac →', appDest);
+    fs.mkdirSync(path.dirname(tgz), { recursive: true });
+    // tar 保留符号链接;-C stage 让包内顶层就是 Chromium.app
+    execSync(`tar -czf "${tgz}" -C "${stage}" Chromium.app`, { stdio: 'inherit' });
+    console.log(`[fpc] ✓ mac tgz (${Math.round(fs.statSync(tgz).size/1024/1024)}MB) →`, tgz);
   } finally {
     try { execSync(`hdiutil detach "${mnt}"`, { stdio: 'inherit' }); } catch { /* ignore */ }
   }

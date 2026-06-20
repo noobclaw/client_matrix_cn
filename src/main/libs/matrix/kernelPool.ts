@@ -18,7 +18,7 @@
  * 二进制还没 bundle 时,可传普通 Chrome 路径先验证连接池+driver 链路。
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import WebSocket from 'ws';
 import path from 'path';
 import fs from 'fs';
@@ -27,28 +27,49 @@ import { isPackaged, getResourcesPath, getUserDataPath } from '../platformAdapte
 import type { Fingerprint, Proxy } from './types';
 
 // ── bundle 进包的 fingerprint-chromium 定位(镜像 ffmpegRuntime 的探测) ──
-const KERNEL_PLATFORM_DIR = process.platform === 'win32' ? 'fingerprint-chromium-win'
-  : process.platform === 'darwin' ? 'fingerprint-chromium-mac' : 'fingerprint-chromium-linux';
-const KERNEL_EXE_REL = process.platform === 'win32' ? 'chrome.exe'
-  : process.platform === 'darwin' ? path.join('Chromium.app', 'Contents', 'MacOS', 'Chromium') : 'chrome';
-
-function resolveBundledKernel(): string | null {
+// 候选资源根(同 ffmpegRuntime 的 dual-path 走法)。
+function candidateRoots(): string[] {
   const roots: string[] = [];
-  const pushRoot = (root: string) => roots.push(path.join(root, KERNEL_PLATFORM_DIR));
   if (isPackaged()) {
     const res = getResourcesPath();
     const exeDir = path.dirname(process.execPath);
-    pushRoot(res);
-    pushRoot(path.join(res, 'resources'));
-    pushRoot(path.join(exeDir, 'resources'));
-    pushRoot(path.join(exeDir, '..', 'Resources'));
-    pushRoot(path.join(exeDir, '..', 'Resources', 'resources'));
+    roots.push(res, path.join(res, 'resources'), path.join(exeDir, 'resources'),
+      path.join(exeDir, '..', 'Resources'), path.join(exeDir, '..', 'Resources', 'resources'));
   } else {
-    pushRoot(path.join(path.resolve(__dirname, '..', '..', '..', '..'), 'resources'));
+    roots.push(path.join(path.resolve(__dirname, '..', '..', '..', '..'), 'resources'));
   }
-  pushRoot(path.join(getUserDataPath(), 'runtimes'));
-  for (const r of roots) {
-    const cand = path.join(r, KERNEL_EXE_REL);
+  roots.push(path.join(getUserDataPath(), 'runtimes'));
+  return roots;
+}
+
+function resolveBundledKernel(): string | null {
+  if (process.platform === 'darwin') {
+    // mac:内核以 .tgz 数据形式 bundle(不参与公证),首次启动本地解压到 runtimes。
+    const runtimeDir = path.join(getUserDataPath(), 'runtimes', 'fingerprint-chromium-mac');
+    const exe = path.join(runtimeDir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
+    if (fs.existsSync(exe)) return exe;
+    for (const r of candidateRoots()) {
+      const tgz = path.join(r, 'fingerprint-chromium-mac.tgz');
+      try {
+        if (!fs.existsSync(tgz)) continue;
+        coworkLog('INFO', 'kernelPool', `extracting bundled kernel → ${runtimeDir}`);
+        fs.mkdirSync(runtimeDir, { recursive: true });
+        const ex = spawnSync('tar', ['-xzf', tgz, '-C', runtimeDir], { stdio: 'ignore' });
+        if (ex.status === 0 && fs.existsSync(exe)) {
+          try { fs.chmodSync(exe, 0o755); } catch { /* ignore */ }
+          // 清隔离属性(bundle 解压一般没有,保险)
+          try { spawnSync('xattr', ['-cr', path.join(runtimeDir, 'Chromium.app')], { stdio: 'ignore' }); } catch { /* ignore */ }
+          return exe;
+        }
+      } catch { /* ignore */ }
+    }
+    return null;
+  }
+  // win / linux:直接找 bundle 的内核目录
+  const dir = process.platform === 'win32' ? 'fingerprint-chromium-win' : 'fingerprint-chromium-linux';
+  const exeName = process.platform === 'win32' ? 'chrome.exe' : 'chrome';
+  for (const r of candidateRoots()) {
+    const cand = path.join(r, dir, exeName);
     try { if (fs.existsSync(cand)) return cand; } catch { /* ignore */ }
   }
   return null;

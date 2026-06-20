@@ -188,30 +188,25 @@ function main() {
   //     下载到 client/resources/fingerprint-chromium-<platform>/)。拷进
   //     src-tauri/resources/ 让 Tauri bundle;kernelPool.resolveBundledKernel() 运行时
   //     解析 win→chrome.exe / mac→Chromium.app/Contents/MacOS/Chromium。
-  {
-    const kdir = process.platform === 'win32'
-      ? 'fingerprint-chromium-win'
-      : process.platform === 'darwin'
-        ? 'fingerprint-chromium-mac'
-        : 'fingerprint-chromium-linux';
+  if (process.platform === 'darwin') {
+    // mac:内核是 .tgz 数据文件(运行时首次解压),不参与公证。直接拷文件。
+    const tgzSrc = path.join(ROOT, 'resources', 'fingerprint-chromium-mac.tgz');
+    const tgzDest = path.join(RESOURCES_DIR, 'fingerprint-chromium-mac.tgz');
+    if (fs.existsSync(tgzSrc)) {
+      fs.copyFileSync(tgzSrc, tgzDest);
+      console.log(`  fingerprint-chromium-mac.tgz: ${Math.round(fs.statSync(tgzDest).size / 1024 / 1024)}MB`);
+    } else {
+      console.warn('  fingerprint-chromium-mac.tgz: NOT FOUND (run fetch-fingerprint-chromium.js first) — 矩阵互动回落系统 Chrome。');
+    }
+  } else {
+    const kdir = process.platform === 'win32' ? 'fingerprint-chromium-win' : 'fingerprint-chromium-linux';
     const kSrc = path.join(ROOT, 'resources', kdir);
     const kDest = path.join(RESOURCES_DIR, kdir);
     if (fs.existsSync(kSrc)) {
-      if (process.platform === 'darwin') {
-        // ⚠️ Chromium.app 含大量 symlink(framework Versions/Current 等),
-        // copyDirRecursive 会跟随/拷坏 → 必须用 cp -R 保留 symlink。
-        fs.rmSync(kDest, { recursive: true, force: true });
-        fs.mkdirSync(kDest, { recursive: true });
-        require('child_process').execSync(`cp -R "${kSrc}/." "${kDest}/"`, { stdio: 'inherit' });
-        const exe = path.join(kDest, 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
-        try { if (fs.existsSync(exe)) fs.chmodSync(exe, 0o755); } catch {}
-        console.log(`  ${kdir}: copied via cp -R (symlinks preserved)`);
-      } else {
-        const count = copyDirRecursive(kSrc, kDest);
-        console.log(`  ${kdir}: ${count} files`);
-      }
+      const count = copyDirRecursive(kSrc, kDest);
+      console.log(`  ${kdir}: ${count} files`);
     } else {
-      console.warn(`  ${kdir}: NOT FOUND (run "node scripts/fetch-fingerprint-chromium.js" first) — 矩阵互动会回落系统 Chrome(无真指纹隔离)。`);
+      console.warn(`  ${kdir}: NOT FOUND (run fetch-fingerprint-chromium.js first) — 矩阵互动回落系统 Chrome。`);
     }
   }
 
