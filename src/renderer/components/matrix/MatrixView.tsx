@@ -20,7 +20,7 @@ interface MatrixAccount {
 function parseKeywords(s: string): string[] {
   return s.split(/[\s,，、\n]+/).map((x) => x.trim()).filter(Boolean);
 }
-interface ItemResult { accountId: string; state: 'success' | 'failed' | 'skipped'; reason?: string }
+interface ItemResult { accountId: string; state: 'success' | 'failed' | 'skipped'; reason?: string; counts?: { like: number; follow: number; comment: number } }
 
 const PLATFORMS = ['douyin', 'xhs', 'bilibili', 'shipinhao', 'kuaishou', 'toutiao', 'tiktok', 'x'];
 const PLATFORM_LABEL: Record<string, string> = {
@@ -54,7 +54,8 @@ interface Props {
 }
 
 const MatrixView: React.FC<Props> = () => {
-  const [tab, setTab] = useState<'accounts' | 'publish' | 'progress'>('accounts');
+  const [tab, setTab] = useState<'accounts' | 'engage' | 'publish' | 'progress'>('accounts');
+  const [quota, setQuota] = useState({ daily_like_min: 3, daily_like_max: 8, daily_follow_min: 0, daily_follow_max: 2, daily_comment_min: 1, daily_comment_max: 3 });
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
   const [kernelPath, setKernelPath] = useState<string>(() => localStorage.getItem('matrix:kernelPath') || '');
 
@@ -89,7 +90,7 @@ const MatrixView: React.FC<Props> = () => {
   useEffect(() => {
     const off = M()?.onProgress?.((p: any) => {
       if (p?.type === 'item') {
-        setItems((prev) => ({ ...prev, [p.accountId]: { accountId: p.accountId, state: p.state, reason: p.reason } }));
+        setItems((prev) => ({ ...prev, [p.accountId]: { accountId: p.accountId, state: p.state, reason: p.reason, counts: p.counts } }));
       } else if (p?.type === 'log') {
         setLogs((prev) => [`[${p.accountId}] ${p.msg}`, ...prev].slice(0, 200));
       } else if (p?.type === 'done') {
@@ -140,6 +141,17 @@ const MatrixView: React.FC<Props> = () => {
     }
   };
 
+  const startEngage = async () => {
+    const ids = [...selected].filter((id) => {
+      const a = accounts.find((x) => x.id === id);
+      return a && a.keywords && a.keywords.length > 0;
+    });
+    if (!ids.length) { setNotice('请勾选【已配赛道关键词】的账号'); setTab('engage'); return; }
+    setNotice('');
+    setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setTab('progress');
+    await M()?.runEngage({ platform, accountIds: ids, concurrency, kernelPath, quota });
+  };
+
   const startTask = async () => {
     const ids = [...selected];
     if (!ids.length) { setNotice('请先勾选账号'); setTab('publish'); return; }
@@ -165,6 +177,7 @@ const MatrixView: React.FC<Props> = () => {
       <div className="flex items-center gap-2 px-5 py-3 border-b dark:border-white/10 border-black/10">
         <h1 className="text-lg font-medium mr-4">矩阵号</h1>
         <Tab id="accounts" label={`我的账号 (${accounts.length})`} />
+        <Tab id="engage" label="自动互动" />
         <Tab id="publish" label="矩阵发布" />
         <Tab id="progress" label="执行进度" />
         <div className="ml-auto flex items-center gap-2">
@@ -216,6 +229,59 @@ const MatrixView: React.FC<Props> = () => {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {tab === 'engage' && (
+          <div className="max-w-2xl space-y-5">
+            <div className="text-sm opacity-70">控制多个抖音号,按各自赛道关键词自动【点赞 / 评论 / 关注】。每号在独立指纹浏览器里跑、错峰。</div>
+            <div>
+              <div className="text-sm mb-2">① 平台</div>
+              <div className="flex flex-wrap gap-2">
+                {PLATFORMS.filter((p) => p === 'douyin').map((p) => (
+                  <button key={p} onClick={() => { setPlatform(p); setSelected(new Set()); }}
+                    className={`px-3 py-1.5 text-sm rounded-lg border ${platform === p ? 'bg-claude-accent text-white border-transparent' : 'dark:border-white/15 border-black/15'}`}>{PLATFORM_LABEL[p]}</button>
+                ))}
+                <span className="text-xs opacity-50 self-center">(其他平台互动后续接入)</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-sm mb-2">② 选账号 <span className="opacity-50">(需已配赛道关键词;已选 {selected.size})</span></div>
+              <div className="space-y-1.5">
+                {platformAccounts.length === 0 && <div className="text-sm opacity-50">该平台无账号,先去「我的账号」添加。</div>}
+                {platformAccounts.map((a) => {
+                  const hasKw = !!(a.keywords && a.keywords.length);
+                  return (
+                    <label key={a.id} className={`flex items-center gap-2 text-sm ${hasKw ? '' : 'opacity-40'}`}>
+                      <input type="checkbox" disabled={!hasKw} checked={selected.has(a.id)} onChange={() => toggleSel(a.id)} />
+                      <span className={`w-2 h-2 rounded-full ${STATUS_DOT[a.status]}`} />
+                      {a.displayName}
+                      <span className="opacity-50 text-xs">{hasKw ? `[${a.keywords!.join('/')}]` : '未配关键词'}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm mb-2">③ 每号配额(区间内随机)</div>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                {([['点赞', 'daily_like_min', 'daily_like_max'], ['关注', 'daily_follow_min', 'daily_follow_max'], ['评论', 'daily_comment_min', 'daily_comment_max']] as const).map(([label, kMin, kMax]) => (
+                  <div key={label} className="p-2 rounded-lg border dark:border-white/10 border-black/10">
+                    <div className="text-xs opacity-60 mb-1">{label}</div>
+                    <div className="flex items-center gap-1">
+                      <input type="number" min={0} value={(quota as any)[kMin]} onChange={(e) => setQuota((q) => ({ ...q, [kMin]: Number(e.target.value) || 0 }))} className="w-12 text-sm px-1 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                      <span className="opacity-50">~</span>
+                      <input type="number" min={0} value={(quota as any)[kMax]} onChange={(e) => setQuota((q) => ({ ...q, [kMax]: Number(e.target.value) || 0 }))} className="w-12 text-sm px-1 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm">④ 同时开窗</span>
+              <input type="number" min={1} max={10} value={concurrency} onChange={(e) => setConcurrency(Number(e.target.value) || 1)} className="w-16 text-sm px-2 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+              <button onClick={startEngage} disabled={running} className="ml-auto px-5 py-2 rounded-lg bg-claude-accent text-white text-sm disabled:opacity-50">{running ? '互动中…' : '开始自动互动'}</button>
             </div>
           </div>
         )}
@@ -278,6 +344,7 @@ const MatrixView: React.FC<Props> = () => {
                   <div key={it.accountId} className="flex items-center gap-2 text-sm p-2 rounded border dark:border-white/10 border-black/10">
                     <span className={color}>●</span>
                     <span className="flex-1 truncate">{acc?.displayName || it.accountId}</span>
+                    {it.counts && <span className="text-xs opacity-60">赞{it.counts.like}/关{it.counts.follow}/评{it.counts.comment}</span>}
                     <span className="text-xs opacity-60">{it.state}{it.reason ? `:${it.reason}` : ''}</span>
                   </div>
                 );

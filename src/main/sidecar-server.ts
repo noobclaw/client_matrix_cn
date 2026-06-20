@@ -1183,6 +1183,30 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
           }
+          case 'matrix:runEngage': {
+            // 多号自动互动(点赞/评论/关注)。进度走 matrix:progress SSE(同 runTask)。
+            try {
+              const { runEngageTask } = await import('./libs/matrix/engageRunner');
+              const a = args[0] as any;
+              runEngageTask({
+                platform: a?.platform || 'douyin',
+                accountIds: a?.accountIds || [],
+                quota: a?.quota,
+                concurrency: a?.concurrency,
+                kernelPath: a?.kernelPath,
+                authToken: a?.authToken,
+                onLog: (accountId, msg) => broadcastSSE('matrix:progress', { type: 'log', accountId, msg }),
+                onItem: (item) => broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts }),
+              }).then((report) => {
+                broadcastSSE('matrix:progress', { type: 'done', report });
+              }).catch((e: any) => {
+                broadcastSSE('matrix:progress', { type: 'error', error: e?.message || String(e) });
+              });
+              return writeJSON(res, 200, { ok: true, status: 'started' });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
           case 'matrix:selftest': {
             try {
               const { runKernelSelfTest } = await import('./libs/matrix/selftest');

@@ -110,6 +110,46 @@ export async function matrixCmd(
       return await kernelEval(accountId, expr);
     }
 
+    // 任意 JS 求值(orchestrator 收集 video_id 等用)。返回 { result }(对齐扩展形状)。
+    case 'javascript': {
+      const value = await kernelEval(accountId, String(params?.code || ''));
+      return { ok: true, result: value, value };
+    }
+
+    // 当前页 URL。
+    case 'get_url': {
+      const url = await kernelEval(accountId, 'location.href');
+      return { ok: true, url: String(url || ''), value: url };
+    }
+
+    // 滚动(抖音 feed)。amount=屏数,默认 3。
+    case 'scroll': {
+      const amount = Number(params?.amount) || 3;
+      const dir = params?.direction === 'up' ? -1 : 1;
+      const expr =
+        '(function(){try{window.scrollBy(0,' + (dir) + '*' + amount + '*Math.round(window.innerHeight*0.85));' +
+        'return {ok:true};}catch(e){return {ok:false,error:String(e&&e.message||e)};}})()';
+      return await kernelEval(accountId, expr);
+    }
+
+    // 输入框打字(搜索框):focus 后 execCommand insertText。
+    case 'type': {
+      const sel = params?.selector ? String(params.selector) : '';
+      const text = String(params?.text ?? '');
+      const expr =
+        '(function(){' + DEEP_FN +
+        'var el=' + (sel ? 'nbDeepAll(' + s(sel) + ')[0]' : 'document.activeElement') + ';' +
+        'if(!el)return {ok:false,error:"no_target"};try{el.focus();' +
+        'document.execCommand("insertText",false,' + s(text) + ');return {ok:true};}' +
+        'catch(e){return {ok:false,error:String(e&&e.message||e).slice(0,80)};}})()';
+      return await kernelEval(accountId, expr);
+    }
+
+    // 填充 input(native setter + 派 input/change)。等价 set_input_value。
+    case 'fill': {
+      return await matrixCmd(accountId, 'set_input_value', { selector: params?.selector, value: params?.value });
+    }
+
     default:
       return { ok: false, error: 'unsupported_command:' + command };
   }
