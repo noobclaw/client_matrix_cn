@@ -1146,8 +1146,8 @@ const server = http.createServer(async (req, res) => {
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
               await launchKernel({
-                accountId: acc.id, kernelPath: a?.kernelPath, userDataDir: acc.userDataDir,
-                fingerprint: acc.fingerprint, proxy: acc.proxy,
+                accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
+                userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
               });
               await kernelNavigate(acc.id, a?.loginUrl || 'about:blank');
               return writeJSON(res, 200, { ok: true });
@@ -1214,12 +1214,22 @@ const server = http.createServer(async (req, res) => {
             const p = installedKernelPath();
             return writeJSON(res, 200, { ok: true, installed: !!p, path: p || '' });
           }
+          case 'matrix:listKernels': {
+            const { listKernels } = await import('./libs/matrix/kernelInstaller');
+            return writeJSON(res, 200, { ok: true, kernels: await listKernels() });
+          }
+          case 'matrix:setAccountKernelVersion': {
+            const { setAccountKernelVersion } = await import('./libs/matrix/accountManager');
+            setAccountKernelVersion(args[0]?.id, args[0]?.version);
+            return writeJSON(res, 200, { ok: true });
+          }
           case 'matrix:ensureKernel': {
-            // 按需下载指纹内核(走后端下发的 OSS 地址)。进度走 matrix:kernel SSE。
+            // 按需下载指定版本指纹内核(走后端下发的 OSS 地址)。进度走 matrix:kernel SSE。
             try {
               const { ensureKernel } = await import('./libs/matrix/kernelInstaller');
-              ensureKernel((pct, msg) => broadcastSSE('matrix:kernel', { pct, msg }))
-                .then((p) => broadcastSSE('matrix:kernel', { pct: 100, msg: p ? '内核就绪' : '内核安装失败', done: true, path: p || '' }))
+              const version = (args[0] as any)?.version;
+              ensureKernel(version, (pct, msg) => broadcastSSE('matrix:kernel', { pct, msg }))
+                .then((p) => broadcastSSE('matrix:kernel', { pct: 100, msg: p ? '内核就绪' : '内核安装失败', done: true, path: p || '', version }))
                 .catch((e: any) => broadcastSSE('matrix:kernel', { pct: 0, msg: '失败:' + (e?.message || e), done: true }));
               return writeJSON(res, 200, { ok: true, status: 'started' });
             } catch (e: any) {

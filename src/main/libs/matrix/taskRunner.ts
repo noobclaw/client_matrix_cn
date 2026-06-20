@@ -92,6 +92,7 @@ async function runOne(
     await launchKernel({
       accountId,
       kernelPath: opts.kernelPath,
+      kernelVersion: acc.kernelVersion,
       userDataDir: acc.userDataDir,
       fingerprint: acc.fingerprint,
       proxy: acc.proxy,

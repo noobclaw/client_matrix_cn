@@ -1,11 +1,13 @@
 /**
- * 指纹内核安装器(B1:按需下载,走自家 OSS,国内可达)。
+ * 指纹内核安装器(B1 + 多版本管理,对标 AdsPower/比特的内核管理)。
  *
- * 不 bundle 进包(包小、可多版本)。首次使用时从后端下发的 OSS 地址下载内核,
- * 解压到 userData/runtimes/fingerprint-chromium-<platform>/,之后复用。
- *   · win:下 .zip → Expand-Archive → chrome.exe
- *   · mac:下 .dmg → hdiutil 挂载 → 拷 Chromium.app → 卸载
- * 下载的内核不在 app 包里 → 不参与公证;运行时 spawn 直接拉起(不过 Gatekeeper)。
+ * 内核不 bundle 进包(包小)。admin 在 system_config.matrix_kernels 配版本列表(每项
+ * {version,platform,url,label}),客户端按需从自家 OSS 下载到
+ *   userData/runtimes/fingerprint-chromium-<platkey>-<version>/
+ * 支持多版本共存;每个账号可绑定一个版本(指纹稳定)。
+ *   · win:.zip → Expand-Archive → chrome.exe
+ *   · mac:.dmg → hdiutil 挂载 → 拷 Chromium.app → 卸载
+ * 下载内核不在 app 包里 → 不参与公证;运行时 spawn 直接拉起(不过 Gatekeeper)。
  */
 
 import fs from 'fs';
@@ -17,29 +19,53 @@ import { coworkLog } from '../coworkLogger';
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
 function baseUrl(): string { return process.env.NOOBCLAW_API_BASE_URL || DEFAULT_BASE_URL; }
 
-const PLAT = process.platform === 'win32' ? 'fingerprint-chromium-win'
-  : process.platform === 'darwin' ? 'fingerprint-chromium-mac' : 'fingerprint-chromium-linux';
+const PLATKEY = process.platform === 'win32' ? 'win' : process.platform === 'darwin' ? 'mac' : 'linux';
+
+export interface KernelEntry { version: string; platform: string; url: string; label: string; installed?: boolean }
 
 function runtimesDir(): string { return path.join(getUserDataPath(), 'runtimes'); }
-function kernelDir(): string { return path.join(runtimesDir(), PLAT); }
-
-export function installedKernelPath(): string | null {
-  const d = kernelDir();
-  const exe = process.platform === 'win32' ? path.join(d, 'chrome.exe')
-    : process.platform === 'darwin' ? path.join(d, 'Chromium.app', 'Contents', 'MacOS', 'Chromium')
-    : path.join(d, 'chrome');
-  try { return fs.existsSync(exe) ? exe : null; } catch { return null; }
+function versionDir(version: string): string { return path.join(runtimesDir(), `fingerprint-chromium-${PLATKEY}-${version}`); }
+function exeIn(dir: string): string {
+  return process.platform === 'win32' ? path.join(dir, 'chrome.exe')
+    : process.platform === 'darwin' ? path.join(dir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium')
+    : path.join(dir, 'chrome');
 }
 
-async function kernelUrl(): Promise<{ url: string; version: string } | null> {
+/** 某版本的内核可执行路径;不传 version 则返回任意一个已装版本(没有则 null)。 */
+export function installedKernelPath(version?: string): string | null {
+  try {
+    if (version) { const e = exeIn(versionDir(version)); return fs.existsSync(e) ? e : null; }
+    const base = runtimesDir();
+    if (fs.existsSync(base)) {
+      for (const d of fs.readdirSync(base)) {
+        if (d.startsWith(`fingerprint-chromium-${PLATKEY}-`)) {
+          const e = exeIn(path.join(base, d));
+          if (fs.existsSync(e)) return e;
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+async function fetchKernels(): Promise<KernelEntry[]> {
   try {
     const r = await fetch(`${baseUrl()}/api/matrix/kernel`, { signal: AbortSignal.timeout(10000) });
-    if (!r.ok) return null;
+    if (!r.ok) return [];
     const j: any = await r.json();
-    const url = process.platform === 'win32' ? j.win : process.platform === 'darwin' ? j.mac : '';
-    return url ? { url: String(url), version: String(j.version || '') } : null;
-  } catch { return null; }
+    const list: any[] = Array.isArray(j.kernels) ? j.kernels : [];
+    return list.filter((k) => k && k.platform === PLATKEY)
+      .map((k) => ({ version: String(k.version), platform: String(k.platform), url: String(k.url), label: String(k.label || `${k.platform} ${k.version}`) }));
+  } catch { return []; }
 }
+
+/** 当前平台可用的内核版本(标注是否已装),供 UI 内核管理页。 */
+export async function listKernels(): Promise<KernelEntry[]> {
+  const list = await fetchKernels();
+  return list.map((k) => ({ ...k, installed: !!installedKernelPath(k.version) }));
+}
+
+type ProgressFn = (pct: number, msg: string) => void;
 
 function findFile(dir: string, name: string): string | null {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -59,8 +85,6 @@ function findDirEndingWith(dir: string, suffix: string): string | null {
   }
   return null;
 }
-
-type ProgressFn = (pct: number, msg: string) => void;
 
 async function download(url: string, dest: string, onProgress?: ProgressFn): Promise<boolean> {
   const res = await fetch(url);
@@ -83,23 +107,27 @@ async function download(url: string, dest: string, onProgress?: ProgressFn): Pro
   return true;
 }
 
-/** 确保内核就绪(已装则直接返回路径;否则下载+解压)。返回内核可执行路径或 null。 */
-export async function ensureKernel(onProgress?: ProgressFn): Promise<string | null> {
-  const have = installedKernelPath();
+/**
+ * 确保指定版本内核就绪(已装则直接返回路径;否则下载+解压)。
+ * version 不传 → 用列表里第一个版本。返回可执行路径或 null。
+ */
+export async function ensureKernel(version?: string, onProgress?: ProgressFn): Promise<string | null> {
+  const list = await fetchKernels();
+  const entry = version ? list.find((k) => k.version === version) : list[0];
+  if (!entry) { onProgress?.(0, '后端未配置可用内核版本(matrix_kernels)'); return null; }
+
+  const have = installedKernelPath(entry.version);
   if (have) { onProgress?.(100, '内核已就绪'); return have; }
 
-  const info = await kernelUrl();
-  if (!info) { onProgress?.(0, '后端未配置内核下载地址(matrix_kernel_url_*)'); return null; }
-
+  const d = versionDir(entry.version);
   fs.mkdirSync(runtimesDir(), { recursive: true });
-  const tmp = path.join(runtimesDir(), process.platform === 'win32' ? '_k.zip' : '_k.dmg');
-  onProgress?.(0, '开始下载指纹内核…');
+  const tmp = path.join(runtimesDir(), `_k-${entry.version}.${process.platform === 'win32' ? 'zip' : 'dmg'}`);
+  onProgress?.(0, `开始下载内核 ${entry.label}…`);
   try {
-    const ok = await download(info.url, tmp, onProgress);
+    const ok = await download(entry.url, tmp, onProgress);
     if (!ok) return null;
     onProgress?.(100, '下载完成,正在解压…');
 
-    const d = kernelDir();
     fs.rmSync(d, { recursive: true, force: true });
     fs.mkdirSync(d, { recursive: true });
 
@@ -107,12 +135,11 @@ export async function ensureKernel(onProgress?: ProgressFn): Promise<string | nu
       spawnSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Path '${tmp}' -DestinationPath '${d}' -Force`], { stdio: 'ignore' });
       const chromeExe = findFile(d, 'chrome.exe');
       if (chromeExe && path.dirname(chromeExe) !== d) {
-        // zip 里多套了一层目录 → 把内核目录内容上移到 d 根
         const inner = path.dirname(chromeExe);
         for (const e of fs.readdirSync(inner)) fs.renameSync(path.join(inner, e), path.join(d, e));
       }
     } else if (process.platform === 'darwin') {
-      const mnt = path.join(runtimesDir(), '_mnt');
+      const mnt = path.join(runtimesDir(), `_mnt-${entry.version}`);
       fs.mkdirSync(mnt, { recursive: true });
       spawnSync('hdiutil', ['attach', tmp, '-nobrowse', '-readonly', '-mountpoint', mnt], { stdio: 'ignore' });
       try {
@@ -129,14 +156,13 @@ export async function ensureKernel(onProgress?: ProgressFn): Promise<string | nu
         spawnSync('hdiutil', ['detach', mnt, '-force'], { stdio: 'ignore' });
       }
       spawnSync('xattr', ['-cr', path.join(d, 'Chromium.app')], { stdio: 'ignore' });
-      const exe = path.join(d, 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
-      try { fs.chmodSync(exe, 0o755); } catch { /* ignore */ }
+      try { fs.chmodSync(path.join(d, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'), 0o755); } catch { /* ignore */ }
     }
 
     try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
-    const exe = installedKernelPath();
-    onProgress?.(100, exe ? `内核就绪 (${info.version || 'kernel'})` : '解压后未找到内核(格式异常)');
-    if (!exe) coworkLog('ERROR', 'kernelInstaller', 'kernel exe not found after extract');
+    const exe = installedKernelPath(entry.version);
+    onProgress?.(100, exe ? `内核就绪 (${entry.label})` : '解压后未找到内核(格式异常)');
+    if (!exe) coworkLog('ERROR', 'kernelInstaller', 'kernel exe not found after extract', { version: entry.version });
     return exe;
   } catch (e: any) {
     onProgress?.(0, '内核安装失败:' + String(e?.message || e).slice(0, 100));

@@ -73,6 +73,7 @@ export function createAccount(args: {
   proxy?: Proxy;
   keywords?: string[];
   track?: string;
+  kernelVersion?: string;
 }): MatrixAccount {
   ensureDirs();
   const accounts = loadAccounts();
@@ -96,6 +97,7 @@ export function createAccount(args: {
     proxy: args.proxy,
     keywords: Array.isArray(args.keywords) ? args.keywords.filter(Boolean) : [],
     track: args.track || `${args.platform}_default`,
+    kernelVersion: args.kernelVersion || undefined,
   };
   accounts.push(account);
   cache = accounts;
@@ -130,6 +132,13 @@ export function setAccountKeywords(id: string, keywords: string[], track?: strin
   if (!a) return;
   a.keywords = (keywords || []).filter(Boolean);
   if (track !== undefined) a.track = track;
+  persist();
+}
+
+export function setAccountKernelVersion(id: string, version: string): void {
+  const a = getAccount(id);
+  if (!a) return;
+  a.kernelVersion = version || undefined;
   persist();
 }
 

@@ -15,6 +15,7 @@ interface MatrixAccount {
   status: AccountStatus;
   proxy?: { host: string; port: number; geo?: string; health?: string };
   keywords?: string[];
+  kernelVersion?: string;
 }
 
 function parseKeywords(s: string): string[] {
@@ -80,10 +81,10 @@ const MatrixView: React.FC<Props> = () => {
   const [newKeywords, setNewKeywords] = useState('');
   const [notice, setNotice] = useState('');
 
-  // 指纹内核(按需下载)状态
-  const [kernelInstalled, setKernelInstalled] = useState(false);
+  // 指纹内核(多版本,按需下载)
+  const [kernels, setKernels] = useState<Array<{ version: string; label: string; installed?: boolean }>>([]);
   const [kernelMsg, setKernelMsg] = useState('');
-  const [kernelBusy, setKernelBusy] = useState(false);
+  const [newKernelVersion, setNewKernelVersion] = useState('');
 
   const reload = useCallback(async () => {
     const r = await M()?.listAccounts();
@@ -109,17 +110,22 @@ const MatrixView: React.FC<Props> = () => {
 
   useEffect(() => { localStorage.setItem('matrix:kernelPath', kernelPath); }, [kernelPath]);
 
-  // 内核状态 + 下载进度订阅
-  useEffect(() => {
-    M()?.kernelStatus?.().then((r: any) => setKernelInstalled(!!r?.installed));
-    const off = M()?.onKernel?.((p: any) => {
-      setKernelMsg(p?.msg || '');
-      if (p?.done) { setKernelBusy(false); M()?.kernelStatus?.().then((r: any) => setKernelInstalled(!!r?.installed)); }
-    });
-    return () => { if (typeof off === 'function') off(); };
+  const loadKernels = useCallback(() => {
+    M()?.listKernels?.().then((r: any) => setKernels(r?.kernels || []));
   }, []);
 
-  const downloadKernel = async () => { setKernelBusy(true); setKernelMsg('准备下载…'); await M()?.ensureKernel(); };
+  // 内核版本列表 + 下载进度订阅
+  useEffect(() => {
+    loadKernels();
+    const off = M()?.onKernel?.((p: any) => {
+      setKernelMsg(p?.msg || '');
+      if (p?.done) loadKernels();
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, [loadKernels]);
+
+  const downloadKernel = async (version: string) => { setKernelMsg('准备下载…'); await M()?.ensureKernel({ version }); };
+  const installedKernels = kernels.filter((k) => k.installed);
 
   const platformAccounts = accounts.filter((a) => a.platform === platform);
 
@@ -127,9 +133,9 @@ const MatrixView: React.FC<Props> = () => {
     setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
-  const openAdd = () => { setEditId(null); setNewName(''); setNewKeywords(''); setNotice(''); setShowAdd(true); };
+  const openAdd = () => { setEditId(null); setNewName(''); setNewKeywords(''); setNewKernelVersion(installedKernels[0]?.version || ''); setNotice(''); setShowAdd(true); };
   const openEditKeywords = (a: MatrixAccount) => {
-    setEditId(a.id); setNewName(a.displayName); setNewKeywords((a.keywords || []).join(' ')); setNotice(''); setShowAdd(true);
+    setEditId(a.id); setNewName(a.displayName); setNewKeywords((a.keywords || []).join(' ')); setNewKernelVersion(a.kernelVersion || ''); setNotice(''); setShowAdd(true);
   };
 
   const confirmAdd = async (thenLogin: boolean) => {
@@ -137,15 +143,16 @@ const MatrixView: React.FC<Props> = () => {
     if (!m) { setNotice('matrix 接口未就绪(请确认运行的是矩阵版)'); return; }
     const keywords = parseKeywords(newKeywords);
 
-    // 编辑模式:只改关键词
+    // 编辑模式:改关键词 + 内核版本
     if (editId) {
       await m.setAccountKeywords({ id: editId, keywords });
-      setShowAdd(false); await reload(); setNotice('已更新关键词'); return;
+      await m.setAccountKernelVersion?.({ id: editId, version: newKernelVersion });
+      setShowAdd(false); await reload(); setNotice('已更新'); return;
     }
 
     const name = newName.trim();
     if (!name) { setNotice('请填账号备注名'); return; }
-    const r = await m.createAccount({ platform, displayName: name, keywords });
+    const r = await m.createAccount({ platform, displayName: name, keywords, kernelVersion: newKernelVersion });
     setShowAdd(false);
     if (r?.ok) {
       await reload();
@@ -198,15 +205,10 @@ const MatrixView: React.FC<Props> = () => {
         <Tab id="publish" label="矩阵发布" />
         <Tab id="progress" label="执行进度" />
         <div className="ml-auto flex items-center gap-2">
-          <span className={`text-xs px-2 py-0.5 rounded ${kernelInstalled ? 'bg-green-500/15 text-green-500' : 'bg-amber-500/15 text-amber-500'}`}>
-            {kernelInstalled ? '指纹内核 ✓' : '指纹内核 未安装'}
+          <span className={`text-xs px-2 py-0.5 rounded ${installedKernels.length ? 'bg-green-500/15 text-green-500' : 'bg-amber-500/15 text-amber-500'}`}>
+            内核 {installedKernels.length}/{kernels.length} 已装
           </span>
-          {!kernelInstalled && (
-            <button onClick={downloadKernel} disabled={kernelBusy} className="text-xs px-2 py-1 rounded-lg bg-claude-accent text-white disabled:opacity-50">
-              {kernelBusy ? '下载中…' : '下载内核'}
-            </button>
-          )}
-          {kernelMsg && <span className="text-xs opacity-60 max-w-[200px] truncate">{kernelMsg}</span>}
+          {kernelMsg && <span className="text-xs opacity-60 max-w-[220px] truncate">{kernelMsg}</span>}
           <input
             value={kernelPath} onChange={(e) => setKernelPath(e.target.value)}
             placeholder="或手动指定内核路径"
@@ -232,6 +234,26 @@ const MatrixView: React.FC<Props> = () => {
               </select>
               <button onClick={openAdd} className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">+ 添加账号</button>
             </div>
+
+            {/* 指纹内核版本管理 */}
+            <div className="mb-4 p-3 rounded-lg border dark:border-white/10 border-black/10">
+              <div className="text-sm mb-2">指纹内核版本 <span className="opacity-50">(下载后每号可绑定;未装则回落系统 Chrome、无真指纹隔离)</span></div>
+              {kernels.length === 0 ? (
+                <div className="text-xs opacity-50">后端未配置内核版本(admin 配 matrix_kernels)。</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {kernels.map((k) => (
+                    <span key={k.version} className="text-xs px-2 py-1 rounded border dark:border-white/15 border-black/15 inline-flex items-center gap-2">
+                      {k.label}
+                      {k.installed
+                        ? <span className="text-green-500">✓ 已装</span>
+                        : <button onClick={() => downloadKernel(k.version)} className="text-claude-accent">下载</button>}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2">
               {platformAccounts.length === 0 && <div className="text-sm opacity-50 py-8 text-center">该平台还没有账号,点「添加账号」开始。</div>}
               {platformAccounts.map((a) => (
@@ -248,6 +270,7 @@ const MatrixView: React.FC<Props> = () => {
                   <span className="text-xs px-2 py-0.5 rounded bg-black/5 dark:bg-white/10">
                     {a.proxy ? `IP ${a.proxy.geo || a.proxy.host}` : 'IP 未配'}
                   </span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-black/5 dark:bg-white/10">内核 {a.kernelVersion || '默认'}</span>
                   <span className="text-xs px-2 py-0.5 rounded bg-black/5 dark:bg-white/10">{STATUS_LABEL[a.status]}</span>
                   <button onClick={() => openEditKeywords(a)} className="text-xs px-2 py-1 rounded border dark:border-white/15 border-black/15">改词</button>
                   {a.status === 'login_required' && (
@@ -399,8 +422,15 @@ const MatrixView: React.FC<Props> = () => {
               value={newKeywords} onChange={(e) => setNewKeywords(e.target.value)}
               placeholder="赛道关键词,空格/逗号分隔(如:美食 探店 家常菜)—— 自动互动时按这些词搜内容去点赞/评论/关注"
               rows={3}
-              className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-4"
+              className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3"
             />
+            <div className="mb-4">
+              <div className="text-xs opacity-60 mb-1">指纹内核版本(指纹稳定:一号长期固定一个版本)</div>
+              <select value={newKernelVersion} onChange={(e) => setNewKernelVersion(e.target.value)} className="w-full text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent">
+                <option value="">默认(任意已装)</option>
+                {kernels.map((k) => <option key={k.version} value={k.version} disabled={!k.installed}>{k.label}{k.installed ? '' : '(未下载)'}</option>)}
+              </select>
+            </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
               {editId ? (

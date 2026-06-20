@@ -42,7 +42,8 @@ export interface KernelSession {
 
 export interface LaunchKernelOptions {
   accountId: string;
-  kernelPath?: string;            // fingerprint-chromium 路径;缺省回落到普通 Chrome(仅 MVP 验证用)
+  kernelPath?: string;            // 显式内核路径(手动覆盖);优先级最高
+  kernelVersion?: string;         // 该号绑定的内核版本(从已下载版本里取)
   userDataDir: string;            // 持久 profile 目录
   fingerprint: Fingerprint;
   proxy?: Proxy;
@@ -127,8 +128,8 @@ export async function launchKernel(opts: LaunchKernelOptions): Promise<KernelSes
 }
 
 async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
-  // 优先级:显式传入 > 已下载的指纹内核 > 系统 Chrome(回落,无真指纹隔离)
-  const kernelPath = opts.kernelPath || installedKernelPath() || detectChromePath();
+  // 优先级:显式路径 > 该号绑定版本 > 任意已装版本 > 系统 Chrome(回落,无真指纹隔离)
+  const kernelPath = opts.kernelPath || installedKernelPath(opts.kernelVersion) || installedKernelPath() || detectChromePath();
   if (!kernelPath) throw new Error('fingerprint-chromium / Chrome not found');
   coworkLog('INFO', 'kernelPool', `using kernel: ${kernelPath}`);
 

@@ -51,4 +51,6 @@ export interface MatrixAccount {
   // 互动配置:赛道关键词(自动点赞/评论/关注时按这些词搜内容)+ 赛道 id(engageHistory 去重维度)
   keywords?: string[];
   track?: string;
+  // 绑定的指纹内核版本(指纹稳定:一号长期用固定版本)。空 = 用任意已装版本。
+  kernelVersion?: string;
 }

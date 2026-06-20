@@ -141,8 +141,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     setAccountStatus(accountId, 'running');
     log('启动指纹内核');
     await launchKernel({
-      accountId, kernelPath: opts.kernelPath, userDataDir: acc.userDataDir,
-      fingerprint: acc.fingerprint, proxy: acc.proxy,
+      accountId, kernelPath: opts.kernelPath, kernelVersion: acc.kernelVersion,
+      userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
     });
     await kernelNavigate(accountId, 'https://www.douyin.com/');
     await sleep(2000);
