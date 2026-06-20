@@ -171,6 +171,15 @@ jobs:
           SIDECAR_TARGET: ${{ matrix.target }}
         run: node scripts/fetch-ffmpeg.js
 
+      - name: Fetch fingerprint-chromium (bundle into resources)
+        # 下载 adryfish/fingerprint-chromium 引擎级指纹内核到 resources/
+        # fingerprint-chromium-<platform>/(win=144 zip,mac=142 dmg)。矩阵号多号
+        # 互动每号一个独立内核进程。Linux 无 target,脚本 no-op。
+        shell: bash
+        env:
+          SIDECAR_TARGET: ${{ matrix.target }}
+        run: node scripts/fetch-fingerprint-chromium.js
+
       - name: Prepare Tauri resources
         run: node scripts/prepare-tauri-resources.js
 
@@ -243,6 +252,31 @@ jobs:
             codesign -dvv "$FF_DIR/ffmpeg" || true
           else
             echo "No bundled ffmpeg-mac for ${{ matrix.target }} — skipping pre-sign."
+          fi
+
+      - name: Pre-sign bundled fingerprint-chromium (macOS)
+        # bundle 的 Chromium.app 含大量嵌套 Mach-O(dylib / framework / Helper apps),
+        # 必须全部用 OUR Developer ID 重签 + 安全时间戳,否则整个外层 app 公证失败。
+        # 自底向上签(dylib → framework → 嵌套 .app → 主 app),最后 --deep 兜底。
+        # ⚠️ Chromium bundle 结构复杂,这步可能需要据公证日志调几轮(嵌套签名是
+        #    bundle 第三方 Chromium 的固有难点)。无 mac 内核(非 mac target)则跳过。
+        if: runner.os == 'macOS'
+        run: |
+          APP=src-tauri/resources/fingerprint-chromium-mac/Chromium.app
+          if [ -d "$APP" ]; then
+            ID="$APPLE_SIGNING_IDENTITY"
+            SIGN() { codesign --force --timestamp --options runtime --sign "$ID" "$1" 2>/dev/null || true; }
+            # 1) 所有 dylib/so
+            find "$APP" -type f \( -name "*.dylib" -o -name "*.so" \) | while read f; do SIGN "$f"; done
+            # 2) framework 内的版本化二进制
+            find "$APP/Contents/Frameworks" -type d -name "*.framework" 2>/dev/null | while read fw; do SIGN "$fw"; done
+            # 3) 嵌套 Helper .app(从最深的先签)
+            find "$APP" -type d -name "*.app" | awk '{ print length, $0 }' | sort -rn | cut -d" " -f2- | while read a; do SIGN "$a"; done
+            # 4) 主 app —— --deep 兜底剩余可执行
+            codesign --force --deep --timestamp --options runtime --sign "$ID" "$APP" || true
+            codesign -dvv "$APP" || true
+          else
+            echo "No bundled fingerprint-chromium-mac for ${{ matrix.target }} — skipping pre-sign."
           fi
 
       - name: Build Tauri app

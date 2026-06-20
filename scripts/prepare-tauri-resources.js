@@ -184,6 +184,30 @@ function main() {
     }
   }
 
+  // 6b. Bundled fingerprint-chromium 指纹内核(scripts/fetch-fingerprint-chromium.js
+  //     下载到 client/resources/fingerprint-chromium-<platform>/)。拷进
+  //     src-tauri/resources/ 让 Tauri bundle;kernelPool.resolveBundledKernel() 运行时
+  //     解析 win→chrome.exe / mac→Chromium.app/Contents/MacOS/Chromium。
+  {
+    const kdir = process.platform === 'win32'
+      ? 'fingerprint-chromium-win'
+      : process.platform === 'darwin'
+        ? 'fingerprint-chromium-mac'
+        : 'fingerprint-chromium-linux';
+    const kSrc = path.join(ROOT, 'resources', kdir);
+    const kDest = path.join(RESOURCES_DIR, kdir);
+    if (fs.existsSync(kSrc)) {
+      const count = copyDirRecursive(kSrc, kDest);
+      if (process.platform === 'darwin') {
+        const exe = path.join(kDest, 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
+        try { if (fs.existsSync(exe)) fs.chmodSync(exe, 0o755); } catch {}
+      }
+      console.log(`  ${kdir}: ${count} files`);
+    } else {
+      console.warn(`  ${kdir}: NOT FOUND (run "node scripts/fetch-fingerprint-chromium.js" first) — 矩阵互动会回落系统 Chrome(无真指纹隔离)。`);
+    }
+  }
+
   // 7. Bundled CJK subtitle font (Source Han Sans SC Bold, SIL OFL, commercial
   //    OK). Committed to client/resources/fonts/. compose.ts resolves it at
   //    runtime via getResourcesPath()/fonts/ so Chinese subtitles never render

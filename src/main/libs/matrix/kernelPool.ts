@@ -23,7 +23,36 @@ import WebSocket from 'ws';
 import path from 'path';
 import fs from 'fs';
 import { coworkLog } from '../coworkLogger';
+import { isPackaged, getResourcesPath, getUserDataPath } from '../platformAdapter';
 import type { Fingerprint, Proxy } from './types';
+
+// ── bundle 进包的 fingerprint-chromium 定位(镜像 ffmpegRuntime 的探测) ──
+const KERNEL_PLATFORM_DIR = process.platform === 'win32' ? 'fingerprint-chromium-win'
+  : process.platform === 'darwin' ? 'fingerprint-chromium-mac' : 'fingerprint-chromium-linux';
+const KERNEL_EXE_REL = process.platform === 'win32' ? 'chrome.exe'
+  : process.platform === 'darwin' ? path.join('Chromium.app', 'Contents', 'MacOS', 'Chromium') : 'chrome';
+
+function resolveBundledKernel(): string | null {
+  const roots: string[] = [];
+  const pushRoot = (root: string) => roots.push(path.join(root, KERNEL_PLATFORM_DIR));
+  if (isPackaged()) {
+    const res = getResourcesPath();
+    const exeDir = path.dirname(process.execPath);
+    pushRoot(res);
+    pushRoot(path.join(res, 'resources'));
+    pushRoot(path.join(exeDir, 'resources'));
+    pushRoot(path.join(exeDir, '..', 'Resources'));
+    pushRoot(path.join(exeDir, '..', 'Resources', 'resources'));
+  } else {
+    pushRoot(path.join(path.resolve(__dirname, '..', '..', '..', '..'), 'resources'));
+  }
+  pushRoot(path.join(getUserDataPath(), 'runtimes'));
+  for (const r of roots) {
+    const cand = path.join(r, KERNEL_EXE_REL);
+    try { if (fs.existsSync(cand)) return cand; } catch { /* ignore */ }
+  }
+  return null;
+}
 
 export interface KernelSession {
   accountId: string;
@@ -126,8 +155,10 @@ export async function launchKernel(opts: LaunchKernelOptions): Promise<KernelSes
 }
 
 async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
-  const kernelPath = opts.kernelPath || detectChromePath();
+  // 优先级:显式传入 > bundle 进包的指纹内核 > 系统 Chrome(回落,无真指纹隔离)
+  const kernelPath = opts.kernelPath || resolveBundledKernel() || detectChromePath();
   if (!kernelPath) throw new Error('fingerprint-chromium / Chrome not found');
+  coworkLog('INFO', 'kernelPool', `using kernel: ${kernelPath}`);
 
   if (!fs.existsSync(opts.userDataDir)) fs.mkdirSync(opts.userDataDir, { recursive: true });
 
