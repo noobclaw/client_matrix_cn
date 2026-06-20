@@ -135,13 +135,6 @@ export function setAccountKeywords(id: string, keywords: string[], track?: strin
   persist();
 }
 
-export function setAccountKernelVersion(id: string, version: string): void {
-  const a = getAccount(id);
-  if (!a) return;
-  a.kernelVersion = version || undefined;
-  persist();
-}
-
 export function markPosted(id: string): void {
   const a = getAccount(id);
   if (!a) return;

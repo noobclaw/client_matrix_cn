@@ -101,25 +101,51 @@ function findDirEndingWith(dir: string, suffix: string): string | null {
   return null;
 }
 
+const mb = (n: number) => Math.round(n / 1048576);
+
 async function download(url: string, dest: string, onProgress?: ProgressFn): Promise<boolean> {
-  const res = await fetch(url);
+  let res: Response;
+  try { res = await fetch(url); }
+  catch (e: any) { onProgress?.(0, '网络错误:' + String(e?.message || e).slice(0, 80)); return false; }
   if (!res.ok || !res.body) { onProgress?.(0, `下载失败 HTTP ${res.status}`); return false; }
-  const total = Number(res.headers.get('content-length') || 0);
+
+  const total = Number(res.headers.get('content-length') || 0); // CDN/chunked 可能为 0
   const out = fs.createWriteStream(dest);
-  let got = 0, lastPct = -1;
-  const reader = (res.body as any).getReader();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    out.write(Buffer.from(value));
-    got += value.length;
-    if (total) {
-      const pct = Math.round((got / total) * 100);
-      if (pct !== lastPct) { lastPct = pct; onProgress?.(pct, `下载内核 ${Math.round(got / 1048576)}/${Math.round(total / 1048576)}MB`); }
+  let writeErr: Error | null = null;
+  out.on('error', (e) => { writeErr = e; }); // 磁盘满/无权限:捕获,避免 uncaught 崩 sidecar
+  let got = 0, lastTick = 0;
+  try {
+    const reader = (res.body as any).getReader();
+    for (;;) {
+      if (writeErr) throw writeErr;
+      const { done, value } = await reader.read();
+      if (done) break;
+      const buf = Buffer.from(value);
+      // 背压:write 返回 false 时等 drain(否则大文件内存堆积)
+      if (!out.write(buf)) {
+        await new Promise<void>((resolve, reject) => {
+          out.once('drain', resolve);
+          out.once('error', reject);
+        });
+      }
+      got += buf.length;
+      const now = Date.now();
+      if (now - lastTick > 300) {
+        lastTick = now;
+        if (total) onProgress?.(Math.round((got / total) * 100), `下载内核 ${mb(got)}/${mb(total)}MB`);
+        else onProgress?.(50, `下载内核 ${mb(got)}MB…`); // 无 content-length:显示已下字节
+      }
     }
+    if (writeErr) throw writeErr;
+    await new Promise<void>((resolve, reject) => { out.end(() => resolve()); out.once('error', reject); });
+    if (total && got < total) { onProgress?.(0, `下载不完整 ${mb(got)}/${mb(total)}MB`); return false; }
+    return true;
+  } catch (e: any) {
+    try { out.destroy(); } catch { /* ignore */ }
+    try { fs.rmSync(dest, { force: true }); } catch { /* ignore */ }
+    onProgress?.(0, '下载中断:' + String(e?.message || e).slice(0, 80));
+    return false;
   }
-  await new Promise<void>((r) => out.end(() => r()));
-  return true;
 }
 
 /**
@@ -147,16 +173,27 @@ export async function ensureKernel(version?: string, onProgress?: ProgressFn): P
     fs.mkdirSync(d, { recursive: true });
 
     if (process.platform === 'win32') {
-      spawnSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Path '${tmp}' -DestinationPath '${d}' -Force`], { stdio: 'ignore' });
-      const chromeExe = findFile(d, 'chrome.exe');
-      if (chromeExe && path.dirname(chromeExe) !== d) {
-        const inner = path.dirname(chromeExe);
-        for (const e of fs.readdirSync(inner)) fs.renameSync(path.join(inner, e), path.join(d, e));
+      // 先解到临时目录,再把"含 chrome.exe 的那层目录"整体 rename 成 d(原子,
+      // 避免逐项搬动的 EEXIST,且不论 zip 顶层嵌套几层都对)。
+      const exDir = `${d}_ex`;
+      fs.rmSync(exDir, { recursive: true, force: true });
+      fs.mkdirSync(exDir, { recursive: true });
+      const ps = (p: string) => p.replace(/'/g, "''"); // PowerShell 单引号转义(用户名含 ' 时)
+      const ex = spawnSync('powershell', ['-NoProfile', '-Command',
+        `Expand-Archive -LiteralPath '${ps(tmp)}' -DestinationPath '${ps(exDir)}' -Force`], { stdio: 'ignore' });
+      if (ex.status !== 0) coworkLog('ERROR', 'kernelInstaller', 'Expand-Archive failed', { status: ex.status, err: String(ex.error || '') });
+      const chromeExe = findFile(exDir, 'chrome.exe');
+      if (chromeExe) {
+        fs.rmSync(d, { recursive: true, force: true });
+        fs.renameSync(path.dirname(chromeExe), d); // 整个内核根目录搬到 d
       }
+      fs.rmSync(exDir, { recursive: true, force: true });
     } else if (process.platform === 'darwin') {
       const mnt = path.join(runtimesDir(), `_mnt-${entry.version}`);
+      try { spawnSync('hdiutil', ['detach', mnt, '-force'], { stdio: 'ignore' }); } catch { /* 清上次残留挂载 */ }
       fs.mkdirSync(mnt, { recursive: true });
-      spawnSync('hdiutil', ['attach', tmp, '-nobrowse', '-readonly', '-mountpoint', mnt], { stdio: 'ignore' });
+      const att = spawnSync('hdiutil', ['attach', tmp, '-nobrowse', '-readonly', '-mountpoint', mnt], { stdio: 'ignore' });
+      if (att.status !== 0) coworkLog('ERROR', 'kernelInstaller', 'hdiutil attach failed', { status: att.status, err: String(att.error || '') });
       try {
         const app = findDirEndingWith(mnt, '.app');
         if (app) {
