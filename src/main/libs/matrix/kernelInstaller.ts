@@ -59,10 +59,25 @@ async function fetchKernels(): Promise<KernelEntry[]> {
   } catch { return []; }
 }
 
-/** 当前平台可用的内核版本(标注是否已装),供 UI 内核管理页。 */
-export async function listKernels(): Promise<KernelEntry[]> {
+/** 已装的内核版本(单版本模式下最多一个);没有则 null。 */
+export function installedVersion(): string | null {
+  try {
+    const base = runtimesDir();
+    if (!fs.existsSync(base)) return null;
+    const prefix = `fingerprint-chromium-${PLATKEY}-`;
+    for (const d of fs.readdirSync(base)) {
+      if (d.startsWith(prefix) && fs.existsSync(exeIn(path.join(base, d)))) return d.slice(prefix.length);
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/** 内核状态(单版本):是否已装 / 已装版本 / 后端配置版本 / 是否需更新。 */
+export async function kernelInfo(): Promise<{ installed: boolean; installedVersion: string; configuredVersion: string; needsUpdate: boolean }> {
+  const inst = installedVersion() || '';
   const list = await fetchKernels();
-  return list.map((k) => ({ ...k, installed: !!installedKernelPath(k.version) }));
+  const cfg = list[0]?.version || '';
+  return { installed: !!inst, installedVersion: inst, configuredVersion: cfg, needsUpdate: !!(inst && cfg && inst !== cfg) };
 }
 
 type ProgressFn = (pct: number, msg: string) => void;
@@ -161,6 +176,16 @@ export async function ensureKernel(version?: string, onProgress?: ProgressFn): P
 
     try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
     const exe = installedKernelPath(entry.version);
+    // 单版本模式:装好新版后清掉其它版本目录,只留当前(省空间 + launch 不会误用旧版)。
+    if (exe) {
+      const prefix = `fingerprint-chromium-${PLATKEY}-`;
+      const keep = `${prefix}${entry.version}`;
+      try {
+        for (const dd of fs.readdirSync(runtimesDir())) {
+          if (dd.startsWith(prefix) && dd !== keep) fs.rmSync(path.join(runtimesDir(), dd), { recursive: true, force: true });
+        }
+      } catch { /* ignore */ }
+    }
     onProgress?.(100, exe ? `内核就绪 (${entry.label})` : '解压后未找到内核(格式异常)');
     if (!exe) coworkLog('ERROR', 'kernelInstaller', 'kernel exe not found after extract', { version: entry.version });
     return exe;

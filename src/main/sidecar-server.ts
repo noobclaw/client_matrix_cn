@@ -1210,18 +1210,8 @@ const server = http.createServer(async (req, res) => {
             }
           }
           case 'matrix:kernelStatus': {
-            const { installedKernelPath } = await import('./libs/matrix/kernelInstaller');
-            const p = installedKernelPath();
-            return writeJSON(res, 200, { ok: true, installed: !!p, path: p || '' });
-          }
-          case 'matrix:listKernels': {
-            const { listKernels } = await import('./libs/matrix/kernelInstaller');
-            return writeJSON(res, 200, { ok: true, kernels: await listKernels() });
-          }
-          case 'matrix:setAccountKernelVersion': {
-            const { setAccountKernelVersion } = await import('./libs/matrix/accountManager');
-            setAccountKernelVersion(args[0]?.id, args[0]?.version);
-            return writeJSON(res, 200, { ok: true });
+            const { kernelInfo } = await import('./libs/matrix/kernelInstaller');
+            return writeJSON(res, 200, { ok: true, ...(await kernelInfo()) });
           }
           case 'matrix:ensureKernel': {
             // 按需下载指定版本指纹内核(走后端下发的 OSS 地址)。进度走 matrix:kernel SSE。
