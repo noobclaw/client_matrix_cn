@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import MatrixTaskWizard from './MatrixTaskWizard';
 
 /**
  * 矩阵号主界面 —— 由左侧分组菜单驱动的 4 屏(screen prop):
@@ -33,7 +34,6 @@ const LOGIN_URL: Record<string, string> = {
 };
 const STATUS_DOT: Record<AccountStatus, string> = { idle: 'bg-green-500', running: 'bg-blue-500', login_required: 'bg-amber-500', limited: 'bg-gray-400', banned: 'bg-red-500' };
 const STATUS_LABEL: Record<AccountStatus, string> = { idle: '已就绪', running: '运行中', login_required: '需登录', limited: '限流冷却', banned: '已封' };
-const FREQ_OPTS = ['once', '30min', '1h', '3h', '6h', 'daily_random'];
 const FREQ_LABEL: Record<string, string> = { once: '不重复(手动)', '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', daily_random: '每日随机一次' };
 
 const M = () => (window as any).electron?.matrix;
@@ -68,14 +68,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
   const [proxyFor, setProxyFor] = useState<string | null>(null);
   const [proxyForm, setProxyForm] = useState({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' });
 
-  // 任务表单(newTask 屏 + 编辑弹窗共用)
+  // 任务编辑(用 MatrixTaskWizard,样式照搬老客户端 DouyinConfigWizard)
   const [taskEditId, setTaskEditId] = useState<string | null>(null);
   const [showTaskEditModal, setShowTaskEditModal] = useState(false);
-  const [taskName, setTaskName] = useState('');
-  const [taskAccountIds, setTaskAccountIds] = useState<Set<string>>(new Set());
-  const [taskQuota, setTaskQuota] = useState({ daily_like_min: 3, daily_like_max: 8, daily_follow_min: 0, daily_follow_max: 2, daily_comment_min: 1, daily_comment_max: 3 });
-  const [taskFreq, setTaskFreq] = useState('once');
-  const [taskConc, setTaskConc] = useState(3);
 
   // 内核
   const [kernel, setKernel] = useState<{ installed?: boolean; installedVersion?: string; configuredVersion?: string; needsUpdate?: boolean }>({});
@@ -90,8 +85,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
 
   useEffect(() => { reload(); reloadTasks(); }, [reload, reloadTasks]);
   useEffect(() => { if (screen === 'runs') reloadRuns(); }, [screen, reloadRuns]);
-  // 进入「新建任务」屏 → 重置成新建
-  useEffect(() => { if (screen === 'newTask') resetTaskForm(null); /* eslint-disable-line */ }, [screen]);
 
   useEffect(() => {
     const off = M()?.onProgress?.((p: any) => {
@@ -146,18 +139,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
   };
 
   // ── 任务 ──
-  function resetTaskForm(t: MatrixTask | null) {
-    setTaskEditId(t?.id || null); setTaskName(t?.name || `${PLATFORM_LABEL[platform]}互动`);
-    setTaskAccountIds(new Set(t?.accountIds || []));
-    setTaskQuota({ daily_like_min: t?.quota.daily_like_min ?? 3, daily_like_max: t?.quota.daily_like_max ?? 8, daily_follow_min: t?.quota.daily_follow_min ?? 0, daily_follow_max: t?.quota.daily_follow_max ?? 2, daily_comment_min: t?.quota.daily_comment_min ?? 1, daily_comment_max: t?.quota.daily_comment_max ?? 3 });
-    setTaskFreq(t?.frequency || 'once'); setTaskConc(t?.concurrency || 3);
-  }
-  const saveTaskNow = async (closeModal: boolean) => {
-    const ids = [...taskAccountIds];
-    if (!ids.length) { setNotice('请至少勾选一个已登录账号'); return; }
-    const r = await M()?.saveTask({ id: taskEditId || undefined, platform, type: 'engage', name: taskName.trim() || `${PLATFORM_LABEL[platform]}互动`, accountIds: ids, quota: taskQuota, concurrency: taskConc, frequency: taskFreq, enabled: true });
-    if (r?.ok) { await reloadTasks(); setNotice('任务已保存'); if (closeModal) setShowTaskEditModal(false); else onNavigate?.('tasks'); }
-    else setNotice('保存失败:' + (({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(互动)任务,直接编辑它即可', task_not_found: '任务不存在' } as any)[r?.error] || r?.error || '未知错误'));
+  // 向导(MatrixTaskWizard)保存:成功回 tasks 屏;失败抛出让向导显示红字。
+  const saveTaskFromWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any }) => {
+    const r = await M()?.saveTask({ id: taskEditId || undefined, platform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(互动)任务,直接编辑它即可', task_not_found: '任务不存在' } as any)[r?.error] || r?.error || '保存失败');
+    await reloadTasks(); setNotice('任务已保存');
+    setShowTaskEditModal(false); setTaskEditId(null);
+    onNavigate?.('tasks');
   };
   const runTaskNow = async (t: MatrixTask) => {
     if (!requireKernel()) return;
@@ -168,7 +156,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
   };
   const toggleTask = async (t: MatrixTask) => { await M()?.setTaskEnabled({ id: t.id, enabled: !t.enabled }); await reloadTasks(); };
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
-  const toggleTaskAcc = (id: string) => setTaskAccountIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // ── 复用片段 ──
   const renderPlatformPicker = () => (
@@ -177,43 +164,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
       <select value={platform} onChange={(e) => { setPlatform(e.target.value); setSelectedTaskId(null); }} className="ml-2 text-sm px-2 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent">
         {PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>)}
       </select>
-    </div>
-  );
-  const renderTaskForm = (onSave: () => void, saveLabel: string) => (
-    <div className="max-w-2xl">
-      <input value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder="任务名" className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3" />
-      <div className="text-sm mb-1.5">① 选账号 <span className="opacity-50">(已登录且配了关键词;已选 {taskAccountIds.size})</span></div>
-      <div className="space-y-1 mb-3 max-h-40 overflow-auto">
-        {eligibleAccounts.length === 0 && <div className="text-xs opacity-50">没有可用账号——需「已就绪」且配了关键词。先去「我的矩阵号」登录/配词。</div>}
-        {eligibleAccounts.map((a) => (
-          <label key={a.id} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={taskAccountIds.has(a.id)} onChange={() => toggleTaskAcc(a.id)} />
-            <span className={`w-2 h-2 rounded-full ${STATUS_DOT[a.status]}`} />{a.displayName}<span className="opacity-50 text-xs">[{a.keywords!.join('/')}]</span>
-          </label>
-        ))}
-      </div>
-      <div className="text-sm mb-1.5">② 每号配额(区间内随机)</div>
-      <div className="grid grid-cols-3 gap-2 text-sm mb-3">
-        {([['点赞', 'daily_like_min', 'daily_like_max'], ['关注', 'daily_follow_min', 'daily_follow_max'], ['评论', 'daily_comment_min', 'daily_comment_max']] as const).map(([label, kMin, kMax]) => (
-          <div key={label} className="p-2 rounded-lg border dark:border-white/10 border-black/10">
-            <div className="text-xs opacity-60 mb-1">{label}</div>
-            <div className="flex items-center gap-1">
-              <input type="number" min={0} value={(taskQuota as any)[kMin]} onChange={(e) => setTaskQuota((q) => ({ ...q, [kMin]: Number(e.target.value) || 0 }))} className="w-11 text-sm px-1 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-              <span className="opacity-50">~</span>
-              <input type="number" min={0} value={(taskQuota as any)[kMax]} onChange={(e) => setTaskQuota((q) => ({ ...q, [kMax]: Number(e.target.value) || 0 }))} className="w-11 text-sm px-1 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="text-sm mb-1.5">③ 运行频率</div>
-      <div className="flex flex-wrap gap-2 mb-3">
-        {FREQ_OPTS.map((f) => <button key={f} onClick={() => setTaskFreq(f)} className={`px-3 py-1 text-xs rounded-lg border ${taskFreq === f ? 'bg-claude-accent text-white border-transparent' : 'dark:border-white/15 border-black/15'}`}>{FREQ_LABEL[f]}</button>)}
-      </div>
-      <div className="flex items-center gap-3 mb-4">
-        <span className="text-sm">④ 同时开窗</span>
-        <input type="number" min={1} max={10} value={taskConc} onChange={(e) => setTaskConc(Number(e.target.value) || 1)} className="w-16 text-sm px-2 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-        <button onClick={onSave} className="ml-auto px-5 py-2 rounded-lg bg-claude-accent text-white text-sm">{saveLabel}</button>
-      </div>
     </div>
   );
   const renderProgress = () => (
@@ -294,12 +244,17 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
           </div>
         )}
 
-        {/* 新建矩阵涨粉任务 */}
+        {/* 新建矩阵涨粉任务 —— 用照搬老客户端的向导 */}
         {screen === 'newTask' && (
           <div>
             {renderPlatformPicker()}
-            <div className="text-sm opacity-60 mb-3">为「{PLATFORM_LABEL[platform]}」建一个互动涨粉任务:勾选已登录账号 → 配点赞/评论/关注 → 选频率 → 保存。赛道/关键词/人设在各账号上设。</div>
-            {renderTaskForm(() => saveTaskNow(false), '保存任务')}
+            <MatrixTaskWizard
+              platformLabel={PLATFORM_LABEL[platform]}
+              accounts={eligibleAccounts as any}
+              initialTask={null}
+              onCancel={() => onNavigate?.('tasks')}
+              onSave={saveTaskFromWizard}
+            />
           </div>
         )}
 
@@ -341,7 +296,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
               <div className="ml-auto flex gap-2">
                 <button onClick={() => runTaskNow(selectedTask)} disabled={running} className="text-xs px-3 py-1 rounded-lg bg-claude-accent text-white disabled:opacity-50">{running ? '运行中…' : '🎯 直接运行'}</button>
                 {selectedTask.frequency !== 'once' && <button onClick={() => toggleTask(selectedTask)} className="text-xs px-2 py-1 rounded border dark:border-white/15 border-black/15">{selectedTask.enabled ? '停用定时' : '启用定时'}</button>}
-                <button onClick={() => { resetTaskForm(selectedTask); setShowTaskEditModal(true); }} className="text-xs px-2 py-1 rounded border dark:border-white/15 border-black/15">编辑</button>
+                <button onClick={() => { setTaskEditId(selectedTask.id); setShowTaskEditModal(true); }} className="text-xs px-2 py-1 rounded border dark:border-white/15 border-black/15">编辑</button>
                 <button onClick={() => deleteTask(selectedTask)} className="text-xs px-2 py-1 rounded border border-red-500/40 text-red-500">删除</button>
               </div>
             </div>
@@ -405,14 +360,16 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
         </div>
       )}
 
-      {/* 编辑任务弹窗(详情页用) */}
+      {/* 编辑任务弹窗(详情页用)—— 同一个向导 */}
       {showTaskEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-[32rem] max-h-[90vh] overflow-auto rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
-            <div className="text-sm font-medium mb-3">编辑任务</div>
-            {renderTaskForm(() => saveTaskNow(true), '保存')}
-            <div className="flex justify-end mt-1"><button onClick={() => setShowTaskEditModal(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button></div>
-          </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
+          <MatrixTaskWizard
+            platformLabel={PLATFORM_LABEL[platform]}
+            accounts={eligibleAccounts as any}
+            initialTask={tasks.find((t) => t.id === taskEditId) || null}
+            onCancel={() => { setShowTaskEditModal(false); setTaskEditId(null); }}
+            onSave={saveTaskFromWizard}
+          />
         </div>
       )}
 
