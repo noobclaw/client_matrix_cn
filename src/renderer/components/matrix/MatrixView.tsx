@@ -341,7 +341,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
                     : a.status === 'banned' ? 'text-red-600 dark:text-red-400 bg-red-500/15'
                     : 'text-gray-500 bg-gray-500/15';
                   return (
-                  <div key={a.id} className={`relative rounded-xl border p-4 flex flex-col gap-2 transition-colors ${(a.status === 'running' || a.status === 'idle') ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'}`}>
+                  <div key={a.id} className={`relative rounded-xl border p-4 flex flex-col gap-2 transition-colors bg-white dark:bg-gray-900 ${(a.status === 'running' || a.status === 'idle') ? 'border-green-500' : 'border-gray-200 dark:border-gray-700'}`}>
                     {/* 右上角移除 ✕ */}
                     <button onClick={() => deleteAccount(a)} title="移除该账号(彻底删除配置与 profile)" className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-red-500/90 transition-colors text-sm leading-none">✕</button>
                     <div className="flex items-center gap-2.5 min-w-0 pr-6">
