@@ -14,7 +14,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { coworkLog } from '../coworkLogger';
-import { launchKernel, kernelNavigate, closeKernel, checkKernelLogin } from './kernelPool';
+import { launchKernel, kernelNavigate, closeKernel, checkKernelLogin, NO_KERNEL_ERROR } from './kernelPool';
+import { installedKernelPath } from './kernelInstaller';
 
 // 各平台主页(跑前导航 + 登录态检查用;不再写死抖音)。
 const PLATFORM_HOME: Record<string, string> = {
@@ -265,6 +266,11 @@ async function runPool(ids: string[], k: number, worker: (id: string) => Promise
 export interface EngageReport { platform: string; total: number; success: number; failed: number; skipped: number; items: EngageItemResult[]; }
 
 export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageReport> {
+  // 内核校验(手动 + 定时统一兜底):没装指纹浏览器且没显式路径 → 整个任务【不跑】,
+  // 抛 NO_KERNEL 让上层弹「去下载」。否则定时任务会空转、每个号都失败。
+  if (!opts.kernelPath && !installedKernelPath()) {
+    throw new Error(`${NO_KERNEL_ERROR}: 指纹浏览器内核未安装,请先到「我的矩阵账号」下载内核`);
+  }
   const k = Math.max(1, Math.min(opts.concurrency ?? 3, 10));
   const scenarioId = opts.platform === 'douyin' ? 'douyin_auto_engage' : `${opts.platform}_auto_engage`;
   const pack = await fetchEngagePack(scenarioId);

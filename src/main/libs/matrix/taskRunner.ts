@@ -11,7 +11,8 @@
 
 import { coworkLog } from '../coworkLogger';
 import type { VideoPlatform, PublishInput } from '../video/publishers/types';
-import { launchKernel, kernelNavigate, kernelEval, closeKernel } from './kernelPool';
+import { launchKernel, kernelNavigate, kernelEval, closeKernel, NO_KERNEL_ERROR } from './kernelPool';
+import { installedKernelPath } from './kernelInstaller';
 import { runMatrixDriver } from './driverCtx';
 import {
   getAccount, setAccountStatus, markPosted,
@@ -178,6 +179,10 @@ async function chargeSuccess(
 }
 
 export async function runMatrixTask(opts: MatrixTaskOptions): Promise<MatrixTaskReport> {
+  // 内核校验(手动 + 定时统一兜底):没装指纹浏览器且没显式路径 → 整个任务【不跑】,抛 NO_KERNEL。
+  if (!opts.kernelPath && !installedKernelPath()) {
+    throw new Error(`${NO_KERNEL_ERROR}: 指纹浏览器内核未安装,请先到「我的矩阵账号」下载内核`);
+  }
   const k = Math.max(1, Math.min(opts.concurrency ?? 3, 10)); // 夹紧上限,防一次开几十个内核打爆内存
   coworkLog('INFO', 'matrixTask', `start ${opts.platform} x${opts.accountIds.length} (concurrency ${k})`);
 

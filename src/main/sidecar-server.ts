@@ -317,6 +317,10 @@ function startMatrixScheduler(): void {
       const { dueTasks } = await import('./libs/matrix/taskStore');
       const due = dueTasks(Date.now());
       if (!due.length) return;
+      // 没装指纹浏览器内核 → 定时任务【不跑】(否则每分钟空转 + 每号失败 + 报错刷屏);
+      // 用户进「我的矩阵账号」会被提示下载,装好后下个 tick 自然恢复。
+      const { installedKernelPath } = await import('./libs/matrix/kernelInstaller');
+      if (!installedKernelPath()) return;
       due.sort((a, b) => (a.nextPlannedRunAt || 0) - (b.nextPlannedRunAt || 0));
       await runMatrixTaskById(due[0].id);
     } catch (e) { coworkLog('WARN', 'sidecar-server', 'matrix scheduler tick failed', { err: String(e) }); }

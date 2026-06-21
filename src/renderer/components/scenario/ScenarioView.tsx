@@ -172,7 +172,31 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 矩阵号:互动涨粉向导(选账号 + 配额 + 频率;账号制,赛道/关键词/人设在账号上)。
   const [matrixWizardPlatform, setMatrixWizardPlatform] = useState<string | null>(null);
   const [matrixAccounts, setMatrixAccounts] = useState<WizardAccount[]>([]);
+  // 指纹浏览器内核守卫:没装内核时弹「去下载」,后续流程不走(创建/运行矩阵任务都先过这关)。
+  const [matrixKernelMissing, setMatrixKernelMissing] = useState(false);
+  const [matrixKernelBusy, setMatrixKernelBusy] = useState(false);
+  const ensureMatrixKernel = async (): Promise<boolean> => {
+    try {
+      const r = await (window as any).electron?.matrix?.kernelStatus?.();
+      if (r?.installed) return true;
+    } catch { /* 视为未安装 */ }
+    setMatrixKernelMissing(true);
+    return false;
+  };
+  const downloadMatrixKernel = async () => {
+    setMatrixKernelBusy(true);
+    try {
+      await (window as any).electron?.matrix?.ensureKernel?.();
+      // 下载在后台,ensureKernel 可能先返回 → 轮询到装好为止(最多 ~4min)。
+      for (let i = 0; i < 120; i++) {
+        const r = await (window as any).electron?.matrix?.kernelStatus?.();
+        if (r?.installed) { setMatrixKernelMissing(false); break; }
+        await new Promise((res) => setTimeout(res, 2000));
+      }
+    } finally { setMatrixKernelBusy(false); }
+  };
   const openMatrixWizard = async (platform: string) => {
+    if (!(await ensureMatrixKernel())) return; // 没内核 → 弹下载,不开向导
     try {
       const r = await (window as any).electron?.matrix?.listAccounts?.();
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
@@ -1091,6 +1115,20 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onCancel={closeWizard}
           onSave={handleWizardSave}
         />
+      )}
+
+      {/* 指纹浏览器未安装 → 去下载弹窗(没内核不创建/不运行矩阵任务) */}
+      {matrixKernelMissing && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!matrixKernelBusy) setMatrixKernelMissing(false); }}>
+          <div className="w-[28rem] max-w-full rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-base font-semibold mb-2 dark:text-white">🧬 需要指纹浏览器</div>
+            <div className="text-sm text-gray-600 dark:text-gray-300 mb-5 leading-relaxed">矩阵任务必须在专属指纹浏览器内核里运行(每个账号独立指纹隔离,普通浏览器无法替代)。约 130MB,只需下载一次,下载后即可创建 / 运行任务。</div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setMatrixKernelMissing(false)} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15 disabled:opacity-50">取消</button>
+              <button onClick={downloadMatrixKernel} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg bg-violet-500 hover:bg-violet-600 text-white disabled:opacity-50">{matrixKernelBusy ? '下载中…' : '下载内核'}</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 矩阵号互动涨粉向导(选账号 + 配额 + 频率) */}
