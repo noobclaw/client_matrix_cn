@@ -72,6 +72,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
   // 任务编辑(用 MatrixTaskWizard,样式照搬老客户端 DouyinConfigWizard)
   const [taskEditId, setTaskEditId] = useState<string | null>(null);
   const [showTaskEditModal, setShowTaskEditModal] = useState(false);
+  const [showNewWizard, setShowNewWizard] = useState(false); // 新建页:点卡片才弹向导
 
   // 内核
   const [kernel, setKernel] = useState<{ installed?: boolean; installedVersion?: string; configuredVersion?: string; needsUpdate?: boolean }>({});
@@ -159,14 +160,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
 
   // ── 复用片段 ──
-  const renderPlatformPicker = () => (
-    <div className="flex items-center mb-4">
-      <span className="text-sm opacity-70">平台</span>
-      <select value={platform} onChange={(e) => { setPlatform(e.target.value); setSelectedTaskId(null); }} className="ml-2 text-sm px-2 py-1 rounded border dark:border-white/15 border-black/15 bg-transparent">
-        {PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>)}
-      </select>
-    </div>
-  );
   const renderProgress = () => (
     <div className="mt-4">
       {doneReport && <div className="mb-3 text-sm p-3 rounded-lg bg-black/5 dark:bg-white/10">完成:成功 {doneReport.success} · 失败 {doneReport.failed} · 跳过 {doneReport.skipped}</div>}
@@ -254,17 +247,49 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
           </div>
         )}
 
-        {/* 新建矩阵涨粉任务 —— 用照搬老客户端的向导 */}
+        {/* 新建矩阵涨粉任务 —— 平台 tab + 场景卡片入口(照抄 DouyinWorkflowsPage),点卡片弹向导 */}
         {screen === 'newTask' && (
-          <div>
-            {renderPlatformPicker()}
-            <MatrixTaskWizard
-              platformLabel={PLATFORM_LABEL[platform]}
-              accounts={platformAccounts as any}
-              initialTask={null}
-              onCancel={() => onNavigate?.('tasks')}
-              onSave={saveTaskFromWizard}
-            />
+          <div className="max-w-6xl mx-auto">
+            <div className="flex flex-wrap gap-2 mb-6">
+              {PLATFORMS.map((p) => (
+                <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>{PLATFORM_LABEL[p]}</button>
+              ))}
+            </div>
+            {platform === 'douyin' ? (
+              <>
+                <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+                    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
+                    <div className="relative flex flex-col flex-1">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-500 mb-2"><span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />互动涨粉</div>
+                      <h3 className="text-base font-bold dark:text-white mb-1.5">🎶 抖音 · 互动涨粉(矩阵)</h3>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">同时控制多个账号,每个号在自己的指纹浏览器里、按【自己的赛道关键词】搜抖音视频,按你配的随机区间做点赞 / 关注 / 评论。评论由 AI 按视频文案 + 该号人设自动生成,行为间隔随机模拟真人。赛道/关键词/人设在「我的矩阵号」给每个号设。</p>
+                      <button onClick={() => { if (!requireKernel()) return; setShowNewWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 shadow-lg shadow-violet-500/25">🎶 开始互动 →</button>
+                    </div>
+                  </div>
+                </section>
+                <section className="mb-6">
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {[['🛡️', '完全模拟人类行为不封号'], ['🚀', '多号并发 · 涨粉快'], ['💰', '成本超低'], ['🤖', '全智能控制']].map(([icon, t]) => (
+                      <span key={t} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-violet-500/20 bg-violet-500/5 text-gray-700 dark:text-gray-300">{icon} {t}</span>
+                    ))}
+                  </div>
+                </section>
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500 dark:text-gray-400">{PLATFORM_LABEL[platform]} 互动后续接入,目前先做抖音。</div>
+            )}
+            {showNewWizard && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
+                <MatrixTaskWizard
+                  platformLabel={PLATFORM_LABEL[platform]}
+                  accounts={platformAccounts as any}
+                  initialTask={null}
+                  onCancel={() => setShowNewWizard(false)}
+                  onSave={async (input) => { await saveTaskFromWizard(input); setShowNewWizard(false); }}
+                />
+              </div>
+            )}
           </div>
         )}
 
