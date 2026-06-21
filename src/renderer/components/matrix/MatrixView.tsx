@@ -36,7 +36,7 @@ const LOGIN_URL: Record<string, string> = {
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
 };
 const STATUS_DOT: Record<AccountStatus, string> = { idle: 'bg-green-500', running: 'bg-blue-500', login_required: 'bg-amber-500', limited: 'bg-gray-400', banned: 'bg-red-500' };
-const STATUS_LABEL: Record<AccountStatus, string> = { idle: '已就绪', running: '运行中', login_required: '需登录', limited: '限流冷却', banned: '已封' };
+const STATUS_LABEL: Record<AccountStatus, string> = { idle: '已关联', running: '运行中', login_required: '需关联', limited: '限流冷却', banned: '已封' };
 const FREQ_LABEL: Record<string, string> = { once: '不重复(手动)', '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', daily_random: '每日随机一次' };
 
 // 赛道预设(下拉可选):选了自动填关键词 + 人设建议(用户仍可在下面微调)。
@@ -162,8 +162,23 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
     if (!requireKernel()) return;
     setNotice(`正在读取「${a.displayName}」的账号信息…(会短暂弹出浏览器)`);
     const r = await M()?.refreshIdentity?.({ accountId: a.id, homeUrl: LOGIN_URL[a.platform] || '', kernelPath });
-    if (r?.ok) { await reload(); setNotice(r.loggedIn ? `已读取:${r.nickname || a.displayName}${r.displayId ? ' · ' + r.displayId : ''}` : `「${a.displayName}」未检测到登录,请扫码登录`); }
+    if (r?.ok) { await reload(); setNotice(r.loggedIn ? `已读取:${r.nickname || a.displayName}${r.displayId ? ' · ' + r.displayId : ''}` : `「${a.displayName}」未检测到登录,请扫码关联`); }
     else setNotice('读取失败:' + (r?.error || '未知'));
+  };
+  // 断开关联:清登录 cookie + 身份,但保留赛道/关键词/人设/代理/指纹配置,可随时重新扫码关联。
+  const disconnectAccount = async (a: MatrixAccount) => {
+    if (!window.confirm(`断开「${a.nickname || a.displayName}」的关联?\n会登出该账号(清 cookie),但保留赛道/关键词/代理等配置,可随时重新扫码关联。`)) return;
+    setNotice(`正在断开「${a.displayName}」…`);
+    const r = await M()?.disconnectAccount?.({ accountId: a.id, kernelPath });
+    if (r?.ok) { await reload(); setNotice(`已断开「${a.displayName}」,需重新扫码关联`); }
+    else setNotice('断开失败:' + (r?.error || '未知'));
+  };
+  // 删除:彻底移除账号配置 + profile,不可恢复。
+  const deleteAccount = async (a: MatrixAccount) => {
+    if (!window.confirm(`彻底删除「${a.nickname || a.displayName}」?\n账号配置和指纹 profile 都会移除,不可恢复。`)) return;
+    await M()?.removeAccount?.({ id: a.id });
+    await reload();
+    setNotice(`已删除「${a.displayName}」`);
   };
   const openProxy = (a: MatrixAccount) => { setProxyForm({ protocol: a.proxy?.protocol || 'socks5', host: a.proxy?.host || '', port: a.proxy?.port ? String(a.proxy.port) : '', username: a.proxy?.username || '', password: a.proxy?.password || '', geo: a.proxy?.geo || '' }); setProxyFor(a.id); };
   const saveProxy = async () => {
@@ -277,7 +292,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <h2 className="text-lg font-bold dark:text-white">🧬 我的矩阵账号</h2>
-              <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">+ 添加{PLATFORM_LABEL[platform]}账号</button>
+              <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">+ 关联{PLATFORM_LABEL[platform]}账号</button>
             </div>
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
             <div className="flex flex-wrap gap-2 mb-4">
@@ -289,7 +304,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
               <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
                 <div className="text-4xl mb-2">📭</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">该平台还没有账号</div>
-                <button onClick={openAdd} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">+ 添加{PLATFORM_LABEL[platform]}账号</button>
+                <button onClick={openAdd} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">+ 关联{PLATFORM_LABEL[platform]}账号</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -301,7 +316,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
                     : a.status === 'banned' ? 'text-red-600 dark:text-red-400 bg-red-500/15'
                     : 'text-gray-500 bg-gray-500/15';
                   return (
-                  <div key={a.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 flex flex-col gap-2">
+                  <div key={a.id} className={`rounded-xl border p-4 flex flex-col gap-2 transition-colors ${a.status === 'running' ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'}`}>
                     <div className="flex items-center gap-2.5 min-w-0">
                       {/* 头像 + 状态点角标 */}
                       <div className="relative shrink-0">
@@ -317,10 +332,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
                           <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${stChip}`}>{STATUS_LABEL[a.status]}</span>
                           {a.persona && <span className="shrink-0 text-[10px] text-gray-400">人设✓</span>}
                         </div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate" title={a.boundUid ? `uid: ${a.boundUid}` : undefined}>
-                          {a.displayId ? `${PLATFORM_LABEL[a.platform] || ''}号: ${a.displayId}` : (a.nickname ? '' : '未读取到平台号')}
-                          {a.nickname && a.displayName && a.displayName !== a.nickname ? `${a.displayId ? ' · ' : ''}备注: ${a.displayName}` : ''}
-                          {a.group ? ` · ${a.group}` : ''}
+                        <div className="text-[11px] truncate" title={a.boundUid ? `uid: ${a.boundUid}` : undefined}>
+                          {a.status === 'login_required'
+                            ? <span className="text-amber-500">未关联 — 点「扫码关联」</span>
+                            : (<span className="text-gray-500 dark:text-gray-400">
+                                {a.displayId ? `${PLATFORM_LABEL[a.platform] || ''}号: ${a.displayId}` : (a.nickname ? '已关联' : '已关联 · 平台号读取中,点「刷新信息」')}
+                                {a.nickname && a.displayName && a.displayName !== a.nickname ? `${a.displayId ? ' · ' : ''}备注: ${a.displayName}` : ''}
+                                {a.group ? ` · ${a.group}` : ''}
+                              </span>)}
                         </div>
                       </div>
                     </div>
@@ -331,11 +350,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
                         ? <button onClick={() => openProxy(a)} className="text-[11px] px-2.5 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600">🌐 {a.proxy.geo || a.proxy.host}</button>
                         : <button onClick={() => openProxy(a)} className={`text-[11px] px-2.5 py-1 rounded-lg text-white ${idx === 0 ? 'bg-gray-500 hover:bg-gray-600' : 'bg-amber-500 hover:bg-amber-600'}`}>{idx === 0 ? '本地IP(默认)' : 'IP 未配·点配'}</button>}
                       <button onClick={() => openEdit(a)} className="text-xs px-2.5 py-1 rounded-lg bg-gray-600 text-white hover:bg-gray-700">编辑</button>
-                      {/* 刷新信息:任意账号都能用,读真实 昵称/平台号/头像(已登录但没读过身份的号用它) */}
-                      <button onClick={() => refreshIdentity(a)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">刷新信息</button>
-                      {a.status === 'login_required' && (
-                        <button onClick={() => { if (!requireKernel()) return; setNotice(`正在为「${a.displayName}」打开指纹浏览器,扫码后状态自动刷新`); M()?.openLogin({ accountId: a.id, kernelPath, loginUrl: LOGIN_URL[a.platform] || '' }); }} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">扫码登录</button>
-                      )}
+                      {a.status === 'login_required'
+                        ? <button onClick={() => { if (!requireKernel()) return; setNotice(`正在为「${a.displayName}」打开指纹浏览器,扫码关联后状态自动刷新`); M()?.openLogin({ accountId: a.id, kernelPath, loginUrl: LOGIN_URL[a.platform] || '' }); }} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">扫码关联</button>
+                        : (<>
+                            {/* 已关联:读真实身份 / 断开(清登录,保留配置) */}
+                            <button onClick={() => refreshIdentity(a)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">刷新信息</button>
+                            <button onClick={() => disconnectAccount(a)} className="text-xs px-2.5 py-1 rounded-lg bg-orange-500 text-white hover:bg-orange-600">断开关联</button>
+                          </>)}
+                      <button onClick={() => deleteAccount(a)} className="text-xs px-2.5 py-1 rounded-lg bg-red-500/90 text-white hover:bg-red-600 ml-auto">删除</button>
                     </div>
                   </div>
                   );
@@ -542,7 +564,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-[40rem] max-w-full max-h-[88vh] overflow-y-auto rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl">
-            <div className="text-base font-semibold mb-4">{editId ? '编辑账号' : `添加 ${PLATFORM_LABEL[platform]} 账号`}</div>
+            <div className="text-base font-semibold mb-4">{editId ? '编辑账号' : `关联 ${PLATFORM_LABEL[platform]} 账号`}</div>
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">账号备注名</label>
             <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="如:账号1-美食号" className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mb-3" />
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">赛道(选了自动填关键词 + 人设建议)</label>
@@ -557,7 +579,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
               {editId ? <button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">保存</button>
-                : (<><button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">仅创建</button><button onClick={() => confirmAdd(true)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">创建并扫码登录</button></>)}
+                : (<><button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">仅关联</button><button onClick={() => confirmAdd(true)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">关联并扫码</button></>)}
             </div>
           </div>
         </div>
@@ -582,7 +604,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
           <div className="w-[26rem] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
             <div className="text-sm font-medium mb-1">指纹浏览器</div>
             {kernel.installed && !kernelBusy ? (
-              <div className="text-sm text-green-500 my-3">✓ 指纹浏览器已就绪{kernel.installedVersion ? `(v${kernel.installedVersion})` : ''},现在可以添加账号 / 扫码登录 / 跑任务了。</div>
+              <div className="text-sm text-green-500 my-3">✓ 指纹浏览器已就绪{kernel.installedVersion ? `(v${kernel.installedVersion})` : ''},现在可以关联账号 / 扫码关联 / 跑任务了。</div>
             ) : (
               <>
                 <div className="text-sm opacity-70 my-3">矩阵号需要专属指纹浏览器才能运行(独立指纹隔离,普通 Chrome 无法替代)。约 130MB,只需下载一次。</div>

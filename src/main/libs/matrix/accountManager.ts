@@ -160,6 +160,14 @@ export function setAccountIdentity(id: string, ident: { nickname?: string; displ
   persist();
 }
 
+/** 断开关联:清掉读到的身份(昵称/平台号/头像/uid),保留账号配置。 */
+export function clearAccountIdentity(id: string): void {
+  const a = getAccount(id);
+  if (!a) return;
+  delete a.nickname; delete a.displayId; delete a.avatar; delete a.boundUid;
+  persist();
+}
+
 export function markPosted(id: string): void {
   const a = getAccount(id);
   if (!a) return;

@@ -1363,6 +1363,28 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
           }
+          case 'matrix:disconnectAccount': {
+            // 断开关联:清登录 cookie + 清身份,状态回「需关联」;保留账号配置(赛道/关键词/人设/代理/指纹)。
+            try {
+              const { getAccount, setAccountStatus, clearAccountIdentity } = await import('./libs/matrix/accountManager');
+              const { launchKernel, kernelClearCookies, closeKernel, getSession } = await import('./libs/matrix/kernelPool');
+              const a = args[0] as any;
+              const acc = getAccount(a?.accountId);
+              if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              const wasRunning = !!getSession(acc.id);
+              try {
+                await launchKernel({ accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy, label: acc.displayName });
+                await kernelClearCookies(acc.id);
+              } catch { /* 内核拉不起也要把本地状态清掉 */ }
+              if (!wasRunning) { try { closeKernel(acc.id); } catch { /* ignore */ } }
+              setAccountStatus(acc.id, 'login_required');
+              clearAccountIdentity(acc.id);
+              broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', nickname: null, displayId: null, avatar: null });
+              return writeJSON(res, 200, { ok: true });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
           case 'matrix:runTask': {
             // Fire-and-forget(同 video:generate):任务跑数分钟,进度走 matrix:progress SSE。
             try {

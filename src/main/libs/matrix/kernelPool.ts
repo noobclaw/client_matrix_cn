@@ -401,6 +401,12 @@ export async function kernelSetFileInput(accountId: string, selector: string, fi
   return true;
 }
 
+// 清空该号浏览器全部 cookie(断开关联用:登出但保留 profile/指纹/配置)。
+export async function kernelClearCookies(accountId: string): Promise<void> {
+  const s = await getPage(accountId);
+  try { await send(s, 'Network.clearBrowserCookies', {}); } catch { /* ignore */ }
+}
+
 // ── 登录态检测(读 cookie;httpOnly 也能经 CDP 读到,document.cookie 读不到) ──
 
 // 各平台「已登录」的标志性 cookie(命中任一即视为已登录)。2026-06-21 全平台真机 CDP 实测核对:

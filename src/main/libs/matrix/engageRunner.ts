@@ -14,7 +14,14 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { coworkLog } from '../coworkLogger';
-import { launchKernel, kernelNavigate, closeKernel } from './kernelPool';
+import { launchKernel, kernelNavigate, closeKernel, checkKernelLogin } from './kernelPool';
+
+// 各平台主页(跑前导航 + 登录态检查用;不再写死抖音)。
+const PLATFORM_HOME: Record<string, string> = {
+  douyin: 'https://www.douyin.com/', xhs: 'https://www.xiaohongshu.com/', bilibili: 'https://www.bilibili.com/',
+  kuaishou: 'https://www.kuaishou.com/', tiktok: 'https://www.tiktok.com/', x: 'https://x.com/home',
+  binance: 'https://www.binance.com/zh-CN/square', youtube: 'https://www.youtube.com/',
+};
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, setAccountKeywords } from './accountManager';
 import { getNoobClawAuthToken } from '../claudeSettings';
@@ -150,8 +157,17 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
       // 跑任务时不注入角标:降低页面足迹(风控最敏感时段),账号在进度面板里看即可。
     });
-    await kernelNavigate(accountId, 'https://www.douyin.com/');
+    await kernelNavigate(accountId, PLATFORM_HOME[opts.platform] || 'https://www.douyin.com/');
     await sleep(2000);
+
+    // 跑前登录态检查:cookie 过期 / 没关联 → 跳过该号 + 标「需关联」(其它号照跑),不空转。
+    let loggedIn = true;
+    try { loggedIn = await checkKernelLogin(accountId, opts.platform); } catch { loggedIn = true; } // 读失败不误杀
+    if (!loggedIn) {
+      setAccountStatus(accountId, 'login_required');
+      log('⚠️ 登录态失效/未关联,跳过(请到「我的矩阵账号」重新扫码关联)');
+      return { accountId, state: 'skipped', reason: 'login_expired' };
+    }
 
     // orchestrator 需要的 task(配额从 opts.quota,缺省回落 scenario manifest 默认)
     const task: any = {
