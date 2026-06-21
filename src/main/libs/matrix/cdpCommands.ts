@@ -1,40 +1,17 @@
 /**
- * 命令适配层 —— 把发布 driver 的浏览器命令词汇翻译成指纹内核的 CDP 调用。
+ * 命令适配层(薄路由)—— 把剧本(orchestrator)的浏览器命令路由到指纹内核。
  *
- * 旧 client 里 driver 经 pubCmd → sendBrowserCommand(扩展/单实例 CDP)发命令;
- * 矩阵号里改走这里:matrixCmd(accountId, …) 把同一套命令路由到 kernelPool 中
- * 该 accountId 的 CDP 会话。命令契约与扩展侧保持一致(返回结构对齐),这样发布
- * driver 的脚本体一行不改即可运行。
+ * 架构(2026-06-21 重构):命令实现不再在 client 手写,而是【复用扩展的 DOM 命令实现】,
+ * 由后端下发的命令执行器 window.__nbExec 在内核页面里执行(见 kernelPool.kernelExec +
+ * backend/matrix/drivers/command_executor.js)。本层只做路由:
+ *   · 页面类命令(click/type/query_selector/scroll/editor_* …)→ kernelExec → __nbExec
+ *   · 特权命令(cdp_eval / javascript / 可信按键 keypress / 可信坐标点击 cdp_click)→ 原生 CDP
  *
- * 支持的命令(对齐 publisherUtils 里 driver 实际用到的):
- *   cdp_eval / query_selector / main_world_click / set_input_value /
- *   editor_insert_text / click_with_text
- * (upload_file_from_url 不在此实现 —— 矩阵的 ctx.uploadVideo 直接走 CDP
- *  DOM.setFileInputFiles,见 driverCtx.ts。)
+ * 收益:① 不逐命令手写(吃扩展久经实战的实现 + 历史修复);② 改命令行为只改后端 + 重启,
+ * 不打包 client;③ 22 个剧本一行不改。
  */
 
-import { kernelEval, kernelKeypress } from './kernelPool';
-
-// 页面内三层深遍历(顶层 + open shadowRoot + 同源 iframe),对齐生产 nbDeepAll。
-// fingerprint-chromium 的 fakeShadowRoot 让 closed shadow 也可达(待真机验证)。
-const DEEP_FN =
-  'function nbDeepAll(sel){var out=[];function walk(root,d){if(!root||d>6)return;' +
-  'try{var m=root.querySelectorAll(sel);for(var i=0;i<m.length;i++)out.push(m[i]);}catch(e){}' +
-  'var all=[];try{all=root.querySelectorAll("*");}catch(e){}' +
-  'for(var k=0;k<all.length;k++){var sr=null;try{sr=all[k].shadowRoot;}catch(e){}if(sr)walk(sr,d+1);}' +
-  'var fr=[];try{fr=root.querySelectorAll("iframe,frame");}catch(e){}' +
-  'for(var j=0;j<fr.length;j++){var idoc=null;try{idoc=fr[j].contentDocument;}catch(e){}if(idoc)walk(idoc,d+1);}}' +
-  'walk(document,0);return out;}';
-
-function s(v: string): string { return JSON.stringify(v); }
-
-// 找页面里最大的可滚动容器。⚠️ 真机验证(抖音搜索/feed):内容在内部 div 里滚,
-// window.scrollBy 完全不动(window scrollY 恒 0)。滚动命令必须找到这个容器滚它。
-const SCROLLER_FN =
-  'function nbScroller(){var best=null,bestH=0;var all=document.querySelectorAll("*");' +
-  'for(var i=0;i<all.length;i++){var e=all[i];var cs;try{cs=getComputedStyle(e);}catch(_e){continue;}' +
-  'if((cs.overflowY==="auto"||cs.overflowY==="scroll")&&e.scrollHeight>e.clientHeight+40){if(e.scrollHeight>bestH){bestH=e.scrollHeight;best=e;}}}' +
-  'return best;}';
+import { kernelEval, kernelExec, kernelKeypress, kernelClick } from './kernelPool';
 
 export async function matrixCmd(
   accountId: string,
@@ -43,186 +20,43 @@ export async function matrixCmd(
   _timeoutMs?: number,
 ): Promise<any> {
   switch (command) {
-    // 直通求值:driver 的 cdp_eval 期望 { ok:true, value }。
+    // ── 特权命令:原生 CDP(执行器在页面里做不了 / 需要 isTrusted)──
+
+    // 任意求值(剧本收集 video_id / 读 DOM 等):CDP Runtime.evaluate 默认主世界,且不受
+    // 页面 CSP 'unsafe-eval' 限制(不走 new Function)。
     case 'cdp_eval': {
       const value = await kernelEval(accountId, String(params?.expression || ''));
       return { ok: true, value };
     }
-
-    // 元素查询:深遍历兼容 shadow/iframe。每个元素带 tag/text/id + 调用方请求的 attrs
-    // (对齐老客户端扩展:剧本靠 attrs:'id' 读 [id^="waterfall_item_"] 采集视频,
-    //  之前只返回 {tag,text} 丢了 id → 候选池恒 0 → 互动跑一会就空手放弃)。
-    case 'query_selector': {
-      const sel = String(params?.selector || '');
-      const limit = Number(params?.limit) || 50;
-      const attrList = String(params?.attrs || '').split(',').map((x) => x.trim()).filter(Boolean);
-      const expr =
-        '(function(){' + DEEP_FN +
-        'var ATTRS=' + JSON.stringify(attrList) + ';' +
-        'try{var n=nbDeepAll(' + s(sel) + ');var out=[];' +
-        'for(var i=0;i<Math.min(n.length,' + limit + ');i++){var e=n[i];' +
-        'var o={tag:(e.tagName||"").toLowerCase(),text:((e.innerText||e.value||"")+"").slice(0,80),id:e.id||""};' +
-        'for(var k=0;k<ATTRS.length;k++){try{o[ATTRS[k]]=e.getAttribute(ATTRS[k])||"";}catch(_e){}}' +
-        'out.push(o);}' +
-        'return out;}catch(e){return[];}})()';
-      const elements = await kernelEval(accountId, expr);
-      return { ok: true, elements: Array.isArray(elements) ? elements : [] };
-    }
-
-    // 主世界 click(穿透 React 合成事件):CDP Runtime.evaluate 默认主世界。
-    // ⚠️ 真机验证(2026-06-21 抖音):element.click() 不会聚焦 input(activeElement 仍是 body),
-    // 导致剧本「nativeClick 搜索框 → type(走 activeElement)」主路径取不到框。点前先 focus,
-    // 让随后的 type 能命中(对 button 等无副作用)。
-    case 'main_world_click': {
-      const sel = String(params?.selector || '');
-      const expr =
-        '(function(){' + DEEP_FN +
-        'var els=nbDeepAll(' + s(sel) + ');if(!els.length)return {ok:false,error:"not_found"};' +
-        'var t=els[0];try{if(t.focus)t.focus();}catch(e){}' +
-        'try{t.click();return {ok:true};}catch(e){return {ok:false,error:String(e&&e.message||e).slice(0,80)};}})()';
-      return await kernelEval(accountId, expr);
-    }
-
-    // 普通 input 赋值:走 native setter + 派 input/change。
-    case 'set_input_value': {
-      const sel = String(params?.selector || '');
-      const val = String(params?.value ?? '');
-      const expr =
-        '(function(){' + DEEP_FN +
-        'var els=nbDeepAll(' + s(sel) + ');if(!els.length)return {ok:false,error:"not_found"};var el=els[0];' +
-        'try{var proto=el.tagName==="TEXTAREA"?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;' +
-        'var setter=Object.getOwnPropertyDescriptor(proto,"value").set;setter.call(el,' + s(val) + ');' +
-        'el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));' +
-        'return {ok:true};}catch(e){return {ok:false,error:String(e&&e.message||e).slice(0,80)};}})()';
-      return await kernelEval(accountId, expr);
-    }
-
-    // 富文本插入:focus 后 execCommand insertText(contentEditable/ProseMirror/Slate 通吃)。
-    case 'editor_insert_text': {
-      const sel = String(params?.selector || '');
-      const text = String(params?.text ?? '');
-      const expr =
-        '(function(){' + DEEP_FN +
-        'var els=nbDeepAll(' + s(sel) + ');if(!els.length)return {ok:false,error:"not_found"};var el=els[0];' +
-        'try{el.focus();var doc=el.ownerDocument||document;doc.execCommand("insertText",false,' + s(text) + ');' +
-        'return {ok:true};}catch(e){return {ok:false,error:String(e&&e.message||e).slice(0,80)};}})()';
-      return await kernelEval(accountId, expr);
-    }
-
-    // 文本匹配点击:在容器内找文本命中的元素点击(fuzzy includes,跳过隐藏)。
-    case 'click_with_text': {
-      const containerSel = params?.containerSel ? String(params.containerSel) : '';
-      const texts: string[] = Array.isArray(params?.acceptedTexts) ? params.acceptedTexts.map(String) : [];
-      const expr =
-        '(function(){' + DEEP_FN +
-        'var texts=' + JSON.stringify(texts) + ';' +
-        'var roots=' + (containerSel ? 'nbDeepAll(' + s(containerSel) + ')' : '[document.body]') + ';' +
-        'function vis(e){var r=e.getBoundingClientRect();var st=getComputedStyle(e);' +
-        'return r.width>0&&r.height>0&&st.visibility!=="hidden"&&st.display!=="none";}' +
-        'for(var ri=0;ri<roots.length;ri++){var root=roots[ri];if(!root)continue;' +
-        'var cands=[];try{cands=root.querySelectorAll("button,a,div,span,*");}catch(e){}' +
-        'for(var i=0;i<cands.length;i++){var el=cands[i];var t=((el.innerText||el.textContent||"")+"").trim();if(!t)continue;' +
-        'for(var j=0;j<texts.length;j++){if(t===texts[j]||t.indexOf(texts[j])>=0){' +
-        'if(!vis(el))continue;try{el.click();return {ok:true};}catch(e){}}}}}' +
-        'return {ok:false,error:"no_match"};})()';
-      return await kernelEval(accountId, expr);
-    }
-
-    // 任意 JS 求值(orchestrator 收集 video_id 等用)。返回 { result }(对齐扩展形状)。
+    // 任意 JS:扩展版用 new Function(code) 会被严 CSP 站拦;这里包成 IIFE 直接 CDP 求值绕开。
     case 'javascript': {
-      const value = await kernelEval(accountId, String(params?.code || ''));
+      const code = String(params?.code || '');
+      const value = await kernelEval(accountId, '(function(){' + code + '\n})()');
       return { ok: true, result: value, value };
     }
-
-    // 当前页 URL。
+    // 可信按键(CDP Input.dispatchKeyEvent,isTrusted=true):搜索框 Enter 提交等。
+    case 'keypress': {
+      try { await kernelKeypress(accountId, String(params?.key || 'Enter')); return { ok: true }; }
+      catch (e: any) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+    }
+    // 可信坐标点击(CDP Input.dispatchMouseEvent):快手/B站/小红书 reply 等查 isTrusted 的场景。
+    case 'cdp_click': {
+      const x = Number(params?.x), y = Number(params?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false, error: 'cdp_click_needs_xy' };
+      try { await kernelClick(accountId, x, y); return { ok: true }; }
+      catch (e: any) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+    }
+    // 当前页 URL(轻量,直接 eval,不依赖执行器在位)。
     case 'get_url': {
       const url = await kernelEval(accountId, 'location.href');
       return { ok: true, url: String(url || ''), value: url };
     }
 
-    // 滚动(抖音 feed/搜索结果)。amount=屏数,默认 3。先找可滚容器滚它,没有才回落 window。
-    case 'scroll': {
-      const amount = Number(params?.amount) || 3;
-      const dir = params?.direction === 'up' ? -1 : 1;
-      const expr =
-        '(function(){' + SCROLLER_FN + 'try{' +
-        'var step=' + dir + '*' + amount + '*Math.round((window.innerHeight||800)*0.85);' +
-        'var c=nbScroller();' +
-        'if(c){c.scrollTop+=step;return {ok:true,container:(c.className||c.tagName||"").toString().slice(0,40)};}' +
-        'window.scrollBy(0,step);return {ok:true,container:"window"};' +
-        '}catch(e){return {ok:false,error:String(e&&e.message||e)};}})()';
-      return await kernelEval(accountId, expr);
-    }
-
-    // 输入框打字(搜索框)。⚠️ 抖音搜索框是 React 受控 input —— execCommand insertText
-    // 不触发 React onChange,值进不去(搜索框看着空)。必须用【原生 value setter +
-    // 派 input/change】绕过 React 的 _valueTracker,跟 set_input_value 同法。
-    // input/textarea 走 setter;contentEditable 才回落 execCommand。
-    // 拿不到可写目标时返回 {ok:false} → 让剧本的 fill 兜底(显式 selector)接力。
-    case 'type': {
-      const sel = params?.selector ? String(params.selector) : '';
-      const text = String(params?.text ?? '');
-      const expr =
-        '(function(){' + DEEP_FN +
-        'var el=' + (sel ? 'nbDeepAll(' + s(sel) + ')[0]' : 'document.activeElement') + ';' +
-        'if(!el)return {ok:false,error:"no_target"};' +
-        'var tag=(el.tagName||"").toUpperCase();try{el.focus();}catch(e){}' +
-        'try{' +
-        'if(tag==="INPUT"||tag==="TEXTAREA"){' +
-        'var proto=tag==="TEXTAREA"?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;' +
-        'var setter=Object.getOwnPropertyDescriptor(proto,"value").set;setter.call(el,' + s(text) + ');' +
-        'el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}));' +
-        'return {ok:true};}' +
-        'if(el.isContentEditable){document.execCommand("insertText",false,' + s(text) + ');return {ok:true};}' +
-        'return {ok:false,error:"not_editable:"+tag};' +
-        '}catch(e){return {ok:false,error:String(e&&e.message||e).slice(0,80)};}})()';
-      return await kernelEval(accountId, expr);
-    }
-
-    // 填充 input(native setter + 派 input/change)。等价 set_input_value。
-    case 'fill': {
-      return await matrixCmd(accountId, 'set_input_value', { selector: params?.selector, value: params?.value });
-    }
-
-    // 滚到元素(触发抖音搜索结果懒加载 waterfall_item / 把评论框滚进视口)。
-    // 多个匹配时滚最后一个(剧本就是要滚到末尾触发加载更多)。没它候选池恒 0。
-    case 'scroll_to': {
-      const sel = String(params?.selector || '');
-      // scrollIntoView 把最后一个匹配滚进来;但若它本来就可见(常见),还要把可滚容器
-      // 再往下推一屏,强制触发懒加载(否则「最后一个已可见」时 scroll_to 原地不动)。
-      const expr =
-        '(function(){' + DEEP_FN + SCROLLER_FN +
-        'var els=nbDeepAll(' + s(sel) + ');if(!els.length)return {ok:false,error:"not_found"};' +
-        'var el=els[els.length-1];' +
-        'try{el.scrollIntoView({block:"center"});}catch(e){try{el.scrollIntoView();}catch(_e){}}' +
-        'try{var c=nbScroller();if(c)c.scrollTop+=Math.round((window.innerHeight||800)*0.8);}catch(e){}' +
-        'return {ok:true,count:els.length};})()';
-      return await kernelEval(accountId, expr);
-    }
-
-    // 可信按键(走 CDP):剧本搜索框 Enter 提交。
-    case 'keypress': {
-      try { await kernelKeypress(accountId, String(params?.key || 'Enter')); return { ok: true }; }
-      catch (e: any) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
-    }
-
-    // 写入富文本编辑器(抖音评论框):派 paste ClipboardEvent,失败回落 execCommand insertText。
-    case 'editor_paste_text': {
-      const sel = String(params?.selector || '');
-      const text = String(params?.text ?? params?.value ?? '');
-      const expr =
-        '(function(){' + DEEP_FN +
-        'var els=nbDeepAll(' + s(sel) + ');if(!els.length)return {ok:false,error:"not_found"};var el=els[0];' +
-        'try{el.focus();}catch(e){}' +
-        'try{var dt=new DataTransfer();dt.setData("text/plain",' + s(text) + ');' +
-        'var ev=new ClipboardEvent("paste",{clipboardData:dt,bubbles:true,cancelable:true});' +
-        'el.dispatchEvent(ev);return {ok:true};}catch(e){' +
-        'try{document.execCommand("insertText",false,' + s(text) + ');return {ok:true};}' +
-        'catch(_e){return {ok:false,error:String(_e&&_e.message||_e).slice(0,80)}}}})()';
-      return await kernelEval(accountId, expr);
-    }
-
+    // ── 页面类命令:走服务端下发的执行器(复用扩展实现)──
+    //   query_selector / type / fill / set_input_value / main_world_click /
+    //   editor_insert_text / editor_paste_text / click_with_text / scroll /
+    //   scroll_to / get_text / get_value / hover / wait_for / click …
     default:
-      return { ok: false, error: 'unsupported_command:' + command };
+      return await kernelExec(accountId, command, params || {});
   }
 }

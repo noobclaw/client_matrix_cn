@@ -209,6 +209,15 @@ async function doGetPage(s: KernelSession): Promise<KernelSession> {
   ws.on('error', () => failSession(s, 'page websocket error'));
 
   await send(s, 'Page.enable');
+  // 命令执行器:跨整页导航常驻(addScriptToEvaluateOnNewDocument)+ 立即给当前页注入一次,
+  // 让 window.__nbExec 在位。源服务端下发(命令行为改后端不打包)。失败不致命(kernelExec 会兜底重注)。
+  try {
+    const execSrc = await getExecutorSource();
+    if (execSrc) {
+      await send(s, 'Page.addScriptToEvaluateOnNewDocument', { source: execSrc });
+      await send(s, 'Runtime.evaluate', { expression: execSrc });
+    }
+  } catch { /* 非关键:kernelExec 调用时会再确保 */ }
   // 账号角标:窗口左上角常驻账号名,多窗叠在一起也能分清扫哪个码。
   // addScriptToEvaluateOnNewDocument 让它跨整页导航也在;立即再注入一次给当前页。
   if (s.label) {
@@ -303,6 +312,52 @@ export async function kernelEval(accountId: string, expression: string): Promise
   const s = await getPage(accountId);
   const r = await send(s, 'Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   return r?.result?.value;
+}
+
+// ── 命令执行器(window.__nbExec)服务端下发 + 注入 ──
+// 复用扩展 content.js/background.js 的 DOM 命令实现(见 backend/matrix/drivers/command_executor.js)。
+// 改命令行为只改后端 + 重启,不打包 client。
+function matrixApiBase(): string {
+  return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+}
+let executorSource: string | null = null;        // lastGood 缓存
+let executorFetch: Promise<string | null> | null = null;
+async function getExecutorSource(): Promise<string | null> {
+  if (executorSource) return executorSource;
+  if (executorFetch) return executorFetch;
+  executorFetch = (async () => {
+    try {
+      const res = await fetch(`${matrixApiBase()}/api/matrix/command-executor`, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`http_${res.status}`);
+      const data: any = await res.json();
+      if (typeof data?.source === 'string' && data.source) { executorSource = data.source; return executorSource; }
+      throw new Error('no_source');
+    } catch (e) {
+      coworkLog('WARN', 'kernelPool', 'fetch command-executor failed', { err: String(e) });
+      return executorSource; // 失败保 lastGood(可能为 null:首次失败 → 命令层不可用,上层会报错)
+    } finally { executorFetch = null; }
+  })();
+  return executorFetch;
+}
+
+/** 把执行器注入该号当前页(定义 window.__nbExec)。getPage 时也会装 init 脚本跨导航生效。 */
+async function injectExecutor(accountId: string): Promise<boolean> {
+  const src = await getExecutorSource();
+  if (!src) return false;
+  const s = await getPage(accountId);
+  try { await send(s, 'Runtime.evaluate', { expression: src }); return true; } catch { return false; }
+}
+
+/** 执行页面类命令:确保 __nbExec 在位 → window.__nbExec(command, params)。返回执行器结果对象。 */
+export async function kernelExec(accountId: string, command: string, params: any): Promise<any> {
+  let present = false;
+  try { present = await kernelEval(accountId, "typeof window.__nbExec==='function'"); } catch { present = false; }
+  if (!present) {
+    const ok = await injectExecutor(accountId);
+    if (!ok) return { ok: false, error: 'executor_unavailable(后端 /api/matrix/command-executor 未就绪?)' };
+  }
+  const expr = 'window.__nbExec(' + JSON.stringify(command) + ',' + JSON.stringify(params || {}) + ')';
+  return await kernelEval(accountId, expr);
 }
 
 // 可信按键(CDP Input.dispatchKeyEvent;比 JS 合成 KeyboardEvent 的 isTrusted=false 强)。
