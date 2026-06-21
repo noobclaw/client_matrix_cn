@@ -447,8 +447,20 @@ export async function kernelReadIdentity(accountId: string, platform: string): P
       const c = (cr?.cookies || []).find((x: any) => String(x.name) === cookieName);
       return { uid: c ? String(c.value) : undefined };
     }
-    // 3) 其它平台(xhs/x/tiktok/binance/youtube):暂未实现身份读取(需各自真机验证来源)。
-    return {};
+    // 3) 其它平台(xhs/x/tiktok/binance/youtube):身份来源未逐个验证。
+    //    先做【诊断 dump】:CDP 读全部真实 cookie 名 + 页面探测昵称来源,写 cowork.log,
+    //    用户每个平台登一个号刷新一次 → 我据真实日志逐个补准确的提取逻辑(不靠猜)。
+    try {
+      const cr = await send(s, 'Network.getCookies', {});
+      const cookieNames = (cr?.cookies || []).map((c: any) => String(c.name));
+      const probeExpr = '(function(){var r={globals:[],nick:null,uidGuess:null};' +
+        "['__INITIAL_STATE__','__INIT_PROPS__','SIGI_STATE','__UNIVERSAL_DATA_FOR_REHYDRATION__','__NUXT__','__APOLLO_STATE__','ytInitialData','ytcfg','RENDER_DATA','__BiliUser__'].forEach(function(k){try{if(window[k])r.globals.push(k);}catch(e){}});" +
+        'try{var h=document.documentElement.innerHTML;var m=h.match(/"nickname":"([^"]{1,40})"/)||h.match(/"name":"([^"]{1,40})"/);if(m)r.nick=m[1];var u=h.match(/"(uid|userId|user_id|mid)":"?(\\d{5,25})"?/);if(u)r.uidGuess=u[2];}catch(e){}' +
+        'return JSON.stringify(r);})()';
+      const probe = await kernelEval(accountId, probeExpr);
+      coworkLog('INFO', 'matrix-identity', `probe ${platform}`, { cookieNames, probe });
+      try { const o = JSON.parse(probe || '{}'); return { uid: o.uidGuess || undefined, nickname: o.nick || undefined }; } catch { return {}; }
+    } catch { return {}; }
   } catch { return {}; }
 }
 
