@@ -357,6 +357,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-semibold dark:text-white truncate">{a.nickname || a.displayName}</span>
                           <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${stChip}`}>{STATUS_LABEL[a.status]}</span>
+                          <span className={`shrink-0 max-w-[9rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? 'text-blue-600 dark:text-blue-400 bg-blue-500/15' : 'text-gray-500 bg-gray-500/15'}`}>代理IP:{a.proxy ? (a.proxy.geo || a.proxy.host) : '默认本地'}</span>
                         </div>
                         <div className="text-[11px] truncate" title={a.boundUid ? `uid: ${a.boundUid}` : undefined}>
                           {a.status === 'login_required'
