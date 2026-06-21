@@ -21,6 +21,7 @@ const PLATFORM_HOME: Record<string, string> = {
   douyin: 'https://www.douyin.com/', xhs: 'https://www.xiaohongshu.com/', bilibili: 'https://www.bilibili.com/',
   kuaishou: 'https://www.kuaishou.com/', tiktok: 'https://www.tiktok.com/', x: 'https://x.com/home',
   binance: 'https://www.binance.com/zh-CN/square', youtube: 'https://www.youtube.com/',
+  shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
 };
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, setAccountKeywords } from './accountManager';
