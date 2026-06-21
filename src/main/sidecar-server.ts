@@ -185,6 +185,7 @@ const activeVideoRuns = new Map<string, AbortController>();
 
 // 矩阵号「全局同时只跑一个任务」的运行时锁(产品约束:一次只一个平台多窗)。
 let matrixRunning = false;
+let matrixAbort: AbortController | null = null; // 当前运行的停止句柄(matrix:stopTask 用)
 
 function broadcastSSE(event: string, data: unknown): void {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -207,9 +208,10 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     if (task.type !== 'engage') { matrixRunning = false; return { ok: false, error: 'unsupported_task_type' }; }
     const startedAt = Date.now();
     const collected = new Map<string, any>(); // 每号最后一条结果(用于运行记录)
+    matrixAbort = new AbortController();
     broadcastSSE('matrix:progress', { type: 'taskStart', taskId: task.id });
     runEngageTask({
-      platform: task.platform, accountIds: task.accountIds || [], quota: task.quota, concurrency: task.concurrency, kernelPath,
+      platform: task.platform, accountIds: task.accountIds || [], quota: task.quota, concurrency: task.concurrency, kernelPath, signal: matrixAbort.signal,
       onLog: (accountId, msg) => broadcastSSE('matrix:progress', { type: 'log', accountId, msg }),
       onItem: (item) => { collected.set(item.accountId, item); broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts }); },
     }).then((report) => {
@@ -223,10 +225,10 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
       broadcastSSE('matrix:progress', { type: 'done', report, taskId: task.id });
     })
       .catch((e: any) => broadcastSSE('matrix:progress', { type: 'error', error: e?.message || String(e) }))
-      .finally(() => { matrixRunning = false; });
+      .finally(() => { matrixRunning = false; matrixAbort = null; });
     return { ok: true };
   } catch (e: any) {
-    matrixRunning = false;
+    matrixRunning = false; matrixAbort = null;
     return { ok: false, error: e?.message || String(e) };
   }
 }
@@ -1276,6 +1278,7 @@ const server = http.createServer(async (req, res) => {
             try {
               if (matrixRunning) return writeJSON(res, 200, { ok: false, error: 'another_task_running' });
               matrixRunning = true; // 同步占锁(在 await 前),防与定时调度 TOCTOU 双跑
+              matrixAbort = new AbortController();
               const { runEngageTask } = await import('./libs/matrix/engageRunner');
               const a = args[0] as any;
               broadcastSSE('matrix:progress', { type: 'taskStart' });
@@ -1286,16 +1289,31 @@ const server = http.createServer(async (req, res) => {
                 concurrency: a?.concurrency,
                 kernelPath: a?.kernelPath,
                 authToken: a?.authToken,
+                signal: matrixAbort.signal,
                 onLog: (accountId, msg) => broadcastSSE('matrix:progress', { type: 'log', accountId, msg }),
                 onItem: (item) => broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts }),
               }).then((report) => {
                 broadcastSSE('matrix:progress', { type: 'done', report });
               }).catch((e: any) => {
                 broadcastSSE('matrix:progress', { type: 'error', error: e?.message || String(e) });
-              }).finally(() => { matrixRunning = false; });
+              }).finally(() => { matrixRunning = false; matrixAbort = null; });
               return writeJSON(res, 200, { ok: true, status: 'started' });
             } catch (e: any) {
-              matrixRunning = false;
+              matrixRunning = false; matrixAbort = null;
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
+          case 'matrix:stopTask': {
+            // 停止当前矩阵任务:abort 信号(未开始的号跳过、运行中的号下个动作前退出)
+            // + 强关所有指纹窗口立即止损。matrixRunning 由 runEngageTask 收尾时释放。
+            try {
+              if (!matrixRunning) return writeJSON(res, 200, { ok: true, status: 'idle' });
+              if (matrixAbort) matrixAbort.abort();
+              const { closeAllKernels } = await import('./libs/matrix/kernelPool');
+              closeAllKernels();
+              broadcastSSE('matrix:progress', { type: 'log', accountId: '系统', msg: '⏹ 已请求停止,正在关闭窗口…' });
+              return writeJSON(res, 200, { ok: true, status: 'stopping' });
+            } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
           }

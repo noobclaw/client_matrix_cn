@@ -41,6 +41,7 @@ export interface EngageTaskOptions {
   jitterMinMs?: number; jitterMaxMs?: number;
   kernelPath?: string;
   authToken?: string;              // aiCall / chargeAction 用
+  signal?: AbortSignal;            // 停止任务:已开始的号靠 ctx.aborted() 中途退,未开始的号跳过
   onLog?: (accountId: string, msg: string) => void;
   onItem?: (item: EngageItemResult) => void;
 }
@@ -124,6 +125,7 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Promise<EngageItemResult> {
   const acc = getAccount(accountId);
   const log = (m: string) => { try { opts.onLog?.(accountId, m); } catch { /* ignore */ } };
+  if (opts.signal?.aborted) return { accountId, state: 'skipped', reason: 'aborted' }; // 已停止:还没轮到的号直接跳过
   if (!acc) return { accountId, state: 'skipped', reason: 'account_not_found' };
   if (acc.platform !== opts.platform) return { accountId, state: 'skipped', reason: 'platform_mismatch' };
   if (!acc.keywords || acc.keywords.length === 0) return { accountId, state: 'skipped', reason: 'no_keywords' };
@@ -173,7 +175,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     const ctx: any = {
       task, config: pack?.config || {}, manifest: pack?.manifest || {},
       appLocale: 'zh',
-      aborted: () => false,
+      aborted: () => !!opts.signal?.aborted, // 剧本每个动作前查这个 → 停止后中途退出
       // 浏览器
       browser: browserFn,
       navigate: (url: string) => kernelNavigate(accountId, url),
