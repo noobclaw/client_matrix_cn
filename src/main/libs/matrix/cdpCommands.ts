@@ -13,7 +13,7 @@
  *  DOM.setFileInputFiles,见 driverCtx.ts。)
  */
 
-import { kernelEval } from './kernelPool';
+import { kernelEval, kernelKeypress } from './kernelPool';
 
 // 页面内三层深遍历(顶层 + open shadowRoot + 同源 iframe),对齐生产 nbDeepAll。
 // fingerprint-chromium 的 fakeShadowRoot 让 closed shadow 也可达(待真机验证)。
@@ -154,6 +154,40 @@ export async function matrixCmd(
     // 填充 input(native setter + 派 input/change)。等价 set_input_value。
     case 'fill': {
       return await matrixCmd(accountId, 'set_input_value', { selector: params?.selector, value: params?.value });
+    }
+
+    // 滚到元素(触发抖音搜索结果懒加载 waterfall_item / 把评论框滚进视口)。
+    // 多个匹配时滚最后一个(剧本就是要滚到末尾触发加载更多)。没它候选池恒 0。
+    case 'scroll_to': {
+      const sel = String(params?.selector || '');
+      const expr =
+        '(function(){' + DEEP_FN +
+        'var els=nbDeepAll(' + s(sel) + ');if(!els.length)return {ok:false,error:"not_found"};' +
+        'var el=els[els.length-1];try{el.scrollIntoView({block:"center"});return {ok:true,count:els.length};}' +
+        'catch(e){try{el.scrollIntoView();return {ok:true};}catch(_e){return {ok:false,error:String(_e&&_e.message||_e).slice(0,80)}}}})()';
+      return await kernelEval(accountId, expr);
+    }
+
+    // 可信按键(走 CDP):剧本搜索框 Enter 提交。
+    case 'keypress': {
+      try { await kernelKeypress(accountId, String(params?.key || 'Enter')); return { ok: true }; }
+      catch (e: any) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+    }
+
+    // 写入富文本编辑器(抖音评论框):派 paste ClipboardEvent,失败回落 execCommand insertText。
+    case 'editor_paste_text': {
+      const sel = String(params?.selector || '');
+      const text = String(params?.text ?? params?.value ?? '');
+      const expr =
+        '(function(){' + DEEP_FN +
+        'var els=nbDeepAll(' + s(sel) + ');if(!els.length)return {ok:false,error:"not_found"};var el=els[0];' +
+        'try{el.focus();}catch(e){}' +
+        'try{var dt=new DataTransfer();dt.setData("text/plain",' + s(text) + ');' +
+        'var ev=new ClipboardEvent("paste",{clipboardData:dt,bubbles:true,cancelable:true});' +
+        'el.dispatchEvent(ev);return {ok:true};}catch(e){' +
+        'try{document.execCommand("insertText",false,' + s(text) + ');return {ok:true};}' +
+        'catch(_e){return {ok:false,error:String(_e&&_e.message||_e).slice(0,80)}}}})()';
+      return await kernelEval(accountId, expr);
     }
 
     default:

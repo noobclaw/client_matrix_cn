@@ -305,6 +305,18 @@ export async function kernelEval(accountId: string, expression: string): Promise
   return r?.result?.value;
 }
 
+// 可信按键(CDP Input.dispatchKeyEvent;比 JS 合成 KeyboardEvent 的 isTrusted=false 强)。
+// 剧本搜索框提交用 keypress Enter。
+export async function kernelKeypress(accountId: string, key: string): Promise<void> {
+  const s = await getPage(accountId);
+  const KEYS: Record<string, any> = {
+    Enter: { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r' },
+  };
+  const k = KEYS[key] || { key, code: key };
+  await send(s, 'Input.dispatchKeyEvent', { type: 'keyDown', ...k });
+  await send(s, 'Input.dispatchKeyEvent', { type: 'keyUp', ...k });
+}
+
 export async function kernelClick(accountId: string, x: number, y: number): Promise<void> {
   const s = await getPage(accountId);
   await send(s, 'Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
