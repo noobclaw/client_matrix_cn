@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import MatrixTaskWizard from './MatrixTaskWizard';
+import { WalletBadge } from '../common/WalletBadge';
 
 /**
  * 矩阵号主界面 —— 由左侧分组菜单驱动的 4 屏(screen prop):
@@ -57,14 +58,15 @@ const TRACK_PRESETS: Array<{ name: string; keywords: string[]; persona: string }
 const M = () => (window as any).electron?.matrix;
 const fmtTime = (ts?: number) => { if (!ts || ts >= Number.MAX_SAFE_INTEGER) return '—'; const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
-interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; onNavigate?: (s: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void }
+interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; onNavigate?: (s: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void; onShowInvite?: () => void }
 
-const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
+const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowInvite }) => {
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
   const [tasks, setTasks] = useState<MatrixTask[]>([]);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [platform, setPlatform] = useState<string>('douyin');
-  const [kernelPath, setKernelPath] = useState<string>(() => localStorage.getItem('matrix:kernelPath') || '');
+  // kernelPath:调试用的手动内核路径覆盖(UI 已移除输入框,留空即由后端自动解析已装版本)。
+  const [kernelPath] = useState<string>(() => localStorage.getItem('matrix:kernelPath') || '');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
   // 进度
@@ -92,8 +94,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
   const [showTaskEditModal, setShowTaskEditModal] = useState(false);
   const [showNewWizard, setShowNewWizard] = useState(false); // 新建页:点卡片才弹向导
 
-  // 内核
-  const [kernel, setKernel] = useState<{ installed?: boolean; installedVersion?: string; configuredVersion?: string; needsUpdate?: boolean }>({});
+  // 指纹浏览器内核
+  const [kernel, setKernel] = useState<{ installed?: boolean; installedVersion?: string; installedVersions?: string[]; configuredVersion?: string; needsUpdate?: boolean }>({});
+  const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [kernelMsg, setKernelMsg] = useState('');
   const [kernelBusy, setKernelBusy] = useState(false);
   const [kernelPct, setKernelPct] = useState(0);
@@ -121,7 +124,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
   useEffect(() => { localStorage.setItem('matrix:kernelPath', kernelPath); }, [kernelPath]);
   useEffect(() => { const h = setInterval(() => { reloadTasks(); }, 30000); return () => clearInterval(h); }, [reloadTasks]);
 
-  const loadKernel = useCallback(() => { M()?.kernelStatus?.().then((r: any) => setKernel(r || {})); }, []);
+  const loadKernel = useCallback(() => { M()?.kernelStatus?.().then((r: any) => { setKernel(r || {}); setSelectedVersion((prev) => prev || r?.installedVersion || ''); }); }, []);
   useEffect(() => {
     loadKernel();
     const off = M()?.onKernel?.((p: any) => { if (typeof p?.pct === 'number') setKernelPct(p.pct); setKernelMsg(p?.msg || ''); if (p?.done) { setKernelBusy(false); loadKernel(); } });
@@ -220,15 +223,38 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
 
   return (
     <div className="h-full flex flex-col dark:text-claude-darkText text-claude-text">
-      <div className="flex items-center gap-2 px-5 py-3 border-b dark:border-white/10 border-black/10">
-        <h1 className="text-lg font-medium mr-4">{SCREEN_TITLE[screen] || '矩阵号'}</h1>
+      <div className="flex items-center gap-2 px-5 py-3 border-b dark:border-white/10 border-black/10 flex-wrap">
+        <h1 className="text-lg font-medium mr-3">{SCREEN_TITLE[screen] || '矩阵号'}</h1>
+        {/* 钱包(BSC/地址/积分/充值)—— 与新建页一致 */}
+        <WalletBadge />
+        {/* 分享给好友 */}
+        {onShowInvite && (
+          <button type="button" onClick={onShowInvite} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500/10 text-green-500 border border-green-500/40 hover:bg-green-500/20 active:scale-95">🎁 分享给好友</button>
+        )}
+        {/* 涨粉教程 */}
+        <button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 涨粉教程</button>
+
         <div className="ml-auto flex items-center gap-2">
-          <span className={`text-xs px-2 py-0.5 rounded ${kernel.installed && !kernel.needsUpdate ? 'bg-green-500/15 text-green-500' : 'bg-amber-500/15 text-amber-500'}`}>
-            {kernel.installed ? (kernel.needsUpdate ? `内核 ${kernel.installedVersion}(有新版)` : `内核 ${kernel.installedVersion || ''} ✓`) : '内核 未安装'}
-          </span>
-          {(!kernel.installed || kernel.needsUpdate) && <button onClick={downloadKernel} disabled={kernelBusy} className="text-xs px-2 py-1 rounded-lg bg-claude-accent text-white disabled:opacity-50">{kernelBusy ? '下载中…' : (kernel.needsUpdate ? '更新内核' : '下载内核')}</button>}
+          {/* 指纹浏览器(版本下拉,多个时可选;不再手填路径) */}
+          {kernel.installed ? (
+            (kernel.installedVersions && kernel.installedVersions.length > 1) ? (
+              <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-green-500/15 text-green-500">
+                🧬 指纹浏览器
+                <select value={selectedVersion} onChange={(e) => setSelectedVersion(e.target.value)} className="bg-transparent text-green-500 text-xs outline-none">
+                  {kernel.installedVersions.map((v) => <option key={v} value={v} className="text-black">v{v}</option>)}
+                </select>
+                {!kernel.needsUpdate && '✓'}
+              </span>
+            ) : (
+              <span className={`text-xs px-2 py-1 rounded-lg ${kernel.needsUpdate ? 'bg-amber-500/15 text-amber-500' : 'bg-green-500/15 text-green-500'}`}>
+                🧬 指纹浏览器 v{kernel.installedVersion || ''}{kernel.needsUpdate ? '(有新版)' : ' ✓'}
+              </span>
+            )
+          ) : (
+            <span className="text-xs px-2 py-1 rounded-lg bg-amber-500/15 text-amber-500">🧬 指纹浏览器 未安装</span>
+          )}
+          {(!kernel.installed || kernel.needsUpdate) && <button onClick={downloadKernel} disabled={kernelBusy} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{kernelBusy ? '下载中…' : (kernel.needsUpdate ? '更新' : '下载')}</button>}
           {kernelMsg && <span className="text-xs opacity-60 max-w-[180px] truncate">{kernelMsg}</span>}
-          <input value={kernelPath} onChange={(e) => setKernelPath(e.target.value)} placeholder="或手动指定内核路径" className="text-xs px-2 py-1.5 w-40 rounded border dark:border-white/15 border-black/15 bg-transparent" />
         </div>
       </div>
 
@@ -531,12 +557,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate }) => {
       {showKernelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-[26rem] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
-            <div className="text-sm font-medium mb-1">指纹浏览器内核</div>
+            <div className="text-sm font-medium mb-1">指纹浏览器</div>
             {kernel.installed && !kernelBusy ? (
-              <div className="text-sm text-green-500 my-3">✓ 内核已就绪{kernel.installedVersion ? `(v${kernel.installedVersion})` : ''},现在可以添加账号 / 扫码登录 / 跑任务了。</div>
+              <div className="text-sm text-green-500 my-3">✓ 指纹浏览器已就绪{kernel.installedVersion ? `(v${kernel.installedVersion})` : ''},现在可以添加账号 / 扫码登录 / 跑任务了。</div>
             ) : (
               <>
-                <div className="text-sm opacity-70 my-3">矩阵号需要专属指纹浏览器内核才能运行(独立指纹隔离,普通 Chrome 无法替代)。内核约 130MB,只需下载一次。</div>
+                <div className="text-sm opacity-70 my-3">矩阵号需要专属指纹浏览器才能运行(独立指纹隔离,普通 Chrome 无法替代)。约 130MB,只需下载一次。</div>
                 {(kernelBusy || kernelPct > 0) && (
                   <div className="mb-3"><div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"><div className="h-full bg-claude-accent transition-all duration-200" style={{ width: `${Math.max(2, kernelPct)}%` }} /></div><div className="text-xs opacity-60 mt-1">{kernelMsg || '准备中…'}{kernelBusy ? ` · ${kernelPct}%` : ''}</div></div>
                 )}

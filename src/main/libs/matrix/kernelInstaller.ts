@@ -72,12 +72,27 @@ export function installedVersion(): string | null {
   return null;
 }
 
-/** 内核状态(单版本):是否已装 / 已装版本 / 后端配置版本 / 是否需更新。 */
-export async function kernelInfo(): Promise<{ installed: boolean; installedVersion: string; configuredVersion: string; needsUpdate: boolean }> {
-  const inst = installedVersion() || '';
+/** 列出所有已安装的指纹浏览器版本(可装多版本,UI 下拉选)。 */
+export function installedVersions(): string[] {
+  const out: string[] = [];
+  try {
+    const base = runtimesDir();
+    if (!fs.existsSync(base)) return out;
+    const prefix = `fingerprint-chromium-${PLATKEY}-`;
+    for (const d of fs.readdirSync(base)) {
+      if (d.startsWith(prefix) && fs.existsSync(exeIn(path.join(base, d)))) out.push(d.slice(prefix.length));
+    }
+  } catch { /* ignore */ }
+  return out;
+}
+
+/** 内核状态:是否已装 / 已装版本(+全部已装版本列表)/ 后端配置版本 / 是否需更新。 */
+export async function kernelInfo(): Promise<{ installed: boolean; installedVersion: string; installedVersions: string[]; configuredVersion: string; needsUpdate: boolean }> {
+  const all = installedVersions();
+  const inst = installedVersion() || all[0] || '';
   const list = await fetchKernels();
   const cfg = list[0]?.version || '';
-  return { installed: !!inst, installedVersion: inst, configuredVersion: cfg, needsUpdate: !!(inst && cfg && inst !== cfg) };
+  return { installed: !!inst, installedVersion: inst, installedVersions: all, configuredVersion: cfg, needsUpdate: !!(inst && cfg && inst !== cfg) };
 }
 
 type ProgressFn = (pct: number, msg: string) => void;

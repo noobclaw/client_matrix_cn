@@ -1104,6 +1104,7 @@ const App: React.FC = () => {
                 onNavigate={(s: string) => setMainView(s === 'newTask' ? 'matrixTaskNew' : s === 'tasks' ? 'matrixTasks' : s === 'runs' ? 'matrixRuns' : 'matrix')}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
+                onShowInvite={handleShowInvite}
               />
             ) : (mainView === 'matrixTaskNew' || mainView === 'matrixTasks' || mainView === 'matrixRuns') ? (
               // 矩阵「新建 / 我的涨粉任务 / 运行记录」全用真 ScenarioView(matrixMode:engage 平台 tab +
