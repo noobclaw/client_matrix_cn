@@ -193,6 +193,41 @@ function broadcastSSE(event: string, data: unknown): void {
   }
 }
 
+// 矩阵任务运行(手动 IPC 与定时调度共用,保证「全局同时只跑一个」+ 进度 SSE 一致)。
+async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{ ok: boolean; error?: string }> {
+  if (matrixRunning) return { ok: false, error: 'another_task_running' };
+  const { getTask, setTaskLastRun } = await import('./libs/matrix/taskStore');
+  const { runEngageTask } = await import('./libs/matrix/engageRunner');
+  const task = getTask(taskId);
+  if (!task) return { ok: false, error: 'task_not_found' };
+  if (task.type !== 'engage') return { ok: false, error: 'unsupported_task_type' };
+  matrixRunning = true;
+  broadcastSSE('matrix:progress', { type: 'taskStart', taskId: task.id });
+  runEngageTask({
+    platform: task.platform, accountIds: task.accountIds || [], quota: task.quota, concurrency: task.concurrency, kernelPath,
+    onLog: (accountId, msg) => broadcastSSE('matrix:progress', { type: 'log', accountId, msg }),
+    onItem: (item) => broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts }),
+  }).then((report) => { setTaskLastRun(task.id, Date.now()); broadcastSSE('matrix:progress', { type: 'done', report, taskId: task.id }); })
+    .catch((e: any) => broadcastSSE('matrix:progress', { type: 'error', error: e?.message || String(e) }))
+    .finally(() => { matrixRunning = false; });
+  return { ok: true };
+}
+
+// 矩阵定时调度:跑在 sidecar(app 开着即在,切到别的页面也不停),对齐老客户端 60s tick。
+// 全局同时只跑一个;到点的取最早的一个跑。AI/计费 token 在 engageRunner 内回落 getNoobClawAuthToken。
+function startMatrixScheduler(): void {
+  setInterval(async () => {
+    try {
+      if (matrixRunning) return;
+      const { dueTasks } = await import('./libs/matrix/taskStore');
+      const due = dueTasks(Date.now());
+      if (!due.length) return;
+      due.sort((a, b) => (a.nextPlannedRunAt || 0) - (b.nextPlannedRunAt || 0));
+      await runMatrixTaskById(due[0].id);
+    } catch (e) { coworkLog('WARN', 'sidecar-server', 'matrix scheduler tick failed', { err: String(e) }); }
+  }, 60_000);
+}
+
 // ── CoworkRunner Integration (lazy loaded to avoid Electron imports at module level) ──
 
 let runnerInstance: any = null;
@@ -1266,35 +1301,12 @@ const server = http.createServer(async (req, res) => {
             return writeJSON(res, 200, { ok: true });
           }
           case 'matrix:runTaskById': {
-            // 按保存的任务跑(手动或定时都走这)。全局同时只一个。
+            // 按保存的任务手动跑(定时调度走 sidecar startMatrixScheduler,同一个 helper)。
             try {
-              if (matrixRunning) return writeJSON(res, 200, { ok: false, error: 'another_task_running' });
-              const { getTask, setTaskLastRun } = await import('./libs/matrix/taskStore');
-              const { runEngageTask } = await import('./libs/matrix/engageRunner');
               const a = args[0] as any;
-              const task = getTask(a?.taskId);
-              if (!task) return writeJSON(res, 200, { ok: false, error: 'task_not_found' });
-              if (task.type !== 'engage') return writeJSON(res, 200, { ok: false, error: 'unsupported_task_type' });
-              matrixRunning = true;
-              broadcastSSE('matrix:progress', { type: 'taskStart', taskId: task.id });
-              runEngageTask({
-                platform: task.platform,
-                accountIds: task.accountIds || [],
-                quota: task.quota,
-                concurrency: task.concurrency,
-                kernelPath: a?.kernelPath,
-                authToken: a?.authToken,
-                onLog: (accountId, msg) => broadcastSSE('matrix:progress', { type: 'log', accountId, msg }),
-                onItem: (item) => broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts }),
-              }).then((report) => {
-                setTaskLastRun(task.id, Date.now());
-                broadcastSSE('matrix:progress', { type: 'done', report, taskId: task.id });
-              }).catch((e: any) => {
-                broadcastSSE('matrix:progress', { type: 'error', error: e?.message || String(e) });
-              }).finally(() => { matrixRunning = false; });
-              return writeJSON(res, 200, { ok: true, status: 'started' });
+              const r = await runMatrixTaskById(a?.taskId, a?.kernelPath);
+              return writeJSON(res, 200, r.ok ? { ok: true, status: 'started' } : r);
             } catch (e: any) {
-              matrixRunning = false;
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
           }
@@ -2335,9 +2347,11 @@ if (!IS_NATIVE_MESSAGING_HOST) {
           broadcastSSE('scenario:scheduledSkipped', info);
         });
       }
-      // 矩阵 edition:不启动旧 scenario 定时调度(涨粉/互动),只跑矩阵任务。
+      // 矩阵 edition:不启动旧 scenario 定时调度,改启动矩阵自己的调度器(sidecar 侧,
+      // 切到别的页面也不停;对齐老客户端「调度在主进程」而非渲染层)。
       if (MATRIX_EDITION) {
-        coworkLog('INFO', 'sidecar-server', 'Scenario scheduler SKIPPED (matrix edition)');
+        try { startMatrixScheduler(); coworkLog('INFO', 'sidecar-server', 'Matrix scheduler started'); }
+        catch (e) { coworkLog('ERROR', 'sidecar-server', 'startMatrixScheduler failed', { err: String(e) }); }
       } else {
         scenarioManager.startScheduler();
         coworkLog('INFO', 'sidecar-server', 'Scenario scheduler started');

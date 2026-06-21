@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 
 /**
  * 矩阵号主界面 —— 三屏:我的账号 / 矩阵任务 / 执行进度。
@@ -75,8 +75,6 @@ const MatrixView: React.FC<Props> = () => {
   const [logs, setLogs] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [doneReport, setDoneReport] = useState<any>(null);
-  const runningRef = useRef(false);
-  useEffect(() => { runningRef.current = running; }, [running]);
 
   // 添加/编辑账号弹窗 + 通知
   const [showAdd, setShowAdd] = useState(false);
@@ -145,19 +143,11 @@ const MatrixView: React.FC<Props> = () => {
     return () => { if (typeof off === 'function') off(); };
   }, [loadKernel]);
 
-  // 定时器(MVP:app 开着时到点跑;全局同时只一个,靠 sidecar running 锁兜底)
+  // 定时调度在 sidecar 跑(切到别的页面也不停);这里只轻量轮询同步状态/下次运行时间。
   useEffect(() => {
-    const tick = async () => {
-      if (runningRef.current) return;
-      const r = await M()?.listTasks?.();
-      if (!r?.ok || r.running) { if (r?.running) setRunning(true); return; }
-      const now = Date.now();
-      const due = (r.tasks || []).find((t: MatrixTask) => t.enabled && t.frequency !== 'once' && t.nextPlannedRunAt && t.nextPlannedRunAt <= now);
-      if (due) { setRunning(true); setTab('progress'); await M()?.runTaskById({ taskId: due.id, kernelPath }); }
-    };
-    const h = setInterval(tick, 60000);
+    const h = setInterval(() => { reloadTasks(); }, 30000);
     return () => clearInterval(h);
-  }, [kernelPath]);
+  }, [reloadTasks]);
 
   const downloadKernel = async () => { setShowKernelModal(true); setKernelBusy(true); setKernelPct(0); setKernelMsg('准备下载…'); await M()?.ensureKernel(); };
 
