@@ -38,8 +38,12 @@ import { VideoWorkflowsPage } from './video/VideoWorkflowsPage';
 import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
+import MatrixTaskWizard, { type WizardAccount } from '../matrix/MatrixTaskWizard';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'video';
+
+// 矩阵号支持「互动涨粉」的平台(后端 backend/matrix/scenarios 有 <platform>_auto_engage)。
+const MATRIX_ENGAGE_PLATFORMS = new Set<string>(['douyin', 'kuaishou', 'bilibili', 'xhs', 'x', 'binance', 'youtube', 'tiktok']);
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -165,6 +169,26 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // Wizard state (keyword/track tasks)
   const [wizardScenario, setWizardScenario] = useState<Scenario | null>(null);
   const [wizardEditingTask, setWizardEditingTask] = useState<Task | null>(null);
+  // 矩阵号:互动涨粉向导(选账号 + 配额 + 频率;账号制,赛道/关键词/人设在账号上)。
+  const [matrixWizardPlatform, setMatrixWizardPlatform] = useState<string | null>(null);
+  const [matrixAccounts, setMatrixAccounts] = useState<WizardAccount[]>([]);
+  const openMatrixWizard = async (platform: string) => {
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixAccounts(accs.filter((a) => a.platform === platform).map((a) => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group })));
+    } catch { setMatrixAccounts([]); }
+    setMatrixWizardPlatform(platform);
+  };
+  const saveMatrixTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any }) => {
+    const m = (window as any).electron?.matrix;
+    const r = await m?.saveTask?.({ platform: matrixWizardPlatform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(互动)任务,直接编辑它即可' } as any)[r?.error] || r?.error || '保存失败');
+    const plat = matrixWizardPlatform;
+    setMatrixWizardPlatform(null);
+    await refreshAll();
+    onSwitchToManage?.(plat as any);
+  };
   // Link-mode edit modal (separate from the keyword wizard — they capture
   // completely different inputs and users were confusing them)
   const [linkEditTask, setLinkEditTask] = useState<Task | null>(null);
@@ -607,6 +631,38 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     }
 
     // currentSection === 'create' — show the platform's scenario cards
+    // 矩阵号:每个平台只有「互动涨粉」一个卡片(账号制),点开 MatrixTaskWizard。
+    if (matrixMode) {
+      const platLabel = platformLabel;
+      return (
+        <div className="p-6 max-w-3xl mx-auto">
+          <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 dark:bg-violet-500/10 p-6">
+            <div className="flex items-center gap-2 text-xs font-semibold text-violet-600 dark:text-violet-400 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> 矩阵互动 · 多账号涨粉
+            </div>
+            <div className="text-xl font-bold dark:text-white mb-1">🎯 {platLabel} · 互动涨粉</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+              勾选多个已登录账号,每个账号在各自指纹浏览器里按<strong>自己的赛道关键词</strong>搜索,自动点赞 / 关注 / 评论。
+              赛道 / 关键词 / 人设在「我的矩阵号」里给每个号设;选几个号就同时开几个窗。
+            </div>
+            <button
+              type="button"
+              onClick={() => openMatrixWizard(currentPlatform)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-500 text-white text-sm font-bold hover:bg-violet-600 shadow-sm shadow-violet-500/25 transition-all active:scale-95"
+            >
+              🎯 开始创作 →
+            </button>
+            <button
+              type="button"
+              onClick={() => onSwitchToManage?.(currentPlatform as any)}
+              className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            >
+              已有任务 »
+            </button>
+          </div>
+        </div>
+      );
+    }
     if (currentPlatform === 'xhs') {
       return (
         <XhsWorkflowsPage
@@ -977,9 +1033,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           visible frame; the active one differentiates only by green tint
           + green border + slight glow shadow, matching the L1 section tabs'
           active treatment. */}
-      {view.kind === 'main' && !matrixMode && !(currentPlatform === 'video' && videoInDetail) && (
+      {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
-          {PLATFORM_TABS.map((tab) => {
+          {/* 矩阵号:只显示支持「互动涨粉」的平台(其余无 engage 剧本)。 */}
+          {(matrixMode ? PLATFORM_TABS.filter(t => MATRIX_ENGAGE_PLATFORMS.has(t.id)) : PLATFORM_TABS).map((tab) => {
             const active = currentPlatform === tab.id;
             return (
               <button
@@ -1033,6 +1090,25 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onCancel={closeWizard}
           onSave={handleWizardSave}
         />
+      )}
+
+      {/* 矩阵号互动涨粉向导(选账号 + 配额 + 频率) */}
+      {matrixWizardPlatform && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setMatrixWizardPlatform(null)}>
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <MatrixTaskWizard
+              platformLabel={(() => {
+                const p = matrixWizardPlatform;
+                return p === 'douyin' ? '抖音' : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩'
+                  : p === 'xhs' ? '小红书' : p === 'x' ? '推特' : p === 'binance' ? '币安广场'
+                  : p === 'youtube' ? 'YouTube' : p === 'tiktok' ? 'TikTok' : String(p);
+              })()}
+              accounts={matrixAccounts}
+              onCancel={() => setMatrixWizardPlatform(null)}
+              onSave={saveMatrixTask}
+            />
+          </div>
+        </div>
       )}
 
 

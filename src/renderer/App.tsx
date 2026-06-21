@@ -1097,21 +1097,20 @@ const App: React.FC = () => {
                 onNewChat={handleNewChat}
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
               />
-            ) : (mainView === 'matrix' || mainView === 'matrixTaskNew') ? (
-              // 「我的矩阵号」(账号管理)+「新建矩阵涨粉任务」(卡片→向导)仍走 MatrixView;
-              // 列表/详情/运行记录改用下面真 ScenarioView(matrixMode)。
+            ) : (mainView === 'matrix') ? (
+              // 「我的矩阵号」= 账号管理(增删/登录/配赛道关键词人设),仍走 MatrixView。
               <MatrixView
-                screen={mainView === 'matrixTaskNew' ? 'newTask' : 'accounts'}
+                screen={'accounts'}
                 onNavigate={(s: string) => setMainView(s === 'newTask' ? 'matrixTaskNew' : s === 'tasks' ? 'matrixTasks' : s === 'runs' ? 'matrixRuns' : 'matrix')}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
               />
-            ) : (mainView === 'matrixTasks' || mainView === 'matrixRuns') ? (
-              // 矩阵「我的涨粉任务 / 运行记录」= 真 ScenarioView(锁死抖音、隐藏平台 tab、
-              // 标题改矩阵)。数据经 scenarioService 的 MATRIX 适配层接到矩阵后端。
+            ) : (mainView === 'matrixTaskNew' || mainView === 'matrixTasks' || mainView === 'matrixRuns') ? (
+              // 矩阵「新建 / 我的涨粉任务 / 运行记录」全用真 ScenarioView(matrixMode:engage 平台 tab +
+              // 完整头部链 + 各平台互动涨粉卡片→账号向导)。数据经 scenarioService 的 MATRIX 适配层。
               <ScenarioView
                 matrixMode
-                mode={mainView === 'matrixRuns' ? 'runs' : 'manage'}
+                mode={mainView === 'matrixRuns' ? 'runs' : mainView === 'matrixTaskNew' ? 'create' : 'manage'}
                 initialPlatform="douyin"
                 onSwitchToCreate={() => setMainView('matrixTaskNew')}
                 onSwitchToManage={() => setMainView('matrixTasks')}
@@ -1121,6 +1120,7 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
+                onShowInvite={handleShowInvite}
               />
             ) : (
               <CoworkView
