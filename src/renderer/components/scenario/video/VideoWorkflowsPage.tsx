@@ -1444,7 +1444,7 @@ const VideoTaskDetail: React.FC<{
   // 手动运行前的登录校验:发布平台(创作者中心口径)∪ 取材平台(主站口径)。任一非空就先弹,
   // 全绿(插件已连 + 各平台登录)才开跑。定时调度不走这里(无人值守靠运行期超时兜底)。
   // 矩阵 edition:发布走指纹内核 CDP 按号上传、取材也用账号的内核,不依赖浏览器插件,
-  // 且选的都是已关联(登录)账号 → 运行前【不需要】插件/平台登录校验,直接跑。
+  // 且选的都是已连接(登录)账号 → 运行前【不需要】插件/平台登录校验,直接跑。
   const loginCheckList = MATRIX_EDITION ? [] : Array.from(new Set([...publishPlatforms, ...materialLoginPlatforms]));
   // 主站 override = 取材要、但不在发布列表里的(同时发布时按发布的创作者中心口径,更严)。
   const loginMainSiteOverride = materialLoginPlatforms.filter((p) => !publishPlatforms.includes(p));
@@ -3829,7 +3829,7 @@ const PublishPlatformPicker: React.FC<{
 // 发布账号(矩阵)精简结构:富信息下拉用。
 type MatrixAcctLite = { id: string; platform: string; displayName: string; status: string; nickname?: string; displayId?: string; avatar?: string };
 const MATRIX_PLAT_ZH: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
-// 单个账号行(头像 + 昵称 + 平台号 + 备注 + 登录状态);未登录关联(login_required)置灰。
+// 单个账号行(头像 + 昵称 + 平台号 + 备注 + 登录状态);未登录连接(login_required)置灰。
 const MatrixAcctRow: React.FC<{ isZh: boolean; a: MatrixAcctLite }> = ({ isZh, a }) => {
   const linked = a.status !== 'login_required';
   const title = a.nickname || a.displayName;
@@ -3842,7 +3842,7 @@ const MatrixAcctRow: React.FC<{ isZh: boolean; a: MatrixAcctLite }> = ({ isZh, a
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-500">{MATRIX_PLAT_ZH[a.platform] || a.platform}</span>
           <span className="text-sm font-medium dark:text-gray-200 truncate">{title}</span>
-          <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${linked ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15'}`}>{linked ? (isZh ? '已关联' : 'Linked') : (isZh ? '未关联' : 'Not linked')}</span>
+          <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${linked ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15'}`}>{linked ? (isZh ? '已连接' : 'Linked') : (isZh ? '未连接' : 'Not linked')}</span>
         </div>
         <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
           {a.displayId ? `${MATRIX_PLAT_ZH[a.platform] || ''}号:${a.displayId} · ` : ''}{isZh ? '备注' : 'note'}:{a.displayName}
@@ -3851,7 +3851,7 @@ const MatrixAcctRow: React.FC<{ isZh: boolean; a: MatrixAcctLite }> = ({ isZh, a
     </div>
   );
 };
-// 富信息账号下拉(原生 select 放不了头像,自建):未关联账号置灰不可选。
+// 富信息账号下拉(原生 select 放不了头像,自建):未连接账号置灰不可选。
 const MatrixAccountSelect: React.FC<{
   isZh: boolean; accounts: MatrixAcctLite[]; value: string; onChange: (id: string) => void; onAddAccount: () => void;
 }> = ({ isZh, accounts, value, onChange, onAddAccount }) => {
@@ -3860,7 +3860,7 @@ const MatrixAccountSelect: React.FC<{
     return (
       <button type="button" onClick={onAddAccount}
         className="flex-1 text-left px-3 py-2 rounded-lg border border-dashed border-rose-400 text-rose-500 text-xs hover:bg-rose-500/5">
-        {isZh ? '⚠️ 暂无该平台账号 · 点此去「我的矩阵账号」关联 →' : '⚠️ No account · link one in "My Matrix Accounts" →'}
+        {isZh ? '⚠️ 暂无该平台账号 · 点此去「我的矩阵账号」连接 →' : '⚠️ No account · link one in "My Matrix Accounts" →'}
       </button>
     );
   }
@@ -3869,7 +3869,7 @@ const MatrixAccountSelect: React.FC<{
     <div className="relative flex-1">
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-left flex items-center justify-between gap-2">
-        {sel ? <MatrixAcctRow isZh={isZh} a={sel} /> : <span className="text-sm text-gray-400">{isZh ? '— 选择已关联账号 —' : '— pick a linked account —'}</span>}
+        {sel ? <MatrixAcctRow isZh={isZh} a={sel} /> : <span className="text-sm text-gray-400">{isZh ? '— 选择已连接账号 —' : '— pick a linked account —'}</span>}
         <span className="text-gray-400 shrink-0">▾</span>
       </button>
       {open && (
@@ -3879,7 +3879,7 @@ const MatrixAccountSelect: React.FC<{
             return (
               <button key={a.id} type="button" disabled={disabled}
                 onClick={() => { if (disabled) return; onChange(a.id); setOpen(false); }}
-                title={disabled ? (isZh ? '该账号尚未关联,请先到「我的矩阵账号」扫码关联' : 'Not linked yet') : undefined}
+                title={disabled ? (isZh ? '该账号尚未连接,请先到「我的矩阵账号」扫码连接' : 'Not linked yet') : undefined}
                 className={`w-full text-left px-2 py-1.5 rounded-md ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700'} ${a.id === value ? 'bg-amber-500/10' : ''}`}>
                 <MatrixAcctRow isZh={isZh} a={a} />
               </button>
@@ -4026,7 +4026,7 @@ export const HotspotVideoModal: React.FC<{
       : ei.hotspotMaterialSource === 'image' ? 'image'
         : (isZh ? 'douyin' : 'image'),
   );
-  // 画面素材来源平台(抖音/TikTok)+ 用于全网取材的账号(必须该平台已关联账号)。
+  // 画面素材来源平台(抖音/TikTok)+ 用于全网取材的账号(必须该平台已连接账号)。
   const [materialPlatform, setMaterialPlatform] = useState<'douyin' | 'tiktok'>(
     (ei as any).hotspotMaterialPlatform === 'tiktok' ? 'tiktok' : (ei as any).hotspotMaterialPlatform === 'douyin' ? 'douyin' : (isZh ? 'douyin' : 'tiktok'),
   );
@@ -4144,7 +4144,7 @@ export const HotspotVideoModal: React.FC<{
   // 矩阵 + 发布模式下:每个勾选平台是否都已选号(没号的平台算未满足 → 引导建号)。
   const matrixAccountsReady = !matrixMode || outputMode !== 'upload'
     || selectedPlatformIds.every((p) => !!accountByPlatform[p] && accountsFor(p).some((a) => a.id === accountByPlatform[p] && a.status !== 'login_required'));
-  // 取材账号:必须选且【已关联】(matrix 下取材靠该号指纹内核做全网搜索/下载)。
+  // 取材账号:必须选且【已连接】(matrix 下取材靠该号指纹内核做全网搜索/下载)。
   const materialAccountReady = !matrixMode
     || accountsFor(materialPlatform).some((a) => a.id === materialAccountId && a.status !== 'login_required');
 
@@ -4370,7 +4370,7 @@ export const HotspotVideoModal: React.FC<{
                 </div>
               </Field>
               {/* 画面素材来源平台 + 取材账号:运行时用该账号的指纹浏览器做【全网搜索 + 下载素材】,绝不发帖/改动账号。 */}
-              <Field label={isZh ? '画面素材来源' : 'Footage source'} hint={isZh ? `仅用一个已关联${materialPlatform === 'tiktok' ? 'TikTok' : '抖音'}账号做全网搜索 + 下载素材` : `search & download via a linked ${materialPlatform === 'tiktok' ? 'TikTok' : 'Douyin'} account`}>
+              <Field label={isZh ? '画面素材来源' : 'Footage source'} hint={isZh ? `仅用一个已连接${materialPlatform === 'tiktok' ? 'TikTok' : '抖音'}账号做全网搜索 + 下载素材` : `search & download via a linked ${materialPlatform === 'tiktok' ? 'TikTok' : 'Douyin'} account`}>
                 <div className="flex gap-2 mb-2">
                   {([{ v: 'douyin', zh: '🎵 抖音', en: '🎵 Douyin' }, { v: 'tiktok', zh: '🎬 TikTok', en: '🎬 TikTok' }] as const).map((p) => (
                     <button key={p.v} type="button" onClick={() => { setMaterialPlatform(p.v); setMaterialAccountId(''); }}
@@ -4586,7 +4586,7 @@ export const HotspotVideoModal: React.FC<{
                         );
                       })}
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-1">
-                        {isZh ? '每个平台必须选一个【已关联】账号;未关联的已置灰不可选,选好才能下一步。发布时用该号的指纹浏览器上传。' : 'Each platform needs a LINKED account (unlinked ones are greyed out). Published via that account\'s fingerprint browser.'}
+                        {isZh ? '每个平台必须选一个【已连接】账号;未连接的已置灰不可选,选好才能下一步。发布时用该号的指纹浏览器上传。' : 'Each platform needs a LINKED account (unlinked ones are greyed out). Published via that account\'s fingerprint browser.'}
                       </p>
                     </div>
                   </Field>

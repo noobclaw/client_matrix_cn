@@ -122,10 +122,10 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                 )}
                 {accounts.map((a) => {
                   const hasKw = !!(a.keywords && a.keywords.length);
-                  // 未关联(login_required)/已封 → 不可选(置灰);还要配了关键词。
+                  // 未连接(login_required)/已封 → 不可选(置灰);还要配了关键词。
                   const linked = a.status !== 'login_required' && a.status !== 'banned';
                   const ready = hasKw && linked;
-                  const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未关联' : !hasKw ? '未配关键词' : '';
+                  const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未连接' : !hasKw ? '未配关键词' : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
