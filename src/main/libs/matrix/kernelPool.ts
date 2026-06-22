@@ -63,6 +63,11 @@ const launching = new Map<string, Promise<KernelSession>>(); // 启动去重
 // 按 accountId 的【引用计数】:每次 launchKernel +1、closeKernel -1;>0 说明还有别的流程在用
 // 这个号 → closeKernel 不真关(防「A 任务用着、B 流程把窗关了」误关 + 防并发撞同一 profile 损坏)。
 const refCount = new Map<string, number>();
+// 正在【优雅关闭】中的子进程:closeKernel 已把 session 从表里删了,但进程还会再活最多 4s(等 Browser.close
+// 干净退出)才被强杀,这期间它【仍占着 profile 锁】。若此时同号被重开,doLaunch 见 sessions 里没有 → 误清锁 +
+// 又开一个新进程 → 两进程抢同一 user-data-dir → 弹「打开个人资料出了点问题」+ 开出两个窗。记下这些将死进程,
+// doLaunch 重开前先把它彻底收走(kill + 等退出)再清锁,保证【串行】不并发抢锁。
+const closingProcs = new Map<string, ChildProcess>();
 
 // 按 accountId 的【使用互斥锁(异步队列)】:同一账号同一时刻只允许一个流程操作,其他【排队等】。
 // 防「涨粉任务和视频任务同时驱动同一个号的页面 → 命令打架/串台」。launchKernel 时占锁、
@@ -180,6 +185,15 @@ async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
   coworkLog('INFO', 'kernelPool', `using kernel: ${kernelPath}`);
 
   if (!fs.existsSync(opts.userDataDir)) fs.mkdirSync(opts.userDataDir, { recursive: true });
+
+  // 同号上一个进程还在「优雅关闭」中(占着 profile 锁)→ 先立即强杀并等它真退出,再清锁开新窗,
+  // 否则两进程抢同一 user-data-dir → 「打开个人资料出了点问题」+ 双窗(见 closingProcs 注释)。
+  const dying = closingProcs.get(opts.accountId);
+  if (dying && dying.exitCode === null) {
+    try { dying.kill(); } catch { /* ignore */ }
+    for (let i = 0; i < 30 && dying.exitCode === null; i++) await sleep(100); // 等退出最多 ~3s
+  }
+  closingProcs.delete(opts.accountId);
 
   const prev = sessions.get(opts.accountId);
   // 没有存活实例才清单例锁(有存活的会走上面 launchKernel 的复用分支,不会到这);
@@ -628,6 +642,11 @@ export function closeKernel(accountId: string, opts?: { force?: boolean }): void
     if (s.pageWs && s.pageWs.readyState === WebSocket.OPEN) { sendNoWait(s, 'Browser.close'); graceful = true; }
   } catch { /* ignore */ }
   const proc = s.process;
+  // 记进「将死表」:重开同号时 doLaunch 会先确保它退出(见 closingProcs 注释)。进程真正退出后自动摘除。
+  if (proc && proc.exitCode === null) {
+    closingProcs.set(accountId, proc);
+    proc.once('exit', () => { if (closingProcs.get(accountId) === proc) closingProcs.delete(accountId); });
+  }
   setTimeout(() => { try { if (proc && !proc.killed && proc.exitCode === null) proc.kill(); } catch { /* ignore */ } }, graceful ? 4000 : 0);
   failSession(s, 'kernel closed');
   sessions.delete(accountId);
