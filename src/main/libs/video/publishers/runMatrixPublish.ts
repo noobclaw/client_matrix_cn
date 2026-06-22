@@ -22,7 +22,7 @@
 import type { VideoPlatform, PublishInput } from './types';
 import { VIDEO_PLATFORMS } from './types';
 import type { RunPublishResult } from './runPublish';
-import { getAccount } from '../../matrix/accountManager';
+import { getAccount, platformKey } from '../../matrix/accountManager';
 import { launchKernel, kernelNavigate, checkKernelLogin, closeKernel } from '../../matrix/kernelPool';
 import { runMatrixDriver } from '../../matrix/driverCtx';
 import { PUBLISHER_ANCHOR_URL } from './publisherUtils';
@@ -123,7 +123,8 @@ export async function runMatrixPublishStep(opts: RunMatrixPublishOptions): Promi
       // ③ 导航到该平台创作中心/上传页,检登录态(该号持久 profile 的 cookie)。
       const anchor = PUBLISHER_ANCHOR_URL[id as VideoPlatform];
       if (anchor) { try { await kernelNavigate(accountId, anchor); await sleep(2500); } catch { /* driver 内部还会等 */ } }
-      const loggedIn = await checkKernelLogin(accountId, id).catch(() => false);
+      // 快手创作端账号用 'kuaishou_creator' 查 cp 登录态(主站 cookie 不算 cp 登录)。
+      const loggedIn = await checkKernelLogin(accountId, acc ? platformKey(acc) : id).catch(() => false);
       if (!loggedIn) {
         // 矩阵号登录态在「我的矩阵账号」里扫码维护;这里不在出片流程里硬等登录(会卡死定时任务)。
         opts.onLog?.(`⚠️ ${label} 账号「${acc.displayName}」未登录 · 跳过本条(请到「我的矩阵账号」重新登录)`);

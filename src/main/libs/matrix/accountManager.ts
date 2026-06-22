@@ -74,6 +74,11 @@ export function getAccount(id: string): MatrixAccount | undefined {
 export function accountsByPlatform(platform: string): MatrixAccount[] {
   return loadAccounts().filter((a) => a.platform === platform);
 }
+/** 登录态/身份读取用的平台 key:快手创作端账号用 'kuaishou_creator'(独立登录态 + cp 接口读身份),
+ *  其它(含快手主站)就是 platform 本身。用于 LOGIN_COOKIES / IDENTITY_EXPR 等按场景查表。 */
+export function platformKey(acc: Pick<MatrixAccount, 'platform' | 'loginScope'>): string {
+  return acc.platform === 'kuaishou' && acc.loginScope === 'creator' ? 'kuaishou_creator' : acc.platform;
+}
 export function accountsByGroup(group: string): MatrixAccount[] {
   return loadAccounts().filter((a) => a.group === group);
 }
@@ -199,9 +204,11 @@ export function resetRunningToIdle(): void {
 }
 
 /** 按平台 + 真实 uid 找【已被别的矩阵号关联】的账号(去重用:同一个真实平台账号不许关联到两个矩阵号)。 */
+// platform 传 platformKey(快手区分主站/创作端):同一真实快手号【允许】各绑一个主站号+一个创作端号,
+// 只在【同场景】内查重(传 'kuaishou_creator' 只撞创作端、传 'kuaishou' 只撞主站)。
 export function findAccountByUid(platform: string, boundUid: string, excludeId: string): MatrixAccount | undefined {
   if (!boundUid) return undefined;
-  return loadAccounts().find((a) => a.id !== excludeId && a.platform === platform && a.boundUid === boundUid);
+  return loadAccounts().find((a) => a.id !== excludeId && platformKey(a) === platform && a.boundUid === boundUid);
 }
 
 export function removeAccount(id: string): void {

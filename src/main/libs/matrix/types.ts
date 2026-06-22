@@ -60,6 +60,10 @@ export interface MatrixAccount {
   displayId?: string;
   avatar?: string;
   boundUid?: string;
+  // 登录场景(仅快手用):'main'=主站 www.kuaishou.com(涨粉互动+读身份)、'creator'=创作者中心
+  // cp.kuaishou.com(视频发布)。快手主站与创作端登录互不覆盖(实测),故拆成两类账号、各自登录。
+  // 建号时确定、之后不可改。其它平台不设(主站登录即覆盖创作端 / 同域)。
+  loginScope?: 'main' | 'creator';
 }
 
 /** 互动配额区间(各项在 [min,max] 内随机)。 */

@@ -588,7 +588,9 @@ const LOGIN_COOKIES: Record<string, string[]> = {
   xhs: ['web_session'],
   bilibili: ['SESSDATA', 'DedeUserID'],
   shipinhao: ['sessionid', 'wxuin'],
-  kuaishou: ['userId', 'kuaishou.server.webday7_st'],   // ⚠️ 实测:是 webday7_st 不是 web_st
+  kuaishou: ['userId', 'kuaishou.server.webday7_st'],   // 主站 www.kuaishou.com(⚠️ 实测:是 webday7_st 不是 web_st)
+  // 快手创作者中心 cp.kuaishou.com:独立登录态(主站登录不覆盖,实测)。cp 专属会话令牌。
+  kuaishou_creator: ['kuaishou.web.cp.api_st'],
   toutiao: ['sessionid', 'sso_uid_tt'],
   tiktok: ['sessionid', 'sid_tt'],
   x: ['auth_token'],
@@ -647,6 +649,10 @@ const IDENTITY_EXPR: Record<string, string> = {
   // 快手:window.INIT_STATE 里的 profile 对象(信息流页 /new-reco 就有,真机实测 2026-06-22)。
   //   userName=昵称, userDefineId=快手号, userId=uid, userHead=头像。(键名被 +1 凯撒位移混淆,靠值里有 userName+userId 定位。)
   kuaishou: '(function(){try{var s=window.INIT_STATE||{};for(var k in s){var v=s[k];if(v&&typeof v==="object"&&v.userName&&v.userId){return JSON.stringify({nickname:v.userName,displayId:v.userDefineId||null,uid:String(v.userId),avatar:v.userHead||null});}}return "{}";}catch(e){return "{}";}})()',
+  // 快手创作者中心(cp.kuaishou.com):身份不在 localStorage/全局(实测 probe 空),走 cp 接口
+  //   /rest/cp/creator/pc/home/userInfo(cp 自家页面就调这个)。返回结构未逐字段验证 → 递归扫常见字段名
+  //   取 昵称/头像/快手号/uid,多接口兜底。装包后核对,字段不符再微调(就一行)。
+  kuaishou_creator: '(async function(){try{var urls=["/rest/cp/creator/pc/home/userInfo","/rest/cp/creator/pc/home/infoV2","/rest/cp/works/v2/common/pc/current/user"];function find(o,re,d){if(!o||typeof o!=="object"||d>5)return null;for(var k in o){var v=o[k];if(re.test(k)&&typeof v==="string"&&v)return v;if(v&&typeof v==="object"){var r=find(v,re,d+1);if(r)return r;}}return null;}for(var i=0;i<urls.length;i++){try{var resp=await fetch(urls[i],{credentials:"include"});var j=await resp.json();var d=(j&&(j.data||j))||{};var nick=find(d,/^(userName|user_name|nickName|nickname|name)$/,0);var av=find(d,/(userHead|headUrl|head_url|avatar|headImg)/i,0);var ksid=find(d,/^(kwaiId|userDefineId|kuaishouId|kwai_id)$/,0);var uid=find(d,/^(userId|user_id|principalId)$/,0);if(nick||av){return JSON.stringify({nickname:nick,displayId:ksid||uid,uid:uid||ksid,avatar:av});}}catch(e){}}return "{}";}catch(e){return "{}";}})()',
   // 头条:mp.toutiao.com 创作端 SSR script JSON 里的账号对象(真机实测 2026-06-22)。
   //   页面有多个用户对象(feed 作者等),必须锚定【同时含 screen_name + https_avatar_url + id_str】的账号块,
   //   否则乱扫抓到别人。nickname=screen_name, avatar=https_avatar_url, 头条号ID/uid=id_str。

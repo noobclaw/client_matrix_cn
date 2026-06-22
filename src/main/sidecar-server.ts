@@ -1291,11 +1291,12 @@ const server = http.createServer(async (req, res) => {
           case 'matrix:openLogin': {
             // 起该号的指纹内核并导航到平台登录页,供用户扫码;不关窗,登完用户自己确认。
             try {
-              const { getAccount, setAccountStatus, accountBadgeLabel } = await import('./libs/matrix/accountManager');
+              const { getAccount, setAccountStatus, accountBadgeLabel, platformKey } = await import('./libs/matrix/accountManager');
               const { launchKernel, kernelNavigate, checkKernelLogin, getSession } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              const pk = platformKey(acc);
               await launchKernel({
                 accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
                 userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
@@ -1311,7 +1312,7 @@ const server = http.createServer(async (req, res) => {
                   await new Promise((r) => setTimeout(r, 3000));
                   if (!getSession(acc.id)) break; // 窗口被关
                   let ok = false;
-                  try { ok = await checkKernelLogin(acc.id, acc.platform); } catch { ok = false; }
+                  try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = false; }
                   if (ok) {
                     // 登录刚成功时页面常还停在登录/回跳页 → 先导航到平台主页并稍等,确保在「有本人信息」的页面
                     // 读身份(否则读太早拿到空 → 这就是之前必须手动点「刷新信息」才出头像的原因)。和 refreshIdentity 一致。
@@ -1321,11 +1322,11 @@ const server = http.createServer(async (req, res) => {
                     let ident: any = {};
                     try {
                       const { kernelReadIdentity } = await import('./libs/matrix/kernelPool');
-                      ident = await kernelReadIdentity(acc.id, acc.platform);
+                      ident = await kernelReadIdentity(acc.id, pk);
                     } catch { /* 身份读取失败不影响登录 */ }
                     // 去重(B):这个真实账号(uid)已被别的矩阵号关联 → 拒绝本次关联,清 cookie + 标未关联 + 提示换号。
                     const { findAccountByUid, setAccountStatus: setStat, setAccountIdentity } = await import('./libs/matrix/accountManager');
-                    const dup = ident.uid ? findAccountByUid(acc.platform, String(ident.uid), acc.id) : undefined;
+                    const dup = ident.uid ? findAccountByUid(pk, String(ident.uid), acc.id) : undefined;
                     if (dup) {
                       try { const { kernelClearCookies } = await import('./libs/matrix/kernelPool'); await kernelClearCookies(acc.id); } catch { /* ignore */ }
                       setStat(acc.id, 'login_required');
@@ -1351,16 +1352,17 @@ const server = http.createServer(async (req, res) => {
           case 'matrix:checkLogin': {
             // 手动「刷新登录态」:立即查一次 cookie,登了就翻 idle + 推 SSE。
             try {
-              const { getAccount, setAccountStatus, setAccountIdentity } = await import('./libs/matrix/accountManager');
+              const { getAccount, setAccountStatus, setAccountIdentity, platformKey } = await import('./libs/matrix/accountManager');
               const { checkKernelLogin, kernelReadIdentity } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
-              const loggedIn = await checkKernelLogin(acc.id, acc.platform);
+              const pk = platformKey(acc);
+              const loggedIn = await checkKernelLogin(acc.id, pk);
               let ident: any = {};
               if (loggedIn) {
                 setAccountStatus(acc.id, 'idle');
-                try { ident = await kernelReadIdentity(acc.id, acc.platform); setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
+                try { ident = await kernelReadIdentity(acc.id, pk); setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
                 broadcastSSE('matrix:account', { id: acc.id, status: 'idle', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
               }
               return writeJSON(res, 200, { ok: true, loggedIn, nickname: ident.nickname });
@@ -1372,11 +1374,12 @@ const server = http.createServer(async (req, res) => {
             // 「刷新信息」:对任意账号(尤其已登录但没读过身份的),拉起内核→导航平台→读 昵称/平台号/头像
             // (cookie 在持久 profile,自然登录态)→存+广播。读完若不是原本在跑的内核则关掉,不留窗。
             try {
-              const { getAccount, setAccountStatus, setAccountIdentity, accountBadgeLabel } = await import('./libs/matrix/accountManager');
+              const { getAccount, setAccountStatus, setAccountIdentity, accountBadgeLabel, platformKey } = await import('./libs/matrix/accountManager');
               const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, closeKernel } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              const pk = platformKey(acc);
               await launchKernel({
                 accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
                 userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
@@ -1386,13 +1389,13 @@ const server = http.createServer(async (req, res) => {
               try {
                 if (a?.homeUrl) await kernelNavigate(acc.id, a.homeUrl);
                 await new Promise((r) => setTimeout(r, 3500)); // 等页面/SSR 就绪
-                const loggedIn = await checkKernelLogin(acc.id, acc.platform);
+                const loggedIn = await checkKernelLogin(acc.id, pk);
                 let ident: any = {};
                 if (loggedIn) {
-                  try { ident = await kernelReadIdentity(acc.id, acc.platform); } catch { /* ignore */ }
+                  try { ident = await kernelReadIdentity(acc.id, pk); } catch { /* ignore */ }
                   // 去重(B):该真实账号(uid)已被别的矩阵号关联 → 拒绝,清 cookie + 标未关联 + 提示。
                   const { findAccountByUid } = await import('./libs/matrix/accountManager');
-                  const dup = ident.uid ? findAccountByUid(acc.platform, String(ident.uid), acc.id) : undefined;
+                  const dup = ident.uid ? findAccountByUid(pk, String(ident.uid), acc.id) : undefined;
                   if (dup) {
                     try { const { kernelClearCookies } = await import('./libs/matrix/kernelPool'); await kernelClearCookies(acc.id); } catch { /* ignore */ }
                     setAccountStatus(acc.id, 'login_required');
