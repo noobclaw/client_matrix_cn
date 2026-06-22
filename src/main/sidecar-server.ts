@@ -2559,6 +2559,8 @@ if (!IS_NATIVE_MESSAGING_HOST) {
       // 矩阵 edition:不启动旧 scenario 定时调度,改启动矩阵自己的调度器(sidecar 侧,
       // 切到别的页面也不停;对齐老客户端「调度在主进程」而非渲染层)。
       if (MATRIX_EDITION) {
+        // 启动时清理残留「运行中」:上次任务被中途中断 → 账号 status 卡 'running' 写进库,重启后一直显示运行中。
+        try { const { resetRunningToIdle } = require('./libs/matrix/accountManager'); resetRunningToIdle(); } catch (e) { coworkLog('WARN', 'sidecar-server', 'resetRunningToIdle failed', { err: String(e) }); }
         try { startMatrixScheduler(); coworkLog('INFO', 'sidecar-server', 'Matrix scheduler started'); }
         catch (e) { coworkLog('ERROR', 'sidecar-server', 'startMatrixScheduler failed', { err: String(e) }); }
       } else {

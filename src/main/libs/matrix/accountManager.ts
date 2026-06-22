@@ -189,6 +189,15 @@ export function markPosted(id: string): void {
   persist();
 }
 
+/** 启动时清理「残留运行中」:上次任务跑到一半 app 被关 → status 卡在 'running' 写进了库,
+ *  重启后卡片一直显示「运行中」。启动那刻没有任何任务在跑,把 running 全部复位成 idle(已关联)。 */
+export function resetRunningToIdle(): void {
+  const accts = loadAccounts();
+  let changed = false;
+  for (const a of accts) { if (a.status === 'running') { a.status = 'idle'; changed = true; } }
+  if (changed) { cache = accts; persist(); }
+}
+
 export function removeAccount(id: string): void {
   cache = loadAccounts().filter((a) => a.id !== id);
   persist();
