@@ -42,6 +42,20 @@ export function loadAccounts(): MatrixAccount[] {
   return cache;
 }
 
+// 指纹浏览器左上角角标(badge)文案,对齐旧客户端 group 标签:平台名 · 账号昵称 · 备注 [· #任务简写]。
+// 昵称登录后才读到(空则省略那段);taskId 仅在有任务上下文时传(登录/取材点一般取不到 → 不显示)。
+const PLATFORM_ZH: Record<string, string> = {
+  douyin: '抖音', xhs: '小红书', kuaishou: '快手', bilibili: 'B站', shipinhao: '视频号',
+  toutiao: '头条', x: 'X', binance: '币安广场', youtube: 'YouTube', tiktok: 'TikTok',
+};
+export function accountBadgeLabel(acc: Pick<MatrixAccount, 'platform' | 'displayName' | 'nickname'>, taskId?: string): string {
+  const parts: string[] = [PLATFORM_ZH[acc.platform] || acc.platform];
+  if (acc.nickname) parts.push(acc.nickname);
+  parts.push(acc.displayName);
+  if (taskId) parts.push('#' + String(taskId).slice(0, 6));
+  return parts.join(' · ');
+}
+
 function persist(): void {
   ensureDirs();
   // 原子写:先写临时文件再 rename,避免写到一半被 kill 导致 JSON 截断损坏。
