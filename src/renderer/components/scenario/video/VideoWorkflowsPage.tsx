@@ -3774,6 +3774,47 @@ const OutputDestination: React.FC<{
   </>
 );
 
+// 出片后(本地/上传)单选 —— 从 OutputDestination 拆出来,可单独放在「去向+频率」步。
+const OutputModeToggle: React.FC<{
+  isZh: boolean; outputMode: OutputMode; setOutputMode: (m: OutputMode) => void;
+}> = ({ isZh, outputMode, setOutputMode }) => (
+  <Field label={isZh ? '出片后' : 'After generation'}>
+    <div className="grid grid-cols-2 gap-2">
+      <RadioCard active={outputMode === 'local'} onClick={() => setOutputMode('local')}
+        title={isZh ? '存本地不上传' : 'Save locally, no upload'}
+        desc={isZh ? '只在本机生成 mp4，自己看 / 手动发都行' : 'just produce an mp4 on this machine'} />
+      <RadioCard active={outputMode === 'upload'} onClick={() => setOutputMode('upload')}
+        title={isZh ? '上传到各大平台' : 'Upload to platforms'}
+        desc={isZh ? '出片后自动发到选中的平台' : 'auto-publish to selected platforms after'} />
+    </div>
+  </Field>
+);
+
+// 发布平台多选 + 登录提示 + children(矩阵号在此放每平台选号)。仅 upload 时显示平台;local 给提示。
+const PublishPlatformPicker: React.FC<{
+  isZh: boolean; outputMode: OutputMode; platforms: Record<Platform, boolean>;
+  togglePlatform: (p: Platform) => void; children?: React.ReactNode;
+}> = ({ isZh, outputMode, platforms, togglePlatform, children }) => {
+  if (outputMode !== 'upload') {
+    return <div className="text-sm text-gray-500 dark:text-gray-400 py-3">{isZh ? '已选「仅存本地」,无需选择发布平台 / 账号。' : 'Local only — no platform/account needed.'}</div>;
+  }
+  return (
+    <Field label={isZh ? '发布平台（可多选）' : 'Target platforms (multi-select)'}>
+      <div className="flex flex-wrap gap-2">
+        {PUBLISH_PLATFORMS.map((m) => (
+          <PlatformCheck key={m.id} checked={!!platforms[m.id]} onClick={() => togglePlatform(m.id)} label={`${m.emoji} ${isZh ? m.zh : m.en}`} />
+        ))}
+      </div>
+      <div className="mt-2 text-[11px] text-amber-500 leading-relaxed">
+        {isZh
+          ? '💡 出片后会自动登录态检查 → 已登录就发,未登录的【自动跳过】(下次登录后再跑会补传)。不强制全部登录,可以一次勾完慢慢补。'
+          : '💡 After rendering, each platform is auto-checked for login. Logged-in ones publish; others are SKIPPED (not failed). Log in later and re-run to back-fill.'}
+      </div>
+      {children}
+    </Field>
+  );
+};
+
 // 通用入口卡(3 张视频创作卡复用:电影级 / 在线素材 / 模板速生)。
 // accent 决定主色;cost 在描述下方展示「价格」(用户要求 card 表面带价格特点)。
 // accent 类名写成完整字面量映射,避免 Tailwind 动态拼接被 purge。
@@ -3964,11 +4005,11 @@ export const HotspotVideoModal: React.FC<{
   const [showLoginCheck, setShowLoginCheck] = useState(false);
   // 分步向导:① 热点源 → ② 内容 → ③ 配音 → ④ 成片去向 → ⑤ 运行频率。
   // 矩阵号在「去向」后多插一步「账号」(step 5),频率顺延到 step 6。
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   // 账号步只在矩阵 edition 存在;频率步在矩阵下是 6、非矩阵是 5。
-  const ACCT_STEP = 5 as const;
-  const FREQ_STEP = matrixMode ? 6 : 5;
-  const MAX_STEP = FREQ_STEP;
+  // 步骤:1热点源 2内容 3配音 4去向(出片后+频率) 5发布(发布平台+账号)。
+  const PUBLISH_STEP = 5 as const;     // 「发布」步:发布平台多选 + 每平台选号(matrix)
+  const MAX_STEP = 5;
 
   // 热点源预览:每个榜当前 top-3 实时条目,挂在卡片下方,让用户选前就知道会选中什么内容。
   // 拉失败不影响选择(静默)。打开向导时拉一次。
@@ -4087,7 +4128,7 @@ export const HotspotVideoModal: React.FC<{
     //   但必须每个勾选平台都选好账号(没号的让用户先去「我的矩阵账号」建)。
     if (matrixMode) {
       if (outputMode === 'upload' && !matrixAccountsReady) {
-        setStep(ACCT_STEP);
+        setStep(PUBLISH_STEP);
         setErr(isZh ? '请为每个发布平台选择一个账号(没有账号的平台请先去「我的矩阵账号」添加)' : 'Pick an account for each platform first');
         return;
       }
@@ -4099,25 +4140,25 @@ export const HotspotVideoModal: React.FC<{
     void doCreate();
   };
 
-  // 「下一步」按 step 校验后推进;step 1 必须至少勾一个源;step 4 选「发布到平台」必须至少勾一个平台;
-  // 矩阵 step 5(账号)离开前每个勾选平台都要选好号。
+  // 「下一步」按 step 校验后推进;step 1 必须至少勾一个源;step 5(发布)选「上传」必须至少勾一个平台,
+  // 矩阵下还要每个勾选平台都选好号。
   const goNext = () => {
     if (step === 1 && selectedSources.length === 0) { setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
-    if (step === 4 && outputMode === 'upload' && selectedPlatformIds.length === 0) {
-      setErr(isZh ? '已选「发布到平台」,请至少勾选一个平台(或改回「仅存本地」)' : 'Pick at least one platform, or switch to "Local only"');
+    if (step === PUBLISH_STEP && outputMode === 'upload' && selectedPlatformIds.length === 0) {
+      setErr(isZh ? '已选「上传到各大平台」,请至少勾选一个平台(或回上一步改「仅存本地」)' : 'Pick at least one platform, or switch to "Local only"');
       return;
     }
-    if (matrixMode && step === ACCT_STEP && outputMode === 'upload' && !matrixAccountsReady) {
+    if (matrixMode && step === PUBLISH_STEP && outputMode === 'upload' && !matrixAccountsReady) {
       setErr(isZh ? '请为每个发布平台选择一个账号' : 'Pick an account for each platform');
       return;
     }
     setErr('');
-    setStep((s) => (s < MAX_STEP ? ((s + 1) as 1 | 2 | 3 | 4 | 5 | 6) : s));
+    setStep((s) => (s < MAX_STEP ? ((s + 1) as 1 | 2 | 3 | 4 | 5) : s));
   };
   const goBack = () => {
     setErr('');
     if (step === 1) { onClose(); return; }
-    setStep((s) => ((s - 1) as 1 | 2 | 3 | 4 | 5 | 6));
+    setStep((s) => ((s - 1) as 1 | 2 | 3 | 4 | 5));
   };
 
   const DUR = [30, 45, 60, 90, 120];
@@ -4152,11 +4193,7 @@ export const HotspotVideoModal: React.FC<{
               <div className={`h-px w-3 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '去向' : 'Output'} />
               <div className={`h-px w-3 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              {matrixMode && (<>
-                <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '账号' : 'Account'} />
-                <div className={`h-px w-3 ${step > 5 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              </>)}
-              <StepDot n={FREQ_STEP} active={step === FREQ_STEP} done={false} label={isZh ? '频率' : 'Frequency'} />
+              <StepDot n={5} active={step === 5} done={false} label={isZh ? '发布' : 'Publish'} />
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -4340,73 +4377,10 @@ export const HotspotVideoModal: React.FC<{
             </>
           )}
 
-          {/* ── Step 4:成片去向(统一 OutputDestination,与 ai/stock/模板 一致)── */}
+          {/* ── Step 4:出片后(本地/上传)+ 运行频率 + 每次条数(出片后与频率合并到一步)── */}
           {step === 4 && (
-            <OutputDestination
-              isZh={isZh}
-              outputMode={outputMode}
-              setOutputMode={setOutputMode}
-              platforms={platforms}
-              togglePlatform={(p) => setPlatforms((pp) => ({ ...pp, [p]: !pp[p] }))}
-            />
-          )}
-
-          {/* ── Step 5(仅矩阵号):每个发布平台选一个账号(指纹内核 CDP 发布)── */}
-          {matrixMode && step === ACCT_STEP && (
-            <Field
-              label={isZh ? '发布账号' : 'Publish accounts'}
-              hint={isZh ? '每个平台选一个矩阵账号,出片后用该号的指纹浏览器上传' : 'one matrix account per platform'}
-            >
-              {outputMode !== 'upload' || selectedPlatformIds.length === 0 ? (
-                <div className="text-sm text-gray-500 dark:text-gray-400 py-2">
-                  {isZh ? '已选「仅存本地」,无需选账号。' : 'Local only — no account needed.'}
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {selectedPlatformIds.map((pid) => {
-                    const meta = PUBLISH_PLATFORMS.find((m) => m.id === pid);
-                    const label = meta ? `${meta.emoji} ${isZh ? meta.zh : meta.en}` : pid;
-                    const accs = accountsFor(pid);
-                    return (
-                      <div key={pid} className="flex items-center gap-3">
-                        <div className="w-28 shrink-0 text-sm font-medium dark:text-gray-200">{label}</div>
-                        {accs.length === 0 ? (
-                          // 改动 #3:该平台无可用账号 → 可点击引导,跳「我的矩阵账号」去建号。
-                          <button
-                            type="button"
-                            onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts')); onClose(); }}
-                            className="flex-1 text-left px-3 py-2 rounded-lg border border-dashed border-rose-400 text-rose-500 text-xs hover:bg-rose-500/5"
-                          >
-                            {isZh ? '⚠️ 暂无该平台账号 · 点此去「我的矩阵账号」添加 →' : '⚠️ No account · add one in "My Matrix Accounts" →'}
-                          </button>
-                        ) : (
-                          <select
-                            value={accountByPlatform[pid] || ''}
-                            onChange={(e) => setAccountByPlatform((m) => ({ ...m, [pid]: e.target.value }))}
-                            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm dark:text-gray-200"
-                          >
-                            <option value="">{isZh ? '— 选择账号 —' : '— pick account —'}</option>
-                            {accs.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.displayName}{a.status && a.status !== 'idle' ? ` (${a.status})` : ''}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    );
-                  })}
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-1">
-                    {isZh ? '每个平台最多选 1 个账号;发布时用该号的指纹浏览器登录态上传(未登录会在运行时跳过)。' : 'Max 1 account per platform; published via that account\'s fingerprint browser.'}
-                  </p>
-                </div>
-              )}
-            </Field>
-          )}
-
-          {/* ── 运行频率 + 每次运行条数(逐字对齐币安发帖任务);矩阵下是 step 6 ── */}
-          {step === FREQ_STEP && (
             <>
+              <OutputModeToggle isZh={isZh} outputMode={outputMode} setOutputMode={setOutputMode} />
               <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
                 <div className="grid grid-cols-3 gap-2">
                   {FREQ_OPTS.map((o) => (
@@ -4445,6 +4419,63 @@ export const HotspotVideoModal: React.FC<{
                 </p>
               </Field>
             </>
+          )}
+
+          {/* ── Step 5:发布平台 + 发布账号(平台与账号合并到一步)── */}
+          {step === PUBLISH_STEP && (
+            <PublishPlatformPicker
+              isZh={isZh}
+              outputMode={outputMode}
+              platforms={platforms}
+              togglePlatform={(p) => setPlatforms((pp) => ({ ...pp, [p]: !pp[p] }))}
+            >
+              {matrixMode && selectedPlatformIds.length > 0 && (
+                <div className="mt-4">
+                  <Field
+                    label={isZh ? '发布账号' : 'Publish accounts'}
+                    hint={isZh ? '每个平台选一个矩阵账号,出片后用该号的指纹浏览器上传' : 'one matrix account per platform'}
+                  >
+                    <div className="space-y-2.5">
+                      {selectedPlatformIds.map((pid) => {
+                        const meta = PUBLISH_PLATFORMS.find((m) => m.id === pid);
+                        const label = meta ? `${meta.emoji} ${isZh ? meta.zh : meta.en}` : pid;
+                        const accs = accountsFor(pid);
+                        return (
+                          <div key={pid} className="flex items-center gap-3">
+                            <div className="w-28 shrink-0 text-sm font-medium dark:text-gray-200">{label}</div>
+                            {accs.length === 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts')); onClose(); }}
+                                className="flex-1 text-left px-3 py-2 rounded-lg border border-dashed border-rose-400 text-rose-500 text-xs hover:bg-rose-500/5"
+                              >
+                                {isZh ? '⚠️ 暂无该平台账号 · 点此去「我的矩阵账号」添加 →' : '⚠️ No account · add one in "My Matrix Accounts" →'}
+                              </button>
+                            ) : (
+                              <select
+                                value={accountByPlatform[pid] || ''}
+                                onChange={(e) => setAccountByPlatform((m) => ({ ...m, [pid]: e.target.value }))}
+                                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm dark:text-gray-200"
+                              >
+                                <option value="">{isZh ? '— 选择账号 —' : '— pick account —'}</option>
+                                {accs.map((a) => (
+                                  <option key={a.id} value={a.id}>
+                                    {a.displayName}{a.status && a.status !== 'idle' ? ` (${a.status})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-1">
+                        {isZh ? '每个平台最多选 1 个账号;发布时用该号的指纹浏览器登录态上传(未登录会在运行时跳过)。' : 'Max 1 account per platform; published via that account\'s fingerprint browser.'}
+                      </p>
+                    </div>
+                  </Field>
+                </div>
+              )}
+            </PublishPlatformPicker>
           )}
 
           {err && <p className="text-sm text-rose-500">{err}</p>}
