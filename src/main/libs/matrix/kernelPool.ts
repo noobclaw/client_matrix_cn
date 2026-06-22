@@ -615,10 +615,16 @@ export async function kernelReadIdentity(accountId: string, platform: string): P
     const navHint = IDENTITY_NAV_HINT[platform];
     if (navHint && expr && !(selfUrl && cookieUid)) {
       try {
-        const url = await kernelEval(accountId, navHint);
-        if (url && typeof url === 'string') {
+        // 导航栏是 CSR 异步渲染的(TikTok 重 SPA),首次读常为空 → 轮询等它出来(最多 ~10s)再拿自己主页 URL。
+        let url = '';
+        for (let i = 0; i < 10 && !url; i++) {
+          try { const u = await kernelEval(accountId, navHint); if (u && typeof u === 'string' && u) url = u; } catch { /* 继续等 */ }
+          if (!url) await sleep(1000);
+        }
+        if (url) {
           await kernelNavigate(accountId, url);
-          for (let i = 0; i < 6; i++) {
+          // 跳到自己主页后,等 user-title(昵称)等 profile DOM 渲染出来(最多 ~12s)。
+          for (let i = 0; i < 8; i++) {
             await sleep(1500);
             try { const probe = JSON.parse((await kernelEval(accountId, expr)) || '{}'); if (probe && probe.nickname) break; } catch { /* 还没渲染好,继续等 */ }
           }
