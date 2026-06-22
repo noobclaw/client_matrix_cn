@@ -1356,11 +1356,10 @@ const server = http.createServer(async (req, res) => {
             // (cookie 在持久 profile,自然登录态)→存+广播。读完若不是原本在跑的内核则关掉,不留窗。
             try {
               const { getAccount, setAccountStatus, setAccountIdentity, accountBadgeLabel } = await import('./libs/matrix/accountManager');
-              const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, closeKernel, getSession } = await import('./libs/matrix/kernelPool');
+              const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, closeKernel } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
-              const wasRunning = !!getSession(acc.id);
               await launchKernel({
                 accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
                 userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
@@ -1377,7 +1376,7 @@ const server = http.createServer(async (req, res) => {
                 setAccountStatus(acc.id, 'login_required');
               }
               broadcastSSE('matrix:account', { id: acc.id, status: loggedIn ? 'idle' : 'login_required', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
-              if (!wasRunning) { try { closeKernel(acc.id); } catch { /* ignore */ } } // 临时拉起的读完关掉
+              try { closeKernel(acc.id); } catch { /* ignore */ } // 引用计数 -1:别的流程还用着就不会真关(refcount 决定)
               return writeJSON(res, 200, { ok: true, loggedIn, nickname: ident.nickname, displayId: ident.displayId });
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
@@ -1387,16 +1386,15 @@ const server = http.createServer(async (req, res) => {
             // 断开关联:清登录 cookie + 清身份,状态回「需关联」;保留账号配置(赛道/关键词/人设/代理/指纹)。
             try {
               const { getAccount, setAccountStatus, clearAccountIdentity, accountBadgeLabel } = await import('./libs/matrix/accountManager');
-              const { launchKernel, kernelClearCookies, closeKernel, getSession } = await import('./libs/matrix/kernelPool');
+              const { launchKernel, kernelClearCookies, closeKernel } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
-              const wasRunning = !!getSession(acc.id);
               try {
                 await launchKernel({ accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy, label: accountBadgeLabel(acc) });
                 await kernelClearCookies(acc.id);
               } catch { /* 内核拉不起也要把本地状态清掉 */ }
-              if (!wasRunning) { try { closeKernel(acc.id); } catch { /* ignore */ } }
+              try { closeKernel(acc.id); } catch { /* ignore */ } // 引用计数 -1(别的流程用着不会真关)
               setAccountStatus(acc.id, 'login_required');
               clearAccountIdentity(acc.id);
               broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', nickname: null, displayId: null, avatar: null });

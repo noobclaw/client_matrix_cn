@@ -59,6 +59,9 @@ export interface LaunchKernelOptions {
 
 const sessions = new Map<string, KernelSession>();
 const launching = new Map<string, Promise<KernelSession>>(); // 启动去重
+// 按 accountId 的【引用计数】:每次 launchKernel +1、closeKernel -1;>0 说明还有别的流程在用
+// 这个号 → closeKernel 不真关(防「A 任务用着、B 流程把窗关了」误关 + 防并发撞同一 profile 损坏)。
+const refCount = new Map<string, number>();
 let nextDebugPort = 9300;        // 每号一个端口,递增分配
 let nextSlot = 0;                // 第几个窗口(错开层叠位置用)
 
@@ -96,6 +99,10 @@ function buildKernelArgs(opts: LaunchKernelOptions, debugPort: number): string[]
     `--user-data-dir=${opts.userDataDir}`,
     '--no-first-run',
     '--no-default-browser-check',
+    // 抑制「Chromium 未正确关闭 · 要恢复页面吗」气泡 + 启动不自动恢复上次会话(自动化里气泡盖页面会点错)。
+    '--disable-session-crashed-bubble',
+    '--hide-crash-restore-bubble',
+    '--no-crash-upload',
     `--fingerprint=${fp.seed}`,
   ];
   if (fp.platformOs) args.push(`--fingerprint-platform=${fp.platformOs}`);
@@ -123,6 +130,8 @@ function buildKernelArgs(opts: LaunchKernelOptions, debugPort: number): string[]
 // ── 启动一个号的内核实例(in-flight 去重,杜绝同号双开) ──
 
 export async function launchKernel(opts: LaunchKernelOptions): Promise<KernelSession> {
+  // 引用计数 +1:任何流程要用这个号都先 +1,closeKernel 时 -1,归 0 才真关。
+  refCount.set(opts.accountId, (refCount.get(opts.accountId) || 0) + 1);
   const existing = sessions.get(opts.accountId);
   // 复用前确认进程【真活着】:崩溃的子进程 .killed 仍是 false(那只代表我们没主动 kill),
   // 必须再查 exitCode===null,否则会复用到已死进程 → 后续 CDP 全部 ECONNRESET。
@@ -135,6 +144,8 @@ export async function launchKernel(opts: LaunchKernelOptions): Promise<KernelSes
   const p = doLaunch(opts).finally(() => {
     if (launching.get(opts.accountId) === p) launching.delete(opts.accountId);
   });
+  // 启动失败时调用方拿到 reject、不会再 closeKernel → 这里回退它的 +1,防计数泄漏。
+  p.catch(() => { refCount.set(opts.accountId, Math.max(0, (refCount.get(opts.accountId) || 1) - 1)); });
   launching.set(opts.accountId, p);
   return p;
 }
@@ -199,7 +210,7 @@ async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
   // 进程崩溃/退出 → 清 session + reject 挂起命令,避免后续复用死 session 卡满超时。
   proc.on('exit', () => {
     failSession(session, 'kernel process exited');
-    if (sessions.get(opts.accountId) === session) sessions.delete(opts.accountId);
+    if (sessions.get(opts.accountId) === session) { sessions.delete(opts.accountId); refCount.delete(opts.accountId); }
   });
   sessions.set(opts.accountId, session);
   coworkLog('INFO', 'kernelPool', `kernel ${opts.accountId} ready on ${debugPort}`);
@@ -543,17 +554,33 @@ export function listSessions(): string[] {
   return Array.from(sessions.keys());
 }
 
-export function closeKernel(accountId: string): void {
+export function closeKernel(accountId: string, opts?: { force?: boolean }): void {
+  // 引用计数 -1:还有别的流程在用(>0)就【不关】,只有归 0(或 force)才真关 → 防误关在用的窗。
+  const n = Math.max(0, (refCount.get(accountId) || 1) - 1);
+  refCount.set(accountId, n);
   const s = sessions.get(accountId);
   if (!s) return;
+  if (!opts?.force && n > 0) {
+    coworkLog('INFO', 'kernelPool', `kernel ${accountId} 还有 ${n} 个流程在用,暂不关闭`);
+    return;
+  }
+  refCount.delete(accountId);
+  // 优雅关闭:CDP Browser.close 让 Chromium 正常退出(写「干净退出」标记)→ 下次启动不弹
+  //   「未正确关闭 / 恢复页面」、也不会损坏 profile。失败/超时再强杀兜底(防卡住不退)。
+  let graceful = false;
+  try {
+    if (s.pageWs && s.pageWs.readyState === WebSocket.OPEN) { sendNoWait(s, 'Browser.close'); graceful = true; }
+  } catch { /* ignore */ }
+  const proc = s.process;
+  setTimeout(() => { try { if (proc && !proc.killed && proc.exitCode === null) proc.kill(); } catch { /* ignore */ } }, graceful ? 4000 : 0);
   failSession(s, 'kernel closed');
-  try { if (s.process && !s.process.killed) s.process.kill(); } catch { /* ignore */ }
   sessions.delete(accountId);
-  coworkLog('INFO', 'kernelPool', `closed kernel ${accountId}`);
+  coworkLog('INFO', 'kernelPool', `closing kernel ${accountId}${graceful ? ' (graceful)' : ' (kill)'}`);
 }
 
 export function closeAllKernels(): void {
-  for (const id of Array.from(sessions.keys())) closeKernel(id);
+  // app 退出 / 急停:无视引用计数,全部强关。
+  for (const id of Array.from(sessions.keys())) closeKernel(id, { force: true });
 }
 
 function sleep(ms: number): Promise<void> {

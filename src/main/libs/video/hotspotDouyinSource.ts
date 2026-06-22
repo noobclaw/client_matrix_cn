@@ -55,7 +55,7 @@ async function fetchDouyinClipsViaKernel(
   if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
   // 懒加载矩阵模块(避免顶层循环依赖)。
   const { accountsByPlatform, accountBadgeLabel } = require('../matrix/accountManager');
-  const { launchKernel, checkKernelLogin, closeKernel, getSession } = require('../matrix/kernelPool');
+  const { launchKernel, checkKernelLogin, closeKernel } = require('../matrix/kernelPool');
   const { runMatrixDouyinSearch } = require('../matrix/driverCtx');
 
   const usable = (accountsByPlatform('douyin') as any[]).filter((a) => a.status !== 'login_required' && a.status !== 'banned' && a.status !== 'limited');
@@ -72,17 +72,15 @@ async function fetchDouyinClipsViaKernel(
   }
   // 逐个候选号:起内核 + 验登录,找到第一个真登录的就用它取材。
   let accountId = '';
-  let accWasRunning = false;
   for (const cand of ordered) {
     if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
-    const wasRunning = !!getSession(cand.id);
     try {
       await launchKernel({ accountId: cand.id, kernelVersion: cand.kernelVersion, userDataDir: cand.userDataDir, fingerprint: cand.fingerprint, proxy: cand.proxy, label: accountBadgeLabel(cand) });
     } catch { onLog(`   「${cand.displayName}」内核启动失败,换下一个…`); continue; }
     const loggedIn = await checkKernelLogin(cand.id, 'douyin').catch(() => false);
-    if (loggedIn) { accountId = cand.id; accWasRunning = wasRunning; onLog(`🧬 用抖音账号「${cand.displayName}」的指纹浏览器取材`); break; }
+    if (loggedIn) { accountId = cand.id; onLog(`🧬 用抖音账号「${cand.displayName}」的指纹浏览器取材`); break; }
     onLog(`   「${cand.displayName}」登录态失效,换下一个…`);
-    if (!wasRunning) { try { closeKernel(cand.id); } catch { /* ignore */ } }
+    try { closeKernel(cand.id); } catch { /* ignore */ } // 引用计数 -1(refcount 决定真关与否)
   }
   if (!accountId) {
     onLog('⚠️ 已关联的抖音账号登录态都失效了,无法取材(请到「我的矩阵账号」重新扫码关联)');
@@ -140,8 +138,8 @@ async function fetchDouyinClipsViaKernel(
     onLog(`✅ 抖音素材就绪:${paths.length}/${urls.length} 个${titles.length ? ` · ${titles.length} 个标题` : ''}`);
     return { paths, titles, diag };
   } finally {
-    // 不是本来就在跑的内核 → 取完关掉,释放资源(跟发布一致)。
-    if (!accWasRunning) { try { closeKernel(accountId); } catch { /* ignore */ } }
+    // 取完 closeKernel(引用计数 -1):别的流程还用着这个号就不会真关,归 0 才优雅关闭。
+    try { closeKernel(accountId); } catch { /* ignore */ }
   }
 }
 
