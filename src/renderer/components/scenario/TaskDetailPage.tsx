@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { scenarioService, type Task, type Draft, type Scenario } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { MATRIX_EDITION } from '../../matrixEdition';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { i18nService } from '../../services/i18n';
 import { friendlyRunError } from '../../services/runErrorMessage';
@@ -763,6 +764,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     // 1b. Balance check — 余额 < 10000 时弹"积分不足"提示框,点击充值跳
     //     钱包页;否则继续启动任务。阈值见 noobClawAuth.hasEnoughBalanceForTask。
     if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+
+    // 矩阵 edition:互动涨粉走指纹内核 CDP 按号执行(无浏览器插件;账号在「我的矩阵账号」已扫码关联,
+    //   跑时按号内核校验登录、未登录自动跳过)→ 不需要「装插件 + 平台登录」运行前检查,直接开跑。
+    if (MATRIX_EDITION) { handleLoginConfirmed(); return; }
 
     // 2. Open the pre-run modal IMMEDIATELY so the user sees instant
     //    visual feedback. Pre-2.4.30 we awaited getRunningTaskIds +
