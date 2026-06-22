@@ -547,18 +547,34 @@ const IDENTITY_EXPR: Record<string, string> = {
 // uid 在明文 cookie 里的平台(页面 expr 拿不到 uid 时,从 cookie 补)。
 const UID_COOKIE: Record<string, string> = { kuaishou: 'userId', toutiao: 'sso_uid_tt', bilibili: 'DedeUserID' };
 
+// 有些平台首页 feed 上【没有本人信息】(乱扫 nickname 会抓到推荐流里别人的号 → 见 reference 的血泪教训),
+// 必须先导航到「自己主页」再读身份。URL 用明文 cookie 里的 uid 拼。这是对齐抖音「在带本人 SSR 的页面读」
+// 的统一做法:抖音/小红书/B站/YouTube/TikTok 的源(RENDER_DATA / /me / /nav / account_menu / app-context)
+// 本身就含本人,无需跳;快手 feed 不含本人 → 跳 profile/<uid>。
+const IDENTITY_SELF_URL: Record<string, (uid: string) => string> = {
+  kuaishou: (uid) => `https://www.kuaishou.com/profile/${uid}`,
+};
+
 export async function kernelReadIdentity(accountId: string, platform: string): Promise<KernelIdentity> {
   try {
     const s = await getPage(accountId);
     const out: KernelIdentity = {};
+    // 先取明文 cookie 里的 uid(快手等要用它拼自己主页 URL;也作 uid 兜底)。
+    let cookieUid: string | undefined;
+    if (UID_COOKIE[platform]) {
+      try { const cr = await send(s, 'Network.getAllCookies', {}); const c = (cr?.cookies || []).find((x: any) => String(x.name) === UID_COOKIE[platform]); if (c) cookieUid = String(c.value); } catch { /* ignore */ }
+    }
+    // 首页无本人信息的平台(快手):先跳到 profile/<uid> 那页再读 —— 否则在推荐 feed 上读到空/别人的号。
+    const selfUrl = IDENTITY_SELF_URL[platform];
+    if (selfUrl && cookieUid) {
+      try { await kernelNavigate(accountId, selfUrl(cookieUid)); await sleep(2800); } catch { /* 导航失败就按当前页读,不阻塞 */ }
+    }
     const expr = IDENTITY_EXPR[platform];
     if (expr) {
       try { const o = JSON.parse((await kernelEval(accountId, expr)) || '{}'); if (o && typeof o === 'object') { out.uid = o.uid || undefined; out.nickname = o.nickname || undefined; out.displayId = o.displayId || undefined; out.avatar = o.avatar || undefined; } } catch { /* ignore */ }
     }
-    // uid 兜底:从明文 cookie 取(getAllCookies 跨域)。
-    if (!out.uid && UID_COOKIE[platform]) {
-      try { const cr = await send(s, 'Network.getAllCookies', {}); const c = (cr?.cookies || []).find((x: any) => String(x.name) === UID_COOKIE[platform]); if (c) out.uid = String(c.value); } catch { /* ignore */ }
-    }
+    // uid 兜底:用 cookie 里的 uid(getAllCookies 跨域)。
+    if (!out.uid && cookieUid) out.uid = cookieUid;
     // 读不到任何身份 → 记一条诊断(便于后续按真实结构补),不影响登录。
     if (!out.nickname && !out.uid) coworkLog('INFO', 'matrix-identity', `identity empty for ${platform}`, {});
     return out;
