@@ -31,6 +31,48 @@ function exeIn(dir: string): string {
     : path.join(dir, 'chrome');
 }
 
+/**
+ * 【tab group 可行性验证版】生成/更新一个极小 MV3 扩展:把当前窗口所有标签归到以「账号名」命名的
+ * 彩色分组(chrome.tabs.group + chrome.tabGroups.update)。写到 userData 下,dev 与打包路径一致,
+ * 不依赖 extraResource 打包配置。返回扩展目录;失败返回 null(不挡内核启动)。
+ *
+ * ⚠️ 本步要验证的核心不确定点:fingerprint-chromium(ungoogled 改)能否经 --load-extension 加载
+ * MV3、chrome.tabGroups 是否可用。能 → 再做全套(按赛道上色/多组/防开发者模式气泡);不能 → 换方案。
+ */
+export function ensureTabGroupExtension(accountId: string, title: string): string | null {
+  try {
+    const dir = path.join(getUserDataPath(), 'matrix-ext', `tabgroup-${accountId}`);
+    fs.mkdirSync(dir, { recursive: true });
+    const manifest = {
+      manifest_version: 3,
+      name: 'Matrix TabGroup',
+      version: '1.0.0',
+      permissions: ['tabs', 'tabGroups'],
+      background: { service_worker: 'bg.js' },
+    };
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+    const bg = `const TITLE = ${JSON.stringify(title)};
+const COLOR = 'blue';
+async function groupAll() {
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const ids = tabs.map(t => t.id).filter(id => id != null && id >= 0);
+    if (!ids.length) return;
+    const gid = await chrome.tabs.group({ tabIds: ids });
+    await chrome.tabGroups.update(gid, { title: TITLE, color: COLOR });
+    console.log('[matrix-tabgroup] grouped', ids.length, 'tabs as', TITLE);
+  } catch (e) { console.log('[matrix-tabgroup] err', e && e.message); }
+}
+chrome.tabs.onCreated.addListener(() => setTimeout(groupAll, 250));
+chrome.tabs.onUpdated.addListener((_id, info) => { if (info.status) setTimeout(groupAll, 250); });
+chrome.runtime.onInstalled.addListener(() => setTimeout(groupAll, 400));
+setTimeout(groupAll, 600);
+`;
+    fs.writeFileSync(path.join(dir, 'bg.js'), bg, 'utf8');
+    return dir;
+  } catch { return null; }
+}
+
 /** 某版本的内核可执行路径;不传 version 则返回任意一个已装版本(没有则 null)。 */
 export function installedKernelPath(version?: string): string | null {
   try {

@@ -1819,6 +1819,14 @@ const VideoCreateFlow: React.FC<{
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 2026-06-22 用户要求:在线素材(素材)放第一、热搜成片放第二。 */}
+        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
+          titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
+          descZh="低成本批量日更利器:给个主题,AI 写口播稿+配音+字幕,海量正版素材库凑齐画面,一次最多 100 条(每条独立写稿+配音,失败自动跳过)。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 100 clips per run (each a fresh AI script + voice; failures auto-skipped). Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
+          costZh={`单条约 ${feeZh}(写稿/素材/合成)`} costEn={`~${feeEn} per clip (script / stock / compose)`}
+          btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
         {isZhHot && (
         <VideoScenarioEntryCard isZh={isZhHot} accent="rose" icon="🔥" onOpen={openWithLogin(() => setHotspotOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 热搜成片" tagEn="AI Auto · Hotspot"
@@ -1828,13 +1836,6 @@ const VideoCreateFlow: React.FC<{
           costZh={`单条约 ${feeZh}(写稿/联网/配图/合成)`} costEn={`~${feeEn} per clip (script / web / footage / compose)`}
           btnZh="🔥 开始创作 →" btnEn="🔥 Start →" />
         )}
-        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
-          tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
-          titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
-          descZh="低成本批量日更利器:给个主题,AI 写口播稿+配音+字幕,海量正版素材库凑齐画面,一次最多 100 条(每条独立写稿+配音,失败自动跳过)。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
-          descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 100 clips per run (each a fresh AI script + voice; failures auto-skipped). Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh={`单条约 ${feeZh}(写稿/素材/合成)`} costEn={`~${feeEn} per clip (script / stock / compose)`}
-          btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={openWithLogin(() => setCinemaOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"

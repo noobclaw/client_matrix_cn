@@ -2692,8 +2692,13 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 
 function shutdown() {
   coworkLog('INFO', 'sidecar-server', 'Shutting down...');
-  server.close();
-  process.exit(0);
+  // 退出前同步强杀所有指纹内核,别留孤儿窗口:mac 上 Tauri 杀 sidecar 不会级联杀内核子进程,
+  // 不主动收就会残留(下次开同号还会撞锁报「打开个人资料出了点问题」)。kernelPool 已被矩阵流程
+  // 加载过,import() 对已加载模块在下一微任务即 resolve,够快赶在 exit 前。
+  import('./libs/matrix/kernelPool')
+    .then((m) => { try { m.killAllKernelsSync(); } catch { /* ignore */ } })
+    .catch(() => { /* ignore */ })
+    .finally(() => { try { server.close(); } catch { /* ignore */ } process.exit(0); });
 }
 
 process.on('SIGTERM', shutdown);
@@ -2757,6 +2762,23 @@ if (!IS_NATIVE_MESSAGING_HOST && parentPid && parentPid > 1) {
       }
     }
   }, PARENT_CHECK_INTERVAL_MS);
+}
+
+// sidecar 启动:清扫上次 app 残留的孤儿指纹内核(被强杀/崩溃后仍占着 profile 锁的僵尸窗)。
+// 否则重开 app 那几个孤儿窗还在,点同一账号会撞锁 → 「打开您的个人资料时出了点问题」。
+// best-effort,失败不影响启动;Windows 无孤儿(reapProfileHolder 内部直接跳过)。
+if (!IS_NATIVE_MESSAGING_HOST) {
+  void (async () => {
+    try {
+      const { loadAccounts } = await import('./libs/matrix/accountManager');
+      const { reapOrphanKernels } = await import('./libs/matrix/kernelPool');
+      const dirs = loadAccounts().map((a) => a.userDataDir).filter(Boolean);
+      if (dirs.length) {
+        await reapOrphanKernels(dirs);
+        coworkLog('INFO', 'sidecar-server', `Startup orphan-kernel sweep done (${dirs.length} profiles)`);
+      }
+    } catch { /* ignore */ }
+  })();
 }
 
 export { broadcastSSE, PORT };

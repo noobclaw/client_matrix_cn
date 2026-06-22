@@ -20,12 +20,12 @@
  * 仍保留显式 kernelPath(手动指定),供调试。
  */
 
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import WebSocket from 'ws';
 import fs from 'fs';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
-import { installedKernelPath } from './kernelInstaller';
+import { installedKernelPath, ensureTabGroupExtension } from './kernelInstaller';
 import type { Fingerprint, Proxy } from './types';
 
 export interface KernelSession {
@@ -113,6 +113,44 @@ function clearSingletonLocks(dir: string): void {
   }
 }
 
+/**
+ * 收走仍占着该 profile 的【活孤儿】内核(本 sidecar 没有句柄的残留:上次 app 崩溃 / 被 SIGKILL
+ * 强杀后,mac 上内核子进程不随父进程死而成的孤儿)。mac/Linux 的 SingletonLock 是软链,target
+ * 形如 `<hostname>-<pid>`:读出 pid,确认它还活着且确是 chromium,就 SIGKILL 并等它退出。
+ *
+ * 为什么必须杀进程而不能只删锁:删锁文件不会让活着的孤儿松手,反而让新内核与孤儿【抢同一
+ * user-data-dir】→ 弹「打开您的个人资料时出了点问题」+ 开出双窗。Windows 走 Job Object 级联杀
+ * (sidecar 一死内核也死),无此孤儿,直接跳过。
+ */
+async function reapProfileHolder(userDataDir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  let target = '';
+  try { target = fs.readlinkSync(path.join(userDataDir, 'SingletonLock')); } catch { return; }
+  const m = /-(\d+)$/.exec(target);
+  if (!m) return;
+  const pid = parseInt(m[1], 10);
+  if (!Number.isFinite(pid) || pid <= 1 || pid === process.pid) return;
+  try { process.kill(pid, 0); } catch { return; } // 进程已不在 → 陈旧锁,交给 clearSingletonLocks 清
+  // pid 复用防误杀:确认它确实是浏览器进程(best-effort)。ps 明确说「不是浏览器」才放过;
+  // ps 不可用(cmd 为空)时该 SingletonLock 只出现在我们私有 profile 目录,极大概率是我们内核 → 仍杀。
+  let cmd = '';
+  try { cmd = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', timeout: 3000 }).toString(); } catch { /* ps 不可用 */ }
+  if (cmd && !/chromium|chrome|--user-data-dir/i.test(cmd)) return;
+  try { process.kill(pid, 'SIGKILL'); } catch { /* ignore */ }
+  for (let i = 0; i < 20 && pid; i++) { try { process.kill(pid, 0); } catch { break; } await sleep(100); } // 等它真退出(锁释放)最多 ~2s
+  coworkLog('INFO', 'kernelPool', `reaped orphan kernel holding profile ${path.basename(userDataDir)} (pid ${pid})`);
+}
+
+/**
+ * sidecar 启动时清扫上次 app 残留的孤儿指纹内核(被强杀/崩溃后仍占着 profile 锁的僵尸窗):
+ * 逐个账号 profile 目录收孤儿 + 清陈旧锁。best-effort,失败不影响启动。Windows 无孤儿(reapProfileHolder 直接跳过)。
+ */
+export async function reapOrphanKernels(userDataDirs: string[]): Promise<void> {
+  for (const dir of userDataDirs) {
+    try { await reapProfileHolder(dir); clearSingletonLocks(dir); } catch { /* ignore */ }
+  }
+}
+
 // ── 启动参数:指纹 + 代理 + 防泄漏 ──
 
 function buildKernelArgs(opts: LaunchKernelOptions, debugPort: number): string[] {
@@ -142,6 +180,17 @@ function buildKernelArgs(opts: LaunchKernelOptions, debugPort: number): string[]
     args.push(`--proxy-server=${scheme}://${proxy.host}:${proxy.port}`);
     args.push('--disable-non-proxied-udp'); // 防 WebRTC 漏真实 IP
   }
+
+  // 【tab group 可行性验证版】给内核挂一个极小 MV3 扩展:窗口内标签自动归到「账号名」彩色分组。
+  // --disable-features 那条是为新版 chromium 把 --load-extension 重新放开(新版把它关进了默认禁用的
+  // feature 开关);旧版/fingerprint-chromium 无此 feature 会忽略,无害。能不能真加载,mac 真机见分晓。
+  try {
+    const extDir = ensureTabGroupExtension(opts.accountId, opts.label || opts.accountId);
+    if (extDir) {
+      args.push(`--load-extension=${extDir}`);
+      args.push('--disable-features=DisableLoadExtensionCommandLineSwitch');
+    }
+  } catch { /* 扩展非关键,失败不挡启动 */ }
 
   if (opts.headless) args.push('--headless=new');
   // 启动 URL 作为最后一个位置参数:内核在首个可见窗口直接打开它(扫码登录页),
@@ -196,9 +245,13 @@ async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
   closingProcs.delete(opts.accountId);
 
   const prev = sessions.get(opts.accountId);
-  // 没有存活实例才清单例锁(有存活的会走上面 launchKernel 的复用分支,不会到这);
-  // 防「二次启动撞上陈旧锁 → 内核秒退 → ECONNRESET」。
-  if (!prev || !prev.process || prev.process.killed) clearSingletonLocks(opts.userDataDir);
+  // 没有【本进程的】存活实例才动锁:先收走仍占着该 profile 的活孤儿(上次 app 崩溃/被强杀后残留,
+  // 见 reapProfileHolder),再清陈旧单例锁。防「二次启动撞上活孤儿 → 双开抢同一 user-data-dir →
+  // 打开您的个人资料时出了点问题 / 内核秒退 ECONNRESET」。
+  if (!prev || !prev.process || prev.process.killed) {
+    await reapProfileHolder(opts.userDataDir);
+    clearSingletonLocks(opts.userDataDir);
+  }
   const debugPort = prev?.debugPort ?? nextDebugPort++;
   const args = buildKernelArgs(opts, debugPort);
 
@@ -465,19 +518,56 @@ export async function kernelWheel(accountId: string, x: number, y: number, delta
 }
 
 /**
- * 原生文件注入 —— 把本地文件直接灌进 file input(CDP DOM.setFileInputFiles)。
- * 比扩展的 upload_file_from_url 干净:CDP 直接给元素 objectId + 本地路径,内核侧零网络。
+ * 原生文件注入 —— 把本地文件灌进 file input(CDP DOM.setFileInputFiles)。健壮版。
+ *
+ * 旧版只 `document.querySelector(selector)`(顶层 light DOM、取第一个)+ 设完无脑 return true,有三个坑:
+ *   ① 命中错的 input:B 站投稿页有 2 个视频 input,querySelector 取第一个常是错的 → 设了没用、B 站没反应;
+ *   ② shadow DOM 里的 input 完全找不到:视频号 wujie 微前端表单在 open shadowRoot 里 → querySelector 摸不到;
+ *   ③ 假成功:没真挂上也 return true,driver 收到 ok 往下走,误报「视频已上传」。
+ *
+ * 新版:深遍历 light DOM + 所有 open shadowRoot 收集 <input type=file> → 按 selector 过滤(没 selector/没命中
+ * 且 deep 时回退「accept 含 video/mp4 或为空」)→ 给【所有】命中的 input 都 setFileInputFiles(多候选不确定哪个
+ * 真,全设最稳)→ 回读 files.length 校验,至少一个真挂上才 return true(不再假成功)。
  */
-export async function kernelSetFileInput(accountId: string, selector: string, filePaths: string[]): Promise<boolean> {
+export async function kernelSetFileInput(
+  accountId: string, selector: string, filePaths: string[], opts?: { deep?: boolean },
+): Promise<boolean> {
   const s = await getPage(accountId);
-  const evalRes = await send(s, 'Runtime.evaluate', {
-    expression: `document.querySelector(${JSON.stringify(selector)})`,
-    returnByValue: false,
+  const sel = selector || '';
+  const deep = !!opts?.deep;
+  // 1) 深遍历收集候选 input 到 window.__mtxFI,返回数量。
+  const collectExpr = `(function(sel, deep){
+    function collect(root, out){
+      try { root.querySelectorAll('input[type=file]').forEach(function(el){ out.push(el); }); } catch(e){}
+      var nodes=[]; try { nodes = root.querySelectorAll('*'); } catch(e){}
+      for (var i=0;i<nodes.length;i++){ var sr=null; try{ sr=nodes[i].shadowRoot; }catch(e){} if(sr) collect(sr,out); }
+    }
+    var all=[]; collect(document, all);
+    var pick=[];
+    if(sel){ for(var i=0;i<all.length;i++){ try{ if(all[i].matches(sel)) pick.push(all[i]); }catch(e){} } }
+    if(!pick.length && (deep || !sel)){ pick = all.filter(function(el){ var a=(el.accept||'').toLowerCase(); return a.indexOf('video')>=0||a.indexOf('mp4')>=0||a===''; }); }
+    if(!pick.length && deep) pick = all;
+    window.__mtxFI = pick;
+    return pick.length;
+  })(${JSON.stringify(sel)}, ${deep})`;
+  const cnt: any = await send(s, 'Runtime.evaluate', { expression: collectExpr, returnByValue: true });
+  const n = Number(cnt?.result?.value || 0);
+  if (!n) return false;
+  // 2) 逐个取 objectId → setFileInputFiles(单个失败继续)。
+  for (let i = 0; i < n; i++) {
+    try {
+      const elRes: any = await send(s, 'Runtime.evaluate', { expression: `window.__mtxFI[${i}]`, returnByValue: false });
+      const objectId = elRes?.result?.objectId;
+      if (!objectId) continue;
+      await send(s, 'DOM.setFileInputFiles', { files: filePaths, objectId });
+    } catch { /* 单个失败继续 */ }
+  }
+  // 3) 校验:至少一个 input 真挂上文件才算成功。
+  const verify: any = await send(s, 'Runtime.evaluate', {
+    expression: `(function(){ var n=0; (window.__mtxFI||[]).forEach(function(el){ try{ if(el.files&&el.files.length) n++; }catch(e){} }); try{ delete window.__mtxFI; }catch(e){} return n; })()`,
+    returnByValue: true,
   });
-  const objectId = evalRes?.result?.objectId;
-  if (!objectId) return false;
-  await send(s, 'DOM.setFileInputFiles', { files: filePaths, objectId });
-  return true;
+  return Number(verify?.result?.value || 0) > 0;
 }
 
 // 清空该号浏览器全部 cookie(断开关联用:登出但保留 profile/指纹/配置)。
@@ -686,6 +776,22 @@ export function closeKernel(accountId: string, opts?: { force?: boolean }): void
 export function closeAllKernels(): void {
   // app 退出 / 急停:无视引用计数,全部强关。
   for (const id of Array.from(sessions.keys())) closeKernel(id, { force: true });
+}
+
+/**
+ * 同步【立即强杀】所有内核子进程 —— sidecar 收到终止信号 / app 退出时用。
+ * closeKernel/closeAllKernels 经 setTimeout 才真正 kill,但 process.exit 不会等定时器触发 →
+ * 必须在这里同步 SIGKILL,否则内核成孤儿窗口(mac 无 Win32 Job Object 兜底,不随 sidecar 死)。
+ */
+export function killAllKernelsSync(): void {
+  for (const id of Array.from(sessions.keys())) {
+    try { sessions.get(id)?.process?.kill('SIGKILL'); } catch { /* ignore */ }
+    sessions.delete(id);
+  }
+  for (const [id, proc] of Array.from(closingProcs.entries())) {
+    try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+    closingProcs.delete(id);
+  }
 }
 
 function sleep(ms: number): Promise<void> {
