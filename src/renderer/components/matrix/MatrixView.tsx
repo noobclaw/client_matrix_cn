@@ -351,7 +351,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {platformAccounts.map((a) => {
+                {platformAccounts.map((a, idx) => {
                   // 状态小标签(挪到名字后边,表示状态;不放右侧按钮区)。
                   const stChip = a.status === 'idle' ? 'text-green-600 dark:text-green-400 bg-green-500/15'
                     : a.status === 'login_required' ? 'text-amber-600 dark:text-amber-400 bg-amber-500/15'
@@ -375,7 +375,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', onNavigate, onShowIn
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-semibold dark:text-white truncate">{a.nickname || a.displayName}</span>
                           <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${stChip}`}>{STATUS_LABEL[a.status]}</span>
-                          <span className={`shrink-0 max-w-[9rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? 'text-blue-600 dark:text-blue-400 bg-blue-500/15' : 'text-gray-500 bg-gray-500/15'}`}>代理IP:{a.proxy ? (a.proxy.geo || a.proxy.host) : '尚未配置'}</span>
+                          <span className={`shrink-0 max-w-[9rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? 'text-blue-600 dark:text-blue-400 bg-blue-500/15' : (idx === 0 ? 'text-gray-500 bg-gray-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15')}`}>代理IP:{a.proxy ? (a.proxy.geo || a.proxy.host) : (idx === 0 ? '本地IP(默认)' : '尚未配置')}</span>
                         </div>
                         <div className="text-[11px] space-y-0.5" title={a.boundUid ? `uid: ${a.boundUid}` : undefined}>
                           {a.status === 'login_required'
