@@ -94,7 +94,9 @@ function engageHistoryFor(accountId: string) {
 }
 
 // ── 简化版 aiCall(写评论/衍生关键词):POST /api/ai/chat/completions ──
-function makeAiCall(pack: any, authToken: string | undefined, report: (m: string) => void) {
+// onCost:写评论等 AI 调用也是真扣积分(_noobclaw.billableTokens/costUsd),回传给上层累进「本次消耗」,
+//        否则评论的 token 费看不见 → 消耗算少了。
+function makeAiCall(pack: any, authToken: string | undefined, report: (m: string) => void, onCost?: (credits: number, usd: number) => void) {
   return async (promptNameOrRaw: string, promptOrInput: any, rawInput?: string, opts?: any) => {
     const prompt = promptNameOrRaw === '__raw__' ? String(promptOrInput) : String(pack?.prompts?.[promptNameOrRaw] || '');
     const userMessage = promptNameOrRaw === '__raw__'
@@ -115,6 +117,12 @@ function makeAiCall(pack: any, authToken: string | undefined, report: (m: string
       body: JSON.stringify(body),
     });
     const data: any = await res.json().catch(() => ({}));
+    // AI 调用的权威扣费(同视频管线口径):billableTokens=实扣积分,costUsd=权威美元。累进「本次消耗」。
+    try {
+      const aiCredits = Number(data?._noobclaw?.billableTokens) || 0;
+      const aiUsd = Number(data?._noobclaw?.costUsd) || 0;
+      if ((aiCredits > 0 || aiUsd > 0) && onCost) onCost(aiCredits, aiUsd);
+    } catch { /* ignore */ }
     const content = data?.choices?.[0]?.message?.content ?? '';
     if (opts?.expectJson === false) return content;
     try { return JSON.parse(content); } catch { return content; }
@@ -189,7 +197,11 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
     };
 
-    const aiCall = makeAiCall(pack, authToken, log);
+    // 写评论等 AI 调用的扣费也累进「本次消耗」(与动作按次扣费相加,二者是不同的账,不重复)。
+    const aiCall = makeAiCall(pack, authToken, log, (credits: number, usd: number) => {
+      chargedCredits += credits; chargedUsd += usd;
+      try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
+    });
     const browserFn: any = (command: string, params?: any, timeout?: number) => matrixCmd(accountId, command, params, timeout);
     // task-tab 对象:orchestrator 在 _activeTab 上调 browser/navigate/scroll/id。
     // 内核单页,全部路由到本账号的 CDP(之前只返回 {id} 导致 _activeTab.navigate is not a function)。
