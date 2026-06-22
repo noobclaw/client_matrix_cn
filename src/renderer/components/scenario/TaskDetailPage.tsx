@@ -1575,47 +1575,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         )
       )}
 
-      {/* 矩阵号:各账号独立进度。聚合卡在上方(所有账号配额总和),这里逐号展示
-          每个账号自己随机到的配额 + 完成数 + 状态,点一个号可展开它独立的运行明细。
-          非矩阵任务 progress.accounts 为空 → 整块不渲染,零影响。 */}
-      {progress?.accounts && progress.accounts.length > 0 && (
-        <div className="mb-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
-            🧬 {isZh ? `各账号独立进度（${progress.accounts.length} 个,点账号看它单独的运行明细）` : `Per-account progress (${progress.accounts.length})`}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {progress.accounts.map(a => {
-              const ap = a.action_progress || {};
-              const active = acctTab === a.id;
-              const dot = (a.status === 'success' || a.status === 'done') ? 'bg-green-500'
-                : (a.status === 'failed' || a.status === 'error') ? 'bg-red-500'
-                : a.status === 'skipped' ? 'bg-gray-400'
-                : 'bg-blue-500 animate-pulse';
-              return (
-                <button key={a.id} type="button" onClick={() => setAcctTab(active ? null : a.id)}
-                  className={`text-left rounded-lg border px-3 py-2 text-xs transition-colors ${active ? 'border-green-500 bg-green-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50'}`}>
-                  <div className="flex items-center gap-1.5 font-medium dark:text-gray-200">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />{a.name}
-                  </div>
-                  <div className="mt-1 font-mono text-gray-600 dark:text-gray-300">
-                    👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          {acctTab && (() => {
-            const a = progress.accounts!.find(x => x.id === acctTab);
-            if (!a) return null;
-            return (
-              <div className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                <div className="px-3 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">{a.name} · {isZh ? '运行明细' : 'Run detail'}</div>
-                <StepLogBox logs={a.logs} isActive={progress.status === 'running'} renderLogMessage={renderLogMessage} />
-              </div>
-            );
-          })()}
-        </div>
-      )}
+      {/* 矩阵号:各账号独立进度已移到「当前运行明细」上方做成账号 tab(见下方),不再在此单独成块。 */}
 
       {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
            so the "下次运行" stat is meaningless; show only the first five.
@@ -1746,6 +1706,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         const autoUploadLabel = isXhsViral
           ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload to drafts')
           : (isZh ? `🚀 自动发布到${platformLabelForTask}` : `🚀 Auto-post to ${platformLabelForTask}`);
+        // 矩阵号:各账号独立日志在 progress.accounts[].logs(步骤视图 progress.steps 对矩阵任务基本是空的)。
+        // 在「当前运行明细」上方放一排账号 tab,点 tab 切换显示该账号的运行明细;默认选第一个账号。
+        const matrixAccts = progress?.accounts || [];
+        const hasAccts = matrixAccts.length > 0;
+        const selAcct = hasAccts
+          ? (acctTab && matrixAccts.some(a => a.id === acctTab) ? acctTab : matrixAccts[0].id)
+          : null;
         return (
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
@@ -1768,6 +1735,44 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </span>
               )}
             </div>
+            {/* 矩阵号:账号 tab —— 点一个号切换显示它独立的运行明细(各号配额 + 完成数也在 tab 上)。 */}
+            {hasAccts && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {matrixAccts.map(a => {
+                  const ap = a.action_progress || {};
+                  const active = selAcct === a.id;
+                  const dot = (a.status === 'success' || a.status === 'done') ? 'bg-green-500'
+                    : (a.status === 'failed' || a.status === 'error') ? 'bg-red-500'
+                    : a.status === 'skipped' ? 'bg-gray-400'
+                    : 'bg-blue-500 animate-pulse';
+                  return (
+                    <button key={a.id} type="button" onClick={() => setAcctTab(a.id)}
+                      className={`text-left rounded-lg border px-3 py-2 text-xs transition-colors ${active ? 'border-green-500 bg-green-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50'}`}>
+                      <div className="flex items-center gap-1.5 font-medium dark:text-gray-200">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />{a.name}
+                      </div>
+                      <div className="mt-1 font-mono text-gray-600 dark:text-gray-300">
+                        👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {hasAccts ? (
+              // 选中账号的运行明细(矩阵任务真实日志在账号维度;步骤视图对矩阵基本为空)。
+              (() => {
+                const a = matrixAccts.find(x => x.id === selAcct);
+                if (!a) return null;
+                const acctDone = a.status === 'success' || a.status === 'done' || a.status === 'failed' || a.status === 'error' || a.status === 'skipped';
+                return (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 min-h-[60px]">
+                    <StepLogBox logs={a.logs} isActive={progress?.status === 'running' && !acctDone} renderLogMessage={renderLogMessage} />
+                  </div>
+                );
+              })()
+            ) : (
+            <>
             {/* v?.x: 运行明细顶部原有一条醒目「打开输出目录」大按钮,但头部「输出目录:」
                 那行已经带了链接 + 按钮,这里重复 → 按用户反馈移除,避免一页两个同功能入口。 */}
             <div className="space-y-4">
@@ -1855,6 +1860,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           );
         })}
             </div>
+            </>
+            )}
           </>
         );
       })()}
