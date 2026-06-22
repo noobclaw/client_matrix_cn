@@ -2174,6 +2174,10 @@ async function runVideoPipeline(
       ? `🎉 已生成 ${outputPaths.length}/${videoCount} 条（${failCount} 条失败,费用已按 ${videoCount} 条预扣） · 📂 输出目录:${destDir}`
       : `🎉 已生成 ${outputPaths.length} 条 · 📂 输出目录:${destDir}`);
 
+    // 合成步收尾:标 compose=done(否则它一直 running,发布阶段的日志会被渲染端按「第一个 running 步」
+    //   归到合成步里 —— 用户实测发布日志出现在「4.合成视频」就是这个原因)。
+    tracker.done('compose');
+
     // ── Step 5: 发布到各大平台(用户硬约束:未登录跳过、不杀任务) ─────────────
     // 本地 mp4 已经在 outputPaths[0],可以放心调 publish step。哪怕全平台都失败,
     // 用户还有本地文件,任务终态仍是 done(本地任务核心交付物是 mp4)。
