@@ -4025,6 +4025,11 @@ export const HotspotVideoModal: React.FC<{
       : ei.hotspotMaterialSource === 'image' ? 'image'
         : (isZh ? 'douyin' : 'image'),
   );
+  // 画面素材来源平台(抖音/TikTok)+ 用于全网取材的账号(必须该平台已关联账号)。
+  const [materialPlatform, setMaterialPlatform] = useState<'douyin' | 'tiktok'>(
+    (ei as any).hotspotMaterialPlatform === 'tiktok' ? 'tiktok' : (ei as any).hotspotMaterialPlatform === 'douyin' ? 'douyin' : (isZh ? 'douyin' : 'tiktok'),
+  );
+  const [materialAccountId, setMaterialAccountId] = useState<string>((ei as any).hotspotMaterialAccountId || '');
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
   const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-YunjianNeural');
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
@@ -4136,6 +4141,9 @@ export const HotspotVideoModal: React.FC<{
   // 矩阵 + 发布模式下:每个勾选平台是否都已选号(没号的平台算未满足 → 引导建号)。
   const matrixAccountsReady = !matrixMode || outputMode !== 'upload'
     || selectedPlatformIds.every((p) => !!accountByPlatform[p] && accountsFor(p).some((a) => a.id === accountByPlatform[p] && a.status !== 'login_required'));
+  // 取材账号:必须选且【已关联】(matrix 下取材靠该号指纹内核做全网搜索/下载)。
+  const materialAccountReady = !matrixMode
+    || accountsFor(materialPlatform).some((a) => a.id === materialAccountId && a.status !== 'login_required');
 
   // 任务名不再让用户填(每次随机选题,固定名没意义)→ 新建固定「热搜成片」,编辑保留旧名。
   const buildTitle = () => (title.trim() || (isZh ? '热搜成片' : 'Hotspot Video'));
@@ -4144,6 +4152,9 @@ export const HotspotVideoModal: React.FC<{
     engine: 'hotspot',
     hotspotSources: selectedSources,
     hotspotMaterialSource: materialSource,
+    // 画面素材来源平台 + 取材账号(运行时用该账号指纹内核全网搜+下素材)。
+    hotspotMaterialPlatform: materialPlatform,
+    hotspotMaterialAccountId: materialAccountId || undefined,
     referenceImages: [],
     aspect: '9:16',
     publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
@@ -4206,6 +4217,11 @@ export const HotspotVideoModal: React.FC<{
     // 矩阵号:发布按账号走指纹内核 CDP,登录态在跑任务时按号校验 → 不弹扩展登录校验框;
     //   但必须每个勾选平台都选好账号(没号的让用户先去「我的矩阵账号」建)。
     if (matrixMode) {
+      if (!materialAccountReady) {
+        setStep(2);
+        setErr(isZh ? '请为「画面素材来源」选择一个已关联的取材账号' : 'Pick a linked account for footage source');
+        return;
+      }
       if (outputMode === 'upload' && !matrixAccountsReady) {
         setStep(PUBLISH_STEP);
         setErr(isZh ? '请为每个发布平台选择一个账号(没有账号的平台请先去「我的矩阵账号」添加)' : 'Pick an account for each platform first');
@@ -4223,6 +4239,10 @@ export const HotspotVideoModal: React.FC<{
   // 矩阵下还要每个勾选平台都选好号。
   const goNext = () => {
     if (step === 1 && selectedSources.length === 0) { setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
+    if (step === 2 && !materialAccountReady) {
+      setErr(isZh ? '请为「画面素材来源」选择一个已关联的取材账号(未关联的已置灰)' : 'Pick a linked account for footage source');
+      return;
+    }
     if (step === PUBLISH_STEP && outputMode === 'upload' && selectedPlatformIds.length === 0) {
       setErr(isZh ? '已选「上传到各大平台」,请至少勾选一个平台(或回上一步改「仅存本地」)' : 'Pick at least one platform, or switch to "Local only"');
       return;
@@ -4341,6 +4361,32 @@ export const HotspotVideoModal: React.FC<{
                       {isZh && <div className="text-[11px] font-normal text-gray-500 dark:text-gray-400 mt-0.5">{m.deszh}</div>}
                     </button>
                   ))}
+                </div>
+              </Field>
+              {/* 画面素材来源平台 + 取材账号:运行时用该账号的指纹浏览器做【全网搜索 + 下载素材】,绝不发帖/改动账号。 */}
+              <Field label={isZh ? '画面素材来源' : 'Footage source'} hint={isZh ? '用该平台一个已关联账号做全网搜索 + 下载' : 'search & download via a linked account'}>
+                <div className="flex gap-2 mb-2">
+                  {([{ v: 'douyin', zh: '🎵 抖音', en: '🎵 Douyin' }, { v: 'tiktok', zh: '🎬 TikTok', en: '🎬 TikTok' }] as const).map((p) => (
+                    <button key={p.v} type="button" onClick={() => { setMaterialPlatform(p.v); setMaterialAccountId(''); }}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm border ${materialPlatform === p.v ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
+                      {isZh ? p.zh : p.en}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-20 shrink-0 text-sm font-medium dark:text-gray-200">{isZh ? '取材账号' : 'Account'}</div>
+                  <MatrixAccountSelect
+                    isZh={isZh}
+                    accounts={accountsFor(materialPlatform)}
+                    value={materialAccountId}
+                    onChange={setMaterialAccountId}
+                    onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts')); onClose(); }}
+                  />
+                </div>
+                <div className="mt-2 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                  {isZh
+                    ? `ⓘ 仅用该账号在${materialPlatform === 'tiktok' ? 'TikTok' : '抖音'}做全网搜索 + 下载素材,不会用它发帖、不改动你的内容。运行时自动打开它的指纹浏览器去搜。`
+                    : 'ⓘ This account is only used to search & download footage on the platform — never to post or modify your content.'}
                 </div>
               </Field>
               <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">

@@ -787,7 +787,7 @@ async function runVideoPipeline(
           ? Math.max(6, Math.min(15, Math.ceil((input.targetSeconds ?? 60) / 6)))
           : Math.max(10, Math.min(30, Math.ceil((input.targetSeconds ?? 60) / 3)));
         tracker.progress(`🎬 上抖音搜「${hotspotTopic.title}」,下${dyMode === 'video' ? '视频' : '图文'} + 抓标题…`);
-        const dy = await fetchDouyinClips([hotspotTopic.title], want, assetDir, (m) => tracker.progress(m), signal, dyMode);
+        const dy = await fetchDouyinClips([hotspotTopic.title], want, assetDir, (m) => tracker.progress(m), signal, dyMode, (input as any).hotspotMaterialAccountId);
         douyinPrefetch = { mode: dyMode, paths: dy.paths, titles: dy.titles };
         if (dy.titles.length > 0) {
           hotspotMaterial = `抖音上关于「${hotspotTopic.title}」的热门帖子标题(供你了解大家在聊什么、按真实角度写,别照抄、别张冠李戴):\n`
@@ -1601,7 +1601,7 @@ async function runVideoPipeline(
           if (douyinPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 个抖音视频(不重复下载)`);
           dy = { paths: douyinPrefetch.paths, titles: douyinPrefetch.titles };
         } else {
-          dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
+          dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'video', (input as any).hotspotMaterialAccountId);
         }
         if (dy.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
         // 下载的源视频留档到输出目录「素材」子目录(assetDir 是临时目录、结尾会清掉,不留档就丢了)。
@@ -1726,7 +1726,7 @@ async function runVideoPipeline(
           if (douyinPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 张抖音图(不重复下载)`);
           dy = { paths: douyinPrefetch.paths, titles: douyinPrefetch.titles };
         } else {
-          dy = await fetchDouyinClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
+          dy = await fetchDouyinClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image', (input as any).hotspotMaterialAccountId);
         }
         if (dy.paths.length) {
           poolByTerm.set(term, dy.paths);
@@ -1953,7 +1953,7 @@ async function runVideoPipeline(
       const keywords = title ? [title] : []; // 永远只按热搜标题查,不额外出关键词(用户要求)
       const wantClips = Math.max(2, Math.min(5, Math.ceil((input.targetSeconds ?? 60) / 15))); // 最多 5 个,靠切片填时长
       tracker.progress(`🎬 混剪取材:按标题搜视频(最多 ${wantClips} 个,切片填满时长)…`);
-      const dy = await fetchDouyinClips(keywords, wantClips, assetDir, (m) => tracker.progress(m), signal);
+      const dy = await fetchDouyinClips(keywords, wantClips, assetDir, (m) => tracker.progress(m), signal, 'video', (input as any).hotspotMaterialAccountId);
       if (dy.paths.length === 0) {
         tracker.progress(`⚠️ 没取到混剪素材(${dy.diag.reason || '未知'}),退回图片配图`);
         return [];
@@ -2012,7 +2012,7 @@ async function runVideoPipeline(
       const keywords = title ? [title] : []; // 永远只按热搜标题查,不额外出关键词(用户要求)
       const want = Math.max(8, Math.min(40, Math.ceil((input.targetSeconds ?? 60) / 4) + 2));
       tracker.progress(`🖼️ 图文配图:按标题搜图文笔记、下图(目标 ${want} 张)…`);
-      const dy = await fetchDouyinClips(keywords, want, assetDir, (m) => tracker.progress(m), signal, 'image');
+      const dy = await fetchDouyinClips(keywords, want, assetDir, (m) => tracker.progress(m), signal, 'image', (input as any).hotspotMaterialAccountId);
       if (dy.paths.length === 0) {
         tracker.progress(`⚠️ 没取到图文配图(${dy.diag.reason || '未知'}),退回联网配图`);
         return [];

@@ -80,6 +80,10 @@ export interface VideoCreationInput {
   /** engine==='hotspot' 素材来源:'image'(默认,Serper 配图 Ken Burns)|
    *  'douyin'(按标题搜抖音、下无水印视频混剪 + 底部黑条盖原字幕 + 配音)。 */
   hotspotMaterialSource?: 'image' | 'douyin';
+  /** 画面素材来源平台(矩阵号):'douyin' | 'tiktok' —— 用哪个平台做全网取材。 */
+  hotspotMaterialPlatform?: 'douyin' | 'tiktok';
+  /** 取材账号 id(矩阵号):用该账号的指纹内核做全网搜索 + 下载素材(不发帖)。 */
+  hotspotMaterialAccountId?: string;
   /** AI 引擎分辨率档:'480p' | '720p'(默认) | '1080p'(越高越清越贵)。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */

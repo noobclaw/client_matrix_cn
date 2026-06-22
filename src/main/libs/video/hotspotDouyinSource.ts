@@ -49,6 +49,7 @@ export interface DouyinClipsResult {
 async function fetchDouyinClipsViaKernel(
   keywords: string[], wantCount: number, destDir: string,
   onLog: (m: string) => void, signal: AbortSignal | undefined, mode: 'video' | 'image',
+  preferredAccountId?: string,
 ): Promise<DouyinClipsResult> {
   const diag: DouyinClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
   if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
@@ -63,10 +64,16 @@ async function fetchDouyinClipsViaKernel(
     diag.reason = 'no_matrix_douyin_account';
     return { paths: [], titles: [], diag };
   }
+  // 选号顺序:用户在向导里【指定的取材账号】排最前,其余作为登录失效时的兜底;没指定就智能选第一个已关联。
+  let ordered = usable;
+  if (preferredAccountId) {
+    const pref = usable.find((a) => a.id === preferredAccountId);
+    ordered = pref ? [pref, ...usable.filter((a) => a.id !== preferredAccountId)] : usable;
+  }
   // 逐个候选号:起内核 + 验登录,找到第一个真登录的就用它取材。
   let accountId = '';
   let accWasRunning = false;
-  for (const cand of usable) {
+  for (const cand of ordered) {
     if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
     const wasRunning = !!getSession(cand.id);
     try {
@@ -199,8 +206,9 @@ export function fetchDouyinClips(
   onLog: (m: string) => void,
   signal?: AbortSignal,
   mode: 'video' | 'image' = 'video',
+  preferredAccountId?: string,
 ): Promise<DouyinClipsResult> {
-  return runExclusiveDouyin(onLog, () => fetchDouyinClipsImpl(keywords, wantCount, destDir, onLog, signal, mode));
+  return runExclusiveDouyin(onLog, () => fetchDouyinClipsImpl(keywords, wantCount, destDir, onLog, signal, mode, preferredAccountId));
 }
 
 async function fetchDouyinClipsImpl(
@@ -210,16 +218,16 @@ async function fetchDouyinClipsImpl(
   onLog: (m: string) => void,
   signal?: AbortSignal,
   mode: 'video' | 'image' = 'video',
+  preferredAccountId?: string,
 ): Promise<DouyinClipsResult> {
   const diag: DouyinClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
   // 排队等待期间任务可能已被取消 → 直接降级返空,不再驱动浏览器。
   if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
 
-  // 矩阵 edition:没有浏览器插件 —— 取材改走【智能选一个已关联的抖音矩阵账号 + 它的指纹内核 CDP】。
-  // 逻辑同插件版(选一个抖音号→搜→下),只是把「插件登录的抖音」换成「矩阵抖音账号内核」。
+  // 矩阵 edition:没有浏览器插件 —— 取材走【向导里指定的取材账号(没指定则智能选一个已关联抖音号)+ 它的指纹内核 CDP】。
   let MATRIX = false;
   try { MATRIX = require('../../matrixEdition').MATRIX_EDITION === true; } catch { /* 非矩阵构建 */ }
-  if (MATRIX) return fetchDouyinClipsViaKernel(keywords, wantCount, destDir, onLog, signal, mode);
+  if (MATRIX) return fetchDouyinClipsViaKernel(keywords, wantCount, destDir, onLog, signal, mode, preferredAccountId);
 
   // 1. 拉下发脚本(走发布 driver 同款 publish-drivers 热更新;key = 文件名 douyin_search)
   const pack = await fetchPublishDrivers();
