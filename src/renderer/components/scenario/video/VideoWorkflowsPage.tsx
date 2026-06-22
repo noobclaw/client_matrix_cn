@@ -924,7 +924,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
         <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{`${voiceLabel}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : '')}`}</Row>
-        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音/TikTok 混剪 · 配音' : 'Douyin/TikTok remix') : (isZh ? '智能配图(抖音图文/TikTok · Ken Burns)' : 'Smart images (Douyin/TikTok · Ken Burns)')}</Row>
+        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '智能混剪 · 配音' : 'Smart remix') : (isZh ? '智能配图(抖音图文/TikTok · Ken Burns)' : 'Smart images (Douyin/TikTok · Ken Burns)')}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
@@ -1056,7 +1056,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
         <div>🔢 {isZh ? '每次条数' : 'Per run'}：{hotspotCountLabel(input, isZh)}</div>
         <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceLabel}{subTag}</div>
-        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音/TikTok 混剪' : 'Douyin/TikTok remix') : (isZh ? '智能配图(抖音图文/TikTok)' : 'Smart images (Douyin/TikTok)')}</div>
+        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '智能混剪' : 'Smart remix') : (isZh ? '智能配图(抖音图文/TikTok)' : 'Smart images (Douyin/TikTok)')}</div>
         <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
       </>
     );
@@ -4217,7 +4217,7 @@ export const HotspotVideoModal: React.FC<{
                 <div className="flex gap-2">
                   {([
                     { v: 'image', zh: '🖼️ 智能配图', en: '🖼️ Images', deszh: '中文走抖音图文 · 英文走 TikTok · Ken Burns' },
-                    { v: 'douyin', zh: '🎬 抖音/TikTok 混剪', en: '🎬 Douyin / TikTok remix', deszh: '中文搜抖音 · 英文搜 TikTok · 真实视频混剪 + 配音 · 需登录对应平台' },
+                    { v: 'douyin', zh: '🎬 智能混剪', en: '🎬 Smart remix', deszh: '中文搜抖音 · 英文搜 TikTok · 真实视频混剪 + 配音 · 需登录对应平台' },
                   ] as const).map((m) => (
                     <button key={m.v} type="button" onClick={() => setMaterialSource(m.v)}
                       className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left ${materialSource === m.v ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
