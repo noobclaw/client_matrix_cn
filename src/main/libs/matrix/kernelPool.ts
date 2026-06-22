@@ -53,6 +53,8 @@ export interface LaunchKernelOptions {
   proxy?: Proxy;
   headless?: boolean;
   label?: string;                 // 窗口左上角常驻角标文案(一般是账号备注名 + 分组)
+  startUrl?: string;              // 启动即打开的 URL(扫码登录用):内核直接开到平台登录页,
+                                  //   避免「先开新标签页再 navigate」的 target 竞态(导航落到看不见的后台 tab)。
 }
 
 const sessions = new Map<string, KernelSession>();
@@ -112,6 +114,9 @@ function buildKernelArgs(opts: LaunchKernelOptions, debugPort: number): string[]
   }
 
   if (opts.headless) args.push('--headless=new');
+  // 启动 URL 作为最后一个位置参数:内核在首个可见窗口直接打开它(扫码登录页),
+  // 不再依赖启动后再 navigate(那条路有 target 竞态,会把页开到后台 tab)。
+  if (opts.startUrl) args.push(opts.startUrl);
   return args;
 }
 
@@ -330,6 +335,9 @@ function send(s: KernelSession, method: string, params: Record<string, unknown> 
 export async function kernelNavigate(accountId: string, url: string): Promise<void> {
   const s = await getPage(accountId);
   await send(s, 'Page.navigate', { url });
+  // 把当前操作的 page 提到前台:复用已运行内核走 navigate 这条路时,确保用户看到的就是这一页
+  // (而不是停在旧的新标签页)。非关键,失败忽略。
+  try { await send(s, 'Page.bringToFront'); } catch { /* 非关键 */ }
   await sleep(1000);
 }
 
@@ -437,7 +445,10 @@ export async function kernelClearCookies(accountId: string): Promise<void> {
 // 各平台「已登录」的标志性 cookie(命中任一即视为已登录)。2026-06-21 全平台真机 CDP 实测核对:
 //   kuaishou 原 web_st 是错的 → 真实 webday7_st;binance/youtube 原本没有 → 补上。
 const LOGIN_COOKIES: Record<string, string[]> = {
-  douyin: ['sessionid', 'sessionid_ss', 'sid_guard', 'passport_auth_status'],
+  // ⚠️ 只认真正登录态的 session cookie。原来还带 sid_guard / passport_auth_status,但抖音对【未登录
+  // 游客】访问 douyin.com 也会下发这俩 → 一打开登录页就被误判「已关联」(跟小红书 web_session 同款坑)。
+  // sessionid / sessionid_ss 是登录后才有的会话令牌,游客没有。【须真机复核:游客态确认无这两个】。
+  douyin: ['sessionid', 'sessionid_ss'],
   xhs: ['web_session'],
   bilibili: ['SESSDATA', 'DedeUserID'],
   shipinhao: ['sessionid', 'wxuin'],

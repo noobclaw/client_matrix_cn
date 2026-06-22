@@ -185,8 +185,23 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const name = newName.trim(); if (!name) { setNotice('请填账号备注名'); return; }
     const r = await m.createAccount({ platform, displayName: name, group, persona, keywords });
     setShowAdd(false);
-    if (r?.ok) { await reload(); setNotice(thenLogin ? '已建号,正在打开指纹浏览器扫码…成功后状态自动变「已就绪」' : `已建号:${name}`); if (thenLogin && r.account) await m.openLogin({ accountId: r.account.id, kernelPath, loginUrl: LOGIN_URL[platform] || '' }); }
+    if (r?.ok) { await reload(); setNotice(`已建号:${name}`); if (thenLogin && r.account) promptScanLogin(r.account.id, platform, name); }
     else setNotice('创建失败:' + (r?.error || 'IPC 未响应'));
+  };
+  // 扫码登录二次确认:点「好的,我已知晓」才真正打开指纹浏览器导航到平台登录页(避免「一点就开浏览器」的突兀)。
+  const promptScanLogin = (accountId: string, plat: string, displayName: string) => {
+    const platName = PLATFORM_LABEL[plat] || '该平台';
+    setConfirmDlg({
+      title: `扫码登录${platName}`,
+      body: `即将打开指纹浏览器访问${platName},需要您在弹出的浏览器里扫码登录「${displayName}」。扫码成功后状态会自动变「已关联」。`,
+      okText: '好的,我已知晓',
+      onYes: async () => {
+        setConfirmDlg(null);
+        if (!requireKernel()) return;
+        setNotice(`正在为「${displayName}」打开指纹浏览器,扫码关联后状态自动刷新`);
+        await M()?.openLogin({ accountId, kernelPath, loginUrl: LOGIN_URL[plat] || '' });
+      },
+    });
   };
   // 刷新信息:对任意账号拉起内核读 昵称/平台号/头像(已登录但没读过身份的号用这个)。
   const refreshIdentity = async (a: MatrixAccount) => {
@@ -403,7 +418,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <button onClick={() => openProxy(a)} className={`text-xs px-2.5 py-1 rounded-lg text-white ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>配置IP</button>
                       <button onClick={() => openEdit(a)} className={`text-xs px-2.5 py-1 rounded-lg text-white ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>编辑</button>
                       {a.status === 'login_required'
-                        ? <button onClick={() => { if (!requireKernel()) return; setNotice(`正在为「${a.displayName}」打开指纹浏览器,扫码关联后状态自动刷新`); M()?.openLogin({ accountId: a.id, kernelPath, loginUrl: LOGIN_URL[a.platform] || '' }); }} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">扫码关联</button>
+                        ? <button onClick={() => promptScanLogin(a.id, a.platform, a.displayName)} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">扫码关联</button>
                         : (<>
                             {/* 已关联:读真实身份 / 断开(清登录,保留配置) */}
                             <button onClick={() => refreshIdentity(a)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">刷新信息</button>

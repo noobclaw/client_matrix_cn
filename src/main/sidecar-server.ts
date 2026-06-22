@@ -1286,7 +1286,9 @@ const server = http.createServer(async (req, res) => {
                 accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
                 userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
                 label: acc.displayName + (acc.group ? ' · ' + acc.group : ''),
+                startUrl: a?.loginUrl || undefined,   // 新起内核直接开到登录页(避免新标签页竞态)
               });
+              // 内核已在运行(复用)时不会按 startUrl 重开 → 仍 navigate 兜底;新起时这步是冗余的二次确保。
               await kernelNavigate(acc.id, a?.loginUrl || 'about:blank');
               // 后台轮询登录态:扫码成功后自动把状态翻成 idle 并推 matrix:account SSE(最多 ~3min;窗口关了就停)。
               (async () => {
