@@ -1313,6 +1313,10 @@ const server = http.createServer(async (req, res) => {
                   let ok = false;
                   try { ok = await checkKernelLogin(acc.id, acc.platform); } catch { ok = false; }
                   if (ok) {
+                    // 登录刚成功时页面常还停在登录/回跳页 → 先导航到平台主页并稍等,确保在「有本人信息」的页面
+                    // 读身份(否则读太早拿到空 → 这就是之前必须手动点「刷新信息」才出头像的原因)。和 refreshIdentity 一致。
+                    try { if (a?.loginUrl) await kernelNavigate(acc.id, a.loginUrl); } catch { /* ignore */ }
+                    await new Promise((r) => setTimeout(r, 3000));
                     // 读真实身份(昵称 + uid)。
                     let ident: any = {};
                     try {
