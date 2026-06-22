@@ -3521,7 +3521,7 @@ const VideoConfigModal: React.FC<{
                         {accs.length === 0 ? (
                           <button
                             type="button"
-                            onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts')); onClose(); }}
+                            onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: pid } })); onClose(); }}
                             className="flex-1 text-left px-3 py-2 rounded-lg border border-dashed border-rose-400 text-rose-500 text-xs hover:bg-rose-500/5"
                           >
                             {isZh ? '⚠️ 暂无该平台账号 · 点此去「我的矩阵账号」添加 →' : '⚠️ No account · add one in "My Matrix Accounts" →'}
@@ -3840,6 +3840,7 @@ const MatrixAcctRow: React.FC<{ isZh: boolean; a: MatrixAcctLite }> = ({ isZh, a
         : <div className="w-7 h-7 rounded-full bg-violet-500/20 text-violet-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</div>}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 min-w-0">
+          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-500">{MATRIX_PLAT_ZH[a.platform] || a.platform}</span>
           <span className="text-sm font-medium dark:text-gray-200 truncate">{title}</span>
           <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded-full ${linked ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15'}`}>{linked ? (isZh ? '已关联' : 'Linked') : (isZh ? '未关联' : 'Not linked')}</span>
         </div>
@@ -4383,7 +4384,7 @@ export const HotspotVideoModal: React.FC<{
                     accounts={accountsFor(materialPlatform)}
                     value={materialAccountId}
                     onChange={setMaterialAccountId}
-                    onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts')); onClose(); }}
+                    onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: materialPlatform } })); onClose(); }}
                   />
                 </div>
               </Field>
@@ -4571,7 +4572,7 @@ export const HotspotVideoModal: React.FC<{
                               accounts={accs}
                               value={accountByPlatform[pid] || ''}
                               onChange={(id) => setAccountByPlatform((m) => ({ ...m, [pid]: id }))}
-                              onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts')); onClose(); }}
+                              onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: pid } })); onClose(); }}
                             />
                           </div>
                         );
@@ -5149,7 +5150,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                         {accs.length === 0 ? (
                           <button
                             type="button"
-                            onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts')); onClose(); }}
+                            onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: pid } })); onClose(); }}
                             className="flex-1 text-left px-3 py-2 rounded-lg border border-dashed border-fuchsia-400 text-fuchsia-500 text-xs hover:bg-fuchsia-500/5"
                           >
                             {isZh ? '⚠️ 暂无该平台账号 · 点此去「我的矩阵账号」添加 →' : '⚠️ No account · add one in "My Matrix Accounts" →'}

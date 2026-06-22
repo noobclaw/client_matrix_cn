@@ -198,9 +198,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     if (!requireLogin()) return;
     const platName = PLATFORM_LABEL[plat] || '该平台';
     setConfirmDlg({
-      title: `扫码登录${platName}`,
+      title: `扫码关联${platName}`,
       body: `即将打开指纹浏览器访问${platName},需要您在弹出的浏览器里扫码登录${platName}账号。扫码成功后状态会自动变「已关联」。`,
-      okText: '好的,我已知晓',
+      okText: '好的,请打开',
       onYes: async () => {
         setConfirmDlg(null);
         if (!requireKernel()) return;
@@ -641,12 +641,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       {/* 应用内确认弹窗(断开 / 移除)—— 不用 window.confirm(Tauri ACL 拦) */}
       {confirmDlg && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmDlg(null)}>
-          <div className="w-[26rem] max-w-full rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="text-base font-semibold mb-2 dark:text-white">{confirmDlg.title}</div>
-            <div className="text-sm text-gray-600 dark:text-gray-300 mb-5 leading-relaxed">{confirmDlg.body}</div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmDlg(null)} className="px-3.5 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
-              <button onClick={() => confirmDlg.onYes()} className={`px-3.5 py-1.5 text-sm rounded-lg text-white ${confirmDlg.danger ? 'bg-red-500 hover:bg-red-600' : 'bg-orange-500 hover:bg-orange-600'}`}>{confirmDlg.okText || '确定'}</button>
+          <div className="w-[34rem] max-w-full rounded-2xl p-7 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-semibold mb-3 dark:text-white">{confirmDlg.title}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">{confirmDlg.body}</div>
+            <div className="flex justify-end gap-2.5">
+              <button onClick={() => setConfirmDlg(null)} className="px-4 py-2 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
+              <button onClick={() => confirmDlg.onYes()} className={`px-4 py-2 text-sm rounded-lg text-white ${confirmDlg.danger ? 'bg-red-500 hover:bg-red-600' : 'bg-orange-500 hover:bg-orange-600'}`}>{confirmDlg.okText || '确定'}</button>
             </div>
           </div>
         </div>
