@@ -152,17 +152,27 @@ export function markAccountAlive(id: string): void {
 }
 
 /**
- * 角标用:该号代理 IP 展示文案 + 是否与别的号【撞 IP】(含多个号共用本机默认)+ 有无代理。
- * 撞 IP 判定按代理 host 归桶(无代理归 '__local__');同桶 >1 个号 = 撞 IP(风控风险)。
+ * 角标用:该号代理 IP 展示文案 + 是否与别的号【撞 IP】+ 有无代理。
+ * 撞 IP 判定规则(2026-06-23 用户明确):
+ *   · 只在【同一平台】内算(按 platformKey:快手创作端 cp 与主站 www 分开算两个平台);
+ *   · 本机 IP:同平台第一个用本机的号【免提示】,只有第 2 个起还用本机(没配代理)的才标红;
+ *   · 代理 IP:同平台有 ≥2 个号用了【同一个代理 host】才标红(代理本该一号一个,撞了就是配置错)。
  */
 export function proxyBadgeInfo(id: string): { text: string; duplicate: boolean; hasProxy: boolean } {
   const accts = loadAccounts();
   const a = accts.find((x) => x.id === id);
   if (!a) return { text: '本机默认', duplicate: false, hasProxy: false };
-  const bucketOf = (x: MatrixAccount): string => (x.proxy ? x.proxy.host : '__local__');
-  const bucket = bucketOf(a);
-  const count = accts.filter((x) => bucketOf(x) === bucket).length;
-  return { text: a.proxy ? a.proxy.host : '本机默认', duplicate: count > 1, hasProxy: !!a.proxy };
+  const pk = platformKey(a);
+  if (a.proxy) {
+    // 同平台用同一个代理 host 的号数 >1 → 撞 IP(代理应一号一个)。
+    const host = a.proxy.host;
+    const cnt = accts.filter((x) => x.proxy && x.proxy.host === host && platformKey(x) === pk).length;
+    return { text: host, duplicate: cnt > 1, hasProxy: true };
+  }
+  // 本机默认:同平台所有「没配代理」的号,按列表顺序第一个免提示,第 2 个起才标红。
+  const localsOnPlatform = accts.filter((x) => !x.proxy && platformKey(x) === pk);
+  const isFirst = localsOnPlatform.length > 0 && localsOnPlatform[0].id === a.id;
+  return { text: '本机默认', duplicate: localsOnPlatform.length > 1 && !isFirst, hasProxy: false };
 }
 
 export function setAccountProxy(id: string, proxy: Proxy): void {
