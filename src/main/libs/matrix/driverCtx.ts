@@ -103,14 +103,14 @@ function buildMatrixDriverCtx(
     cmd: (command: string, params: any, timeoutMs?: number) =>
       matrixCmd(accountId, command, params, timeoutMs),
     uploadVideo: async (targetSelector: string, _opts?: { mimeType?: string; ttlMs?: number }) => {
-      const ok = await kernelSetFileInput(accountId, targetSelector, [input.videoPath]);
-      return ok ? { ok: true } : { ok: false, reason: 'set_file_input_failed' };
+      const r = await kernelSetFileInput(accountId, targetSelector, [input.videoPath]);
+      return r.ok ? { ok: true } : { ok: false, reason: r.reason || 'set_file_input_failed' };
     },
     // 视频号 wujie open shadow 里的 file input:深遍历(穿 shadowRoot)找到 → CDP objectId 直接灌文件。
     // 比扩展那套「sidecar HTTP + fetch 注入」简单:setFileInputFiles 认 objectId,不在乎元素在不在 shadow 里。
     uploadVideoDeep: async (_opts?: { acceptHint?: string; mimeType?: string; ttlMs?: number }) => {
-      const ok = await kernelSetFileInput(accountId, '', [input.videoPath], { deep: true });
-      return ok ? { ok: true } : { ok: false, reason: 'deep_set_file_input_failed' };
+      const r = await kernelSetFileInput(accountId, '', [input.videoPath], { deep: true });
+      return r.ok ? { ok: true } : { ok: false, reason: r.reason || 'deep_set_file_input_failed' };
     },
     waitForSelector: (selector: string, opts?: { timeoutMs?: number; intervalMs?: number }) =>
       waitForSelector(accountId, selector, opts),

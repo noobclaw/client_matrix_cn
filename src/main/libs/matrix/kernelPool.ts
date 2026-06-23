@@ -518,29 +518,39 @@ export async function kernelWheel(accountId: string, x: number, y: number, delta
 }
 
 /**
- * 原生文件注入 —— 把本地文件灌进 file input(CDP DOM.setFileInputFiles)。健壮版。
+ * 文件注入 —— 把本地视频灌进 file input(CDP DOM.setFileInputFiles)。
  *
- * 旧版只 `document.querySelector(selector)`(顶层 light DOM、取第一个)+ 设完无脑 return true,有三个坑:
- *   ① 命中错的 input:B 站投稿页有 2 个视频 input,querySelector 取第一个常是错的 → 设了没用、B 站没反应;
- *   ② shadow DOM 里的 input 完全找不到:视频号 wujie 微前端表单在 open shadowRoot 里 → querySelector 摸不到;
- *   ③ 假成功:没真挂上也 return true,driver 收到 ok 往下走,误报「视频已上传」。
+ * setFileInputFiles 是标准 CDP 上传原语(Puppeteer/Playwright 同款),抖音/小红书/B站已验证可用。
+ * 唯一被改对的是【成功判据】:CDP 只在把文件真设进一个合法 file input 后才成功 resolve,所以"至少一个
+ * setFileInputFiles 没抛"本身就是成功信号。【不】事后回读 input.files.length —— React/受控组件(推特/
+ * TikTok/快手/头条)的 onChange 会立刻读走文件并清空 input.value → 回读恒 0 → 误报失败(抖音/小红书/B站
+ * 不清空才"碰巧"过)。旧扩展 upload_file_from_url 注入完也不回读,故无此坑。
  *
- * 新版:深遍历 light DOM + 所有 open shadowRoot 收集 <input type=file> → 按 selector 过滤(没 selector/没命中
- * 且 deep 时回退「accept 含 video/mp4 或为空」)→ 给【所有】命中的 input 都 setFileInputFiles(多候选不确定哪个
- * 真,全设最稳)→ 回读 files.length 校验,至少一个真挂上才 return true(不再假成功)。
+ * 深遍历 light DOM + open shadowRoot + 同源 iframe 收集候选 → 按 selector 过滤(没命中且 deep 时回退
+ * accept 含 video/mp4/空)→ 给所有命中的都 setFileInputFiles(多候选不确定哪个真,全设最稳)。
  */
 export async function kernelSetFileInput(
   accountId: string, selector: string, filePaths: string[], opts?: { deep?: boolean },
-): Promise<boolean> {
+): Promise<{ ok: boolean; reason?: string; found: number; attached: number }> {
+  // 0) 本地文件先校验存在(对齐旧 uploadFileToInput 的 fs.existsSync 前置):路径错时给明确
+  //    file_not_found,而不是笼统的 set_file_input_failed —— 否则成片路径/合成失败也只会显示同一个错。
+  for (const fp of filePaths) {
+    if (!fp || !fs.existsSync(fp)) {
+      return { ok: false, reason: 'file_not_found:' + String(fp || '∅').slice(0, 120), found: 0, attached: 0 };
+    }
+  }
   const s = await getPage(accountId);
   const sel = selector || '';
   const deep = !!opts?.deep;
   // 1) 深遍历收集候选 input 到 window.__mtxFI,返回数量。
+  //    ⚠️ 旧版只穿 shadowRoot 漏了同源 iframe;对齐旧客户端 uploadVideoToInputDeep 的三层深遍历,补 iframe.contentDocument。
   const collectExpr = `(function(sel, deep){
     function collect(root, out){
       try { root.querySelectorAll('input[type=file]').forEach(function(el){ out.push(el); }); } catch(e){}
       var nodes=[]; try { nodes = root.querySelectorAll('*'); } catch(e){}
       for (var i=0;i<nodes.length;i++){ var sr=null; try{ sr=nodes[i].shadowRoot; }catch(e){} if(sr) collect(sr,out); }
+      var fr=[]; try { fr = root.querySelectorAll('iframe,frame'); } catch(e){}
+      for (var j=0;j<fr.length;j++){ var idoc=null; try{ idoc=fr[j].contentDocument; }catch(e){} if(idoc) collect(idoc,out); }
     }
     var all=[]; collect(document, all);
     var pick=[];
@@ -552,22 +562,32 @@ export async function kernelSetFileInput(
   })(${JSON.stringify(sel)}, ${deep})`;
   const cnt: any = await send(s, 'Runtime.evaluate', { expression: collectExpr, returnByValue: true });
   const n = Number(cnt?.result?.value || 0);
-  if (!n) return false;
-  // 2) 逐个取 objectId → setFileInputFiles(单个失败继续)。
+  if (!n) return { ok: false, reason: 'no_input_matched(sel=' + (sel || '∅') + ',deep=' + deep + ')', found: 0, attached: 0 };
+  // 2) 逐个取 objectId → setFileInputFiles(单个失败继续,但记录第一条错误便于定位)。
+  //    ⚠️【成功判据 = setFileInputFiles 成功返回】CDP 只在把文件真设进一个合法 file input 后才成功 resolve,
+  //    所以"至少一个 setFileInputFiles 没抛"本身就是成功信号。不能再靠事后回读 input.files.length:
+  //    React/受控组件(推特/TikTok/快手/头条)的 onChange 会立刻读走文件并清空 input.value → 回读恒为 0 →
+  //    对这些平台误报失败(抖音/小红书/B站不清空才"碰巧"过)。旧扩展 upload_file_from_url 注入完不回读,故无此坑。
+  let firstErr = '';
+  let anySet = false;
   for (let i = 0; i < n; i++) {
     try {
       const elRes: any = await send(s, 'Runtime.evaluate', { expression: `window.__mtxFI[${i}]`, returnByValue: false });
       const objectId = elRes?.result?.objectId;
-      if (!objectId) continue;
+      if (!objectId) { if (!firstErr) firstErr = 'no_objectId'; continue; }
       await send(s, 'DOM.setFileInputFiles', { files: filePaths, objectId });
-    } catch { /* 单个失败继续 */ }
+      anySet = true;
+    } catch (e: any) { if (!firstErr) firstErr = String(e?.message || e).slice(0, 120); }
   }
-  // 3) 校验:至少一个 input 真挂上文件才算成功。
+  // 3) 辅助诊断:回读 files.length(仅作 attached 计数,不作成功/失败判据 —— 见上)。
   const verify: any = await send(s, 'Runtime.evaluate', {
     expression: `(function(){ var n=0; (window.__mtxFI||[]).forEach(function(el){ try{ if(el.files&&el.files.length) n++; }catch(e){} }); try{ delete window.__mtxFI; }catch(e){} return n; })()`,
     returnByValue: true,
   });
-  return Number(verify?.result?.value || 0) > 0;
+  const attached = Number(verify?.result?.value || 0);
+  if (anySet) return { ok: true, found: n, attached };
+  // 找到了候选但每个 setFileInputFiles 都抛 → 真失败,带出 CDP 错误便于定位。
+  return { ok: false, reason: 'set_files_all_threw(found=' + n + (firstErr ? ',cdpErr=' + firstErr : '') + ')', found: n, attached: 0 };
 }
 
 // 清空该号浏览器全部 cookie(断开关联用:登出但保留 profile/指纹/配置)。
