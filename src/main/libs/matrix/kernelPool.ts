@@ -100,6 +100,14 @@ function badgeScript(label: string): string {
   return `(function(){var node=null;function m(){try{var root=document.body||document.documentElement;if(!root)return;if(node&&node.isConnected)return;var host=document.createElement('div');host.style.cssText='position:fixed;top:0;left:0;z-index:2147483647;pointer-events:none';var sr=host.attachShadow?host.attachShadow({mode:'closed'}):null;var b=document.createElement('div');b.textContent=${L};b.style.cssText='background:#16a34a;color:#fff;font:bold 13px/1.5 system-ui,sans-serif;padding:3px 12px;border-bottom-right-radius:8px';(sr||host).appendChild(b);root.appendChild(host);node=host;}catch(e){}}m();setInterval(m,2000);})();`;
 }
 
+// 红色「登录已过期」角标(左上角,closed shadow,自愈)—— 跟 badgeScript 同款隐身,只是红底 + 过期文案。
+// 用户要求「角标不横幅」:仍是左上角小标,不是全宽横幅。导航离开当前页后自然消失(只 Runtime.evaluate 当前页,不挂 init 脚本)。
+function expiredBadgeScript(text: string): string {
+  const T = JSON.stringify(text);
+  // top:26px 让它堆在绿色身份角标【下面】,不重叠(绿标高 ~24px);仍是左上角小标,非全宽横幅。
+  return `(function(){var node=null;function m(){try{var root=document.body||document.documentElement;if(!root)return;if(node&&node.isConnected)return;var host=document.createElement('div');host.style.cssText='position:fixed;top:26px;left:0;z-index:2147483647;pointer-events:none';var sr=host.attachShadow?host.attachShadow({mode:'closed'}):null;var b=document.createElement('div');b.textContent=${T};b.style.cssText='background:#dc2626;color:#fff;font:bold 13px/1.5 system-ui,sans-serif;padding:4px 14px;border-bottom-right-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.3)';(sr||host).appendChild(b);root.appendChild(host);node=host;}catch(e){}}m();setInterval(m,2000);})();`;
+}
+
 // 内核缺失的统一错误标记:UI 据此弹「去下载内核」引导,不再回退系统 Chrome。
 export const NO_KERNEL_ERROR = 'NO_KERNEL';
 
@@ -446,6 +454,16 @@ export async function kernelEval(accountId: string, expression: string): Promise
   const s = await getPage(accountId);
   const r = await send(s, 'Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   return r?.result?.value;
+}
+
+/** 把该号窗口的页面提到前台(登录过期提醒:让用户一眼看到要重扫的那个窗口)。非关键,失败忽略。 */
+export async function kernelBringToFront(accountId: string): Promise<void> {
+  try { const s = await getPage(accountId); await send(s, 'Page.bringToFront'); } catch { /* 非关键 */ }
+}
+
+/** 在该号当前页注入红色「登录已过期,请重新扫码」角标(自愈;登录后导航离开会自然消失)。非关键,失败忽略。 */
+export async function kernelShowExpiredBadge(accountId: string, text: string): Promise<void> {
+  try { const s = await getPage(accountId); await send(s, 'Runtime.evaluate', { expression: expiredBadgeScript(text) }); } catch { /* 非关键 */ }
 }
 
 // ── 命令执行器(window.__nbExec)服务端下发 + 注入 ──

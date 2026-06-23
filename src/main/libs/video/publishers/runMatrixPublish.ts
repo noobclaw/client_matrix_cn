@@ -24,6 +24,7 @@ import { VIDEO_PLATFORMS } from './types';
 import type { RunPublishResult } from './runPublish';
 import { getAccount, platformKey, accountBadgeLabel, setAccountStatus } from '../../matrix/accountManager';
 import { launchKernel, kernelNavigate, checkKernelLogin, closeKernel } from '../../matrix/kernelPool';
+import { promptReloginForExpiredAccount } from '../../matrix/reloginPrompt';
 import { runMatrixDriver } from '../../matrix/driverCtx';
 import { PUBLISHER_ANCHOR_URL } from './publisherUtils';
 import { getVideoConfig } from '../videoConfig';
@@ -131,7 +132,10 @@ export async function runMatrixPublishStep(opts: RunMatrixPublishOptions): Promi
         // ⚠️ 翻状态:对齐 engageRunner/taskRunner —— 检到登录失效就把账号标 login_required,
         //   列表立刻显示「需重新扫码」而不是继续假装「已登录」(否则定时发布每次静默跳过、用户无感)。
         setAccountStatus(accountId, 'login_required');
-        opts.onLog?.(`⚠️ ${label} 账号「${acc.displayName}」登录已失效 · 已标记需重新扫码 · 跳过本条(请到「我的矩阵账号」重新登录)`);
+        // 弹该号窗口置顶 + 红色过期角标 + 导航登录页,后台等扫码成功自动翻 idle + 推 SSE 更新列表。
+        //   await 只等到 setup 完(refCount+1,保证下面 finally 的 closeKernel 不会真关掉这个窗),轮询是 detached。
+        try { await promptReloginForExpiredAccount(accountId); } catch { /* 非关键:状态已翻 */ }
+        opts.onLog?.(`⚠️ ${label} 账号「${acc.displayName}」登录已失效 · 已弹窗提示重新扫码 · 跳过本条`);
         result.skippedCount++;
         result.details.push({ platform: id, status: 'skipped', reason: 'not_logged_in' });
         continue;
