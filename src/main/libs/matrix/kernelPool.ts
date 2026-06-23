@@ -705,8 +705,10 @@ export interface KernelIdentity { uid?: string; nickname?: string; displayId?: s
 
 // 各平台「读身份」的页面表达式(在内核页里 eval;async 的靠 awaitPromise 兜)。返回 JSON 字符串。
 const IDENTITY_EXPR: Record<string, string> = {
-  // 抖音:RENDER_DATA(SSR JSON)。nickname/uid/抖音号(unique_id)/头像。
-  douyin: '(function(){try{var el=document.getElementById("RENDER_DATA");var d="";try{d=decodeURIComponent((el&&el.textContent)||"");}catch(e){d=(el&&el.textContent)||"";}var n=d.match(/"nickname":"([^"]{1,40})"/),u=d.match(/"uid":"(\\d{6,25})"/),s=d.match(/"unique_id":"([^"]{1,40})"/),s2=d.match(/"short_id":"(\\d{3,40})"/),a=d.match(/"avatar_thumb":\\{"uri":"[^"]*","url_list":\\["([^"]+)"/)||d.match(/"avatarUrl":"([^"]+)"/);var did=(s&&s[1])||(s2&&s2[1])||null;return JSON.stringify({nickname:n&&n[1],uid:u&&u[1],displayId:did,avatar:a&&(a[1]||"").replace(/\\\\u002F/g,"/")});}catch(e){return "{}";}})()',
+  // 抖音:RENDER_DATA(SSR JSON)。nickname/uid/抖音号/头像。本人块可能是【驼峰】命名(头像兜底命中 avatarUrl 即印证),
+  //   所以抖音号同时认 unique_id/short_id(蛇形)与 uniqueId/shortId(驼峰)、short_id 兼容带引号或纯数字;
+  //   且 displayId 只在【本人昵称附近 ±1500 的块】里找(不全局乱抓推荐流里别人的号)。抓不到时回传 _dbg 本人块片段供定位。
+  douyin: '(function(){try{var el=document.getElementById("RENDER_DATA");var d="";try{d=decodeURIComponent((el&&el.textContent)||"");}catch(e){d=(el&&el.textContent)||"";}var n=d.match(/"nickname":"([^"]{1,40})"/),u=d.match(/"uid":"(\\d{6,25})"/),a=d.match(/"avatar_thumb":\\{"uri":"[^"]*","url_list":\\["([^"]+)"/)||d.match(/"avatarUrl":"([^"]+)"/);var ni=n?d.indexOf(n[0]):-1;var blk=ni>=0?d.slice(Math.max(0,ni-1500),ni+1500):d;var s=blk.match(/"unique_id":"([^"]{1,40})"/)||blk.match(/"uniqueId":"([^"]{1,40})"/),s2=blk.match(/"short_id":"?(\\d{3,40})"?/)||blk.match(/"shortId":"?(\\d{3,40})"?/);var did=(s&&s[1])||(s2&&s2[1])||null;var dbg=did?null:blk.slice(0,600);return JSON.stringify({nickname:n&&n[1],uid:u&&u[1],displayId:did,avatar:a&&(a[1]||"").replace(/\\\\u002F/g,"/"),_dbg:dbg});}catch(e){return "{}";}})()',
   // 小红书:/me 接口(edith 子域,带 cred 可跨子域)。nickname/小红书号(red_id)/uid(user_id)/头像。
   xhs: '(async function(){try{var r=await fetch("https://edith.xiaohongshu.com/api/sns/web/v2/user/me",{credentials:"include"});var j=await r.json();var d=(j&&j.data)||{};if(d.guest)return "{}";return JSON.stringify({nickname:d.nickname,displayId:d.red_id,uid:d.user_id,avatar:d.images||d.imageb});}catch(e){return "{}";}})()',
   // B站:nav 接口最干净。uname/mid/face。
@@ -803,7 +805,29 @@ export async function kernelReadIdentity(accountId: string, platform: string): P
       } catch { /* 读不到导航/导航失败 → 按当前页读,不阻塞 */ }
     }
     if (expr) {
-      try { const o = JSON.parse((await kernelEval(accountId, expr)) || '{}'); if (o && typeof o === 'object') { out.uid = o.uid || undefined; out.nickname = o.nickname || undefined; out.displayId = o.displayId || undefined; out.avatar = o.avatar || undefined; } } catch { /* ignore */ }
+      // ⚠️ 单次读在【登录刚成功】时常拿空:扫码连接首读时,抖音/小红书/B站等的 SSR(RENDER_DATA)/CSR 还没把
+      //   本人信息渲染出来 → 读到空,要等用户手动「刷新信息」才出。改成轮询到读出再停(最多 ~12s):已经在上面
+      //   selfUrl/navHint 分支轮询拿到的平台(快手/TikTok)这里第一次就 break、不增耗时;抖音等给它时间等渲染。
+      let lastDbg: string | undefined;
+      for (let i = 0; i < 8; i++) {
+        try {
+          const o = JSON.parse((await kernelEval(accountId, expr)) || '{}');
+          if (o && typeof o === 'object') {
+            out.uid = o.uid || out.uid; out.nickname = o.nickname || out.nickname;
+            out.displayId = o.displayId || out.displayId; out.avatar = o.avatar || out.avatar;
+            if (o._dbg) lastDbg = String(o._dbg);
+          }
+        } catch { /* 还没渲染好,继续等 */ }
+        if (out.nickname || out.avatar || out.displayId) {
+          // 抖音号可能比昵称/头像晚渲染:缺号时再多等几轮(最多 ~6s);其它平台一拿到就停。
+          if (!(platform === 'douyin' && !out.displayId && i < 4)) break;
+        }
+        await sleep(1500);
+      }
+      // 抖音抓到了昵称却没抓到抖音号 → 把本人块片段记一条,便于按真实键名精修(不写进身份)。
+      if (platform === 'douyin' && out.nickname && !out.displayId && lastDbg) {
+        coworkLog('INFO', 'matrix-identity', 'douyin displayId miss', { snippet: lastDbg.slice(0, 600) });
+      }
     }
     // uid 兜底:用 cookie 里的 uid(getAllCookies 跨域)。
     if (!out.uid && cookieUid) out.uid = cookieUid;
