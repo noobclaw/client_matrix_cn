@@ -430,7 +430,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   return (
                   <div key={a.id} className={`relative rounded-xl border p-4 flex flex-col gap-2 transition-colors bg-white dark:bg-gray-900 ${(a.status === 'running' || a.status === 'idle') ? 'border-green-500' : 'border-gray-200 dark:border-gray-700'}`}>
                     {/* 左上角状态实心角标(更显眼:已连接绿底白字 / 尚未连接黄底白字) */}
-                    <span className={`absolute top-0 left-0 px-2.5 py-0.5 text-[11px] font-semibold text-white rounded-tl-xl rounded-br-lg ${stSolid}`}>{STATUS_LABEL[a.status]}</span>
+                    <span className={`absolute -top-px -left-px px-2.5 py-0.5 text-[11px] font-semibold text-white rounded-tl-xl rounded-br-lg ${stSolid}`}>{STATUS_LABEL[a.status]}</span>
                     {/* 右上角移除 ✕ */}
                     <button onClick={() => deleteAccount(a)} title="移除该账号(彻底删除配置与 profile)" className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-red-500/90 transition-colors text-sm leading-none">✕</button>
                     <div className="flex items-center gap-2.5 min-w-0 pr-6 mt-3">
