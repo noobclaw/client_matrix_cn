@@ -130,6 +130,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 代理弹窗
   const [proxyFor, setProxyFor] = useState<string | null>(null);
   const [proxyForm, setProxyForm] = useState({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' });
+  // 配代理校验:状态行 + 校验中 + 「仍然保存」暂存动作(撞IP/不通时拦,点仍然保存才跳过)。
+  const [proxyMsg, setProxyMsg] = useState<{ kind: 'checking' | 'ok' | 'warn' | 'err'; text: string } | null>(null);
+  const [proxyBusy, setProxyBusy] = useState(false);
+  const [pendingProxySave, setPendingProxySave] = useState<(() => Promise<void>) | null>(null);
 
   // 任务编辑(用 MatrixTaskWizard,样式照搬老客户端 DouyinConfigWizard)
   const [taskEditId, setTaskEditId] = useState<string | null>(null);
@@ -193,6 +197,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     setNewGroup(def.name); setNewPersona(def.persona); setNewKeywords(def.keywords.join(' '));
     // 新号从第 1 步开始;代理表单清空(第 2 步填,不填则共用本机 IP)。
     setAddStep(1); setProxyForm({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' });
+    setProxyMsg(null); setPendingProxySave(null); setProxyBusy(false);
     setNotice(''); setShowAdd(true);
   };
   // 选赛道 → 关键词 + 人设自动带出(可再改);选「自定义」(空)则保留当前内容让用户自己填。
@@ -209,17 +214,25 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     if (!persona) { setNotice('请填写人设(自动评论时按这个口吻写)'); return; } // 人设必填
     if (editId) { await m.updateAccountMeta({ id: editId, displayName: newName.trim() || undefined, group, persona, keywords }); setShowAdd(false); await reload(); setNotice('已更新'); return; }
     const name = newName.trim(); if (!name) { setNotice('请填账号备注名'); return; }
-    const r = await m.createAccount({ platform, displayName: name, group, persona, keywords, loginScope: platform === 'kuaishou' ? newScope : undefined });
-    // 第 2 步配了代理就一起绑到新号上(没配则该号共用本机 IP,有同 IP 风控风险——已在第 2 步提示)。
-    if (r?.ok && r.account) {
-      const host = proxyForm.host.trim(); const port = Number(proxyForm.port);
-      if (host && port > 0) {
-        try { await m.setAccountProxy({ id: r.account.id, proxy: { protocol: proxyForm.protocol, host, port, username: proxyForm.username.trim() || undefined, password: proxyForm.password.trim() || undefined, geo: proxyForm.geo.trim() || undefined } }); } catch { /* 代理存失败不挡建号 */ }
+    // 建号 +(可选)绑代理,抽成闭包:代理校验通过/跳过后才真正执行。
+    const doCreate = async (proxyOut: any | null): Promise<void> => {
+      const r = await m.createAccount({ platform, displayName: name, group, persona, keywords, loginScope: platform === 'kuaishou' ? newScope : undefined });
+      if (r?.ok && r.account && proxyOut) {
+        try { await m.setAccountProxy({ id: r.account.id, proxy: proxyOut }); } catch { /* 代理存失败不挡建号 */ }
       }
+      setShowAdd(false); setProxyMsg(null);
+      if (r?.ok) { await reload(); setNotice(`已建号:${name}`); if (thenLogin && r.account) promptScanLogin(r.account.id, platform, name, platform === 'kuaishou' ? newScope : undefined); }
+      else setNotice('创建失败:' + (r?.error || 'IPC 未响应'));
+    };
+    // 第 2 步配了代理 → 先校验(撞IP/连通),有问题给「仍然保存」;没配代理(走本机)直接建。
+    const host = proxyForm.host.trim(); const port = Number(proxyForm.port);
+    if (host) {
+      if (!Number.isInteger(port) || port <= 0) { setProxyMsg({ kind: 'err', text: '请填写正确的代理 host 和 port' }); return; }
+      const proxy = { protocol: proxyForm.protocol, host, port, username: proxyForm.username.trim() || undefined, password: proxyForm.password.trim() || undefined, geo: proxyForm.geo.trim() || undefined };
+      await guardProxyThen(proxy, undefined, platform, platform === 'kuaishou' ? newScope : undefined, (p) => doCreate(p));
+      return;
     }
-    setShowAdd(false);
-    if (r?.ok) { await reload(); setNotice(`已建号:${name}`); if (thenLogin && r.account) promptScanLogin(r.account.id, platform, name, platform === 'kuaishou' ? newScope : undefined); }
-    else setNotice('创建失败:' + (r?.error || 'IPC 未响应'));
+    await doCreate(null);
   };
   // 扫码登录二次确认:点「好的,我已知晓」才真正打开指纹浏览器导航到平台登录页(避免「一点就开浏览器」的突兀)。
   const promptScanLogin = (accountId: string, plat: string, displayName: string, loginScope?: string) => {
@@ -280,12 +293,40 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       },
     });
   };
-  const openProxy = (a: MatrixAccount) => { if (!requireLogin()) return; setProxyForm({ protocol: a.proxy?.protocol || 'socks5', host: a.proxy?.host || '', port: a.proxy?.port ? String(a.proxy.port) : '', username: a.proxy?.username || '', password: a.proxy?.password || '', geo: a.proxy?.geo || '' }); setProxyFor(a.id); };
-  const saveProxy = async () => {
+  const openProxy = (a: MatrixAccount) => { if (!requireLogin()) return; setProxyForm({ protocol: a.proxy?.protocol || 'socks5', host: a.proxy?.host || '', port: a.proxy?.port ? String(a.proxy.port) : '', username: a.proxy?.username || '', password: a.proxy?.password || '', geo: a.proxy?.geo || '' }); setProxyMsg(null); setPendingProxySave(null); setProxyBusy(false); setProxyFor(a.id); };
+
+  // 从表单组装 proxy;host/port 不合法 → 设错误状态行,返回 null。
+  const buildProxyFromForm = (): any | null => {
     const host = proxyForm.host.trim(); const port = Number(proxyForm.port);
-    if (!host || !Number.isInteger(port) || port <= 0) { setNotice('请填写正确的代理 host 和 port'); return; }
-    await M()?.setAccountProxy({ id: proxyFor, proxy: { protocol: proxyForm.protocol, host, port, username: proxyForm.username.trim() || undefined, password: proxyForm.password.trim() || undefined, geo: proxyForm.geo.trim() || undefined } });
-    setProxyFor(null); await reload(); setNotice('已绑定代理 IP');
+    if (!host || !Number.isInteger(port) || port <= 0) { setProxyMsg({ kind: 'err', text: '请填写正确的代理 host 和 port' }); return null; }
+    return { protocol: proxyForm.protocol, host, port, username: proxyForm.username.trim() || undefined, password: proxyForm.password.trim() || undefined, geo: proxyForm.geo.trim() || undefined };
+  };
+
+  // 配代理通用校验:① 连通性(probeProxy)② 同平台撞 IP。有问题 → 状态行 + 暂存「仍然保存」动作;通过 → 直接 save(带 health=ok)。
+  const guardProxyThen = async (proxy: any, accountId: string | undefined, plat: string, scope: string | undefined, save: (proxyOut: any) => Promise<void>): Promise<void> => {
+    setProxyBusy(true); setProxyMsg({ kind: 'checking', text: '⏳ 正在校验代理连通性…' }); setPendingProxySave(null);
+    let r: any = null;
+    try { r = await M()?.validateProxy({ accountId, platform: plat, loginScope: scope, proxy }); } catch { r = null; }
+    setProxyBusy(false);
+    const issues: string[] = [];
+    if (r?.duplicateName) issues.push(`⚠️ 该代理IP已被本平台「${r.duplicateName}」使用,多号同 IP 有风控风险`);
+    if (!r?.reachable) issues.push(`❌ 代理IP无法连接(${r?.error || '超时/不通'}),请检查协议/host/端口/账密,或代理是否可用`);
+    if (issues.length) {
+      setProxyMsg({ kind: 'warn', text: issues.join('\n') });
+      setPendingProxySave(() => async () => { setPendingProxySave(null); setProxyMsg(null); await save(proxy); }); // 跳过校验保存(不带 health,待下次探测)
+      return;
+    }
+    setProxyMsg({ kind: 'ok', text: '✅ 代理IP正常工作' });
+    await save({ ...proxy, health: 'ok' });
+  };
+
+  const saveProxy = async () => {
+    const proxy = buildProxyFromForm(); if (!proxy) return;
+    const acc = accounts.find((x) => x.id === proxyFor);
+    await guardProxyThen(proxy, proxyFor || undefined, acc?.platform || '', acc?.loginScope, async (p) => {
+      await M()?.setAccountProxy({ id: proxyFor, proxy: p });
+      setProxyFor(null); setProxyMsg(null); await reload(); setNotice('已绑定代理 IP');
+    });
   };
 
   // ── 任务 ──
@@ -778,10 +819,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder="归属地标注(可选,仅显示用)" className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-4" />
             </>)}
 
+            {proxyMsg && showProxy && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}
             <div className="flex justify-end gap-2">
               {twoStep && addStep === 2
                 ? <button onClick={() => setAddStep(1)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">← 上一步</button>
                 : <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>}
+              {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">仍然保存</button>)}
               {editId
                 ? <button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">保存</button>
                 : (twoStep && addStep === 1)
@@ -849,9 +892,11 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder="密码(可选)" className="flex-1 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
             </div>
             <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder="归属地标注(可选,仅显示用)" className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3" />
+            {proxyMsg && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}
             <div className="flex justify-end gap-2">
-              <button onClick={() => setProxyFor(null)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
-              <button onClick={saveProxy} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">保存</button>
+              <button onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
+              {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">仍然保存</button>)}
+              <button onClick={saveProxy} disabled={proxyBusy} className={`px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white ${proxyBusy ? 'opacity-60 cursor-wait' : ''}`}>{proxyBusy ? '校验中…' : '校验并保存'}</button>
             </div>
           </div>
         </div>

@@ -1288,6 +1288,22 @@ const server = http.createServer(async (req, res) => {
             removeAccount(args[0]?.id);
             return writeJSON(res, 200, { ok: true });
           }
+          case 'matrix:validateProxy': {
+            // 配代理时校验:① 连通性(probeProxy)② 同平台撞 IP(platformKey 同 host 的别的号,创作端/主站分开)。
+            try {
+              const a = args[0] as any;
+              const proxy = a?.proxy;
+              if (!proxy || !proxy.host) return writeJSON(res, 200, { ok: true, reachable: false, error: 'no_proxy' });
+              const { listAccounts, platformKey } = await import('./libs/matrix/accountManager');
+              const { probeProxy } = await import('./libs/matrix/proxyBridge');
+              const pk = platformKey({ platform: a?.platform, loginScope: a?.loginScope });
+              const dup = listAccounts().find((x: any) => x.id !== a?.accountId && x.proxy && x.proxy.host === proxy.host && platformKey(x) === pk);
+              const reachable = await probeProxy(proxy).catch(() => false);
+              return writeJSON(res, 200, { ok: true, reachable, duplicateName: dup ? (dup.displayName || dup.nickname || dup.id) : undefined });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, reachable: false, error: e?.message || String(e) });
+            }
+          }
           case 'matrix:openLogin': {
             // 起该号的指纹内核并导航到平台登录页,供用户扫码;不关窗,登完用户自己确认。
             try {

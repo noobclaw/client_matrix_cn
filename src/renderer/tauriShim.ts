@@ -499,6 +499,7 @@ export function createTauriElectronShim(): typeof window.electron {
       listAccounts: () => ipcInvoke('matrix:listAccounts').then((r: any) => r ?? { ok: false }),
       createAccount: (args: unknown) => ipcInvoke('matrix:createAccount', args).then((r: any) => r ?? { ok: false }),
       setAccountProxy: (args: unknown) => ipcInvoke('matrix:setAccountProxy', args).then((r: any) => r ?? { ok: false }),
+      validateProxy: (args: unknown) => ipcInvoke('matrix:validateProxy', args).then((r: any) => r ?? { ok: false, reachable: false }),
       setAccountStatus: (args: unknown) => ipcInvoke('matrix:setAccountStatus', args).then((r: any) => r ?? { ok: false }),
       setAccountKeywords: (args: unknown) => ipcInvoke('matrix:setAccountKeywords', args).then((r: any) => r ?? { ok: false }),
       removeAccount: (args: unknown) => ipcInvoke('matrix:removeAccount', args).then((r: any) => r ?? { ok: false }),
