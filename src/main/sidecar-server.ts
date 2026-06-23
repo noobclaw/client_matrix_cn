@@ -1335,6 +1335,7 @@ const server = http.createServer(async (req, res) => {
                     }
                     setStat(acc.id, 'idle');
                     try { setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
+                    try { const { probeAndSaveHealth } = await import('./libs/matrix/proxyBridge'); await probeAndSaveHealth(acc); } catch { /* 代理探测失败不影响登录 */ }
                     broadcastSSE('matrix:account', { id: acc.id, status: 'idle', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
                     break;
                   }
@@ -1359,6 +1360,7 @@ const server = http.createServer(async (req, res) => {
               if (loggedIn) {
                 setAccountStatus(acc.id, 'idle');
                 try { ident = await kernelReadIdentity(acc.id, pk); setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
+                try { const { probeAndSaveHealth } = await import('./libs/matrix/proxyBridge'); await probeAndSaveHealth(acc); } catch { /* 代理探测失败不影响 */ }
                 broadcastSSE('matrix:account', { id: acc.id, status: 'idle', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
               }
               return writeJSON(res, 200, { ok: true, loggedIn, nickname: ident.nickname });
@@ -1403,6 +1405,7 @@ const server = http.createServer(async (req, res) => {
                 } else {
                   setAccountStatus(acc.id, 'login_required');
                 }
+                if (loggedIn) { try { const { probeAndSaveHealth } = await import('./libs/matrix/proxyBridge'); await probeAndSaveHealth(acc); } catch { /* ignore */ } }
                 broadcastSSE('matrix:account', { id: acc.id, status: loggedIn ? 'idle' : 'login_required', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
                 return writeJSON(res, 200, { ok: true, loggedIn, nickname: ident.nickname, displayId: ident.displayId });
               } finally {

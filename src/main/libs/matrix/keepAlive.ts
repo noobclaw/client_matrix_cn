@@ -84,6 +84,7 @@ async function keepAliveOne(accountId: string): Promise<void> {
     try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = true; } // cookie 读失败不误杀(不标过期)
     if (ok) {
       markAccountAlive(acc.id);
+      try { const { probeAndSaveHealth } = await import('./proxyBridge'); await probeAndSaveHealth(acc); } catch { /* 代理探测失败不影响保活 */ }
     } else {
       setAccountStatus(acc.id, 'login_required');
       emitAccount({ id: acc.id, status: 'login_required' }); // 静默标记;弹窗留给下次真发布

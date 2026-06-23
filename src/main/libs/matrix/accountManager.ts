@@ -182,6 +182,15 @@ export function setAccountProxy(id: string, proxy: Proxy): void {
   persist();
 }
 
+/** 写入代理连通性探测结果(连接/刷新/保活时探一次)。卡片「代理IP」chip 据此上色:ok=绿、dead=红。 */
+export function setProxyHealth(id: string, health: 'ok' | 'leaking' | 'banned' | 'dead'): void {
+  const a = getAccount(id);
+  if (!a || !a.proxy) return;
+  if (a.proxy.health === health) return;  // 没变化不写盘
+  a.proxy.health = health;
+  persist();
+}
+
 export function setAccountKeywords(id: string, keywords: string[], track?: string): void {
   const a = getAccount(id);
   if (!a) return;

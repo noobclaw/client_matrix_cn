@@ -55,6 +55,15 @@ export async function probeProxy(proxy: Proxy, timeoutMs = 6000): Promise<boolea
   } catch { return false; }
 }
 
+/** 探测该账号代理并把结果写进 proxy.health(无代理跳过返回 null)。供连接/刷新/保活复用。 */
+export async function probeAndSaveHealth(account: { id: string; proxy?: Proxy }): Promise<'ok' | 'dead' | null> {
+  if (!account.proxy) return null;
+  let ok = false;
+  try { ok = await probeProxy(account.proxy); } catch { ok = false; }
+  try { const { setProxyHealth } = require('./accountManager'); setProxyHealth(account.id, ok ? 'ok' : 'dead'); } catch { /* ignore */ }
+  return ok ? 'ok' : 'dead';
+}
+
 // HTTP/HTTPS 代理:发 CONNECT 隧道请求,回 200 即能通。
 function probeHttpConnect(proxy: Proxy, host: string, port: number, timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
