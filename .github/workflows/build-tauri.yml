@@ -191,7 +191,7 @@ jobs:
           echo "$APPLE_CERT_BASE64" | base64 --decode > /tmp/cert.cer
           echo "$CSC_KEY" > /tmp/key.pem
           openssl x509 -inform DER -in /tmp/cert.cer -out /tmp/cert.pem
-          openssl pkcs12 -export -legacy -macalg sha1 -out /tmp/cert.p12 -inkey /tmp/key.pem -in /tmp/cert.pem -passout pass:"$CSC_KEY_PASSWORD"
+          openssl pkcs12 -export -macalg sha1 -out /tmp/cert.p12 -inkey /tmp/key.pem -in /tmp/cert.pem -passout pass:"$CSC_KEY_PASSWORD"
           security create-keychain -p actions build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p actions build.keychain
