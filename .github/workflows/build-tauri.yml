@@ -191,7 +191,16 @@ jobs:
           echo "$APPLE_CERT_BASE64" | base64 --decode > /tmp/cert.cer
           echo "$CSC_KEY" > /tmp/key.pem
           openssl x509 -inform DER -in /tmp/cert.cer -out /tmp/cert.pem
-          openssl pkcs12 -export -macalg sha1 -out /tmp/cert.p12 -inkey /tmp/key.pem -in /tmp/cert.pem -passout pass:"$CSC_KEY_PASSWORD"
+          # Build a legacy-format PKCS#12 that macOS `security import` can read. The runner's system
+          # openssl is inconsistent across macos-latest images (LibreSSL vs OpenSSL3) and its modern
+          # default (AES enc / SHA-256 MAC) makes `security import` fail with "MAC verification failed"
+          # or "Unknown format in import". Use Homebrew openssl@3 + -legacy (classic RC2/3DES/SHA1)
+          # for a deterministic, importable p12 regardless of which system openssl the runner ships.
+          OPENSSL3="$(brew --prefix openssl@3 2>/dev/null)/bin/openssl"
+          [ -x "$OPENSSL3" ] || OPENSSL3="$(brew --prefix openssl 2>/dev/null)/bin/openssl"
+          [ -x "$OPENSSL3" ] || OPENSSL3="openssl"
+          echo "pkcs12 export via: $OPENSSL3 ($("$OPENSSL3" version 2>/dev/null))"
+          "$OPENSSL3" pkcs12 -export -legacy -macalg sha1 -out /tmp/cert.p12 -inkey /tmp/key.pem -in /tmp/cert.pem -passout pass:"$CSC_KEY_PASSWORD"
           security create-keychain -p actions build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p actions build.keychain
