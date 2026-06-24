@@ -667,15 +667,15 @@ export async function kernelSetFileInput(
 }
 
 /**
- * 文件注入(页面世界 DataTransfer)—— 照旧 client 的 upload_file_from_url / uploadVideoToInputDeep:
- *   sidecar 把视频注册成本地 http URL → 页面里 fetch 拿 blob → new File → DataTransfer → input.files →
- *   派 change/input 事件。这是【真人选文件】的样子。
+ * 文件注入(页面世界 DataTransfer)—— 把视频字节构造成真 File 灌进 file input,再派 change/input 事件,
+ *   = 模拟【真人选文件】。这是 TikTok 创作端反爬 SDK(webmssdk)认的方式;CDP DOM.setFileInputFiles 会被它
+ *   识别/拒绝 → 上传到一半「task not exist」崩成「出错了请重试」。
  *
- * 为什么需要它(2026-06-24):矩阵版 uploadVideo 原本走 CDP DOM.setFileInputFiles(省事),但 TikTok 创作端的
- *   反爬 SDK(webmssdk)能识别 / 拒绝 CDP 注入 → 上传到一半「task not exist」崩成「出错了请重试」(手动上传与
- *   旧 client 扩展注入都正常,正说明问题在 CDP 注入这一步)。这条还原旧 client 的页面世界注入,TikTok 认。
- *   字节走本地 sidecar HTTP(不把几十 MB base64 塞进 CDP 通道);fetch 本地 URL 可能被页面 CSP(connect-src)
- *   拦 → 先 Page.setBypassCSP 豁免。三层深遍历(顶层 + 同源 iframe + open shadowRoot)定位 input。
+ * 字节怎么进页面(2026-06-24 改):**base64 经 CDP 直接灌**,不走网络。
+ *   原来走本地 sidecar http URL + 页面 fetch,但 TikTok Studio 是 https → 页面 fetch http://127.0.0.1 被挡
+ *   (混合内容/代理/CSP)→ 实测「inject_Failed to fetch」→ 回落 CDP → 还是被 TikTok 拒。改成把文件读成 base64、
+ *   用 Runtime.callFunctionOn 当【参数】传进页面(不进表达式源码、不走网络)→ 页面里 atob 解码成 File → DataTransfer。
+ *   彻底绕开 fetch 的所有坑。大文件(>80MB)base64 太大伤 CDP 通道 → 放弃这条让上层回落。
  */
 export async function kernelSetFileInputViaDataTransfer(
   accountId: string,
@@ -686,16 +686,16 @@ export async function kernelSetFileInputViaDataTransfer(
   const fsMod = require('fs');
   if (!fsMod.existsSync(filePath)) return { ok: false, reason: 'file_not_found' };
   const s = await getPage(accountId);
-  const { registerFile, buildUrl, unregister } = require('../localFileServer');
   const pathMod = require('path');
   const fileName = pathMod.basename(filePath);
   const mime = opts?.mimeType || 'video/mp4';
-  const ttl = opts?.ttlMs || 10 * 60 * 1000;
-  const token = registerFile(filePath, { mimeType: mime, fileName, ttlMs: ttl });
-  // sidecar 端口:与 sidecar-server 同一取法(首个纯数字 argv,缺省 18801)。同进程,argv 一致。
-  const port = parseInt(process.argv.slice(2).find((a: string) => /^\d+$/.test(a)) || '18801', 10);
-  const fileUrl = buildUrl(token, port);
-  // 三层深遍历底座(对齐旧 client uploadVideoToInputDeep 的 nbDeepAll)。
+  let b64: string;
+  try {
+    const buf: Buffer = fsMod.readFileSync(filePath);
+    if (buf.length > 80 * 1024 * 1024) return { ok: false, reason: 'file_too_large_for_b64(' + buf.length + ')' };
+    b64 = buf.toString('base64');
+  } catch (e: any) { return { ok: false, reason: 'read_failed:' + String(e?.message || e).slice(0, 60) }; }
+  // 三层深遍历底座(顶层 + 同源 iframe + open shadowRoot)定位 file input。
   const DEEP = 'function nbDeepAll(sel){var out=[];function walk(root,d){if(!root||d>6)return;'
     + 'try{var m=root.querySelectorAll(sel);for(var i=0;i<m.length;i++)out.push(m[i]);}catch(e){}'
     + 'var all=[];try{all=root.querySelectorAll("*");}catch(e){}'
@@ -703,32 +703,38 @@ export async function kernelSetFileInputViaDataTransfer(
     + 'var fr=[];try{fr=root.querySelectorAll("iframe,frame");}catch(e){}'
     + 'for(var j=0;j<fr.length;j++){var idoc=null;try{idoc=fr[j].contentDocument;}catch(e){}if(idoc)walk(idoc,d+1);}}'
     + 'walk(document,0);return out;}';
-  const expr = '(async function(){' + DEEP
+  const findExpr = '(function(){' + DEEP
     + 'var ins=nbDeepAll(\'input[type="file"]\');var input=null;'
     + 'for(var i=0;i<ins.length;i++){var ac=ins[i].getAttribute("accept")||"";if(ac.indexOf("video")>=0||ac.indexOf("mp4")>=0){input=ins[i];break;}}'
-    + 'if(!input&&ins.length)input=ins[0];'
-    + 'if(!input)return {ok:false,reason:"no_input(deep="+ins.length+")"};'
-    + 'try{var resp=await fetch(' + JSON.stringify(fileUrl) + ',{cache:"no-store"});'
-    + 'if(!resp||!resp.ok)return {ok:false,reason:"fetch_"+(resp&&resp.status)};'
-    + 'var blob=await resp.blob();'
+    + 'if(!input&&ins.length)input=ins[0];return input;})()';
+  // 在页面里:base64(参数) → Uint8Array → File → DataTransfer → input.files → 派 change/input。
+  const fnDecl = 'function(b64,name,mime){try{'
+    + 'var input=this;if(!input)return JSON.stringify({ok:false,reason:"no_input"});'
+    + 'var bin=atob(b64);var len=bin.length;var bytes=new Uint8Array(len);for(var i=0;i<len;i++)bytes[i]=bin.charCodeAt(i);'
     + 'var win=(input.ownerDocument&&input.ownerDocument.defaultView)||window;'
-    + 'var file=new win.File([blob],' + JSON.stringify(fileName) + ',{type:' + JSON.stringify(mime) + '});'
+    + 'var file=new win.File([bytes],name,{type:mime});'
     + 'var dt=new win.DataTransfer();dt.items.add(file);input.files=dt.files;'
     + 'input.dispatchEvent(new win.Event("change",{bubbles:true}));'
     + 'input.dispatchEvent(new win.Event("input",{bubbles:true}));'
-    + 'return {ok:true,bytes:blob.size};'
-    + '}catch(e){return {ok:false,reason:"inject_"+String(e&&e.message||e).slice(0,80)};}})()';
+    + 'return JSON.stringify({ok:true,bytes:len});'
+    + '}catch(e){return JSON.stringify({ok:false,reason:"inject_"+String(e&&e.message||e).slice(0,80)});}}';
   try {
-    // 先豁免页面 CSP,避免 fetch 本地 sidecar URL 被 connect-src 拦。
     try { await send(s, 'Page.setBypassCSP', { enabled: true }); } catch { /* 非关键 */ }
-    const r: any = await send(s, 'Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
-    const v = r?.result?.value;
+    const found: any = await send(s, 'Runtime.evaluate', { expression: findExpr, returnByValue: false });
+    const objectId = found?.result?.objectId;
+    if (!objectId) return { ok: false, reason: 'no_input_matched' };
+    const r: any = await send(s, 'Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: fnDecl,
+      arguments: [{ value: b64 }, { value: fileName }, { value: mime }],
+      returnByValue: true,
+    });
+    let v: any = null;
+    try { v = r?.result?.value ? JSON.parse(r.result.value) : null; } catch { /* ignore */ }
     if (v && v.ok === true) return { ok: true, bytes: v.bytes };
     return { ok: false, reason: (v && v.reason) || 'inject_no_result' };
   } catch (e: any) {
     return { ok: false, reason: 'dt_inject_threw:' + String(e?.message || e).slice(0, 100) };
-  } finally {
-    try { unregister(token); } catch { /* ignore */ }
   }
 }
 
