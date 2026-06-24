@@ -10,8 +10,8 @@
  *   · 只在 app 开着时跑(矩阵本来如此);app 长期不开,会话照样自然到期。
  *
  * 节流设计:
- *   · 真访问受【lastAliveAt 超过 ALIVE_THRESHOLD(5 天)】门槛,常跑任务的号 markAccountAlive 后进不了名单;
- *   · 扫描每 24h 一次(只比时间戳,几乎零成本)+ app 启动扫一次;
+ *   · 真访问受【lastAliveAt 超过 ALIVE_THRESHOLD(3 天)】门槛,常跑任务的号 markAccountAlive 后进不了名单;
+ *   · 扫描每 12h 一次(只比时间戳,几乎零成本)+ app 启动扫一次;
  *   · 串行 + 随机抖动,跳过正被占用(getSession 存活)的号,不并发不抢;
  *   · headless 优先(不打扰),失败回退普通(可见后台)窗;成功更新 lastAliveAt,失败标 login_required + 推 SSE。
  */
@@ -20,8 +20,10 @@ import { listAccounts, getAccount, setAccountStatus, markAccountAlive, accountBa
 import { launchKernel, kernelNavigate, checkKernelLogin, closeKernel, getSession } from './kernelPool';
 import { loginUrlFor } from './reloginPrompt';
 
-const ALIVE_THRESHOLD_MS = 5 * 24 * 60 * 60 * 1000;  // 5 天没活跃才保活(真正的节流闸)
-const SCAN_INTERVAL_MS = 24 * 60 * 60 * 1000;        // 每 24h 扫一遍名单(只比时间戳)
+// ⚠️ 续期门槛:超过这么久没活跃就主动续(尽量让登录态别过期)。5 天→3 天:更早续上,覆盖 cookie 寿命较短的平台
+//   (固定天数仍不贴各平台真实 TTL,精准做法是按 cookie expires 续(可选增强))。12h 扫一次让跨过门槛的号更快被续。
+const ALIVE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;  // 3 天没活跃就保活续期
+const SCAN_INTERVAL_MS = 12 * 60 * 60 * 1000;        // 每 12h 扫一遍名单(只比时间戳,几乎零成本)
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,7 +35,7 @@ function emitAccount(data: Record<string, unknown>): void {
 let sweeping = false;
 let scheduled = false;
 
-/** 扫一遍名单,对「idle 且超 5 天没活跃且没被占用」的号逐个保活。串行 + 抖动。同时只跑一遍(去重)。 */
+/** 扫一遍名单,对「idle 且超 3 天没活跃且没被占用」的号逐个保活。串行 + 抖动。同时只跑一遍(去重)。 */
 export async function runKeepAliveSweep(): Promise<void> {
   if (sweeping) return;
   sweeping = true;
@@ -42,7 +44,7 @@ export async function runKeepAliveSweep(): Promise<void> {
     const due = listAccounts().filter((a) =>
       a.status === 'idle'
       && !getSession(a.id)                                  // 没有活跃内核会话 = 当前没在被用
-      && (now - (a.lastAliveAt || 0)) > ALIVE_THRESHOLD_MS, // 超 5 天没活跃
+      && (now - (a.lastAliveAt || 0)) > ALIVE_THRESHOLD_MS, // 超 3 天没活跃
     );
     for (const acc of due) {
       // 串行期间状态/占用可能变 → 临用前再确认一次。
@@ -94,7 +96,7 @@ async function keepAliveOne(accountId: string): Promise<void> {
   }
 }
 
-/** 启动主动保活调度:立即扫一遍 + 每 24h 扫一遍。重复调用只生效一次。 */
+/** 启动主动保活调度:立即扫一遍 + 每 12h 扫一遍。重复调用只生效一次。 */
 export function startKeepAliveScheduler(): void {
   if (scheduled) return;
   scheduled = true;
