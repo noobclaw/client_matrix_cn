@@ -805,6 +805,8 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
       probe = '(function(){try{var t=(document.body&&document.body.innerText)||"";if(/机构服务/.test(t)||/扫码登录|手机号登录/.test(t))return "0";return "?";}catch(e){return "?";}})()';
     } else if (platform === 'shipinhao') {
       // social-auto-upload:channels 发表页未登录有「扫码登录」,登录态有「发表视频」。
+      //   视频号是 wujie 重前端、跳登录页慢 → 靠调用方【先强制等 20s 让页面加载/跳转完】再查(见 runMatrixPublish),
+      //   这样这条 DOM 快照才可靠(否则赶在跳登录页前查会误判已登录)。
       probe = '(function(){try{var t=(document.body&&document.body.innerText)||"";if(/扫码登录/.test(t))return "0";if(/发表视频/.test(t))return "1";return "?";}catch(e){return "?";}})()';
     } else if (platform === 'tiktok') {
       // social-auto-upload:未登录的 studio 上传页有 select.tiktok-*-SelectFormContainer*(地区/登录选择表单)。

@@ -131,8 +131,11 @@ export async function runMatrixPublishStep(opts: RunMatrixPublishOptions): Promi
       //   快手创作端账号用 platformKey → 'kuaishou_creator' 查 cp 登录态(主站 cookie 不算 cp 登录)。
       const anchor = PUBLISHER_ANCHOR_URL[id as VideoPlatform];
       if (anchor) {
-        opts.onLog?.(`   🔐 ${label} · 检查登录态(导航到创作中心)…`);
-        try { await kernelNavigate(accountId, anchor); await sleep(2500); } catch { /* 导航失败也继续,checkKernelLogin 自身兜底 */ }
+        // ⚠️【强制等 20s 再判登录】导航到创作页后,有些平台(尤其视频号 wujie)加载/跳登录页慢 ——
+        //   一上来就查 DOM 会赶在跳转/渲染前判(那时还没登录墙)→ 误判已登录。统一硬等 20s 让页面【彻底加载/跳转完】,
+        //   页面稳定后再做 DOM/接口判定才可靠(用户拍板:所有平台打开后强制等 20s 再判)。
+        opts.onLog?.(`   🔐 ${label} · 导航到创作中心,等 20s 让页面加载完再查登录态…`);
+        try { await kernelNavigate(accountId, anchor); await sleep(20_000); } catch { /* 导航失败也继续,checkKernelLogin 自身兜底 */ }
       } else {
         opts.onLog?.(`   🔐 ${label} · 检查登录态…`);
       }
