@@ -115,9 +115,14 @@ function buildMatrixDriverCtx(
       const r = await kernelSetFileInput(accountId, targetSelector, [input.videoPath]);
       return r.ok ? { ok: true } : { ok: false, reason: r.reason || 'set_file_input_failed' };
     },
-    // 视频号 wujie open shadow 里的 file input:深遍历(穿 shadowRoot)找到 → CDP objectId 直接灌文件。
-    // 比扩展那套「sidecar HTTP + fetch 注入」简单:setFileInputFiles 认 objectId,不在乎元素在不在 shadow 里。
-    uploadVideoDeep: async (_opts?: { acceptHint?: string; mimeType?: string; ttlMs?: number }) => {
+    // 视频号 wujie open shadow 里的 file input:先走【页面世界 DataTransfer 注入】(base64 + 深遍历穿 shadow),
+    //   失败再回落 CDP setFileInputFiles。⚠️ 跟 TikTok 同款病:视频号 wujie 上传器对 CDP setFileInputFiles 灌进去的
+    //   File 处理不了 → 卡 0% 报「网络出错,请重新上传」(旧客户端用 DataTransfer 一直能传,改成 CDP 才坏)。
+    //   kernelSetFileInputViaDataTransfer 的深遍历已穿 shadowRoot/iframe,正好适配视频号。
+    uploadVideoDeep: async (opts?: { acceptHint?: string; mimeType?: string; ttlMs?: number }) => {
+      const dt = await kernelSetFileInputViaDataTransfer(accountId, input.videoPath, { mimeType: opts?.mimeType, ttlMs: opts?.ttlMs });
+      if (dt.ok) return { ok: true };
+      onLog('   ⚠️ DataTransfer 注入未成(' + (dt.reason || '?') + '),回落 CDP setFileInputFiles…');
       const r = await kernelSetFileInput(accountId, '', [input.videoPath], { deep: true });
       return r.ok ? { ok: true } : { ok: false, reason: r.reason || 'deep_set_file_input_failed' };
     },
