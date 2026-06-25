@@ -164,9 +164,9 @@ export async function runMatrixPublishStep(opts: RunMatrixPublishOptions): Promi
         result.publishedCount++;
         result.details.push({ platform: id, status: 'published' });
         // 提交后等平台把视频传完再关内核(过早关内核会把正在上传的作品弄丢)。
-        // 例外:小红书/币安/推特/快手/【头条】点发布前视频已传完(快手/头条 driver 已固定等够时长传完才点发布,
+        // 例外:小红书/币安/推特/快手/头条/【视频号】点发布前视频已传完(这些 driver 都已等"上传+处理完成"才点发布,
         //   点发布后平台不再继续上传)→ 封顶 20s,不用再等 120s。
-        const postWaitMs = (id === 'xhs' || id === 'binance' || id === 'x' || id === 'kuaishou' || id === 'toutiao') ? Math.min(20_000, POST_SUBMIT_WAIT_MS) : POST_SUBMIT_WAIT_MS;
+        const postWaitMs = (id === 'xhs' || id === 'binance' || id === 'x' || id === 'kuaishou' || id === 'toutiao' || id === 'shipinhao') ? Math.min(20_000, POST_SUBMIT_WAIT_MS) : POST_SUBMIT_WAIT_MS;
         opts.onLog?.(`   ⏳ 等 ${Math.round(postWaitMs / 1000)}s 让平台把视频上传完…`);
         await sleep(postWaitMs);
       } else {
