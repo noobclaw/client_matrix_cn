@@ -818,12 +818,22 @@ export async function kernelTypeIntoEditorNative(
     await send(s, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', buttons: 1, clickCount: 1 });
     await send(s, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', buttons: 0, clickCount: 1 });
     await new Promise((r) => setTimeout(r, 200));
-    // 真键全选(清掉 TikTok 预填的文件名)—— Ctrl+A(modifiers:2)与 Cmd+A(modifiers:8)各发一次,内核按仿真 OS 认其一。
-    for (const mod of [2, 8]) {
-      await send(s, 'Input.dispatchKeyEvent', { type: 'keyDown', modifiers: mod, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 });
-      await send(s, 'Input.dispatchKeyEvent', { type: 'keyUp', modifiers: mod, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 });
-    }
-    // 原生提交文本(替换选区,isTrusted=true)。
+    // 清掉 TikTok 预填的文件名:真键全选 → Backspace 删除。⚠️ 之前只发 keyDown A(modifiers:2)不生效,
+    //   DraftEditor 要【修饰键先真按下】才认全选 → 用完整序列(modifier rawKeyDown → A down/up → modifier up),
+    //   Ctrl+A 与 Cmd+A 各来一遍(内核按仿真 OS 认其一),再 Backspace 删掉选区。
+    const selectAll = async (mKey: string, mCode: string, mVk: number, mBit: number) => {
+      await send(s, 'Input.dispatchKeyEvent', { type: 'rawKeyDown', modifiers: mBit, key: mKey, code: mCode, windowsVirtualKeyCode: mVk, nativeVirtualKeyCode: mVk });
+      await send(s, 'Input.dispatchKeyEvent', { type: 'keyDown', modifiers: mBit, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 });
+      await send(s, 'Input.dispatchKeyEvent', { type: 'keyUp', modifiers: mBit, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 });
+      await send(s, 'Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 0, key: mKey, code: mCode, windowsVirtualKeyCode: mVk, nativeVirtualKeyCode: mVk });
+    };
+    await selectAll('Control', 'ControlLeft', 17, 2);
+    await selectAll('Meta', 'MetaLeft', 91, 8);
+    // Backspace 删除选区(真键)。
+    await send(s, 'Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    await send(s, 'Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+    await new Promise((r) => setTimeout(r, 80));
+    // 原生提交文本(isTrusted=true)。
     await send(s, 'Input.insertText', { text });
     return { ok: true };
   } catch (e: any) {
