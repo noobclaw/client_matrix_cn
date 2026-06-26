@@ -15,7 +15,25 @@ import { coworkLog } from '../coworkLogger';
 import type { VideoPlatform, PublishInput, PublishResult } from '../video/publishers/types';
 import { PUBLISHER_ANCHOR_URL } from '../video/publishers/publisherUtils';
 import { matrixCmd } from './cdpCommands';
-import { kernelNavigate, kernelSetFileInput, kernelSetFileInputViaDataTransfer } from './kernelPool';
+import { kernelNavigate, kernelSetFileInput, kernelSetFileInputViaDataTransfer, kernelSetFileInputViaChooser } from './kernelPool';
+
+// TikTok 上传按钮定位:返回可见上传触发块的中心【视口坐标】{x,y}(找不到返回 null)。
+//   webmssdk 拒合成注入 → 必须点站点真实按钮触发文件选择器(见 kernelSetFileInputViaChooser)。
+const TIKTOK_UPLOAD_BUTTON_EXPR = `(function(){
+  function vis(e){var r=e.getBoundingClientRect();return r.width>4&&r.height>4&&r.top<innerHeight&&r.bottom>0;}
+  var re=/^(select video to upload|select file|\\+?\\s*upload)$/i;
+  var drop=/select video|drag and drop|拖放|拖曳到此|拖放到此|選擇要上傳|选择要上传/i;
+  var cands=[];
+  var all=document.querySelectorAll('button,div[role="button"],label,div,span');
+  for(var i=0;i<all.length;i++){var el=all[i];var t=(el.textContent||'').replace(/\\s+/g,' ').trim();
+    if(!t||t.length>60)continue;
+    if((re.test(t)||drop.test(t))&&vis(el))cands.push(el);}
+  if(!cands.length)return null;
+  cands.sort(function(a,b){var ra=a.getBoundingClientRect(),rb=b.getBoundingClientRect();return (rb.width*rb.height)-(ra.width*ra.height);});
+  var btn=cands[0];try{btn.scrollIntoView({block:'center'});}catch(e){}
+  var r=btn.getBoundingClientRect();
+  return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)};
+})()`;
 
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
 function baseUrl(): string {
@@ -103,11 +121,14 @@ function buildMatrixDriverCtx(
     cmd: (command: string, params: any, timeoutMs?: number) =>
       matrixCmd(accountId, command, params, timeoutMs),
     uploadVideo: async (targetSelector: string, opts?: { mimeType?: string; ttlMs?: number }) => {
-      // 【TikTok 专用】先走页面世界 DataTransfer 注入(照旧 client):TikTok 的反爬 SDK(webmssdk)能识别/拒绝
-      //   CDP DOM.setFileInputFiles → 上传到一半崩成「出错了请重试」(手动 + 旧 client 扩展注入都正常,正说明问题
-      //   在 CDP 注入这步)。DataTransfer 是"真人选文件"的样子,TikTok 认。失败再回落 CDP。
-      //   其它平台 CDP 一直好用 → 维持不动(不引入回归)。
+      // 【TikTok 专用】实测(2026-06-25):合成 DataTransfer(isTrusted=false)被 webmssdk 拒、直接 setFileInputFiles
+      //   (跳过站点上传按钮)报「task not exist / 出错了」;只有【手动】行 —— 因为它点了站点真实上传按钮(跑 onClick
+      //   初始化上传会话)且 change 事件 isTrusted=true。故首选「真实文件选择器拦截」:可信点击上传按钮 → 拦下选择器
+      //   → DOM.setFileInputFiles。失败再回落 DataTransfer / CDP(不引入回归)。
       if (platform === 'tiktok') {
+        const ch = await kernelSetFileInputViaChooser(accountId, input.videoPath, TIKTOK_UPLOAD_BUTTON_EXPR);
+        if (ch.ok) { onLog('   ✓ 经真实文件选择器注入(点上传按钮+拦截)'); return { ok: true }; }
+        onLog('   ⚠️ 文件选择器注入未成(' + (ch.reason || '?') + '),回落 DataTransfer…');
         const dt = await kernelSetFileInputViaDataTransfer(accountId, input.videoPath, { mimeType: opts?.mimeType, ttlMs: opts?.ttlMs });
         if (dt.ok) return { ok: true };
         onLog('   ⚠️ DataTransfer 注入未成(' + (dt.reason || '?') + '),回落 CDP setFileInputFiles…');

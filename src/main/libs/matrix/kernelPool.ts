@@ -42,6 +42,7 @@ export interface KernelSession {
   pending: Map<number, { resolve: (d: any) => void; reject: (e: Error) => void }>;
   proxyAuth?: { username: string; password: string }; // 带 auth 代理:经 CDP 提供凭据
   fetchEnabled?: boolean;         // 是否正在 Fetch 拦截(拿到代理凭据后即关)
+  fileChooserWaiter?: ((params: any) => void) | null; // 等 Page.fileChooserOpened(真实文件选择器拦截上传)
   label?: string;                 // 账号标签(窗口左上角常驻角标,多窗区分用)
   slot: number;                   // 第几个窗口(用于错开层叠位置)
 }
@@ -461,6 +462,9 @@ function onMessage(s: KernelSession, data: WebSocket.RawData): void {
     }
   } else if (msg.method === 'Fetch.requestPaused') {
     sendNoWait(s, 'Fetch.continueRequest', { requestId: msg.params?.requestId });
+  } else if (msg.method === 'Page.fileChooserOpened') {
+    // 真实文件选择器被拦下(点了页面的上传按钮触发)→ 把事件交给等待者去 setFileInputFiles。
+    if (s.fileChooserWaiter) { const w = s.fileChooserWaiter; s.fileChooserWaiter = null; try { w(msg.params); } catch { /* ignore */ } }
   }
 }
 
@@ -735,6 +739,57 @@ export async function kernelSetFileInputViaDataTransfer(
     return { ok: false, reason: (v && v.reason) || 'inject_no_result' };
   } catch (e: any) {
     return { ok: false, reason: 'dt_inject_threw:' + String(e?.message || e).slice(0, 100) };
+  }
+}
+
+/**
+ * 文件注入(真实文件选择器拦截)—— 最贴近【人手动选文件】,TikTok 专用:
+ *   合成 DataTransfer(isTrusted=false)被 webmssdk 拒;直接 setFileInputFiles(跳过站点上传按钮)→ 上传会话
+ *   没初始化 →「task not exist / 出错了」。手动之所以行,是【点了站点自己的上传按钮】(跑 onClick 初始化会话+埋点)
+ *   且 change 事件 isTrusted=true。本函数把两者都满足:
+ *     ① Page.setInterceptFileChooserDialog 开拦截(原生选择器不真弹);
+ *     ② 在上传按钮中心派【可信鼠标点击】(Input 域 = 真实用户手势)→ 站点 onClick → input.click() → 触发选择器;
+ *     ③ 拦到 fileChooserOpened 的 backendNodeId → DOM.setFileInputFiles 喂文件(浏览器原生设置 = isTrusted=true)。
+ *   findButtonExpr:页面里定位上传按钮、scrollIntoView 后返回其中心【视口坐标】{x,y} 的 JS(找不到返回 null)。
+ */
+export async function kernelSetFileInputViaChooser(
+  accountId: string,
+  filePath: string,
+  findButtonExpr: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!sessions.get(accountId)) return { ok: false, reason: 'no_session' };
+  const fsMod = require('fs');
+  if (!fsMod.existsSync(filePath)) return { ok: false, reason: 'file_not_found' };
+  const s = await getPage(accountId);
+  try {
+    // ① 找上传按钮中心坐标(页面 JS 算 getBoundingClientRect 中心)。
+    const posRes: any = await send(s, 'Runtime.evaluate', { expression: findButtonExpr, returnByValue: true });
+    const pos = posRes?.result?.value;
+    if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') {
+      return { ok: false, reason: 'upload_button_not_found' };
+    }
+    // ② 开文件选择器拦截 + 武装等待者(onMessage 收到 fileChooserOpened 时 resolve)。
+    await send(s, 'Page.setInterceptFileChooserDialog', { enabled: true });
+    const chooserP = new Promise<any>((resolve, reject) => {
+      const timer = setTimeout(() => { s.fileChooserWaiter = null; reject(new Error('fileChooser_timeout')); }, 15000);
+      s.fileChooserWaiter = (params) => { clearTimeout(timer); resolve(params); };
+    });
+    // ③ 在按钮中心派可信鼠标点击(Input 域 = isTrusted=true 用户手势)→ 站点 onClick → input.click() → 弹选择器(被拦)。
+    await send(s, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x: pos.x, y: pos.y });
+    await send(s, 'Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', buttons: 1, clickCount: 1 });
+    await send(s, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', buttons: 0, clickCount: 1 });
+    // ④ 等 fileChooserOpened → setFileInputFiles 喂文件(原生设置,触发 isTrusted=true 的 change)。
+    let params: any;
+    try { params = await chooserP; }
+    catch (e: any) { try { await send(s, 'Page.setInterceptFileChooserDialog', { enabled: false }); } catch { /* ignore */ } return { ok: false, reason: String(e?.message || e).slice(0, 60) }; }
+    const backendNodeId = params?.backendNodeId;
+    if (!backendNodeId) { try { await send(s, 'Page.setInterceptFileChooserDialog', { enabled: false }); } catch { /* ignore */ } return { ok: false, reason: 'no_backendNodeId' }; }
+    await send(s, 'DOM.setFileInputFiles', { files: [filePath], backendNodeId });
+    try { await send(s, 'Page.setInterceptFileChooserDialog', { enabled: false }); } catch { /* ignore */ }
+    return { ok: true };
+  } catch (e: any) {
+    try { s.fileChooserWaiter = null; await send(s, 'Page.setInterceptFileChooserDialog', { enabled: false }); } catch { /* ignore */ }
+    return { ok: false, reason: 'chooser_inject_threw:' + String(e?.message || e).slice(0, 100) };
   }
 }
 
