@@ -627,11 +627,16 @@ class ScenarioService {
     // v6.x: '上次完成' 是上一次真正跑完的统计 — 不能选 status='running' 的当前
     //   in-progress run(那个 action_counts 永远是空/0,会把上次的正确数据顶掉)。
     //   优先找最近一条 status≠'running' 的 run;全是 running 才回退到末尾。
+    // 「上次完成」= 最近一次【非 running】的 run。矩阵 runStore 返回【最新在前】
+    //   (addRun unshift),而老逻辑「最高下标=最新」在这种顺序下会取到【最旧】那条
+    //   → 详情页上次完成与运行记录对不上。改为按 started_at 取最大,与数组顺序无关。
     let last: any = null;
-    for (let i = runs.length - 1; i >= 0; i--) {
-      if (runs[i] && runs[i].status !== 'running') { last = runs[i]; break; }
+    for (const r of runs) {
+      if (!r || r.status === 'running') continue;
+      if (!last || (r.started_at || 0) > (last.started_at || 0)) last = r;
     }
-    if (!last) last = runs.length > 0 ? runs[runs.length - 1] : null;
+    // 全是 running / 没有非 running 时 → 回退到 started_at 最大的那条。
+    if (!last) for (const r of runs) { if (r && (!last || (r.started_at || 0) > (last.started_at || 0))) last = r; }
 
     // Cumulative aggregation. Iterate all runs (including failed/skipped —
     // an action that succeeded before a later failure still counts).

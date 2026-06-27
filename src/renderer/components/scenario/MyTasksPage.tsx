@@ -254,8 +254,12 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
     void tick();
     const h = setInterval(tick, 3000);
     return () => { cancelled = true; clearInterval(h); };
+    // 依赖必须是【任务 id 集合】而非 tasks.length:切平台 tab 时 MyTasksPage 不卸载、
+    //   只换 tasks prop,而各平台常各只有 1 个任务 → length 不变 → 旧 effect 闭包仍抓着
+    //   上个平台的 tasks、永不重拉新平台 → 新平台卡片累计一直显 0(抖音=默认 tab 故正常)。
+    //   按 id 集合做 key,切平台/增删任务都会重建 effect 重新拉取。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks.length]);
+  }, [tasks.map((t) => t.id).join(',')]);
 
   // Refresh tasks on mount so edits made in TaskDetailPage (e.g. user
   // changed track) propagate immediately when the user comes back to
