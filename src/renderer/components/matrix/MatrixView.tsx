@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import MatrixTaskWizard from './MatrixTaskWizard';
 import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
+import { getBackendApiUrl } from '../../services/endpoints';
 
 /**
  * 矩阵号主界面 —— 由左侧分组菜单驱动的 4 屏(screen prop):
@@ -31,8 +32,8 @@ function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).m
 
 // 对齐支持「互动涨粉」的平台(与新建页一致)。
 const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'binance', 'youtube', 'tiktok'];
-// 每个平台最多添加的账号数(快手两端合并按平台总数计)。
-const MAX_ACCOUNTS_PER_PLATFORM = 30;
+// 每个平台最多添加的账号数:客户端兜底 10,服务端 /api/matrix/config 的 maxAccountsPerPlatform 可覆盖(admin 调,不打包)。
+const MAX_ACCOUNTS_PER_PLATFORM_FALLBACK = 10;
 const PLATFORM_LABEL: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
 // 平台号的标签:平台名已以「号」结尾(视频号)就不再加「号」,否则拼「号」(抖音号/快手号…)。
 const platformIdLabel = (p: string): string => { const l = PLATFORM_LABEL[p] || ''; return l.endsWith('号') ? l : l + '号'; };
@@ -89,6 +90,21 @@ interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; initialPla
 
 const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onNavigate, onPlatformChange, onShowInvite }) => {
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
+  // 每个平台账号上限:服务端 /api/matrix/config 下发(admin 可调),拉不到/未登录 → 兜底 10。
+  const [maxAccountsPerPlatform, setMaxAccountsPerPlatform] = useState<number>(MAX_ACCOUNTS_PER_PLATFORM_FALLBACK);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${getBackendApiUrl()}/api/matrix/config`, { headers: noobClawAuth.getAuthHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        const n = Number(data?.maxAccountsPerPlatform);
+        if (alive && Number.isInteger(n) && n > 0) setMaxAccountsPerPlatform(n);
+      } catch { /* 网络/未登录 → 用兜底 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
   const [tasks, setTasks] = useState<MatrixTask[]>([]);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [platform, setPlatform] = useState<string>(initialPlatform || 'douyin');
@@ -203,9 +219,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const openAdd = () => {
     if (!requireLogin()) return;
     if (!requireKernel()) return;
-    // 每个平台最多 30 个账号(快手两端按平台总数合并计):达上限不开弹窗,只提示。
+    // 每个平台账号数上限(快手两端按平台总数合并计):达上限不开弹窗,只提示。上限服务端可调。
     const platformTotal = accounts.filter((a) => a.platform === platform).length;
-    if (platformTotal >= MAX_ACCOUNTS_PER_PLATFORM) { setNotice(`${PLATFORM_LABEL[platform]}账号已达上限(每个平台最多 ${MAX_ACCOUNTS_PER_PLATFORM} 个),如需添加请先移除部分账号`); return; }
+    if (platformTotal >= maxAccountsPerPlatform) { setNotice(`${PLATFORM_LABEL[platform]}账号已达上限(每个平台最多 ${maxAccountsPerPlatform} 个),如需添加请先移除部分账号`); return; }
     setEditId(null); setNewName(`账号${platformAccounts.length + 1}-`); setNewScope(ksScope);
     // 默认选中一个赛道并带出人设 + 关键词(可再改)。
     const def = TRACK_PRESETS.find((t) => t.name === DEFAULT_TRACK) || TRACK_PRESETS[0];
@@ -452,8 +468,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <h2 className="text-lg font-bold dark:text-white">🧬 我的矩阵账号</h2>
               <div className="flex items-center gap-2.5">
-                {/* 当前平台账号数 / 上限,提示用户每个平台最多 30 个 */}
-                <span className="text-xs text-gray-400 dark:text-gray-500">{accounts.filter((a) => a.platform === platform).length}/{MAX_ACCOUNTS_PER_PLATFORM}</span>
+                {/* 当前平台账号数 / 上限(上限服务端可调) */}
+                <span className="text-xs text-gray-400 dark:text-gray-500">{accounts.filter((a) => a.platform === platform).length}/{maxAccountsPerPlatform}</span>
                 <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">+ 连接{PLATFORM_LABEL[platform]}账号</button>
               </div>
             </div>

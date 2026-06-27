@@ -29,6 +29,7 @@ interface SidebarProps {
   onShowPersonality: () => void;
   onShowPartners: () => void;
   onShowMatrix: () => void;
+  matrixExpiredCount?: number;
   onShowMatrixTaskNew?: () => void;
   onShowMatrixTasks?: () => void;
   onShowMatrixRuns?: () => void;
@@ -55,6 +56,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowPersonality,
   onShowPartners,
   onShowMatrix,
+  matrixExpiredCount = 0,
   onShowMatrixTaskNew,
   onShowMatrixTasks,
   onShowMatrixRuns,
@@ -252,13 +254,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                 key={key}
                 type="button"
                 onClick={() => { setIsSearchOpen(false); (handler || onShowMatrix)(); }}
-                className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                className={`relative w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
                   activeView === key
                     ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
                     : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
                 }`}
               >
                 {label}
+                {/* 「我的矩阵账号」菜单:全平台登录过期账号总数红圈角标(与账号页各平台 tab 角标一致),提醒去重连 */}
+                {key === 'matrix' && matrixExpiredCount > 0 && (
+                  <span className="absolute top-1 right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none ring-2 ring-white dark:ring-claude-darkBg">{matrixExpiredCount}</span>
+                )}
               </button>
             ))}
           </div>

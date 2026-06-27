@@ -603,6 +603,25 @@ const App: React.FC = () => {
   // 而不是写死抖音(否则在 YouTube tab 点新建,弹出的却是「配置抖音互动涨粉」=串台)。
   // 初值用 'video'(多平台视频创作):新建/我的/运行记录三页默认就停在这个 tab。
   const [matrixPlatform, setMatrixPlatform] = useState<string>('video');
+  // 矩阵号:全平台「登录过期」账号总数 —— 喂给侧栏「我的矩阵账号」菜单右上角红圈角标(与账号页各平台 tab 角标口径一致),
+  // 即便当前不在矩阵页也独立订阅,保证用户在任何页面都能看到「有号过期了,去重连」的提醒。
+  const [matrixExpiredTotal, setMatrixExpiredTotal] = useState(0);
+  useEffect(() => {
+    if (!MATRIX_EDITION) return;
+    const M = () => (window as any).electron?.matrix;
+    const recompute = async () => {
+      try {
+        const r = await M()?.listAccounts();
+        if (!r?.ok) return;
+        // 「登录过期」= login_required 且连过有身份(昵称/头像/平台号任一存在),与 MatrixView 卡片/tab 角标一致。
+        const n = (r.accounts || []).filter((a: any) => a.status === 'login_required' && !!(a.nickname || a.avatar || a.displayId)).length;
+        setMatrixExpiredTotal(n);
+      } catch { /* 拉不到账号不挡 UI */ }
+    };
+    recompute();
+    const off = M()?.onAccount?.(() => { recompute(); });
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
 
   // Listen for command-bar submissions from the floating NSPanel window
   // (src/renderer/components/commandBar/CommandBarView.tsx). When the
@@ -992,6 +1011,7 @@ const App: React.FC = () => {
           onShowPersonality={handleShowPersonality}
           onShowPartners={handleShowPartners}
           onShowMatrix={handleShowMatrix}
+          matrixExpiredCount={matrixExpiredTotal}
           onShowMatrixTaskNew={handleShowMatrixTaskNew}
           onShowMatrixTasks={handleShowMatrixTasks}
           onShowMatrixRuns={handleShowMatrixRuns}
