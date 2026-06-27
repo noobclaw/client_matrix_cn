@@ -177,6 +177,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 矩阵号:互动涨粉向导(选账号 + 配额 + 频率;账号制,赛道/关键词/人设在账号上)。
   const [matrixWizardPlatform, setMatrixWizardPlatform] = useState<string | null>(null);
   const [matrixAccounts, setMatrixAccounts] = useState<WizardAccount[]>([]);
+  const [matrixAccountsLoading, setMatrixAccountsLoading] = useState(false); // 账号异步加载中(弹窗先开,账号后填)
   const [matrixWizardTask, setMatrixWizardTask] = useState<any | null>(null); // 编辑时的初始任务(回填账号/配额/频率);新建为 null
   // 指纹浏览器内核守卫:没装内核时弹「去下载」,后续流程不走(创建/运行矩阵任务都先过这关)。
   const [matrixKernelMissing, setMatrixKernelMissing] = useState(false);
@@ -217,14 +218,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 编辑现有矩阵互动任务:加载该平台账号 + 把任务映成 wizard 的 initialTask(回填账号/配额/频率)。
   const openMatrixWizardEdit = async (task: any) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
-    if (!(await ensureMatrixKernel())) return;
     const plat = (task?.platform as string) || currentPlatform || 'douyin';
-    try {
-      const r = await (window as any).electron?.matrix?.listAccounts?.();
-      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
-      // 同上:互动涨粉只选主站账号,排除快手创作者中心账号(loginScope='creator')。
-      setMatrixAccounts(accs.filter((a) => a.platform === plat && (a.loginScope || 'main') === 'main').map((a) => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar })));
-    } catch { setMatrixAccounts([]); }
+    // 编辑只是改配置,不需要内核;也不等 listAccounts 完成 —— 先把弹窗开起来(秒开),账号异步填。
+    // (运行中 sidecar 忙,kernelStatus/listAccounts 都可能慢;之前都 await 在 setMatrixWizardTask 前 → 弹窗卡几秒。)
+    setMatrixAccounts([]);
+    setMatrixAccountsLoading(true);
     setMatrixWizardTask({
       id: task.id,
       name: task.name,
@@ -237,6 +235,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       frequency: task.run_interval,
     });
     setMatrixWizardPlatform(plat);
+    // 账号异步加载(只选主站账号,排除快手创作者中心 loginScope='creator')
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixAccounts(accs.filter((a) => a.platform === plat && (a.loginScope || 'main') === 'main').map((a) => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar })));
+    } catch { setMatrixAccounts([]); }
+    finally { setMatrixAccountsLoading(false); }
   };
   const saveMatrixTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any }) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
@@ -1222,6 +1227,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               })()}
               platform={matrixWizardPlatform}
               accounts={matrixAccounts}
+              accountsLoading={matrixAccountsLoading}
               initialTask={matrixWizardTask}
               onCancel={() => { setMatrixWizardPlatform(null); setMatrixWizardTask(null); }}
               onSave={saveMatrixTask}
