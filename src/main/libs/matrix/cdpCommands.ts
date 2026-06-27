@@ -11,7 +11,7 @@
  * 不打包 client;③ 22 个剧本一行不改。
  */
 
-import { kernelEval, kernelExec, kernelKeypress, kernelClick, kernelWheel, kernelNavigate } from './kernelPool';
+import { kernelEval, kernelExec, kernelKeypress, kernelClick, kernelWheel, kernelNavigate, kernelInsertText } from './kernelPool';
 
 export async function matrixCmd(
   accountId: string,
@@ -37,6 +37,11 @@ export async function matrixCmd(
     // 可信按键(CDP Input.dispatchKeyEvent,isTrusted=true):搜索框 Enter 提交等。
     case 'keypress': {
       try { await kernelKeypress(accountId, String(params?.key || 'Enter')); return { ok: true }; }
+      catch (e: any) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
+    }
+    // 可信文本插入(CDP Input.insertText):往【已聚焦】的富文本编辑器(B站 .brt-editor 等)真键盘插入文本。
+    case 'cdp_insert_text': {
+      try { await kernelInsertText(accountId, String(params?.text || '')); return { ok: true }; }
       catch (e: any) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
     }
     // 可信坐标点击(CDP Input.dispatchMouseEvent):快手/B站/小红书 reply 等查 isTrusted 的场景。

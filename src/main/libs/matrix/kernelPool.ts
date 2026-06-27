@@ -590,6 +590,14 @@ export async function kernelClick(accountId: string, x: number, y: number): Prom
   await send(s, 'Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
 }
 
+// 可信文本插入(CDP Input.insertText):像真键盘那样把整段文本插入【当前聚焦元素】,isTrusted=true、
+// 穿 shadow、ProseMirror/Slate 等富文本编辑器认(合成 KeyboardEvent + execCommand 它们都不认 → 字进不去,
+// 典型:B站评论 .brt-editor)。调用前需先把目标编辑器聚焦(可信点击)。
+export async function kernelInsertText(accountId: string, text: string): Promise<void> {
+  const s = await getPage(accountId);
+  await send(s, 'Input.insertText', { text: String(text || '') });
+}
+
 // 可信滚轮(CDP Input.dispatchMouseEvent mouseWheel):部分平台(小红书/快手创作中心)懒加载
 // 只认真实 wheel,JS scrollTop/scrollIntoView 触发不了。
 export async function kernelWheel(accountId: string, x: number, y: number, deltaX: number, deltaY: number): Promise<void> {
