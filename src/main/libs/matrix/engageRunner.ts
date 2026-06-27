@@ -254,7 +254,24 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       getPrompt: (name: string) => { const t = pack?.prompts?.[name]; if (!t) throw new Error('Missing prompt: ' + name); return t; },
       engageHistory: history,
       appendKeywords: (arr: string[]) => { try { const merged = Array.from(new Set([...(acc.keywords || []), ...arr])); setAccountKeywords(accountId, merged); } catch { /* ignore */ } },
-      writeReport: async (_fname: string, _md: string) => ({ ok: true }),
+      // 互动报告落盘:写到 <matrixDir>/reports/<平台>/<accountId>/ 下,返回绝对路径给编排器记日志。
+      // 老空桩只返 {ok:true} 没 path → 编排器日志「报告已保存 → undefined」且文件根本没存。
+      writeReport: async (fname: string, md: string) => {
+        try {
+          const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
+          const dir = path.join(base, 'reports', opts.platform || acc.platform || 'unknown', accountId);
+          fs.mkdirSync(dir, { recursive: true });
+          // 文件名去掉路径分隔符等非法字符,保留中文/字母数字,限长。
+          const safeName = String(fname || 'report.md').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
+          const filePath = path.join(dir, safeName);
+          fs.writeFileSync(filePath, String(md), 'utf8');
+          coworkLog('INFO', 'engage', `[${accountId}] writeReport ok → ${filePath}`);
+          return { ok: true, path: filePath, dir };
+        } catch (err: any) {
+          coworkLog('WARN', 'engage', `[${accountId}] writeReport failed: ${String(err?.message || err)}`);
+          return { ok: false, reason: String(err?.message || err) };
+        }
+      },
       // 工具
       sleep: async (min: number, max?: number) => { await sleep(max ? randInt(min, max) : min); },
       randInt,
