@@ -1100,17 +1100,24 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
                         </div>
                         {accs.length > 0 ? (
-                          <div className="max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+                          // 只纵向滚动 + 横向裁剪:关键词/人设是 truncate(nowrap),若允许横向滚动会把整卡撑宽、
+                          // 顶掉右侧按钮。overflow-x-hidden 让 truncate 真正在卡片宽度处省略。30 个号靠纵向滚动放下。
+                          <div className="max-h-72 overflow-y-auto overflow-x-hidden rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+                            {/* 第一行:emoji + 昵称 + 平台号 + 赛道(赛道恒在最右,位置不变)。
+                                第二行:只显示前 4 个关键词 + 单行截断(配合 overflow-x-hidden 绝不顶出右框)。人设不展示。 */}
                             {accs.map((a: any) => (
-                              <div key={a.id} className="px-3 py-2 text-xs leading-relaxed">
-                                <div className="flex items-center gap-1.5">
-                                  <span>{EM[a.platform] || '•'}</span>
-                                  <span className="font-medium dark:text-gray-200 truncate">{a.nickname || a.displayName}</span>
-                                  {a.displayId && <span className="text-gray-500 dark:text-gray-400 truncate">· {idLabel(a.platform)}:{a.displayId}</span>}
+                              <div key={a.id} className="px-3 py-1.5 text-xs min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="shrink-0">{EM[a.platform] || '•'}</span>
+                                  <span className="font-medium dark:text-gray-200 truncate min-w-0">{a.nickname || a.displayName}</span>
+                                  {a.displayId && <span className="text-gray-500 dark:text-gray-400 truncate shrink-0">· {idLabel(a.platform)}:{a.displayId}</span>}
                                   <span className="ml-auto shrink-0 text-gray-500 dark:text-gray-400">🎯 {a.group ? a.group : <span className="text-amber-500">赛道未设</span>}</span>
                                 </div>
-                                <div className="text-gray-500 dark:text-gray-400 truncate">🏷️ {a.keywords && a.keywords.length ? a.keywords.join(' · ') : <span className="text-amber-500">未配关键词(互动需要)</span>}</div>
-                                {a.persona && <div className="text-gray-400 dark:text-gray-500 truncate" title={a.persona}>🎭 {a.persona}</div>}
+                                <div className="text-gray-500 dark:text-gray-400 truncate" title={a.keywords && a.keywords.length ? a.keywords.join(' · ') : undefined}>
+                                  🏷️ {a.keywords && a.keywords.length
+                                    ? a.keywords.slice(0, 4).join(' · ') + (a.keywords.length > 4 ? ' …' : '')
+                                    : <span className="text-amber-500">未配关键词(互动需要)</span>}
+                                </div>
                               </div>
                             ))}
                           </div>

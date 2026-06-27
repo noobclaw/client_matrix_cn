@@ -50,8 +50,8 @@ const loginUrlFor = (platform: string, loginScope?: string): string => {
 };
 // 快手两类账号子 tab。
 const KS_SCOPES: { key: 'main' | 'creator'; label: string }[] = [
-  { key: 'creator', label: '创作者中心(发布)' },
-  { key: 'main', label: '主站(涨粉)' },
+  { key: 'creator', label: '创作者中心' },
+  { key: 'main', label: '主站' },
 ];
 const STATUS_DOT: Record<AccountStatus, string> = { idle: 'bg-green-500', running: 'bg-blue-500', login_required: 'bg-amber-500', limited: 'bg-gray-400', banned: 'bg-red-500' };
 const STATUS_LABEL: Record<AccountStatus, string> = { idle: '已连接', running: '运行中', login_required: '尚未连接', limited: '限流冷却', banned: '已封' };
@@ -428,8 +428,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {onShowInvite && (
           <button type="button" onClick={onShowInvite} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-500/10 text-green-500 border border-green-500/40 hover:bg-green-500/20 active:scale-95">🎁 分享给好友</button>
         )}
-        {/* 涨粉教程 */}
-        <button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 涨粉教程</button>
 
         <div className="ml-auto flex items-center gap-2">
           {/* 指纹浏览器(版本下拉,多个时可选;不再手填路径) */}
@@ -466,7 +464,11 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {screen === 'accounts' && (
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-              <h2 className="text-lg font-bold dark:text-white">🧬 我的矩阵账号</h2>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-lg font-bold dark:text-white">🧬 我的矩阵账号</h2>
+                {/* 涨粉教程(从顶栏挪到标题后,贴着账号页) */}
+                <button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 涨粉教程</button>
+              </div>
               <div className="flex items-center gap-2.5">
                 {/* 当前平台账号数 / 上限(上限服务端可调) */}
                 <span className="text-xs text-gray-400 dark:text-gray-500">{accounts.filter((a) => a.platform === platform).length}/{maxAccountsPerPlatform}</span>
