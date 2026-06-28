@@ -74,7 +74,17 @@ export interface EngageQuota {
   daily_comment_min?: number; daily_comment_max?: number;
 }
 
-export type MatrixTaskType = 'engage';   // 互动(点赞/评论/关注)。后续可扩展别的类型。
+/**
+ * 「自动回复粉丝评论」(reply_fan)任务的配置。无配额(回复对象=粉丝评论本身,不是搜出来的),
+ * 只有可选引流尾巴。回复对象/人设/账号身份在各矩阵账号上(persona 喂回复 AI 口吻)。
+ */
+export interface ReplyFanConfig {
+  funnel_phrase?: string;        // 引流文案(选填,空则纯 AI 回复不带尾巴)
+  funnel_probability?: number;   // 引流尾巴出现概率 1-100(引流语为空时失效)
+}
+
+// 互动(点赞/评论/关注)= engage;自动回复粉丝评论 = reply_fan(抖音创作者中心评论管理)。
+export type MatrixTaskType = 'engage' | 'reply_fan';
 // 频率枚举对齐老客户端 DouyinConfigWizard(便于复用频率算法/文案)。
 export type MatrixTaskFrequency = 'once' | '30min' | '1h' | '3h' | '6h' | 'daily_random';
 
@@ -89,7 +99,8 @@ export interface MatrixTask {
   name: string;
   enabled: boolean;                // 定时调度是否启用(手动运行不受此限)
   accountIds: string[];            // 勾选的(已登录)账号
-  quota: EngageQuota;
+  quota: EngageQuota;              // 仅 engage 用;reply_fan 任务为空对象
+  funnel?: ReplyFanConfig;         // 仅 reply_fan 用:引流尾巴配置
   concurrency?: number;            // 同时开窗数
   frequency: MatrixTaskFrequency;  // 运行频率
   nextPlannedRunAt?: number;       // 下次计划运行(epoch ms;调度器预排,UI 展示)

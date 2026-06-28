@@ -70,15 +70,33 @@ const MATRIX_ENGAGE_META: Record<string, { name_zh: string; icon: string }> = {
 const engageScenarioIdForPlatform = (platform?: string): string =>
   (platform && MATRIX_ENGAGE_SCENARIO_ID[platform]) || 'douyin_auto_engage';
 
+// 「自动回复粉丝」剧本(backend/matrix/scenarios/<platform>_reply_fans_comment)。目前 3 个平台有
+// 剧本(xhs 逐篇笔记进详情页;抖音/快手创作者中心评论管理集中回复)。同 engage 一样需要补快照,
+// 否则 reply_fan 任务的 scenario_id 在 listScenarios 里 lookup 不到 platform → 任务 tab 为空。
+const MATRIX_REPLY_SCENARIO_ID: Record<string, string> = {
+  xhs: 'xhs_reply_fans_comment', douyin: 'douyin_reply_fans_comment', kuaishou: 'kuaishou_reply_fans_comment',
+};
+const MATRIX_REPLY_ID_TO_PLATFORM: Record<string, string> =
+  Object.fromEntries(Object.entries(MATRIX_REPLY_SCENARIO_ID).map(([p, id]) => [id, p]));
+const MATRIX_REPLY_META: Record<string, { name_zh: string; icon: string }> = {
+  xhs: { name_zh: '小红书 自动回复粉丝', icon: '💌' }, douyin: { name_zh: '抖音 自动回复粉丝', icon: '💌' },
+  kuaishou: { name_zh: '快手 自动回复粉丝', icon: '💌' },
+};
+
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
  *  配额映射到 daily_*_min/max 这套 douyin_auto_engage 字段)。 */
 function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const q = t?.quota || {};
+  // 「自动回复粉丝」(type='reply_fan')任务:映射到对应平台的 *_reply_fans_comment 剧本 +
+  //   track='reply_fan_comment',并带上引流语/概率 —— TaskDetailPage 靠这两个判定 isReplyFan
+  //   并展示引流配置(funnel_phrase/funnel_probability);否则会被当互动任务、引流配置丢失。
+  const isReply = t?.type === 'reply_fan';
+  const fn = t?.funnel || {};
   return {
     id: t.id,
-    // 按任务真实 platform 映射到对应 engage 剧本 id(原来写死 douyin → 非抖音 tab 看不到任务)。
-    scenario_id: engageScenarioIdForPlatform(t.platform),
-    track: 'matrix',
+    // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
+    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : engageScenarioIdForPlatform(t.platform),
+    track: isReply ? 'reply_fan_comment' : 'matrix',
     keywords: [],
     persona: '',
     daily_count: 1,
@@ -91,6 +109,9 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
     daily_follow_min: q.daily_follow_min, daily_follow_max: q.daily_follow_max,
     daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
+    // 仅回复粉丝任务带引流尾巴配置(供详情页展示 + 编辑回填)。
+    funnel_phrase: isReply ? (fn.funnel_phrase || '') : undefined,
+    funnel_probability: isReply ? (typeof fn.funnel_probability === 'number' ? fn.funnel_probability : 0) : undefined,
     account_ids: t.accountIds || [],
     created_at: t.createdAt || 0,
     updated_at: t.createdAt || 0,
@@ -100,6 +121,26 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
 /** 旧 createTask/updateTask 入参(ScenarioTaskIPC 形状)→ 矩阵 saveTask 入参。 */
 function scenarioInputToMxSave(input: any, id?: string): any {
   const accountIds: string[] = input.account_ids || [];
+  // 回复粉丝任务(scenario_id 以 _reply_fans_comment 结尾):保持 type='reply_fan' + 透传引流尾巴,
+  // 否则经 updateTask(如 MyTasksPage 改启用)兜底回 type='engage' → 任务被错改成互动、引流配置丢。
+  if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_reply_fans_comment')) {
+    const rPlatform = MATRIX_REPLY_ID_TO_PLATFORM[input.scenario_id] || 'xhs';
+    return {
+      id,
+      platform: rPlatform,
+      type: 'reply_fan',
+      name: input.name || (accountIds.length ? `${rPlatform}回复粉丝 · ${accountIds.length} 个号` : `${rPlatform}回复粉丝`),
+      accountIds,
+      quota: {},
+      funnel: {
+        funnel_phrase: input.funnel_phrase || '',
+        funnel_probability: typeof input.funnel_probability === 'number' ? input.funnel_probability : 0,
+      },
+      concurrency: accountIds.length,
+      frequency: input.run_interval || 'daily_random',
+      enabled: input.enabled !== false,
+    };
+  }
   // 真实 platform 从 scenario_id 反推(原来写死 douyin)。matrix engage 主路径走 ScenarioView.saveMatrixTask
   // 直传 platform、不经此函数;这里是 scenarioService.create/updateTask 的兜底,保持平台一致。
   const platform = MATRIX_ENGAGE_ID_TO_PLATFORM[input.scenario_id] || 'douyin';
@@ -230,7 +271,15 @@ class ScenarioService {
           name_zh: MATRIX_ENGAGE_META[platform]?.name_zh || sid, name_en: '',
           icon: MATRIX_ENGAGE_META[platform]?.icon || '🤝',
         }));
-      return [...DEFAULT_SCENARIOS, ...synth] as unknown as Scenario[];
+      // 同理补「自动回复粉丝」剧本快照,让 reply_fan 任务能按 platform 归到对应 tab。
+      const synthReply = Object.entries(MATRIX_REPLY_SCENARIO_ID)
+        .filter(([, sid]) => !have.has(sid))
+        .map(([platform, sid]) => ({
+          id: sid, version: '1.0.0', platform, workflow_type: 'reply_fans_comment', category: 'engagement',
+          name_zh: MATRIX_REPLY_META[platform]?.name_zh || sid, name_en: '',
+          icon: MATRIX_REPLY_META[platform]?.icon || '💌',
+        }));
+      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply] as unknown as Scenario[];
     }
     try {
       const res = await window.electron.scenario.listScenarios();

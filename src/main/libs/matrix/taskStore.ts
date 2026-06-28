@@ -10,7 +10,7 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { nextRunAt } from './matrixSchedule';
-import type { MatrixTask, EngageQuota, MatrixTaskType, MatrixTaskFrequency } from './types';
+import type { MatrixTask, EngageQuota, ReplyFanConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
 
 /** 任务启用且非 once 才排下次运行;否则清空(手动触发)。 */
 function planned(t: { enabled: boolean; frequency: MatrixTaskFrequency }, fromTs: number, isFirst: boolean): number | undefined {
@@ -57,7 +57,8 @@ export interface SaveTaskInput {
   name?: string;
   enabled?: boolean;
   accountIds: string[];
-  quota: EngageQuota;
+  quota?: EngageQuota;             // engage 必填;reply_fan 可省(存空对象)
+  funnel?: ReplyFanConfig;         // reply_fan 用:引流尾巴配置
   concurrency?: number;
   frequency: MatrixTaskFrequency;
 }
@@ -80,6 +81,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       enabled: input.enabled ?? tasks[i].enabled,
       accountIds: input.accountIds || [],
       quota: input.quota || {},
+      funnel: input.funnel ?? tasks[i].funnel,
       concurrency: input.concurrency,
       frequency: input.frequency,
     };
@@ -100,6 +102,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     enabled: input.enabled ?? true,
     accountIds: input.accountIds || [],
     quota: input.quota || {},
+    funnel: input.funnel,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',
     createdAt: Date.now(),

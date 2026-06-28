@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { shortId } from '../../utils/shortId';
 import MatrixTaskWizard from './MatrixTaskWizard';
+import MatrixReplyFansWizard from './MatrixReplyFansWizard';
 import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { getBackendApiUrl } from '../../services/endpoints';
@@ -21,10 +22,12 @@ interface MatrixAccount {
   egressIp?: string;                 // 无代理号的真实本机出口 IP(内核侧探到才有,后端 listAccounts 附上)
 }
 interface MatrixTask {
-  id: string; platform: string; type: 'engage'; name: string; enabled: boolean; accountIds: string[];
+  id: string; platform: string; type: 'engage' | 'reply_fan'; name: string; enabled: boolean; accountIds: string[];
   quota: { daily_like_min?: number; daily_like_max?: number; daily_follow_min?: number; daily_follow_max?: number; daily_comment_min?: number; daily_comment_max?: number };
+  funnel?: { funnel_phrase?: string; funnel_probability?: number };
   concurrency?: number; frequency: string; nextPlannedRunAt?: number; lastRunAt?: number; createdAt: number;
 }
+// reply_fan 任务进度里 comment 计数 = 回复条数(沿用 engage 的 counts.comment 通道)。
 interface RunItem { accountId: string; displayName?: string; state: string; reason?: string; counts?: { like: number; follow: number; comment: number } }
 interface RunRecord { id: string; taskId: string; taskName: string; platform: string; startedAt: number; finishedAt: number; success: number; failed: number; skipped: number; totals: { like: number; follow: number; comment: number }; items: RunItem[] }
 interface ItemResult { accountId: string; state: 'success' | 'failed' | 'skipped'; reason?: string; counts?: { like: number; follow: number; comment: number } }
@@ -158,7 +161,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 任务编辑(用 MatrixTaskWizard,样式照搬老客户端 DouyinConfigWizard)
   const [taskEditId, setTaskEditId] = useState<string | null>(null);
   const [showTaskEditModal, setShowTaskEditModal] = useState(false);
-  const [showNewWizard, setShowNewWizard] = useState(false); // 新建页:点卡片才弹向导
+  const [showNewWizard, setShowNewWizard] = useState(false); // 新建页:点「互动涨粉」卡片才弹向导
+  const [showNewReplyWizard, setShowNewReplyWizard] = useState(false); // 新建页:点「自动回复粉丝」卡片才弹向导
+  const [replyEditId, setReplyEditId] = useState<string | null>(null);
+  const [showReplyEditModal, setShowReplyEditModal] = useState(false); // 详情页编辑「回复粉丝」任务
 
   // 指纹浏览器内核
   const [kernel, setKernel] = useState<{ installed?: boolean; installedVersion?: string; installedVersions?: string[]; configuredVersion?: string; needsUpdate?: boolean }>({});
@@ -372,6 +378,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     setShowTaskEditModal(false); setTaskEditId(null);
     onNavigate?.('tasks');
   };
+  // 「自动回复粉丝」向导保存:type='reply_fan' + funnel(无配额)。与 engage 同平台可并存(不同 type)。
+  const saveTaskFromReplyWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number } }) => {
+    if (!requireLogin()) throw new Error('请先登录 NoobClaw 账号');
+    const r = await M()?.saveTask({ id: replyEditId || undefined, platform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(回复粉丝)任务,直接编辑它即可', task_not_found: '任务不存在' } as any)[r?.error] || r?.error || '保存失败');
+    await reloadTasks(); setNotice('任务已保存');
+    setShowReplyEditModal(false); setReplyEditId(null);
+    onNavigate?.('tasks');
+  };
   const runTaskNow = async (t: MatrixTask) => {
     if (!requireLogin()) return;
     if (!requireKernel()) return;
@@ -384,7 +399,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
 
   // ── 复用片段 ──
-  const renderProgress = () => (
+  // 进度卡里每号的计数:engage 显示 赞/关/评;reply_fan 只有回复数(走 counts.comment 通道)。
+  const renderProgress = (isReply?: boolean) => (
     <div className="mt-4">
       {doneReport && <div className="mb-3 text-sm p-3 rounded-lg bg-black/5 dark:bg-white/10">完成:成功 {doneReport.success} · 失败 {doneReport.failed} · 跳过 {doneReport.skipped}</div>}
       <div className="grid grid-cols-2 gap-2 mb-3">
@@ -394,7 +410,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
           return (
             <div key={it.accountId} className="flex items-center gap-2 text-sm p-2 rounded border dark:border-white/10 border-black/10">
               <span className={color}>●</span><span className="flex-1 truncate">{acc?.displayName || it.accountId}</span>
-              {it.counts && <span className="text-xs opacity-60">赞{it.counts.like}/关{it.counts.follow}/评{it.counts.comment}</span>}
+              {it.counts && <span className="text-xs opacity-60">{isReply ? `回复${it.counts.comment}` : `赞${it.counts.like}/关${it.counts.follow}/评${it.counts.comment}`}</span>}
               <span className="text-xs opacity-60">{it.state}{it.reason ? `:${it.reason}` : ''}</span>
             </div>
           );
@@ -417,6 +433,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   };
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
+  const selectedIsReply = selectedTask?.type === 'reply_fan';
   const SCREEN_TITLE: Record<string, string> = { accounts: '我的矩阵账号', newTask: '新建矩阵涨粉任务', tasks: '我的矩阵涨粉任务', runs: '矩阵涨粉运行记录' };
 
   return (
@@ -611,6 +628,16 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <button onClick={() => { if (!requireLogin()) return; if (!requireKernel()) return; setShowNewWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 shadow-lg shadow-violet-500/25">🎶 开始互动 →</button>
                     </div>
                   </div>
+                  {/* 自动回复粉丝(矩阵多账号) */}
+                  <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+                    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
+                    <div className="relative flex flex-col flex-1">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2"><span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />粉丝维护</div>
+                      <h3 className="text-base font-bold dark:text-white mb-1.5">💌 抖音 · 自动回复粉丝(矩阵)</h3>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">同时让多个账号在各自指纹浏览器的<strong>抖音创作者中心评论管理</strong>里,逐条回复自己作品下的粉丝评论。AI 按评论内容 + 该号人设写回应,可选按概率自然带上引流尾巴。已回复过的、自己留的评论自动跳过,只回粉丝、绝不评论作品本身。</p>
+                      <button onClick={() => { if (!requireLogin()) return; if (!requireKernel()) return; setShowNewReplyWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25">💌 开始回复 →</button>
+                    </div>
+                  </div>
                 </section>
                 <section className="mb-6">
                   <div className="flex flex-wrap gap-2 justify-center">
@@ -632,6 +659,18 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   initialTask={null}
                   onCancel={() => setShowNewWizard(false)}
                   onSave={async (input) => { await saveTaskFromWizard(input); setShowNewWizard(false); }}
+                />
+              </div>
+            )}
+            {showNewReplyWizard && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
+                <MatrixReplyFansWizard
+                  platformLabel={PLATFORM_LABEL[platform]}
+                  platform={platform}
+                  accounts={platformAccounts as any}
+                  initialTask={null}
+                  onCancel={() => setShowNewReplyWizard(false)}
+                  onSave={async (input) => { await saveTaskFromReplyWizard(input); setShowNewReplyWizard(false); }}
                 />
               </div>
             )}
@@ -660,13 +699,16 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="space-y-3">
                 {platformTasks.map((t) => {
                   const isRunning = runningTaskId === t.id;
+                  const isReply = t.type === 'reply_fan';
                   return (
                     <button key={t.id} type="button" onClick={() => setSelectedTaskId(t.id)}
                       className={`w-full text-left rounded-xl border p-4 transition-colors relative ${isRunning ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700 hover:border-violet-500/50 dark:hover:border-violet-500/50 bg-white dark:bg-gray-900'}`}>
                       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {PLATFORM_LABEL[t.platform]}</span>
-                          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 互动涨粉</span>
+                          {isReply
+                            ? <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 回复粉丝</span>
+                            : <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 互动涨粉</span>}
                           <span className="font-medium dark:text-white truncate">{t.name}</span>
                           <span className="text-[10px] text-gray-500 font-mono shrink-0">#{shortId(t.id)}</span>
                         </div>
@@ -682,8 +724,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           )}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">👥 账号 {t.accountIds.length} 个 · 各用自己的赛道关键词</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 👍 {t.quota.daily_like_min}-{t.quota.daily_like_max} · ➕ {t.quota.daily_follow_min}-{t.quota.daily_follow_max} · 💬 {t.quota.daily_comment_min}-{t.quota.daily_comment_max} / 次</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">👥 账号 {t.accountIds.length} 个 · {isReply ? '各自回复作品下的粉丝评论' : '各用自己的赛道关键词'}</div>
+                      {isReply
+                        ? <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 🎣 {t.funnel?.funnel_phrase ? `引流尾巴 ${t.funnel.funnel_probability || 0}%` : '纯 AI 回复'}</div>
+                        : <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 👍 {t.quota.daily_like_min}-{t.quota.daily_like_max} · ➕ {t.quota.daily_follow_min}-{t.quota.daily_follow_max} · 💬 {t.quota.daily_comment_min}-{t.quota.daily_comment_max} / 次</div>}
                       <div className="text-[11px] text-gray-400 mt-1">{t.lastRunAt ? `上次运行 ${fmtTime(t.lastRunAt)}` : '尚未运行'}</div>
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         {isRunning
@@ -703,19 +747,26 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             <button onClick={() => setSelectedTaskId(null)} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 mb-3">← 返回任务列表</button>
             <div className="flex items-center gap-2 mb-4 flex-wrap">
               <h2 className="text-lg font-bold dark:text-white">{selectedTask.name}</h2>
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 互动涨粉</span>
+              {selectedIsReply
+                ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 回复粉丝</span>
+                : <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 互动涨粉</span>}
               <div className="ml-auto flex gap-2">
                 {runningTaskId === selectedTask.id
                   ? <button onClick={stopTask} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600">⏹ 停止</button>
-                  : <button onClick={() => runTaskNow(selectedTask)} disabled={running} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{running ? '运行中…' : '🎯 直接运行'}</button>}
-                <button onClick={() => { if (!requireLogin()) return; setTaskEditId(selectedTask.id); setShowTaskEditModal(true); }} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">编辑</button>
+                  : <button onClick={() => runTaskNow(selectedTask)} disabled={running} className={`px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 ${selectedIsReply ? 'bg-fuchsia-500 hover:bg-fuchsia-600' : 'bg-violet-500 hover:bg-violet-600'}`}>{running ? '运行中…' : '🎯 直接运行'}</button>}
+                <button onClick={() => { if (!requireLogin()) return; if (selectedIsReply) { setReplyEditId(selectedTask.id); setShowReplyEditModal(true); } else { setTaskEditId(selectedTask.id); setShowTaskEditModal(true); } }} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">编辑</button>
                 <button onClick={() => deleteTask(selectedTask)} className="px-3 py-2 rounded-lg text-sm font-medium border border-red-500/40 text-red-500 hover:bg-red-500/5">删除</button>
               </div>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5 mb-4">
               <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
               <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">频率</span><span className="text-gray-800 dark:text-gray-200">{FREQ_LABEL[selectedTask.frequency] || selectedTask.frequency}{selectedTask.frequency !== 'once' && selectedTask.enabled ? ` · 下次 ${fmtTime(selectedTask.nextPlannedRunAt)}` : ''}</span></div>
-              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">配额/次</span><span className="text-gray-800 dark:text-gray-200">👍 {selectedTask.quota.daily_like_min}-{selectedTask.quota.daily_like_max} · ➕ {selectedTask.quota.daily_follow_min}-{selectedTask.quota.daily_follow_max} · 💬 {selectedTask.quota.daily_comment_min}-{selectedTask.quota.daily_comment_max} · 同时开窗 {selectedTask.concurrency || 3}</span></div>
+              {selectedIsReply
+                ? <>
+                    <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">引流语</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.funnel?.funnel_phrase ? `"${selectedTask.funnel.funnel_phrase.slice(0, 40)}${selectedTask.funnel.funnel_phrase.length > 40 ? '...' : ''}" · ${selectedTask.funnel.funnel_probability || 0}%` : '（未填,纯 AI 回复）'}</span></div>
+                    <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">回复范围</span><span className="text-gray-800 dark:text-gray-200">逐条回复全部粉丝评论（最近 30 个作品）· 同时开窗 {selectedTask.concurrency || 3}</span></div>
+                  </>
+                : <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">配额/次</span><span className="text-gray-800 dark:text-gray-200">👍 {selectedTask.quota.daily_like_min}-{selectedTask.quota.daily_like_max} · ➕ {selectedTask.quota.daily_follow_min}-{selectedTask.quota.daily_follow_max} · 💬 {selectedTask.quota.daily_comment_min}-{selectedTask.quota.daily_comment_max} · 同时开窗 {selectedTask.concurrency || 3}</span></div>}
               <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">账号({selectedTask.accountIds.length})</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.accountIds.map((id) => accounts.find((a) => a.id === id)?.displayName || id).join('、')}</span></div>
             </div>
             {(() => {
@@ -724,9 +775,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               const last = tr[0];
               return (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-                  {stat('累计完成', `👍 ${cum.like} · ➕ ${cum.follow} · 💬 ${cum.comment}`)}
+                  {stat('累计完成', selectedIsReply ? `💬 回复 ${cum.comment} 条` : `👍 ${cum.like} · ➕ ${cum.follow} · 💬 ${cum.comment}`)}
                   {stat('累计运行', `${tr.length} 次`)}
-                  {stat('上次完成', last ? `👍 ${last.totals.like} · ➕ ${last.totals.follow} · 💬 ${last.totals.comment}` : '—')}
+                  {stat('上次完成', last ? (selectedIsReply ? `💬 回复 ${last.totals.comment} 条` : `👍 ${last.totals.like} · ➕ ${last.totals.follow} · 💬 ${last.totals.comment}`) : '—')}
                   {stat('上次结果', last ? `成功 ${last.success} · 失败 ${last.failed}` : '—')}
                   {stat('上次运行', last ? fmtTime(last.startedAt) : '尚未运行', () => onNavigate?.('runs'), '查看运行记录 →')}
                   {selectedTask.frequency !== 'once' ? stat('下次运行', selectedTask.enabled ? fmtTime(selectedTask.nextPlannedRunAt) : '已停用') : stat('运行方式', '手动触发')}
@@ -736,7 +787,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             {(running || Object.keys(items).length > 0) && (
               <div className="rounded-xl border border-green-500/50 bg-green-500/5 p-4 mb-4 noobclaw-running-glow">
                 <div className="text-sm font-semibold text-green-600 dark:text-green-400 mb-1">本次运行进度</div>
-                {renderProgress()}
+                {renderProgress(selectedIsReply)}
               </div>
             )}
             <h3 className="text-sm font-bold dark:text-white mb-2">🕑 运行历史</h3>
@@ -745,7 +796,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 <div key={r.id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-xs flex items-center gap-3">
                   <span className="text-gray-500">{fmtTime(r.startedAt)}</span>
                   <span className="text-green-500">成功 {r.success}</span><span className="text-red-500">失败 {r.failed}</span><span className="text-amber-500">跳过 {r.skipped}</span>
-                  <span className="ml-auto text-gray-600 dark:text-gray-300">👍{r.totals.like} ➕{r.totals.follow} 💬{r.totals.comment}</span>
+                  <span className="ml-auto text-gray-600 dark:text-gray-300">{selectedIsReply ? `💬 回复 ${r.totals.comment} 条` : `👍${r.totals.like} ➕${r.totals.follow} 💬${r.totals.comment}`}</span>
                 </div>
               ))}
               {runs.filter((r) => r.taskId === selectedTask.id).length === 0 && <div className="text-xs text-gray-400">还没有运行记录。</div>}
@@ -767,18 +818,23 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               </div>
             ) : (
               <div className="space-y-3">
-                {runs.map((r) => (
+                {runs.map((r) => {
+                  // 运行记录未存任务类型 → 反查当前任务;查不到(任务已删)按 engage 展示。
+                  const runIsReply = tasks.find((t) => t.id === r.taskId)?.type === 'reply_fan';
+                  return (
                   <div key={r.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {PLATFORM_LABEL[r.platform] || r.platform}</span>
+                      {runIsReply && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 回复粉丝</span>}
                       <span className="font-medium dark:text-white">{r.taskName}</span>
                       <span className="text-xs text-gray-500">{fmtTime(r.startedAt)}</span>
                       <span className="ml-auto text-xs"><span className="text-green-500">成功 {r.success}</span> · <span className="text-red-500">失败 {r.failed}</span> · <span className="text-amber-500">跳过 {r.skipped}</span></span>
                     </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">合计 👍 {r.totals.like} · ➕ {r.totals.follow} · 💬 {r.totals.comment}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">{runIsReply ? `合计 💬 回复 ${r.totals.comment} 条` : `合计 👍 ${r.totals.like} · ➕ ${r.totals.follow} · 💬 ${r.totals.comment}`}</div>
                     <div className="text-[11px] text-gray-400 truncate">{r.items.map((it) => `${it.displayName || it.accountId}(${it.state === 'success' ? '成功' : it.state === 'skipped' ? '跳过' : '失败'})`).join('、')}</div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -895,7 +951,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         );
       })()}
 
-      {/* 编辑任务弹窗(详情页用)—— 同一个向导 */}
+      {/* 编辑互动任务弹窗(详情页用)—— 同一个向导 */}
       {showTaskEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
           <MatrixTaskWizard
@@ -905,6 +961,19 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             initialTask={tasks.find((t) => t.id === taskEditId) || null}
             onCancel={() => { setShowTaskEditModal(false); setTaskEditId(null); }}
             onSave={saveTaskFromWizard}
+          />
+        </div>
+      )}
+      {/* 编辑回复粉丝任务弹窗(详情页用) */}
+      {showReplyEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
+          <MatrixReplyFansWizard
+            platformLabel={PLATFORM_LABEL[platform]}
+            platform={platform}
+            accounts={platformAccounts as any}
+            initialTask={tasks.find((t) => t.id === replyEditId) || null}
+            onCancel={() => { setShowReplyEditModal(false); setReplyEditId(null); }}
+            onSave={saveTaskFromReplyWizard}
           />
         </div>
       )}

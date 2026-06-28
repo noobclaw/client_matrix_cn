@@ -39,6 +39,7 @@ import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
 import MatrixTaskWizard, { type WizardAccount } from '../matrix/MatrixTaskWizard';
+import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'video';
 
@@ -47,6 +48,10 @@ const MATRIX_TAB_ORDER: PlatformId[] = ['video', 'douyin', 'xhs', 'kuaishou', 'b
 // 后端 backend/matrix/scenarios 有 <platform>_auto_engage 互动涨粉剧本的平台(共 8 个)。
 // 视频号/头条暂无 engage 剧本 → tab 仍展示(与账号页一致),但「开始创作」标注「即将上线」不放行,避免跑出错任务。
 const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'x', 'binance', 'youtube', 'tiktok']);
+// 后端 backend/matrix/scenarios 有 <platform>_reply_fans_comment「自动回复粉丝」剧本的平台。
+// 小红书(逐篇笔记进详情页回复,主站登录态即覆盖创作者中心)+ 快手(创作者中心评论管理,需
+// loginScope='creator' 账号);其余平台后续逐步开放。账号 scope 过滤见 replyAccountFilter。
+const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['xhs', 'kuaishou']);
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -179,6 +184,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixAccounts, setMatrixAccounts] = useState<WizardAccount[]>([]);
   const [matrixAccountsLoading, setMatrixAccountsLoading] = useState(false); // 账号异步加载中(弹窗先开,账号后填)
   const [matrixWizardTask, setMatrixWizardTask] = useState<any | null>(null); // 编辑时的初始任务(回填账号/配额/频率);新建为 null
+  // 「自动回复粉丝」向导(独立于互动向导:账号取【创作者中心】scope、无配额、带引流尾巴)。
+  const [matrixReplyPlatform, setMatrixReplyPlatform] = useState<string | null>(null);
+  const [matrixReplyAccounts, setMatrixReplyAccounts] = useState<WizardAccount[]>([]);
+  const [matrixReplyAccountsLoading, setMatrixReplyAccountsLoading] = useState(false);
+  const [matrixReplyTask, setMatrixReplyTask] = useState<any | null>(null); // 编辑时回填(账号/引流/频率);新建 null
   // 指纹浏览器内核守卫:没装内核时弹「去下载」,后续流程不走(创建/运行矩阵任务都先过这关)。
   const [matrixKernelMissing, setMatrixKernelMissing] = useState(false);
   const [matrixKernelBusy, setMatrixKernelBusy] = useState(false);
@@ -256,6 +266,60 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     await refreshAll();
     // 编辑(从详情页进的)→ refreshAll 已就地刷新当前详情数据,不跳走(否则被踢回列表还要重新点进去);
     // 新建 → 切到管理页看新任务。
+    if (!wasEdit) onSwitchToManage?.(plat as any);
+  };
+
+  // ── 自动回复粉丝向导 ────────────────────────────────────────────────
+  // 账号 scope:回复粉丝在创作者中心评论管理操作 —— 快手只能选【创作者中心】(loginScope='creator')
+  // 账号(主站号是涨粉互动用的,登录态不通用)。其它平台无 loginScope → 取主站默认。
+  const replyAccountFilter = (a: any, platform: string): boolean =>
+    a.platform === platform && (platform === 'kuaishou' ? a.loginScope === 'creator' : (a.loginScope || 'main') === 'main');
+  const mapWizardAccount = (a: any): WizardAccount => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar });
+  const openMatrixReplyWizard = async (platform: string) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (!(await ensureMatrixKernel())) return;
+    setMatrixReplyAccountsLoading(true);
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixReplyAccounts(accs.filter((a) => replyAccountFilter(a, platform)).map(mapWizardAccount));
+    } catch { setMatrixReplyAccounts([]); }
+    finally { setMatrixReplyAccountsLoading(false); }
+    setMatrixReplyTask(null);
+    setMatrixReplyPlatform(platform);
+  };
+  // 编辑现有回复粉丝任务:回填账号/引流/频率 + 加载创作者中心账号(异步,弹窗先开)。
+  const openMatrixReplyWizardEdit = async (task: any) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    const plat = (task?.platform as string) || currentPlatform || 'kuaishou';
+    setMatrixReplyAccounts([]);
+    setMatrixReplyAccountsLoading(true);
+    setMatrixReplyTask({
+      id: task.id,
+      name: task.name,
+      accountIds: task.account_ids || [],
+      funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },
+      frequency: task.run_interval,
+    });
+    setMatrixReplyPlatform(plat);
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixReplyAccounts(accs.filter((a) => replyAccountFilter(a, plat)).map(mapWizardAccount));
+    } catch { setMatrixReplyAccounts([]); }
+    finally { setMatrixReplyAccountsLoading(false); }
+  };
+  const saveMatrixReplyFanTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number } }) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
+    const m = (window as any).electron?.matrix;
+    // type='reply_fan' + funnel(无配额)。与同平台互动任务是不同 type,可并存。
+    const r = await m?.saveTask?.({ id: matrixReplyTask?.id, platform: matrixReplyPlatform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(回复粉丝)任务,直接编辑它即可' } as any)[r?.error] || r?.error || '保存失败');
+    const wasEdit = !!matrixReplyTask?.id;
+    const plat = matrixReplyPlatform;
+    setMatrixReplyPlatform(null);
+    setMatrixReplyTask(null);
+    await refreshAll();
     if (!wasEdit) onSwitchToManage?.(plat as any);
   };
   // Link-mode edit modal (separate from the keyword wizard — they capture
@@ -626,7 +690,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { void openMatrixWizardEdit(task); return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -750,6 +814,36 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             )}
           </div>
+          {/* 自动回复粉丝(矩阵多账号)—— 目前仅快手:在创作者中心评论管理里逐条回复自己作品下的粉丝评论。 */}
+          {MATRIX_REPLY_FAN_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/5 dark:bg-fuchsia-500/10 p-6 mt-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-fuchsia-600 dark:text-fuchsia-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500" /> 粉丝维护 · 多账号回复
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">💌 {platLabel} · 自动回复粉丝</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                {currentPlatform === 'xhs'
+                  ? <>勾选多个已登录的小红书账号,每个号在各自指纹浏览器里打开<strong>创作者中心</strong>,逐篇笔记进详情页回复自己笔记下的粉丝评论。
+                      AI 按评论内容 + 该号人设写回应,可选按概率自然带上引流尾巴;已回复过的、自己留的自动跳过,只回粉丝、绝不评论笔记本身。</>
+                  : <>勾选多个已登录<strong>创作者中心</strong>的账号,每个号在各自指纹浏览器的「评论管理」里逐条回复自己作品下的粉丝评论。
+                      AI 按评论内容 + 该号人设写回应,可选按概率自然带上引流尾巴;已回复过的、自己留的自动跳过,只回粉丝、绝不评论作品本身。</>}
+              </div>
+              <button
+                type="button"
+                onClick={() => openMatrixReplyWizard(currentPlatform)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-fuchsia-500 text-white text-sm font-bold hover:bg-fuchsia-600 shadow-sm shadow-fuchsia-500/25 transition-all active:scale-95"
+              >
+                💌 开始回复 →
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                已有任务 »
+              </button>
+            </div>
+          )}
         </div>
       );
     }
@@ -1231,6 +1325,27 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               initialTask={matrixWizardTask}
               onCancel={() => { setMatrixWizardPlatform(null); setMatrixWizardTask(null); }}
               onSave={saveMatrixTask}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 矩阵号自动回复粉丝向导(选创作者中心账号 + 引流尾巴 + 频率) */}
+      {matrixReplyPlatform && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto" onClick={() => { setMatrixReplyPlatform(null); setMatrixReplyTask(null); }}>
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <MatrixReplyFansWizard
+              platformLabel={(() => {
+                const p = matrixReplyPlatform;
+                return p === 'douyin' ? '抖音' : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩'
+                  : p === 'xhs' ? '小红书' : p === 'shipinhao' ? '视频号' : p === 'toutiao' ? '头条号' : String(p);
+              })()}
+              platform={matrixReplyPlatform}
+              accounts={matrixReplyAccounts}
+              accountsLoading={matrixReplyAccountsLoading}
+              initialTask={matrixReplyTask}
+              onCancel={() => { setMatrixReplyPlatform(null); setMatrixReplyTask(null); }}
+              onSave={saveMatrixReplyFanTask}
             />
           </div>
         </div>

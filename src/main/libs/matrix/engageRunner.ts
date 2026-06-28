@@ -25,8 +25,8 @@ const PLATFORM_HOME: Record<string, string> = {
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
 };
 import { matrixCmd } from './cdpCommands';
-import { getAccount, setAccountStatus, setAccountKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive } from './accountManager';
-import { promptReloginForExpiredAccount } from './reloginPrompt';
+import { getAccount, setAccountStatus, setAccountKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
+import { promptReloginForExpiredAccount, loginUrlFor } from './reloginPrompt';
 import { getNoobClawAuthToken } from '../claudeSettings';
 
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
@@ -48,6 +48,11 @@ export interface EngageTaskOptions {
   taskId?: string;                  // 任务 id(标签分组 pill 显示 🤖 平台 #缩写;手动/无任务上下文可缺省)
   accountIds: string[];
   quota?: EngageQuota;              // 每号配额区间(缺省用 scenario 默认)
+  // 任务类型:'engage'=互动涨粉(点赞/评论/关注,按关键词搜);'reply_fan'=自动回复粉丝评论
+  // (抖音创作者中心评论管理,不需关键词、无配额、有引流尾巴)。缺省 'engage' 兼容旧调用。
+  taskType?: 'engage' | 'reply_fan';
+  scenarioId?: string;             // 显式指定后端剧本 id(reply_fan 传 'douyin_reply_fans_comment');缺省按平台推
+  funnel?: { funnel_phrase?: string; funnel_probability?: number }; // 仅 reply_fan:引流尾巴配置
   concurrency?: number;
   jitterMinMs?: number; jitterMaxMs?: number;
   kernelPath?: string;
@@ -158,8 +163,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   if (!acc) { log('❌ 跳过:账号不存在'); return { accountId, state: 'skipped', reason: 'account_not_found' }; }
   if (acc.platform !== opts.platform) { log('❌ 跳过:账号平台与任务不符'); return { accountId, state: 'skipped', reason: 'platform_mismatch' }; }
   // 币安广场是 feed 互动(刷广场帖、按内置 CRYPTO 规则筛,不按关键词搜),不需要用户配关键词;
-  //   其它平台(抖音/小红书等按关键词搜)才要。漏掉这条豁免 → 币安账号没关键词被静默拦掉、无日志。
-  if (opts.platform !== 'binance' && (!acc.keywords || acc.keywords.length === 0)) { log('❌ 跳过:未配置关键词(到「我的矩阵账号」编辑里添加)'); return { accountId, state: 'skipped', reason: 'no_keywords' }; }
+  //   reply_fan(回复粉丝评论)对象是自己作品下的粉丝评论,也不按关键词搜 → 同样豁免。
+  //   其它平台(抖音/小红书等按关键词搜的互动)才要。漏掉豁免 → 账号没关键词被静默拦掉、无日志。
+  const needsKeywords = opts.taskType !== 'reply_fan' && opts.platform !== 'binance';
+  if (needsKeywords && (!acc.keywords || acc.keywords.length === 0)) { log('❌ 跳过:未配置关键词(到「我的矩阵账号」编辑里添加)'); return { accountId, state: 'skipped', reason: 'no_keywords' }; }
   if (acc.status === 'banned' || acc.status === 'limited') { log('❌ 跳过:账号状态为 ' + acc.status); return { accountId, state: 'skipped', reason: 'account_' + acc.status }; }
 
   await sleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000)); // 错峰
@@ -183,12 +190,19 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       label: accountBadgeLabel(acc),                       // 绿色角标:账号信息(平台·昵称·备注)
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId), // 蓝色 pill:🤖 平台 #任务缩写(不重复账号信息)
     });
-    await kernelNavigate(accountId, PLATFORM_HOME[opts.platform] || 'https://www.douyin.com/');
+    // 导航 URL + 登录态 key:回复粉丝(reply_fan)在【创作者中心】评论管理操作,快手须导航
+    //   cp.kuaishou.com 并按创作端登录态校验(platformKey 把快手创作号映成 'kuaishou_creator',
+    //   主站/创作端登录互不覆盖);互动涨粉走主站。非快手账号无 loginScope → 行为不变(主站 + 平台名)。
+    const loginKey = platformKey(acc);
+    const navUrl = (opts.taskType === 'reply_fan' && acc.loginScope)
+      ? loginUrlFor(opts.platform, acc.loginScope)
+      : (PLATFORM_HOME[opts.platform] || 'https://www.douyin.com/');
+    await kernelNavigate(accountId, navUrl);
     await sleep(2000);
 
     // 跑前登录态检查:cookie 过期 / 没关联 → 跳过该号 + 标「需关联」(其它号照跑),不空转。
     let loggedIn = true;
-    try { loggedIn = await checkKernelLogin(accountId, opts.platform); } catch { loggedIn = true; } // 读失败不误杀
+    try { loggedIn = await checkKernelLogin(accountId, loginKey); } catch { loggedIn = true; } // 读失败不误杀
     if (!loggedIn) {
       setAccountStatus(accountId, 'login_required');
       log('⚠️ 登录态失效/未关联,弹窗扫码重连(其它号照跑)');
@@ -199,12 +213,18 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     }
     markAccountAlive(accountId); // 确认登录有效 → 更新活跃时间,常跑的号不进主动保活名单。
 
-    // orchestrator 需要的 task(配额从 opts.quota,缺省回落 scenario manifest 默认)
+    // orchestrator 需要的 task(配额从 opts.quota,缺省回落 scenario manifest 默认)。
+    // reply_fan 剧本读 task.persona / funnel_phrase / funnel_probability;engage 剧本读 keywords/配额/comment_prompt。
+    // 两套字段都带上(互不干扰),由各自剧本按需取。
     const task: any = {
       id: accountId, keywords: acc.keywords, track: acc.track || 'douyin_default',
       // 人设 → 复用老剧本现成的 comment_prompt 槽(comment_composer 的 user_prompt 口味提示),
       // 不另造 persona 路径(老抖音剧本本就支持,backend 零改动)。
       comment_prompt: acc.persona || '',
+      // reply_fan 剧本用:persona(回复口吻)+ 引流尾巴(文案/概率)。
+      persona: acc.persona || '',
+      funnel_phrase: opts.funnel?.funnel_phrase || '',
+      funnel_probability: typeof opts.funnel?.funnel_probability === 'number' ? opts.funnel.funnel_probability : 0,
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
       daily_follow_min: q.daily_follow_min, daily_follow_max: q.daily_follow_max,
       daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
@@ -341,13 +361,14 @@ export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageRepo
   // 平台 → 后端 backend/matrix/scenarios 的剧本 id。币安是 binance_SQUARE_auto_engage(非 binance_auto_engage),
   // 别的都是 `<平台>_auto_engage`。漏了币安这个特例会取不到剧本 → 指纹浏览器都不唤起、无日志。
   const ENGAGE_SCENARIO_ID: Record<string, string> = { binance: 'binance_square_auto_engage' };
-  const scenarioId = ENGAGE_SCENARIO_ID[opts.platform] || `${opts.platform}_auto_engage`;
+  // reply_fan 等非互动任务显式传 scenarioId(如 douyin_reply_fans_comment);engage 按平台推。
+  const scenarioId = opts.scenarioId || ENGAGE_SCENARIO_ID[opts.platform] || `${opts.platform}_auto_engage`;
   const pack = await fetchEngagePack(scenarioId);
   if (!pack || !pack.orchestrator) {
     return { platform: opts.platform, total: opts.accountIds.length, success: 0, failed: 0, skipped: opts.accountIds.length,
-      items: opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_engage_scenario(后端未部署?)' })) };
+      items: opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_scenario(后端未部署?)' })) };
   }
-  coworkLog('INFO', 'engageRunner', `engage ${opts.platform} x${opts.accountIds.length}`);
+  coworkLog('INFO', 'engageRunner', `${opts.taskType || 'engage'} ${opts.platform} x${opts.accountIds.length} (${scenarioId})`);
   const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id), opts.onItem);
   return {
     platform: opts.platform, total: items.length,
