@@ -21,8 +21,29 @@ export interface WizardAccount { id: string; displayName: string; status: string
 
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
 
-// 抖音链接校验(对齐后端 orchestrator isDouyinLink)。
-const isDouyinLink = (u: string): boolean => /^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i.test(u.trim());
+// 各平台链接校验(对齐各后端 orchestrator 的 isXxxLink)+ 占位示例。
+const LINK_RE: Record<string, RegExp> = {
+  douyin: /^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i,
+  kuaishou: /^https?:\/\/([\w-]+\.)?(kuaishou\.com|kwai\.com|chenzhongtech\.com|gifshow\.com)\//i,
+  bilibili: /^https?:\/\/(([\w-]+\.)?bilibili\.com|b23\.tv)\//i,
+  tiktok: /^https?:\/\/([\w-]+\.)?tiktok\.com\//i,
+};
+const linkValidatorFor = (platform?: string) => {
+  const re = LINK_RE[platform || 'douyin'] || LINK_RE.douyin;
+  return (u: string): boolean => re.test(u.trim());
+};
+const LINK_PLACEHOLDER: Record<string, string> = {
+  douyin: 'https://www.douyin.com/video/...\nhttps://v.douyin.com/...',
+  kuaishou: 'https://www.kuaishou.com/short-video/...\nhttps://v.kuaishou.com/...',
+  bilibili: 'https://www.bilibili.com/video/BV...\nhttps://b23.tv/...',
+  tiktok: 'https://www.tiktok.com/@user/video/...\nhttps://vm.tiktok.com/...',
+};
+const LINK_HINT: Record<string, string> = {
+  douyin: '支持 www.douyin.com / v.douyin.com 短链',
+  kuaishou: '支持 kuaishou.com / v.kuaishou.com 短链',
+  bilibili: '支持 bilibili.com / b23.tv 短链',
+  tiktok: '支持 tiktok.com(须 VPN 真机)',
+};
 
 interface Props {
   platformLabel: string;
@@ -46,11 +67,12 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
     return first ? first.id : '';
   });
 
-  // ── 链接清单(textarea,逐行) ──
+  // ── 链接清单(textarea,逐行) ── 按平台校验。
+  const isValidLink = useMemo(() => linkValidatorFor(platform), [platform]);
   const [linksText, setLinksText] = useState<string>(() => (Array.isArray(initialTask?.urls) ? initialTask.urls.join('\n') : ''));
   const parsedLinks = useMemo(() => linksText.split(/[\s\n]+/).map((s) => s.trim()).filter(Boolean), [linksText]);
-  const validLinks = useMemo(() => parsedLinks.filter(isDouyinLink), [parsedLinks]);
-  const badLinks = useMemo(() => parsedLinks.filter((u) => !isDouyinLink(u)), [parsedLinks]);
+  const validLinks = useMemo(() => parsedLinks.filter(isValidLink), [parsedLinks, isValidLink]);
+  const badLinks = useMemo(() => parsedLinks.filter((u) => !isValidLink(u)), [parsedLinks, isValidLink]);
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'once');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
@@ -108,11 +130,11 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
         {step === 1 && (
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-300">
-              ⬇️ 选 <strong>1 个</strong>已登录的抖音账号,用该号的指纹浏览器逐个打开你粘贴的视频链接,借抖音页面自身签名调接口拿<strong>无水印</strong>源并下载到本地。此任务<strong>单账号顺序下载</strong>,不多开。
+              ⬇️ 选 <strong>1 个</strong>已登录的{platformLabel}账号,用该号的指纹浏览器逐个打开你粘贴的视频链接,借该号登录态拿<strong>无水印</strong>源并下载到本地。此任务<strong>单账号顺序下载</strong>,不多开。{platform === 'tiktok' ? <span className="text-amber-600 dark:text-amber-400">(TikTok 须 VPN/真机网络)</span> : null}
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                选 1 个 {platformLabel} 账号<span className="text-xs text-gray-400 font-normal ml-1">· 已登录抖音主站即可{selectedId ? ';已选 1' : ''}</span>
+                选 1 个 {platformLabel} 账号<span className="text-xs text-gray-400 font-normal ml-1">· 已登录{platformLabel}主站即可{selectedId ? ';已选 1' : ''}</span>
               </label>
               <div className="space-y-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                 {accounts.length === 0 && accountsLoading && (
@@ -120,7 +142,7 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
                 )}
                 {accounts.length === 0 && !accountsLoading && (
                   <div className="p-3 text-center space-y-2.5">
-                    <div className="text-xs text-gray-400">该平台还没有账号。先去「我的矩阵账号」添加并扫码登录抖音。</div>
+                    <div className="text-xs text-gray-400">该平台还没有账号。先去「我的矩阵账号」添加并扫码登录{platformLabel}。</div>
                     <button
                       type="button"
                       onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
@@ -159,19 +181,19 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                🔗 抖音视频链接<span className="text-xs text-gray-400 font-normal ml-1">· 每行 1 个,最多 {MAX_LINKS} 个;支持 www.douyin.com / v.douyin.com 短链</span>
+                🔗 {platformLabel}视频链接<span className="text-xs text-gray-400 font-normal ml-1">· 每行 1 个,最多 {MAX_LINKS} 个;{LINK_HINT[platform || 'douyin'] || ''}</span>
               </label>
               <textarea
                 value={linksText}
                 onChange={(e) => setLinksText(e.target.value)}
-                placeholder={'https://www.douyin.com/video/...\nhttps://v.douyin.com/...'}
+                placeholder={LINK_PLACEHOLDER[platform || 'douyin'] || LINK_PLACEHOLDER.douyin}
                 rows={8}
                 className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40 resize-y min-h-[140px] font-mono"
                 disabled={saving}
               />
               <div className="flex items-center gap-3 text-[11px] mt-1">
                 <span className="text-sky-500">✓ 有效 {validLinks.length}</span>
-                {badLinks.length > 0 && <span className="text-amber-500">⚠ 非抖音链接 {badLinks.length}(会跳过)</span>}
+                {badLinks.length > 0 && <span className="text-amber-500">⚠ 非{platformLabel}链接 {badLinks.length}(会跳过)</span>}
                 {validLinks.length > MAX_LINKS && <span className="text-red-500">超过 {MAX_LINKS} 个上限</span>}
               </div>
             </div>
@@ -179,7 +201,7 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
               <div className="font-semibold">⚠️ 说明</div>
               <ul className="list-disc list-inside space-y-0.5">
                 <li>图文/合集等非视频作品会自动跳过,只下视频</li>
-                <li>下载文件落在本机 NoobClaw 矩阵目录的 downloads/douyin 下,完成日志会显示具体路径</li>
+                <li>下载文件落在本机 NoobClaw 矩阵目录的 downloads/{platform || 'douyin'} 下,完成日志会显示具体路径</li>
                 <li>每条成功下载按次扣积分(失败/跳过不扣)</li>
               </ul>
             </div>

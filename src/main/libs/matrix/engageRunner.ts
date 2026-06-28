@@ -24,6 +24,11 @@ const PLATFORM_HOME: Record<string, string> = {
   binance: 'https://www.binance.com/zh-CN/square', youtube: 'https://www.youtube.com/',
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
 };
+// 视频下载直链的 Referer(各平台 CDN 防盗链要求,给错会 403)。video_download 剧本走 downloadVideoToDisk 时按平台取。
+const DOWNLOAD_REFERER: Record<string, string> = {
+  douyin: 'https://www.douyin.com/', kuaishou: 'https://www.kuaishou.com/',
+  bilibili: 'https://www.bilibili.com/', tiktok: 'https://www.tiktok.com/',
+};
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, setAccountKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
 import { promptReloginForExpiredAccount, loginUrlFor } from './reloginPrompt';
@@ -323,8 +328,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
           return { ok: false, reason: String(err?.message || err) };
         }
       },
-      // 视频下载落盘(video_download 剧本用):把无水印 mp4 直链下到
-      // <matrixDir>/downloads/<平台>/<accountId>/<fileName>,返回绝对路径 + 字节数。
+      // 视频下载落盘(video_download 剧本用:douyin/kuaishou/bilibili 直链下载):把无水印 mp4
+      // 直链下到 <matrixDir>/downloads/<平台>/<accountId>/<fileName>,返回绝对路径 + 字节数。
+      // ⚠️ Referer 必须按平台给(bilibili/kuaishou CDN 防盗链,给错 Referer 会 403),不能写死抖音。
       // 浏览器 UA + 5 分钟超时;点停止(signal abort)立即中断本次下载。
       downloadVideoToDisk: async (videoUrl: string, o?: { fileName?: string; outputDir?: string }) => {
         try {
@@ -334,12 +340,13 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
           fs.mkdirSync(dir, { recursive: true });
           const safeName = String(o?.fileName || `video_${Date.now()}.mp4`).replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
           const filePath = path.join(dir, safeName);
+          const referer = DOWNLOAD_REFERER[opts.platform || ''] || PLATFORM_HOME[opts.platform || ''] || 'https://www.douyin.com/';
           const ctrl = new AbortController();
           const to = setTimeout(() => ctrl.abort(), 5 * 60 * 1000);
           try { opts.signal?.addEventListener('abort', () => ctrl.abort(), { once: true }); } catch { /* ignore */ }
           let buf: Buffer;
           try {
-            const resp = await fetch(videoUrl, { headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', Referer: 'https://www.douyin.com/' }, signal: ctrl.signal });
+            const resp = await fetch(videoUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', Referer: referer }, signal: ctrl.signal });
             if (!resp.ok) return { ok: false, reason: `http_${resp.status}` };
             buf = Buffer.from(await resp.arrayBuffer());
           } finally { clearTimeout(to); }
@@ -349,6 +356,26 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
           return { ok: true, filePath, size: buf.length, dir };
         } catch (err: any) {
           coworkLog('WARN', 'engage', `[${accountId}] downloadVideoToDisk failed: ${String(err?.message || err)}`);
+          return { ok: false, reason: String(err?.message || err).slice(0, 120) };
+        }
+      },
+      // 二进制资产落盘(tiktok 视频下载剧本用):把 base64 数据(剧本先用浏览器/Node fetch 拿到字节)
+      // 写到 <matrixDir>/downloads/<平台>/<accountId>/<subdir>/<fileName>,返回绝对路径。
+      // tiktok 不走 downloadVideoToDisk(它要浏览器 main_world_fetch_api base64 + 多级 fallback 自己拿字节)。
+      writeAsset: async (fileName: string, base64Data: string, o?: { subdir?: string }) => {
+        try {
+          const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
+          const dir = path.join(base, 'downloads', opts.platform || acc.platform || 'unknown', accountId, String(o?.subdir || '').replace(/[\\/:*?"<>|]/g, '_'));
+          fs.mkdirSync(dir, { recursive: true });
+          const safeName = String(fileName || `asset_${Date.now()}`).replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
+          const filePath = path.join(dir, safeName);
+          const buf = Buffer.from(String(base64Data || ''), 'base64');
+          if (!buf.length) return { ok: false, reason: 'empty_data' };
+          fs.writeFileSync(filePath, buf);
+          coworkLog('INFO', 'engage', `[${accountId}] writeAsset ok → ${filePath} (${buf.length}B)`);
+          return { ok: true, path: filePath, size: buf.length, dir };
+        } catch (err: any) {
+          coworkLog('WARN', 'engage', `[${accountId}] writeAsset failed: ${String(err?.message || err)}`);
           return { ok: false, reason: String(err?.message || err).slice(0, 120) };
         }
       },

@@ -61,8 +61,9 @@ const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou'
 // 创作者中心,取主站号即可,无 loginScope;后端剧本 douyin_reply_fans_comment 已就位)。
 const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'toutiao', 'shipinhao']);
 // 后端 backend/matrix/scenarios 有 <platform>_video_download「视频无水印下载」剧本的平台(单账号工具任务)。
-// 目前仅抖音(借抖音页面 fetch wrapper 实时签名拿无水印源;主站登录态即可,取主站号)。
-const MATRIX_VIDEO_DOWNLOAD_PLATFORMS = new Set<PlatformId>(['douyin']);
+// 抖音(页面 fetch wrapper 签名拿 detail)/快手(读 <video> src)/哔哩哔哩(playurl html5 单文件 mp4)/
+// TikTok(SSR __UNIVERSAL_DATA__ + 多级 fallback,须 VPN 真机)。都走【主站】登录态,取主站号。
+const MATRIX_VIDEO_DOWNLOAD_PLATFORMS = new Set<PlatformId>(['douyin', 'kuaishou', 'bilibili', 'tiktok']);
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -290,6 +291,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 账号(主站号是涨粉互动用的,登录态不通用)。其它平台无 loginScope → 取主站默认。
   const replyAccountFilter = (a: any, platform: string): boolean =>
     a.platform === platform && (platform === 'kuaishou' ? a.loginScope === 'creator' : (a.loginScope || 'main') === 'main');
+  // 视频下载在【主站】操作(douyin/kuaishou/bilibili/tiktok 都打开 www.* 主站拿无水印源),所以
+  // 一律取主站号 —— 快手也取主站(loginScope!='creator'),不同于回复粉丝那条用 creator scope。
+  const downloadAccountFilter = (a: any, platform: string): boolean =>
+    a.platform === platform && (a.loginScope || 'main') === 'main';
   const mapWizardAccount = (a: any): WizardAccount => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar });
   const openMatrixReplyWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
@@ -346,7 +351,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     try {
       const r = await (window as any).electron?.matrix?.listAccounts?.();
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
-      setMatrixDownloadAccounts(accs.filter((a) => replyAccountFilter(a, platform)).map(mapWizardAccount));
+      setMatrixDownloadAccounts(accs.filter((a) => downloadAccountFilter(a, platform)).map(mapWizardAccount));
     } catch { setMatrixDownloadAccounts([]); }
     finally { setMatrixDownloadAccountsLoading(false); }
     setMatrixDownloadTask(null);
@@ -368,7 +373,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     try {
       const r = await (window as any).electron?.matrix?.listAccounts?.();
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
-      setMatrixDownloadAccounts(accs.filter((a) => replyAccountFilter(a, plat)).map(mapWizardAccount));
+      setMatrixDownloadAccounts(accs.filter((a) => downloadAccountFilter(a, plat)).map(mapWizardAccount));
     } catch { setMatrixDownloadAccounts([]); }
     finally { setMatrixDownloadAccountsLoading(false); }
   };
@@ -921,7 +926,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">⬇️ {platLabel} · 视频无水印下载</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                选 <strong>1 个</strong>已登录的{platLabel}账号,粘贴 1-20 个视频链接,用该号的指纹浏览器逐个打开、借页面自身签名拿<strong>无水印</strong>源下到本地。
+                选 <strong>1 个</strong>已登录的{platLabel}账号,粘贴 1-20 个视频链接,用该号的指纹浏览器逐个打开、借该号登录态拿<strong>无水印</strong>源下到本地。{currentPlatform === 'tiktok' ? '(TikTok 须 VPN/真机)' : ''}
                 单账号顺序下载、不多开;图文/合集自动跳过,每条成功下载按次扣费。
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
@@ -1455,7 +1460,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto" onClick={() => { setMatrixDownloadPlatform(null); setMatrixDownloadTask(null); }}>
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <MatrixVideoDownloadWizard
-              platformLabel={matrixDownloadPlatform === 'douyin' ? '抖音' : String(matrixDownloadPlatform)}
+              platformLabel={(() => { const p = matrixDownloadPlatform; return p === 'douyin' ? '抖音' : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : p === 'tiktok' ? 'TikTok' : String(p); })()}
               platform={matrixDownloadPlatform}
               accounts={matrixDownloadAccounts}
               accountsLoading={matrixDownloadAccountsLoading}

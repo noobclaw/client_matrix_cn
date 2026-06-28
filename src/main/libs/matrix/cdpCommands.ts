@@ -67,7 +67,7 @@ export async function matrixCmd(
       const expr = `(async function(){try{`
         + `var r=await fetch(${JSON.stringify(url)},{method:${JSON.stringify(String(params?.method || 'GET'))},credentials:${JSON.stringify(params?.credentials || 'include')},headers:${JSON.stringify(params?.headers || {})},body:${params?.body != null ? JSON.stringify(String(params.body)) : 'null'}});`
         + `var st=r.status;`
-        + `if(${JSON.stringify(String(params?.responseType || 'text'))}==='base64'){var ab=await r.arrayBuffer();var by=new Uint8Array(ab),bin='';for(var i=0;i<by.length;i++)bin+=String.fromCharCode(by[i]);return JSON.stringify({ok:true,status:st,body:btoa(bin)});}`
+        + `if(${JSON.stringify(String(params?.responseType || 'text'))}==='base64'){var ab=await r.arrayBuffer();var by=new Uint8Array(ab),bin='';for(var i=0;i<by.length;i++)bin+=String.fromCharCode(by[i]);return JSON.stringify({ok:true,status:st,body:btoa(bin),encoding:'base64',byteLength:by.length});}`
         + `var t=await r.text();var b;try{b=JSON.parse(t);}catch(e){b=t;}return JSON.stringify({ok:true,status:st,body:b});`
         + `}catch(e){return JSON.stringify({ok:false,error:String(e&&e.message||e)});}})()`;
       try { const raw = await kernelEval(accountId, expr); return JSON.parse(String(raw || '{}')); }

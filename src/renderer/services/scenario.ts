@@ -89,12 +89,14 @@ const MATRIX_REPLY_META: Record<string, { name_zh: string; icon: string }> = {
 // 「视频无水印下载」剧本(backend/matrix/scenarios/<platform>_video_download)。单账号工具任务:
 // 选 1 个号 + 粘贴多个链接,逐个下载。目前仅抖音。同样需补快照,否则任务 scenario_id lookup 不到 platform。
 const MATRIX_DOWNLOAD_SCENARIO_ID: Record<string, string> = {
-  douyin: 'douyin_video_download',
+  douyin: 'douyin_video_download', kuaishou: 'kuaishou_video_download',
+  bilibili: 'bilibili_video_download', tiktok: 'tiktok_video_download',
 };
 const MATRIX_DOWNLOAD_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_DOWNLOAD_SCENARIO_ID).map(([p, id]) => [id, p]));
 const MATRIX_DOWNLOAD_META: Record<string, { name_zh: string; icon: string }> = {
-  douyin: { name_zh: '抖音 视频无水印下载', icon: '⬇️' },
+  douyin: { name_zh: '抖音 视频无水印下载', icon: '⬇️' }, kuaishou: { name_zh: '快手 视频无水印下载', icon: '⬇️' },
+  bilibili: { name_zh: '哔哩哔哩 视频无水印下载', icon: '⬇️' }, tiktok: { name_zh: 'TikTok 视频无水印下载', icon: '⬇️' },
 };
 
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
