@@ -1574,7 +1574,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         <>
                           <span className="font-mono text-gray-700 dark:text-gray-200">
                             💬 <strong className="text-green-600 dark:text-green-400">{commentDone > 0 ? commentDone : '-'}</strong>{' '}
-                            <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{isZh ? '评论' : 'comments'}</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{isZh ? '回复' : 'replies'}</span>
                           </span>
                           <span className="font-mono text-gray-700 dark:text-gray-200">
                             📄 <strong className="text-green-600 dark:text-green-400">{articleStr}</strong>{' '}
@@ -1831,7 +1831,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       </div>
                       {note && <div className="mt-0.5 text-[10px] text-gray-400 truncate">备注 {note}</div>}
                       <div className="mt-1 font-mono text-gray-600 dark:text-gray-300">
-                        👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}
+                        {/* 回复粉丝任务只显示「回复数」(comment 通道),不显示赞/关注 —— 那是互动涨粉。 */}
+                        {/_reply_fans_comment$/.test(String(scenario?.id || ''))
+                          ? <>💬 {ap.comment?.done ?? 0} {isZh ? '回复' : 'replies'}</>
+                          : <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>}
                       </div>
                     </button>
                   );
@@ -2044,6 +2047,15 @@ function formatActionBreakdown(
   // accept "showing 0/0/0 on truly-empty rows" as the right trade-off
   // since the alternative ("-") makes the card look broken.
   const sid = String(scenario?.id || '');
+  // 自动回复粉丝(各平台 *_reply_fans_comment):只产生「回复数」(走 comment 通道),
+  // 不点赞、不关注 —— 累计/上次完成只显示 💬 N 回复,绝不显示 👍赞 / ➕关注(那是互动涨粉)。
+  if (/_reply_fans_comment$/.test(sid)) {
+    const replies = counts
+      ? (typeof counts.comment === 'number' ? counts.comment
+         : typeof counts.reply === 'number' ? counts.reply : 0)
+      : 0;
+    return `💬 ${replies} ${isZh ? '回复' : 'replies'}`;
+  }
   if (!counts || Object.keys(counts).length === 0) {
     const isPostScenario = (
       sid === 'binance_square_post_creator' ||
