@@ -14,6 +14,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { shortId } from '../../../utils/shortId';
 import { i18nService } from '../../../services/i18n';
 import { CardActionRow } from '../CardActionRow';
 import { VideoLoginCheckModal } from './VideoLoginCheckModal';
@@ -795,7 +796,7 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
       <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 dark:text-gray-500 font-mono">
         <span>{isZh ? '任务id:' : 'task:'} #{run.taskId.slice(0, 8)}</span>
         <span>·</span>
-        <span>{isZh ? '记录id:' : 'record:'} #{run.id.slice(0, 8)}</span>
+        <span>{isZh ? '记录id:' : 'record:'} #{shortId(run.id)}</span>
       </div>
 
       {/* 尾行:最新进度 / 错误摘要 · 日志条数 */}
@@ -1757,7 +1758,7 @@ const VideoRunRecordDetail: React.FC<{
 
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <HeadBadges isZh={isZh} size="md" input={run.input} />
-        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">#{run.id.slice(0, 8)}</span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">#{shortId(run.id)}</span>
       </div>
       <h2 className="text-lg font-bold dark:text-white mb-1">🎬 {run.title}</h2>
       <div className="text-xs text-gray-400 mb-3">

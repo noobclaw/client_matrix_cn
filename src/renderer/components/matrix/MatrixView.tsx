@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { shortId } from '../../utils/shortId';
 import MatrixTaskWizard from './MatrixTaskWizard';
 import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
@@ -667,7 +668,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {PLATFORM_LABEL[t.platform]}</span>
                           <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 互动涨粉</span>
                           <span className="font-medium dark:text-white truncate">{t.name}</span>
-                          <span className="text-[10px] text-gray-500 font-mono shrink-0">#{t.id.slice(0, 8)}</span>
+                          <span className="text-[10px] text-gray-500 font-mono shrink-0">#{shortId(t.id)}</span>
                         </div>
                         <div className="shrink-0">
                           {isRunning ? (

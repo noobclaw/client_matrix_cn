@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { friendlyRunError } from '../../services/runErrorMessage';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
@@ -425,7 +426,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                   <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 dark:text-gray-500 font-mono">
                     <span>{isZh ? '任务id:' : 'task:'} #{rec.task_id.slice(0, 8)}</span>
                     <span>·</span>
-                    <span>{isZh ? '记录id:' : 'record:'} #{rec.id.slice(0, 8)}</span>
+                    <span>{isZh ? '记录id:' : 'record:'} #{shortId(rec.id)}</span>
                   </div>
                   {/* Result summary + error reason */}
                   {(rec.error || (rec as any).summary || rec.result) && (

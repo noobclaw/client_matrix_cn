@@ -25,7 +25,7 @@ const PLATFORM_HOME: Record<string, string> = {
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
 };
 import { matrixCmd } from './cdpCommands';
-import { getAccount, setAccountStatus, setAccountKeywords, accountBadgeLabel, markAccountAlive } from './accountManager';
+import { getAccount, setAccountStatus, setAccountKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive } from './accountManager';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 import { getNoobClawAuthToken } from '../claudeSettings';
 
@@ -45,6 +45,7 @@ export interface EngageQuota {
 
 export interface EngageTaskOptions {
   platform: string;                 // 目前 douyin
+  taskId?: string;                  // 任务 id(标签分组 pill 显示 🤖 平台 #缩写;手动/无任务上下文可缺省)
   accountIds: string[];
   quota?: EngageQuota;              // 每号配额区间(缺省用 scenario 默认)
   concurrency?: number;
@@ -179,8 +180,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
       // 窗口左上角常驻角标(账号名 + 代理/本机 IP):所有任务执行都显示,便于核对在哪个号、走哪个 IP(撞 IP 会红)。
       // groupTitle 同名,免得标签页显示 raw accountId。
-      label: accountBadgeLabel(acc),
-      groupTitle: accountBadgeLabel(acc),
+      label: accountBadgeLabel(acc),                       // 绿色角标:账号信息(平台·昵称·备注)
+      groupTitle: matrixGroupTitle(opts.platform, opts.taskId), // 蓝色 pill:🤖 平台 #任务缩写(不重复账号信息)
     });
     await kernelNavigate(accountId, PLATFORM_HOME[opts.platform] || 'https://www.douyin.com/');
     await sleep(2000);

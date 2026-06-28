@@ -18,6 +18,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
 
@@ -507,7 +508,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         </>
                       )}
                       <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
-                        #{task.id.slice(0, 8)}
+                        #{shortId(task.id)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

@@ -9,6 +9,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { shortId } from '../../utils/shortId';
 import { scenarioService, type Task, type Draft, type Scenario } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { MATRIX_EDITION } from '../../matrixEdition';
@@ -1024,7 +1025,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           {typeBadge.icon} {typeBadge.label}
         </span>
         <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
-          #{task.id.slice(0, 8)}
+          #{shortId(task.id)}
         </span>
       </div>
 
@@ -1097,7 +1098,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         <div className="flex items-center gap-3 mb-1.5">
                           <span className="text-gray-400">{isZh ? '账号:' : 'Accounts:'}</span>
                           <span className="dark:text-white font-medium">{isZh ? `${matrixAccountIds.length} 个 · 各用自己的赛道/人设/关键词` : `${matrixAccountIds.length} accounts · each uses its own track/persona/keywords`}</span>
-                          <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                          <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                         </div>
                         {accs.length > 0 ? (
                           // 只纵向滚动 + 横向裁剪:关键词/人设是 truncate(nowrap),若允许横向滚动会把整卡撑宽、
@@ -1139,7 +1140,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
                       </span>
                       <span className="dark:text-white font-medium">{trackName}</span>
-                      <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                      <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                     </div>
                   )}
                   {/* v6.x: 源平台 viral 搬运 — task id + 媒体类型展示在头部 */}
@@ -1147,12 +1148,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400">{isZh ? '本次搬运:' : 'Repost mode:'}</span>
                       <span className="dark:text-white font-medium">{mediaFilterLabel}</span>
-                      <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                      <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                     </div>
                   )}
                   {isImageTextTask && (
                     <div className="flex items-center gap-3">
-                      <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                      <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                     </div>
                   )}
                   {/* v4.28.x: 把 task.persona 文本展开显示在「人设: XXX」下面 ——

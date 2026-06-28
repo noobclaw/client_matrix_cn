@@ -16,7 +16,7 @@
  */
 
 import {
-  getAccount, setAccountStatus, setAccountIdentity, accountBadgeLabel, platformKey, findAccountByUid,
+  getAccount, setAccountStatus, setAccountIdentity, accountBadgeLabel, matrixGroupTitle, platformKey, findAccountByUid,
 } from './accountManager';
 import {
   launchKernel, kernelNavigate, kernelBringToFront, kernelShowExpiredBadge,
@@ -62,7 +62,7 @@ export async function promptReloginForExpiredAccount(accountId: string): Promise
     await launchKernel({
       accountId: acc.id, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir,
       fingerprint: acc.fingerprint, proxy: acc.proxy,
-      label: accountBadgeLabel(acc), groupTitle: accountBadgeLabel(acc), skipLease: true,
+      label: accountBadgeLabel(acc), groupTitle: matrixGroupTitle(acc.platform), skipLease: true,
     });
   } catch {
     watching.delete(accountId);

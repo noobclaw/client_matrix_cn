@@ -56,6 +56,18 @@ export function accountBadgeLabel(acc: Pick<MatrixAccount, 'platform' | 'display
   return parts.join(' · ');
 }
 
+// 浏览器标签分组(蓝色 pill)标题 —— 对齐旧客户端扩展 '🤖 ' + key 的约定:只放【🤖 + 平台 + 任务id缩写】。
+// 账号信息(昵称/备注)交给窗口左上角绿色角标(label),pill 不再重复 → 多窗一眼看出「是哪个任务」。
+// 任务id缩写取【唯一尾巴】(平台/类型前缀已被平台名覆盖):binance_engage_l8x2k_3a → l8x2k_3a;
+//   无下划线分段(异常 id)则回退末 6 位。无 taskId(登录/保活无任务上下文)→ 只 🤖 + 平台。
+export function matrixGroupTitle(platform: string, taskId?: string): string {
+  const plat = PLATFORM_ZH[platform] || platform;
+  if (!taskId) return `🤖 ${plat}`;
+  const segs = String(taskId).split('_').filter(Boolean);
+  const abbr = segs.length >= 2 ? segs.slice(-2).join('_') : String(taskId).slice(-6);
+  return `🤖 ${plat} #${abbr}`;
+}
+
 function persist(): void {
   ensureDirs();
   // 原子写:先写临时文件再 rename,避免写到一半被 kill 导致 JSON 截断损坏。

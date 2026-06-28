@@ -15,7 +15,7 @@ import { launchKernel, kernelNavigate, checkKernelLogin, closeKernel, NO_KERNEL_
 import { installedKernelPath } from './kernelInstaller';
 import { runMatrixDriver } from './driverCtx';
 import {
-  getAccount, setAccountStatus, markPosted, accountBadgeLabel, markAccountAlive, platformKey,
+  getAccount, setAccountStatus, markPosted, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey,
 } from './accountManager';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 
@@ -26,6 +26,7 @@ function randInt(min: number, max: number): number { return min + Math.floor(Mat
 
 export interface MatrixTaskOptions {
   platform: VideoPlatform;
+  taskId?: string;             // 任务 id(标签分组 pill 显示 🤖 平台 #缩写;手动/无任务上下文可缺省)
   accountIds: string[];
   /** 每号的发布内容(支持差异化);返回同一份即同条铺号。 */
   getInput: (accountId: string, index: number) => PublishInput | Promise<PublishInput>;
@@ -97,9 +98,8 @@ async function runOne(
       proxy: acc.proxy,
       headless: opts.headless,
       // 窗口左上角常驻角标(账号名 + 代理/本机 IP):所有任务执行都显示,便于核对在哪个号、走哪个 IP(撞 IP 会红)。
-      // groupTitle 同名,免得标签页显示 raw accountId。
-      label: accountBadgeLabel(acc),
-      groupTitle: accountBadgeLabel(acc),
+      label: accountBadgeLabel(acc),                       // 绿色角标:账号信息(平台·昵称·备注)
+      groupTitle: matrixGroupTitle(opts.platform, opts.taskId), // 蓝色 pill:🤖 平台 #任务缩写(不重复账号信息)
     });
 
     // 发前登录检查(用 PUBLISHER_ANCHOR_URL,driver 内部也会再导航一次)。

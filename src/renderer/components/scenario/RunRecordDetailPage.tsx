@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { scenarioService } from '../../services/scenario';
 
@@ -283,7 +284,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       <div className="flex items-center gap-3 mb-3 text-[11px] text-gray-500 dark:text-gray-500 font-mono">
         <span>{isZh ? '任务id:' : 'task:'} #{rec.task_id.slice(0, 8)}</span>
         <span>·</span>
-        <span>{isZh ? '记录id:' : 'record:'} #{rec.id.slice(0, 8)}</span>
+        <span>{isZh ? '记录id:' : 'record:'} #{shortId(rec.id)}</span>
       </div>
 
       {/* Stats — 5 columns on wide screens to accommodate the cost card.

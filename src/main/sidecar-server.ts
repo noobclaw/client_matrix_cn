@@ -275,7 +275,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     };
     broadcastSSE('matrix:progress', { type: 'taskStart', taskId: task.id });
     runEngageTask({
-      platform: task.platform, accountIds: accIds, quota: task.quota, concurrency: task.concurrency, kernelPath, signal: abort.signal,
+      platform: task.platform, taskId: task.id, accountIds: accIds, quota: task.quota, concurrency: task.concurrency, kernelPath, signal: abort.signal,
       onLog: (accountId, msg) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); },
       onTargets: (accountId, t) => {
         const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0 };
@@ -1470,6 +1470,7 @@ const server = http.createServer(async (req, res) => {
                 : () => a?.input;
               runMatrixTask({
                 platform: a?.platform,
+                taskId: a?.taskId,
                 accountIds: a?.accountIds || [],
                 getInput,
                 concurrency: a?.concurrency,
@@ -1507,6 +1508,7 @@ const server = http.createServer(async (req, res) => {
                 broadcastSSE('matrix:progress', { type: 'taskStart' });
                 runEngageTask({
                   platform,
+                  taskId: a?.taskId,
                   accountIds: a?.accountIds || [],
                   quota: a?.quota,
                   concurrency: a?.concurrency,
