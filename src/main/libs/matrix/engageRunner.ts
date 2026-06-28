@@ -274,7 +274,18 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       stepDone: (_s: number) => {},
       startAction: (..._a: any[]) => {},
       stepResetAll: () => {},
-      setActionTargets: (t: any) => { log(`🎯 配额 赞${t.like}/关${t.follow}/评${t.comment}`); try { opts.onTargets?.(accountId, { like: t.like, follow: t.follow, comment: t.comment }); } catch { /* ignore */ } },
+      setActionTargets: (t: any) => {
+        // reply_fan(回复粉丝)没有点赞/关注/评论配额 —— 它就是逐条回全部粉丝评论;只有 engage 才有配额。
+        // 老日志写死 `赞${t.like}/关${t.follow}/评${t.comment}`,回复任务没传这三个 → 显示「赞undefined/关undefined/评undefined」误导用户。
+        // 改成只打有值的字段,且 reply_fan 用「目标」(作品数)而非「配额」。
+        const parts: string[] = [];
+        if (typeof t.like === 'number') parts.push(`赞${t.like}`);
+        if (typeof t.follow === 'number') parts.push(`关${t.follow}`);
+        if (typeof t.comment === 'number') parts.push(`评${t.comment}`);
+        if (typeof t.note === 'number') parts.push(`作品${t.note}`);
+        if (parts.length) log(`🎯 ${opts.taskType === 'reply_fan' ? '目标' : '配额'} ${parts.join('/')}`);
+        try { opts.onTargets?.(accountId, { like: t.like, follow: t.follow, comment: t.comment }); } catch { /* ignore */ }
+      },
       addActionCount: (type: string, n: number) => { if (type in counts) (counts as any)[type] += n; opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); },
       finish: (status: string, error?: string) => { finished = { status, error }; },
       // 计费 / AI / 去重 —— 扣费成功就把 charged(积分)+ cost_usd 累加,并推一次 onItem 让「本次消耗」实时跳。
