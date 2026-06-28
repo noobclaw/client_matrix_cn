@@ -1412,7 +1412,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         if (sid === 'xhs_reply_fans_comment') {
                           return isZh ? `${intervalLabel} · 最近 30 篇笔记/次` : `${intervalLabel} · latest 30 notes/run`;
                         }
-                        if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment') {
+                        if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment' || sid === 'toutiao_reply_fans_comment') {
                           return isZh ? `${intervalLabel} · 最近 30 个作品/次` : `${intervalLabel} · latest 30 videos/run`;
                         }
                         if (typeof cMin === 'number' && typeof cMax === 'number') {
@@ -1563,7 +1563,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     // v6.x: 回复粉丝评论(xhs/douyin)= 「已回复评论数」+「文章进度 当前/总」,
                     //   不是「N/target 评论」。评论纯累计(无 target),文章扫描后才知道总数
                     //   (扫描前 target=0 → 显示 "-")。精确 id 门控,不碰其他场景。
-                    if (scenario?.id === 'xhs_reply_fans_comment' || scenario?.id === 'douyin_reply_fans_comment' || scenario?.id === 'kuaishou_reply_fans_comment' || scenario?.id === 'bilibili_reply_fans_comment' || scenario?.id === 'shipinhao_reply_fans_comment') {
+                    if (scenario?.id === 'xhs_reply_fans_comment' || scenario?.id === 'douyin_reply_fans_comment' || scenario?.id === 'kuaishou_reply_fans_comment' || scenario?.id === 'bilibili_reply_fans_comment' || scenario?.id === 'shipinhao_reply_fans_comment' || scenario?.id === 'toutiao_reply_fans_comment') {
                       const commentDone = (ap as any).comment?.done ?? 0;
                       const noteDone = (ap as any).note?.done ?? 0;
                       const noteTarget = (ap as any).note?.target ?? 0;

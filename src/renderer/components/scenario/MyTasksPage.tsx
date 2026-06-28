@@ -655,7 +655,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           if (sid === 'xhs_reply_fans_comment') {
                             return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 篇笔记/次' : 'latest 30 notes/run'}`;
                           }
-                          if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment') {
+                          if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment' || sid === 'toutiao_reply_fans_comment') {
                             return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 个作品/次' : 'latest 30 videos/run'}`;
                           }
                           if (sid === 'toutiao_reply_fans_comment') {
@@ -755,7 +755,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     //   「文章进度 当前/总」,不是「N/target 评论」。评论没法预知总数(每篇
                     //   点开才知道有几条未回复)所以是纯累计;文章扫描后才知道总数,扫描前显
                     //   示 "-"。专属渲染,精确 id 门控,不碰其他场景的通用逻辑。
-                    if (sid === 'xhs_reply_fans_comment' || sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment') {
+                    if (sid === 'xhs_reply_fans_comment' || sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment' || sid === 'toutiao_reply_fans_comment') {
                       const d = effectiveInfo.data as any;
                       const running = effectiveInfo.mode === 'running';
                       const commentDone = running ? (d.comment?.done ?? 0) : (d.comment ?? 0);
