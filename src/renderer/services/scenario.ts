@@ -102,12 +102,12 @@ const MATRIX_DOWNLOAD_META: Record<string, { name_zh: string; icon: string }> = 
 // 「图文创作」剧本(backend/matrix/scenarios/<platform>_image_text)。N 个号各自按身份生成图文+配图+发布。
 // 目前仅抖音(小红书第二步)。同样需补快照,否则任务 scenario_id lookup 不到 platform。
 const MATRIX_IMAGETEXT_SCENARIO_ID: Record<string, string> = {
-  douyin: 'douyin_image_text',
+  douyin: 'douyin_image_text', xhs: 'xhs_image_text',
 };
 const MATRIX_IMAGETEXT_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_IMAGETEXT_SCENARIO_ID).map(([p, id]) => [id, p]));
 const MATRIX_IMAGETEXT_META: Record<string, { name_zh: string; icon: string }> = {
-  douyin: { name_zh: '抖音 图文创作', icon: '📝' },
+  douyin: { name_zh: '抖音 图文创作', icon: '📝' }, xhs: { name_zh: '小红书 图文创作', icon: '📝' },
 };
 
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;

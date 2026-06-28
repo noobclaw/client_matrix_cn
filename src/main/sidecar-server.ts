@@ -236,7 +236,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   const release = () => { runningPlatforms.delete(platform); abortByPlatform.delete(platform); runAccountsByPlatform.delete(platform); };
   try {
     const { runEngageTask } = await import('./libs/matrix/engageRunner');
-    const { runDouyinImageTextTask } = await import('./libs/matrix/douyinImageTextRunner');
+    const { runImageTextTask } = await import('./libs/matrix/imageTextRunner');
     const { addRun } = await import('./libs/matrix/runStore');
     const { getAccount } = await import('./libs/matrix/accountManager');
     const startedAt = Date.now();
@@ -278,7 +278,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     };
     broadcastSSE('matrix:progress', { type: 'taskStart', taskId: task.id });
     // reply_fan 走专属剧本(*_reply_fans_comment),不要关键词、带引流尾巴;video_download 走 *_video_download
-    // 剧本(单账号、粘贴链接逐个下载);image_text 走【独立 runner】douyinImageTextRunner(N 号各自生成图文+发布);
+    // 剧本(单账号、粘贴链接逐个下载);image_text 走【独立 runner】imageTextRunner(N 号各自生成图文+发布);
     // engage 走平台互动剧本。
     const isReplyFan = task.type === 'reply_fan';
     const isVideoDownload = task.type === 'video_download';
@@ -311,7 +311,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     };
 
     const runP: Promise<any> = isImageText
-      ? runDouyinImageTextTask({
+      ? runImageTextTask({
           platform: task.platform, taskId: task.id, accountIds: accIds, config: task.imageText as any,
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,

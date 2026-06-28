@@ -66,8 +66,8 @@ const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaish
 // TikTok(SSR __UNIVERSAL_DATA__ + 多级 fallback,须 VPN 真机)。都走【主站】登录态,取主站号。
 const MATRIX_VIDEO_DOWNLOAD_PLATFORMS = new Set<PlatformId>(['douyin', 'kuaishou', 'bilibili', 'tiktok']);
 // 后端 backend/matrix/scenarios 有 <platform>_image_text「图文创作」剧本的平台(N 号各自生成图文+发布)。
-// 目前仅抖音(小红书第二步)。
-const MATRIX_IMAGE_TEXT_PLATFORMS = new Set<PlatformId>(['douyin']);
+// 抖音(creator.douyin.com)/小红书(creator.xiaohongshu.com)。
+const MATRIX_IMAGE_TEXT_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs']);
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,

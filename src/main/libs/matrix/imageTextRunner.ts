@@ -1,10 +1,10 @@
 /**
- * 矩阵「抖音图文创作」运行时 —— 让一批账号在各自指纹内核里各自生成+配图+发布图文。
+ * 矩阵「图文创作」运行时(平台通用:抖音 / 小红书…)—— 让一批账号在各自指纹内核里各自生成+配图+发布图文。
  *
- * 复用后端 fork 的 douyin_image_text orchestrator(单账号版的 4 个 STEP:抽灵感/身份种子 →
- * AI 改写(含维度化创意引擎)→ 配图(AI 生图 或 抖音搜实景图)→ 发到 creator.douyin.com),
+ * 复用后端 fork 的 <platform>_image_text orchestrator(单账号版的 4 个 STEP:抽灵感/身份种子 →
+ * AI 改写(含维度化创意引擎)→ 配图(AI 生图 或 平台搜实景图)→ 发到各自创作者中心),
  * 这里提供它需要的整套 ctx,把浏览器命令路由到该账号的 CDP(matrixCmd),AI/配图调后端、
- * 计费走 /api/charge/action。
+ * 计费走 /api/charge/action。平台由 opts.platform 决定(scenarioId、登录预检导航 URL 都按它取)。
  *
  * 与 engageRunner 的差异(本场景独有,故新建 runner 而非塞进 engage):
  *   · ctx 多 saveDrafts(改写稿+配图落盘)、apiCall(/api/image/generate 生图+轮询)。
@@ -40,6 +40,11 @@ function randInt(min: number, max: number): number {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
 }
 function matrixDir(): string { return process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix'); }
+// 登录预检导航 URL(图文发布在创作者中心,按平台取;主站登录态覆盖创作端的也走创作端页确认)。
+const IMAGE_TEXT_LOGIN_HOME: Record<string, string> = {
+  douyin: 'https://creator.douyin.com/',
+  xhs: 'https://creator.xiaohongshu.com/',
+};
 
 export interface ImageTextTaskOptions {
   platform: string;                 // 目前 douyin
@@ -157,8 +162,8 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string):
       label: accountBadgeLabel(acc),
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
-    // 图文发布在创作者中心 —— 先导航 creator.douyin.com 校验登录态(对齐 feedback_matrix_task_login_precheck)。
-    await kernelNavigate(accountId, 'https://creator.douyin.com/');
+    // 图文发布在创作者中心 —— 先导航对应平台创作者中心校验登录态(对齐 feedback_matrix_task_login_precheck)。
+    await kernelNavigate(accountId, IMAGE_TEXT_LOGIN_HOME[opts.platform] || IMAGE_TEXT_LOGIN_HOME.douyin);
     await sleep(2000);
     let loggedIn = true;
     try { loggedIn = await checkKernelLogin(accountId, platformKey(acc)); } catch { loggedIn = true; }
@@ -328,7 +333,7 @@ async function runPool(ids: string[], k: number, worker: (id: string) => Promise
   return results;
 }
 
-export async function runDouyinImageTextTask(opts: ImageTextTaskOptions): Promise<EngageReport> {
+export async function runImageTextTask(opts: ImageTextTaskOptions): Promise<EngageReport> {
   if (!opts.kernelPath && !installedKernelPath()) {
     throw new Error(`${NO_KERNEL_ERROR}: 指纹浏览器内核未安装,请先到「我的矩阵账号」下载内核`);
   }
