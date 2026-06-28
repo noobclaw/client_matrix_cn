@@ -1825,7 +1825,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <div className="flex items-center gap-1.5 font-medium dark:text-gray-200">
                         <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
                         {d.avatar
-                          ? <img src={d.avatar} alt="" className="w-4 h-4 rounded-full shrink-0 object-cover" />
+                          ? <img src={d.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-4 h-4 rounded-full shrink-0 object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                           : <span className="text-xs shrink-0">{PLATFORM_EMOJI[d.platform] || '👤'}</span>}
                         <span className="truncate">{title}</span>
                         {d.displayId && <span className="text-gray-400 font-normal shrink-0">· {PLID[d.platform] || '账号'}:{d.displayId}</span>}
