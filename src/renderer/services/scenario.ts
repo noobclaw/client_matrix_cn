@@ -131,6 +131,13 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : 'matrix',
     // image_text 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     imageText: isImageText ? t.imageText : undefined,
+    // 摊平给详情页 ConfigCard 读(它读 use_real_photos / real_photo_count / ai_image_style 这套老字段)。
+    //   之前只传 imageText 对象 → 详情页读 task.use_real_photos=undefined → 选了网络图也恒显「AI 生图」。
+    use_real_photos: isImageText ? !!(t.imageText && t.imageText.useRealPhotos) : undefined,
+    real_photo_count: (isImageText && t.imageText && typeof t.imageText.imageCount === 'number') ? t.imageText.imageCount : undefined,
+    ai_image_style: (isImageText && t.imageText) ? (t.imageText.aiImageStyle || '') : undefined,
+    auto_publish: isImageText ? !!(t.imageText && t.imageText.autoPublish) : undefined,
+    auto_upload: isImageText ? !!(t.imageText && t.imageText.autoPublish) : undefined,
     keywords: [],
     persona: '',
     // video_download:粘贴的链接清单(详情页/编辑回填用),daily_count = 链接数。
