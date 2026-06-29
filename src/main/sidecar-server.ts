@@ -2138,6 +2138,21 @@ const server = http.createServer(async (req, res) => {
               }
               case 'scenario:getTaskDir': {
                 try {
+                  // 先查【矩阵任务】(存在 matrix taskStore,不在老 scenario store)。矩阵各类任务输出落在
+                  //   <matrixDir>/<bucket>/<平台>/:图文=drafts、视频下载=downloads、互动/回复=reports。
+                  //   之前直接走老 store → 矩阵任务查不到 → 返回 dir:'' → 「打开输出文件夹」点了没反应(所有矩阵任务通病)。
+                  try {
+                    const mtStore = require('./libs/matrix/taskStore');
+                    const mt = mtStore.getTask ? mtStore.getTask(args[0]) : null;
+                    if (mt) {
+                      const os = require('os'); const path = require('path'); const fs = require('fs');
+                      const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
+                      const bucket = mt.type === 'image_text' ? 'drafts' : mt.type === 'video_download' ? 'downloads' : 'reports';
+                      const dir = path.join(base, bucket, mt.platform || '');
+                      try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ } // 没跑过也能打开(空目录)
+                      return writeJSON(res, 200, { dir });
+                    }
+                  } catch { /* 不是矩阵任务 → 回落老 store */ }
                   const { getTaskDirPath } = require('./libs/scenario/artifactWriter');
                   const task = scenarioTaskStore.getTask(args[0]);
                   if (!task) return writeJSON(res, 200, { dir: '' });
