@@ -91,12 +91,14 @@ const MATRIX_REPLY_META: Record<string, { name_zh: string; icon: string }> = {
 const MATRIX_DOWNLOAD_SCENARIO_ID: Record<string, string> = {
   douyin: 'douyin_video_download', kuaishou: 'kuaishou_video_download',
   bilibili: 'bilibili_video_download', tiktok: 'tiktok_video_download',
+  xhs: 'xhs_video_download',
 };
 const MATRIX_DOWNLOAD_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_DOWNLOAD_SCENARIO_ID).map(([p, id]) => [id, p]));
 const MATRIX_DOWNLOAD_META: Record<string, { name_zh: string; icon: string }> = {
   douyin: { name_zh: '抖音 视频无水印下载', icon: '⬇️' }, kuaishou: { name_zh: '快手 视频无水印下载', icon: '⬇️' },
   bilibili: { name_zh: '哔哩哔哩 视频无水印下载', icon: '⬇️' }, tiktok: { name_zh: 'TikTok 视频无水印下载', icon: '⬇️' },
+  xhs: { name_zh: '小红书 视频无水印下载', icon: '⬇️' },
 };
 
 // 「图文创作」剧本(backend/matrix/scenarios/<platform>_image_text)。N 个号各自按身份生成图文+配图+发布。

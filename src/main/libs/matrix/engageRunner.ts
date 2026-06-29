@@ -28,6 +28,7 @@ const PLATFORM_HOME: Record<string, string> = {
 const DOWNLOAD_REFERER: Record<string, string> = {
   douyin: 'https://www.douyin.com/', kuaishou: 'https://www.kuaishou.com/',
   bilibili: 'https://www.bilibili.com/', tiktok: 'https://www.tiktok.com/',
+  xhs: 'https://www.xiaohongshu.com/',
 };
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, setAccountKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';

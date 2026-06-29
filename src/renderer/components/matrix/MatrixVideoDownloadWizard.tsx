@@ -27,6 +27,7 @@ const LINK_RE: Record<string, RegExp> = {
   kuaishou: /^https?:\/\/([\w-]+\.)?(kuaishou\.com|kwai\.com|chenzhongtech\.com|gifshow\.com)\//i,
   bilibili: /^https?:\/\/(([\w-]+\.)?bilibili\.com|b23\.tv)\//i,
   tiktok: /^https?:\/\/([\w-]+\.)?tiktok\.com\//i,
+  xhs: /^https?:\/\/(([\w-]+\.)?xiaohongshu\.com|xhslink\.com)\//i,
 };
 const linkValidatorFor = (platform?: string) => {
   const re = LINK_RE[platform || 'douyin'] || LINK_RE.douyin;
@@ -37,12 +38,14 @@ const LINK_PLACEHOLDER: Record<string, string> = {
   kuaishou: 'https://www.kuaishou.com/short-video/...\nhttps://v.kuaishou.com/...',
   bilibili: 'https://www.bilibili.com/video/BV...\nhttps://b23.tv/...',
   tiktok: 'https://www.tiktok.com/@user/video/...\nhttps://vm.tiktok.com/...',
+  xhs: 'https://www.xiaohongshu.com/explore/...\nhttps://xhslink.com/...',
 };
 const LINK_HINT: Record<string, string> = {
   douyin: '支持 www.douyin.com / v.douyin.com 短链',
   kuaishou: '支持 kuaishou.com / v.kuaishou.com 短链',
   bilibili: '支持 bilibili.com / b23.tv 短链',
   tiktok: '支持 tiktok.com(须 VPN 真机)',
+  xhs: '支持 xiaohongshu.com / xhslink.com 短链',
 };
 
 interface Props {

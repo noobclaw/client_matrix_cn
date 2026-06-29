@@ -64,7 +64,7 @@ const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaish
 // 后端 backend/matrix/scenarios 有 <platform>_video_download「视频无水印下载」剧本的平台(单账号工具任务)。
 // 抖音(页面 fetch wrapper 签名拿 detail)/快手(读 <video> src)/哔哩哔哩(playurl html5 单文件 mp4)/
 // TikTok(SSR __UNIVERSAL_DATA__ + 多级 fallback,须 VPN 真机)。都走【主站】登录态,取主站号。
-const MATRIX_VIDEO_DOWNLOAD_PLATFORMS = new Set<PlatformId>(['douyin', 'kuaishou', 'bilibili', 'tiktok']);
+const MATRIX_VIDEO_DOWNLOAD_PLATFORMS = new Set<PlatformId>(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'xhs']);
 // 后端 backend/matrix/scenarios 有 <platform>_image_text「图文创作」剧本的平台(N 号各自生成图文+发布)。
 // 抖音(creator.douyin.com)/小红书(creator.xiaohongshu.com)。
 const MATRIX_IMAGE_TEXT_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs']);
@@ -1556,7 +1556,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto" onClick={() => { setMatrixDownloadPlatform(null); setMatrixDownloadTask(null); }}>
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <MatrixVideoDownloadWizard
-              platformLabel={(() => { const p = matrixDownloadPlatform; return p === 'douyin' ? '抖音' : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : p === 'tiktok' ? 'TikTok' : String(p); })()}
+              platformLabel={(() => { const p = matrixDownloadPlatform; return p === 'douyin' ? '抖音' : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : p === 'tiktok' ? 'TikTok' : p === 'xhs' ? '小红书' : String(p); })()}
               platform={matrixDownloadPlatform}
               accounts={matrixDownloadAccounts}
               accountsLoading={matrixDownloadAccountsLoading}
