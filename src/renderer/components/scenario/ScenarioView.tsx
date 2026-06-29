@@ -906,6 +906,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <div className="p-6 max-w-5xl mx-auto">
           {/* 新建任务卡片:每行 2 个(互动涨粉 + 自动回复粉丝),与其它新建 tab 的卡片网格一致 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+          {/* 互动涨粉卡:仅在该平台有 engage 剧本(MATRIX_ENGAGE_PLATFORMS)时显示。
+              视频号/头条号无 engage → 不显示这张卡(它们仍有自动回复粉丝卡,tab 不会空),
+              而不是显示一张「即将上线」占位卡。 */}
+          {engageReady && (
           <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 dark:bg-violet-500/10 p-6 flex flex-col">
             <div className="flex items-center gap-2 text-xs font-semibold text-violet-600 dark:text-violet-400 mb-2">
               <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> 矩阵互动 · 多账号涨粉
@@ -915,7 +919,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               多个号同时开窗,各按自己赛道精准点赞 / 关注 / 评论。<strong>AI 模拟真人不封号</strong>,选几个号开几个窗 —— 涨粉快、成本低、全程托管。
             </div>
             <div className="mt-auto flex items-center flex-wrap pt-1">
-            {engageReady ? (
               <button
                 type="button"
                 onClick={() => openMatrixWizard(currentPlatform)}
@@ -923,17 +926,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               >
                 🎯 开始创作 →
               </button>
-            ) : (
-              <button
-                type="button"
-                disabled
-                title={`${platLabel} 互动涨粉即将上线`}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-sm font-bold cursor-not-allowed"
-              >
-                🚧 互动涨粉即将上线
-              </button>
-            )}
-            {engageReady && (
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
@@ -941,14 +933,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               >
                 已有任务 »
               </button>
-            )}
             </div>
-            {!engageReady && (
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-3 leading-relaxed">
-                {platLabel} 账号可在「我的矩阵账号」里登录管理,并用于<strong>多平台视频创作</strong>发布;互动涨粉(点赞/关注/评论)剧本还在开发中。
-              </div>
-            )}
           </div>
+          )}
           {/* 自动回复粉丝(矩阵多账号)—— 小红书/快手/哔哩哔哩:在创作者中心评论管理里逐条回复自己作品下的粉丝评论。 */}
           {MATRIX_REPLY_FAN_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/5 dark:bg-fuchsia-500/10 p-6 flex flex-col">
