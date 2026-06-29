@@ -412,6 +412,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const typeLabel = (() => {
                 if (sid === 'x_auto_engage')                  return { icon: '🐦', zh: '推特 · 互动涨粉', en: 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
                 if (sid === 'x_post')                         return { icon: '🐦', zh: '推特 · 自动发推', en: 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'binance_post')                   return { icon: '📊', zh: '币安广场 · 自动发帖', en: 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                 if (sid === 'x_post_creator')                 return { icon: '📝', zh: '推特 · 自动发推', en: 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'x_link_rewrite')                 return { icon: '✍️', zh: '推特 · 指定链接仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
                 if (sid === 'binance_square_auto_engage')     return { icon: '🤝', zh: '币安广场 · 互动涨粉', en: 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
@@ -723,7 +724,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid === 'douyin_image_text' ||
                       sid === 'xhs_image_text' ||  // ← v6.x: 之前漏,跟 douyin_image_text 同 post 系
                       sid === 'xhs_viral_production_career' ||
-                      sid === 'x_post'  // 矩阵自动发推:主动作 = post(发推),新任务无历史时兜底 ['post'] 不闪「赞」
+                      sid === 'x_post' ||  // 矩阵自动发推:主动作 = post(发推),新任务无历史时兜底 ['post'] 不闪「赞」
+                      sid === 'binance_post'  // 矩阵币安广场自动发帖:同 x_post,主动作 = post(发帖),不显示赞/关注/评论
                     );
                     // v5.x+: engage scenarios are 3-pronged (like / comment /
                     // follow) so a brand-new task with no history should show

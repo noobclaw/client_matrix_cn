@@ -1840,6 +1840,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {isZh ? '图文创作' : 'Image-text'}</span>;
                           if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {isZh ? '爆款仿写' : 'Viral rewrite'}</span>;
                           if (sid === 'x_post') return <span className="text-gray-400 font-sans">🐦 {isZh ? '发推' : 'Tweet'}</span>;
+                          if (sid === 'binance_post') return <span className="text-gray-400 font-sans">📊 {isZh ? '发帖' : 'Post'}</span>;
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
                       </div>
@@ -2081,6 +2082,11 @@ function formatActionBreakdown(
   //   sidecar 存运行记录时 totals 恒以 {like:0,follow:0,comment:0} 打底再补 post(sidecar-server.ts),
   //   不早返回就会落到下面的互动 breakdown 把那三个 0 画成「👍0 ➕0 💬0」。
   if (sid === 'x_post') {
+    const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
+    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+  }
+  // 币安广场自动发帖(矩阵版 binance_post):同 x_post,只产生「发帖数」,显示 📤 N 发帖,绝不显示赞/关注/评论。
+  if (sid === 'binance_post') {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
   }

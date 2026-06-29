@@ -383,10 +383,18 @@ export const RunHistoryPage: React.FC<Props> = ({
                       ...Object.keys(ac || {}),
                       ...Object.keys(at || {}),
                     ]);
+                    // 内容/工具类任务(图文创作/爆款仿写/自动发推/币安广场发帖/视频下载)的运行记录
+                    //   action_counts 恒以 {like:0,follow:0,comment:0} 打底(sidecar),再补 post/download。
+                    //   这类记录里带 post 或 download → 把恒 0 的赞/关注/评论/订阅/回复丢掉,只留 post/download,
+                    //   否则历史里会误显「👍0 · ➕0 · 💬0 · 📤N」。互动任务(无 post/download)不受影响,照常显示三档。
+                    // 按【键是否存在】判别(不看值):内容/工具记录恒带 post/download 键(哪怕为 0,如发布失败的 0 帖),
+                    //   互动记录从不带 → 失败的 0 帖记录也能正确归类、不误显赞/关注/评论。
+                    const isContentOrTool = !!ac && ('post' in ac || 'download' in ac);
+                    const ENGAGE_KEYS = new Set(['like', 'follow', 'comment', 'subscribe', 'reply']);
                     // 'note' 是回复粉丝场景的「文章进度」内部计数(当前第几篇/总),只在
                     //   「本次运行进度」实时卡里有意义;累计/历史里只展示评论数,过滤掉它,
                     //   否则中文下会出现未翻译的原始 "note" 键名。
-                    const keys = Array.from(allKeys).filter(k => k !== 'note').sort((a, b) => {
+                    const keys = Array.from(allKeys).filter(k => k !== 'note' && !(isContentOrTool && ENGAGE_KEYS.has(k))).sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);
                       if (ia === -1) return 1;
