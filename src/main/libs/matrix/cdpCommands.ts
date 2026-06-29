@@ -98,25 +98,64 @@ export async function matrixCmd(
       if (!url || !/^https?:\/\//i.test(url)) return { error: 'invalid_url' };
       const referrer = String(params?.referrer || 'https://www.douyin.com/');
       const maxBytes = Number(params?.maxBytes) || 8 * 1024 * 1024;
-      const ctrl = new AbortController();
-      const to = setTimeout(() => ctrl.abort(), 30000);
-      try {
-        const resp = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            Referer: referrer,
-            Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-          },
-          signal: ctrl.signal,
-        });
-        if (!resp.ok) return { error: 'http_' + resp.status };
-        const ct = resp.headers.get('content-type') || '';
-        const buf = Buffer.from(await resp.arrayBuffer());
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Referer: referrer,
+        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      };
+      const finalize = (buf: Buffer, ct: string) => {
         if (!buf.length) return { error: 'empty_body' };
         if (buf.length > maxBytes) return { error: 'too_large' };
         return { base64: buf.toString('base64'), mimeType: (ct.split(';')[0] || '').trim() };
+      };
+      // 兜底:Node 内置 https/http.get(undici 在挑剔网络下会直接抛 "fetch failed",
+      // 内置 get 更宽容、能拿原始字节;手动跟最多 3 跳重定向 — CDN 常 302 到真图)。同 tiktok 下载。
+      const nodeGet = (target: string, redirectsLeft: number): Promise<{ buf: Buffer; ct: string } | { error: string }> =>
+        new Promise((resolve) => {
+          (async () => {
+            try {
+              const mod: any = target.toLowerCase().startsWith('https') ? await import('https') : await import('http');
+              const req = mod.get(target, { headers, timeout: 30000 }, (res: any) => {
+                const sc = res.statusCode || 0;
+                if (sc >= 300 && sc < 400 && res.headers.location && redirectsLeft > 0) {
+                  res.resume();
+                  const next = new URL(res.headers.location, target).toString();
+                  nodeGet(next, redirectsLeft - 1).then(resolve);
+                  return;
+                }
+                if (sc !== 200) { res.resume(); resolve({ error: 'http_' + sc }); return; }
+                const chunks: Buffer[] = [];
+                let total = 0;
+                let aborted = false;
+                res.on('data', (c: Buffer) => {
+                  total += c.length;
+                  if (total > maxBytes) { aborted = true; req.destroy(); resolve({ error: 'too_large' }); return; }
+                  chunks.push(c);
+                });
+                res.on('end', () => { if (!aborted) resolve({ buf: Buffer.concat(chunks), ct: String(res.headers['content-type'] || '') }); });
+                res.on('error', (e: any) => resolve({ error: 'node_get:' + String(e?.message || e).slice(0, 50) }));
+              });
+              req.on('error', (e: any) => resolve({ error: 'node_get:' + String(e?.message || e).slice(0, 50) }));
+              req.on('timeout', () => { req.destroy(); resolve({ error: 'node_get:timeout' }); });
+            } catch (e: any) { resolve({ error: 'node_get:' + String(e?.message || e).slice(0, 50) }); }
+          })();
+        });
+
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 30000);
+      try {
+        const resp = await fetch(url, { headers, signal: ctrl.signal });
+        // HTTP 层错误(403/404 等)再 node.get 也是同样被拒,直接返回,不浪费一轮。
+        if (!resp.ok) return { error: 'http_' + resp.status };
+        const ct = resp.headers.get('content-type') || '';
+        const buf = Buffer.from(await resp.arrayBuffer());
+        return finalize(buf, ct);
       } catch (e: any) {
-        return { error: 'fetch_image_failed:' + String(e?.message || e).slice(0, 80) };
+        // undici 抛错(典型 "fetch failed" / abort / TLS)→ 回退 Node 内置 get。
+        clearTimeout(to);
+        const r = await nodeGet(url, 3);
+        if ('buf' in r) return finalize(r.buf, r.ct);
+        return { error: 'fetch_image_failed:' + String(e?.message || e).slice(0, 50) + '|fallback:' + (r.error || '') };
       } finally { clearTimeout(to); }
     }
 
