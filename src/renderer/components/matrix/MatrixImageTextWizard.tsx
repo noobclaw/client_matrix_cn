@@ -3,17 +3,18 @@
  *
  * 多账号任务:勾选 N 个号,每个号在各自指纹浏览器里按【自己的赛道/人设/关键词】(沿用账号已配身份)
  * + 维度化创意引擎随机文风 → AI 生成各异图文,配图全局二选一(AI 生图 / 按本号关键词搜实景图),
- * 发到各自创作者中心。配图方式/张数/篇数/发布全局统一;参考文案可选(填了应用到所有选中号,留空按身份生成)。
+ * 发到各自创作者中心。配图方式/张数/发布全局统一,每号每轮固定 1 篇;参考文案【每号各填一段】可留空(留空按本号身份生成)。
  *
  *   Step 1 — 勾选 N 个账号(多选)
- *   Step 2 — 配图方式 + 张数 + 每号篇数 + (AI 风格) + 发布方式 + (可选)参考文案
- *   Step 3 — 运行频率 + 摘要 + 条款
+ *   Step 2 — 给每个选中号各填一段参考文案(均可留空,独立成步,号多也不挤)
+ *   Step 3 — 配图方式 + 张数 + (AI 风格) + 发布方式(每号每轮固定 1 篇)
+ *   Step 4 — 运行频率 + 摘要 + 条款
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 
-type WizardStep = 1 | 2 | 3;
+type WizardStep = 1 | 2 | 3 | 4;
 
 export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
@@ -94,17 +95,18 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selectedIds.length > 0, reason: isZh ? '请至少勾选一个已登录账号' : 'Select at least one account' },
-    2: useRealPhotos && selectedNoKeyword.length > 0
+    2: { ok: true }, // 参考文案全选填,随时可下一步
+    3: useRealPhotos && selectedNoKeyword.length > 0
       ? { ok: false, reason: `网络图模式需要每个号都配关键词,有 ${selectedNoKeyword.length} 个号未配(到「我的矩阵账号」编辑里加)` }
       : { ok: true },
-    3: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
+    4: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
   };
 
   const handleSave = async () => {
     if (saving) return;
-    if (!canAdvance[3].ok) { setSaveError(canAdvance[3].reason || ''); return; }
+    if (!canAdvance[4].ok) { setSaveError(canAdvance[4].reason || ''); return; }
     if (selectedIds.length === 0) { setSaveError(canAdvance[1].reason || ''); return; }
-    if (!canAdvance[2].ok) { setSaveError(canAdvance[2].reason || ''); return; }
+    if (!canAdvance[3].ok) { setSaveError(canAdvance[3].reason || ''); return; }
     setSaving(true);
     try {
       // 只保留选中号、非空的参考文案(留空的号不进 map → runner 按身份生成)。
@@ -136,7 +138,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="text-base font-semibold dark:text-white">📝 {editing ? `编辑${platformLabel}图文创作任务` : `配置${platformLabel}图文创作`}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-emerald-500/40 text-emerald-500 bg-emerald-500/5">第 {step} / 3 步</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-emerald-500/40 text-emerald-500 bg-emerald-500/5">第 {step} / 4 步</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -196,6 +198,33 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
         {step === 2 && (
           <>
+            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300">
+              📄 给每个选中号各填一段参考文案(<strong>均可留空</strong>)。填了该号参考它创作,留空则该号按自己的赛道/人设/关键词 + 随机文风生成。这一步不填也能直接「下一步」。
+            </div>
+            <div className="space-y-2.5">
+              {selectedIds.map((id) => {
+                const a = accounts.find((x) => x.id === id);
+                const title = a?.nickname || a?.displayName || id;
+                return (
+                  <div key={id}>
+                    <div className="flex items-center gap-1.5 mb-1 text-xs text-gray-600 dark:text-gray-300">
+                      {a?.avatar
+                        ? <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-4 h-4 rounded-full object-cover shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                        : <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-[9px] font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
+                      <span className="font-medium truncate">{title}</span>
+                      {a?.displayId && <span className="text-gray-400 shrink-0">· {a.displayId}</span>}
+                    </div>
+                    <textarea value={references[id] || ''} onChange={(e) => setRef(id, e.target.value)} placeholder="(选填)给本号粘一段灵感/范文,留空则按本号赛道/人设/关键词生成" rows={2} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" disabled={saving} />
+                  </div>
+                );
+              })}
+              {selectedIds.length === 0 && <div className="text-xs text-gray-400">请先返回第 1 步勾选账号</div>}
+            </div>
+          </>
+        )}
+
+        {step === 3 && (
+          <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ 配图方式<span className="text-xs text-gray-400 font-normal ml-1">· 全局统一,每个号各自找图</span></label>
               <div className="grid grid-cols-2 gap-2">
@@ -238,32 +267,10 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </div>
             </div>
 
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">📄 参考文案<span className="text-xs text-gray-400 font-normal ml-1">· 给每个号各填一段(均可留空);填了该号参考它创作,留空则该号按自己的赛道/人设/关键词生成</span></label>
-              <div className="space-y-2.5">
-                {selectedIds.map((id) => {
-                  const a = accounts.find((x) => x.id === id);
-                  const title = a?.nickname || a?.displayName || id;
-                  return (
-                    <div key={id}>
-                      <div className="flex items-center gap-1.5 mb-1 text-xs text-gray-600 dark:text-gray-300">
-                        {a?.avatar
-                          ? <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-4 h-4 rounded-full object-cover shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                          : <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-[9px] font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
-                        <span className="font-medium truncate">{title}</span>
-                        {a?.displayId && <span className="text-gray-400 shrink-0">· {a.displayId}</span>}
-                      </div>
-                      <textarea value={references[id] || ''} onChange={(e) => setRef(id, e.target.value)} placeholder="(选填)给本号粘一段灵感/范文,留空则按本号赛道/人设/关键词生成" rows={2} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" disabled={saving} />
-                    </div>
-                  );
-                })}
-                {selectedIds.length === 0 && <div className="text-xs text-gray-400">请先在第 1 步勾选账号</div>}
-              </div>
-            </div>
           </>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ 运行频率</label>
@@ -305,7 +312,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">取消</button>
         <div className="flex-1" />
         {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">← 上一步</button>}
-        {step < 3 ? (
+        {step < 4 ? (
           <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">下一步 →</button>
         ) : (
           <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{saving ? '保存中...' : (editing ? '✓ 保存修改' : '📝 创建任务')}</button>
