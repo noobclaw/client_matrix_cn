@@ -251,11 +251,30 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </div>
             </div>
 
-            <div className="flex items-center gap-4 flex-wrap">
-              <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
-                <input type="checkbox" checked={isBlueV} onChange={(e) => setIsBlueV(e.target.checked)} disabled={saving} className="h-4 w-4 accent-sky-500" />
-                🔵 蓝V (X Premium) 账号<span className="text-[11px] text-gray-400">勾选则字数自由(长推);不勾默认 ≤140 字</span>
-              </label>
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">👑 账号类型 <span className="text-[11px] text-gray-400 font-normal">决定每条推文的字数上限</span></label>
+              <button
+                type="button"
+                onClick={() => setIsBlueV(!isBlueV)}
+                disabled={saving}
+                aria-pressed={isBlueV}
+                className={`w-full px-4 py-3 rounded-xl border text-left transition-colors flex items-center gap-3 disabled:opacity-50 ${
+                  isBlueV
+                    ? 'border-amber-400 bg-gradient-to-r from-amber-500/15 to-sky-500/10 text-amber-700 dark:text-amber-300 shadow-sm'
+                    : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-400/60'
+                }`}
+              >
+                <span className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-sm transition-colors ${isBlueV ? 'bg-amber-400 text-white' : 'border-2 border-gray-400 dark:border-gray-600'}`}>{isBlueV ? '✓' : ''}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                    🔵 蓝V (X Premium) 账号
+                    {isBlueV && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400 text-white font-bold tracking-wide">已开启</span>}
+                  </span>
+                  <span className="block text-[11px] text-gray-400 font-normal mt-0.5">
+                    {isBlueV ? '✅ 字数自由,可发长推(长文)' : '默认普通号:每条 ≤140 字。若你这个号是蓝V会员,点亮可发长推'}
+                  </span>
+                </span>
+              </button>
             </div>
 
             <div>

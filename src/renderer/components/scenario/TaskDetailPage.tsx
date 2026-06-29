@@ -2078,6 +2078,13 @@ function formatActionBreakdown(
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
   }
+  // 自动发推(矩阵版 x_post):只产生「发帖数」,累计/上次完成显示 📤 N 发帖,绝不显示赞/关注/评论。
+  //   sidecar 存运行记录时 totals 恒以 {like:0,follow:0,comment:0} 打底再补 post(sidecar-server.ts),
+  //   不早返回就会落到下面的互动 breakdown 把那三个 0 画成「👍0 ➕0 💬0」。
+  if (sid === 'x_post') {
+    const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
+    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+  }
   // 视频无水印下载(*_video_download):只产生「下载条数」,显示 ⬇️ N 下载,不显示互动。
   if (/_video_download$/.test(sid)) {
     const dls = counts && typeof counts.download === 'number' ? counts.download : 0;

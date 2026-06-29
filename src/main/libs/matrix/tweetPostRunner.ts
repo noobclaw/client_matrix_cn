@@ -109,7 +109,7 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
   const acc = getAccount(accountId);
   const cfg = opts.config;
   const log = (m: string) => { try { opts.onLog?.(accountId, m); } catch { /* ignore */ } };
-  if (opts.signal?.aborted) return { accountId, state: 'skipped', reason: 'aborted' };
+  if (opts.signal?.aborted) { log('⏹ 已停止,跳过本号'); return { accountId, state: 'skipped', reason: 'aborted' }; }
   if (!acc) { log('❌ 跳过:账号不存在'); return { accountId, state: 'skipped', reason: 'account_not_found' }; }
   if (acc.platform !== opts.platform) { log('❌ 跳过:账号平台与任务不符'); return { accountId, state: 'skipped', reason: 'platform_mismatch' }; }
   if (acc.status === 'banned' || acc.status === 'limited') { log('❌ 跳过:账号状态为 ' + acc.status); return { accountId, state: 'skipped', reason: 'account_' + acc.status }; }
@@ -285,9 +285,23 @@ export async function runTweetPostTask(opts: TweetPostTaskOptions): Promise<Enga
     throw new Error(`${NO_KERNEL_ERROR}: 指纹浏览器内核未安装,请先到「我的矩阵账号」下载内核`);
   }
   const k = Math.max(1, Math.min(opts.concurrency ?? 3, 10));
+  // 没选账号 → 直接空转完成会「瞬间结束、零日志」,先广播一条说明,别让用户摸不着头脑。
+  if (!opts.accountIds.length) {
+    opts.onLog?.('', '⚠️ 本任务未选择任何账号,无可执行对象(请编辑任务勾选已登录的推特账号)');
+    coworkLog('WARN', 'tweetPostRunner', 'no accounts on task', { taskId: opts.taskId });
+    return { platform: opts.platform, total: 0, success: 0, failed: 0, skipped: 0, items: [] };
+  }
   const scenarioId = `${opts.platform}_post`;
   const pack = await fetchPack(scenarioId);
   if (!pack || !pack.orchestrator) {
+    // 后端剧本拉取失败(未部署 / 网络 / 超时)→ 以前是静默全员 skipped、一行日志都不打,
+    // 用户只看到「运行一下就结束、没有日志」。现在每个号都广播原因,便于定位。
+    const reason = `❌ 后端发推剧本(${scenarioId})拉取失败:可能后端未部署该剧本,或网络/VPN 不通 ${baseUrl()}。本次跳过`;
+    coworkLog('ERROR', 'tweetPostRunner', 'fetch pack returned null', { scenarioId, base: baseUrl() });
+    for (const id of opts.accountIds) {
+      opts.onLog?.(id, reason);
+      try { opts.onItem?.({ accountId: id, state: 'skipped', reason: 'no_scenario(后端未部署?)' }); } catch { /* ignore */ }
+    }
     return {
       platform: opts.platform, total: opts.accountIds.length, success: 0, failed: 0, skipped: opts.accountIds.length,
       items: opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_scenario(后端未部署?)' })),
