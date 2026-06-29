@@ -35,10 +35,10 @@ export interface ImageTextWizardSave {
   frequency: string;
   useRealPhotos: boolean;
   imageCount: number;
-  dailyCount: number;
   aiImageStyle: string;
   autoPublish: boolean;
-  reference: string;       // 可选参考文案(应用到所有选中号);空则按身份生成
+  references: Record<string, string>;   // 各号各自参考文案(键=accountId,值可留空);空则该号按身份生成
+  // 每号每轮固定 1 篇,不再让用户调篇数。
 }
 
 interface Props {
@@ -67,14 +67,16 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const it = initialTask?.imageText || {};
   const [useRealPhotos, setUseRealPhotos] = useState<boolean>(!!it.useRealPhotos);
   const [imageCount, setImageCount] = useState<number>(Math.max(2, Math.min(6, Number(it.imageCount) || (it.useRealPhotos ? 6 : 4))));
-  const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(50, Number(it.dailyCount) || 1)));
   const [aiImageStyle, setAiImageStyle] = useState<string>(it.aiImageStyle || 'ai_auto');
   const [autoPublish, setAutoPublish] = useState<boolean>(it.autoPublish !== false); // 默认群发
-  const [reference, setReference] = useState<string>(() => {
-    const refs = it.references || {};
-    const vals = Object.values(refs).filter((v) => typeof v === 'string' && v.trim()) as string[];
-    return vals.length ? vals[0] : ''; // 编辑回填:取任一段(本 UI 是共享参考)
+  // 各号各自的参考文案(键=accountId,可留空)。
+  const [references, setReferences] = useState<Record<string, string>>(() => {
+    const refs = (it.references || {}) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const k of Object.keys(refs)) if (typeof refs[k] === 'string') out[k] = refs[k] as string;
+    return out;
   });
+  const setRef = (id: string, v: string) => setReferences((prev) => ({ ...prev, [id]: v }));
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
@@ -82,7 +84,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, useRealPhotos, imageCount, dailyCount, reference, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, useRealPhotos, imageCount, references, runInterval]);
 
   // 网络图模式要求每个选中号都配了关键词(没词没法搜);AI 生图模式不强制。
   const selectedNoKeyword = useMemo(
@@ -105,6 +107,9 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
     if (!canAdvance[2].ok) { setSaveError(canAdvance[2].reason || ''); return; }
     setSaving(true);
     try {
+      // 只保留选中号、非空的参考文案(留空的号不进 map → runner 按身份生成)。
+      const refsOut: Record<string, string> = {};
+      for (const id of selectedIds) { const v = (references[id] || '').trim(); if (v) refsOut[id] = v; }
       await onSave({
         name: initialTask?.name || `${platformLabel}图文创作 · ${selectedIds.length} 个号`,
         accountIds: selectedIds,
@@ -112,10 +117,9 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         frequency: runInterval,
         useRealPhotos,
         imageCount,
-        dailyCount,
         aiImageStyle,
         autoPublish,
-        reference: reference.trim(),
+        references: refsOut,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败' : 'Save failed'));
@@ -216,17 +220,10 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">每篇配图张数 <span className="text-emerald-500 font-bold">{imageCount}</span></label>
-                <input type="range" min={2} max={6} value={imageCount} onChange={(e) => setImageCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
-                <div className="flex justify-between text-[10px] text-gray-400"><span>2</span><span>6</span></div>
-              </div>
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">每号每轮篇数 <span className="text-emerald-500 font-bold">{dailyCount}</span></label>
-                <input type="range" min={1} max={20} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
-                <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>20</span></div>
-              </div>
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">每篇配图张数 <span className="text-emerald-500 font-bold">{imageCount}</span><span className="text-xs text-gray-400 font-normal ml-2">· 每个号每次运行生成 1 篇</span></label>
+              <input type="range" min={2} max={6} value={imageCount} onChange={(e) => setImageCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>2</span><span>6</span></div>
             </div>
 
             <div>
@@ -242,8 +239,26 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">📄 参考文案<span className="text-xs text-gray-400 font-normal ml-1">· 选填;填了所有选中号都参考它来创作,留空则各号按自己的赛道/人设/关键词生成</span></label>
-              <textarea value={reference} onChange={(e) => setReference(e.target.value)} placeholder="(选填)粘贴一段灵感/范文,AI 会参考它的角度和信息来写,但每个号文风各异。留空则纯靠账号身份生成。" rows={4} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" disabled={saving} />
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">📄 参考文案<span className="text-xs text-gray-400 font-normal ml-1">· 给每个号各填一段(均可留空);填了该号参考它创作,留空则该号按自己的赛道/人设/关键词生成</span></label>
+              <div className="space-y-2.5">
+                {selectedIds.map((id) => {
+                  const a = accounts.find((x) => x.id === id);
+                  const title = a?.nickname || a?.displayName || id;
+                  return (
+                    <div key={id}>
+                      <div className="flex items-center gap-1.5 mb-1 text-xs text-gray-600 dark:text-gray-300">
+                        {a?.avatar
+                          ? <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-4 h-4 rounded-full object-cover shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                          : <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-[9px] font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
+                        <span className="font-medium truncate">{title}</span>
+                        {a?.displayId && <span className="text-gray-400 shrink-0">· {a.displayId}</span>}
+                      </div>
+                      <textarea value={references[id] || ''} onChange={(e) => setRef(id, e.target.value)} placeholder="(选填)给本号粘一段灵感/范文,留空则按本号赛道/人设/关键词生成" rows={2} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" disabled={saving} />
+                    </div>
+                  );
+                })}
+                {selectedIds.length === 0 && <div className="text-xs text-gray-400">请先在第 1 步勾选账号</div>}
+              </div>
             </div>
           </>
         )}
@@ -262,9 +277,9 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
               <SummaryRow label="账号" value={`${selectedIds.length} 个(各自身份+随机文风,内容互不相同)`} />
               <SummaryRow label="配图" value={useRealPhotos ? `网络图,每篇 ${imageCount} 张(按本号关键词搜)` : `AI 生图,每篇 ${imageCount} 张(${AI_STYLES.find((s) => s.value === aiImageStyle)?.label || aiImageStyle})`} />
-              <SummaryRow label="数量" value={`每号每轮 ${dailyCount} 篇,共约 ${selectedIds.length * dailyCount} 篇/轮`} />
+              <SummaryRow label="数量" value={`每号每轮 1 篇,共 ${selectedIds.length} 篇/轮`} />
               <SummaryRow label="发布" value={autoPublish ? '直接群发到各号创作者中心' : '仅本地保存(手动审核后发)'} />
-              <SummaryRow label="参考文案" value={reference.trim() ? '已填(所有号参考)' : '未填(按身份生成)'} />
+              <SummaryRow label="参考文案" value={`${selectedIds.filter((id) => (references[id] || '').trim()).length}/${selectedIds.length} 个号已填(其余按身份生成)`} />
               <SummaryRow label="运行频率" value={intervalLabel} />
             </div>
             <div className="space-y-2">

@@ -436,17 +436,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const saveMatrixImageTextTask = async (input: ImageTextWizardSave) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
-    // 参考文案(填了)应用到所有选中号 → references map;留空则不传(runner 按身份合成种子)。
-    const references = input.reference
-      ? Object.fromEntries(input.accountIds.map((id) => [id, input.reference]))
-      : undefined;
+    // 各号各自参考文案(wizard 已过滤空值,只含填了的号);每号每轮固定 1 篇。
     const imageText = {
       useRealPhotos: input.useRealPhotos,
       imageCount: input.imageCount,
-      dailyCount: input.dailyCount,
+      dailyCount: 1,
       aiImageStyle: input.aiImageStyle,
       autoPublish: input.autoPublish,
-      references,
+      references: input.references,
     };
     const r = await m?.saveTask?.({ id: matrixImageTextTask?.id, platform: matrixImageTextPlatform, type: 'image_text', name: input.name, accountIds: input.accountIds, imageText, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(图文创作)任务,直接编辑它即可' } as any)[r?.error] || r?.error || '保存失败');
