@@ -137,6 +137,14 @@ async function runOne(
     setAccountStatus(accountId, 'idle');
     return { accountId, state: 'failed', reason: 'runner_threw:' + String(e?.message || e).slice(0, 120) };
   } finally {
+    // 完成后留 20s 让用户检查浏览器里的结果再关窗(有 signal 时点「停止」立即关、不等)。
+    const _sig: AbortSignal | undefined = (opts as any).signal;
+    if (!_sig?.aborted) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 20000);
+        try { _sig?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
+      });
+    }
     try { closeKernel(accountId); } catch { /* ignore */ }
   }
 }

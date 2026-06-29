@@ -435,6 +435,13 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     // 抛错前可能已经扣过几笔 —— 钱已花,照样回传,别让「已扣的费」从消耗统计里消失。
     return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'engage_threw:' + String(e?.message || e).slice(0, 140) };
   } finally {
+    // 完成后留 20s 让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
+    if (!opts.signal?.aborted) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 20000);
+        try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
+      });
+    }
     try { closeKernel(accountId); } catch { /* ignore */ }
   }
 }
