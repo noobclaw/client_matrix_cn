@@ -1083,23 +1083,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {/* 视频无水印下载(单账号工具)—— 仅抖音:选 1 个号 + 粘贴链接逐个下载。 */}
-          {MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(currentPlatform) && (
-            <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
-              <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> 实用工具 · 单账号下载
+          {/* 爆款批量仿写(矩阵多账号)—— 小红书:每号关键词搜本niche爆款→仿写→AI生图→发布。 */}
+          {MATRIX_VIRAL_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 爆款仿写 · 多账号
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">⬇️ {platLabel} · 视频无水印下载</div>
+              <div className="text-xl font-bold dark:text-white mb-1">🔥 {platLabel} · 爆款批量仿写</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                粘贴 1-20 个链接,一键批量下<strong>无水印</strong>原视频到本地 —— 攒素材、做二创随手就来。选 1 个号顺序下,图文/合集自动跳过。{currentPlatform === 'tiktok' ? '(TikTok 须 VPN)' : ''}
+                每个号用<strong>自己的赛道/关键词</strong>去小红书搜本领域<strong>爆款笔记</strong>,按自己的人设 + 随机文风仿写成原创(N 号各不相同),AI 配图后发布。关键词/人设在「我的矩阵账号」里给每个号设。
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
                 type="button"
-                onClick={() => openMatrixDownloadWizard(currentPlatform)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-bold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95"
+                onClick={() => openMatrixViralWizard(currentPlatform)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-500 text-white text-sm font-bold hover:bg-rose-600 shadow-sm shadow-rose-500/25 transition-all active:scale-95"
               >
-                ⬇️ 开始下载 →
+                🔥 开始仿写 →
               </button>
               <button
                 type="button"
@@ -1167,23 +1167,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {/* 爆款批量仿写(矩阵多账号)—— 小红书:每号关键词搜本niche爆款→仿写→AI生图→发布。 */}
-          {MATRIX_VIRAL_PLATFORMS.has(currentPlatform) && (
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-500/10 p-6 flex flex-col">
-              <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 爆款仿写 · 多账号
+          {/* 视频无水印下载(单账号工具)—— 仅抖音:选 1 个号 + 粘贴链接逐个下载。 */}
+          {MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> 实用工具 · 单账号下载
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🔥 {platLabel} · 爆款批量仿写</div>
+              <div className="text-xl font-bold dark:text-white mb-1">⬇️ {platLabel} · 视频无水印下载</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                每个号用<strong>自己的赛道/关键词</strong>去小红书搜本领域<strong>爆款笔记</strong>,按自己的人设 + 随机文风仿写成原创(N 号各不相同),AI 配图后发布。关键词/人设在「我的矩阵账号」里给每个号设。
+                粘贴 1-20 个链接,一键批量下<strong>无水印</strong>原视频到本地 —— 攒素材、做二创随手就来。选 1 个号顺序下,图文/合集自动跳过。{currentPlatform === 'tiktok' ? '(TikTok 须 VPN)' : ''}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
                 type="button"
-                onClick={() => openMatrixViralWizard(currentPlatform)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-500 text-white text-sm font-bold hover:bg-rose-600 shadow-sm shadow-rose-500/25 transition-all active:scale-95"
+                onClick={() => openMatrixDownloadWizard(currentPlatform)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-bold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95"
               >
-                🔥 开始仿写 →
+                ⬇️ 开始下载 →
               </button>
               <button
                 type="button"
