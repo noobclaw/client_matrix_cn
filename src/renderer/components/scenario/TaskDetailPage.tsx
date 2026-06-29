@@ -1832,10 +1832,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       </div>
                       {note && <div className="mt-0.5 text-[10px] text-gray-400 truncate">备注 {note}</div>}
                       <div className="mt-1 font-mono text-gray-600 dark:text-gray-300">
-                        {/* 回复粉丝任务只显示「回复数」(comment 通道),不显示赞/关注 —— 那是互动涨粉。 */}
-                        {/_reply_fans_comment$/.test(String(scenario?.id || ''))
-                          ? <>💬 {ap.comment?.done ?? 0} {isZh ? '回复' : 'replies'}</>
-                          : <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>}
+                        {/* 按任务类型显示对应指标 —— 只有互动涨粉才有赞/关注/评论;回复粉丝=回复数;
+                            视频下载/图文创作不是互动,不显示点赞/关注/评论 emoji(显示类型标签,进度看下方日志)。 */}
+                        {(() => {
+                          const sid = String(scenario?.id || '');
+                          if (/_reply_fans_comment$/.test(sid)) return <>💬 {ap.comment?.done ?? 0} {isZh ? '回复' : 'replies'}</>;
+                          if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {isZh ? '视频下载' : 'Video download'}</span>;
+                          if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {isZh ? '图文创作' : 'Image-text'}</span>;
+                          return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
+                        })()}
                       </div>
                     </button>
                   );
