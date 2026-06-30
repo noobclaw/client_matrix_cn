@@ -316,6 +316,14 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
         broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts, chargedCredits: item.chargedCredits, chargedUsd: item.chargedUsd, taskId: task.id });
     };
 
+    // 启动瞬间就给反馈 —— 各 runner 内每号会先「错峰等待」3-15s、再花几秒启动指纹浏览器,
+    //   这段时间一行日志都没有,用户以为卡死。任务一开始立刻给每个号播一条「排队中」日志,
+    //   并解释为什么有延迟。所有任务类型(engage/reply_fan/image_text/viral/x_post/binance_post)
+    //   都经过这里,单点覆盖,无需改各 runner。
+    for (const aid of accIds) {
+      cbOnLog(aid, '⏳ 已加入运行队列,正在启动指纹浏览器…(为防多窗同时打开被风控,各账号错峰启动,首个最长约 15 秒,请稍候)');
+    }
+
     const runP: Promise<any> = isBinancePost
       ? runBinancePostTask({
           platform: task.platform, taskId: task.id, accountIds: accIds, config: task.binancePost as any,
