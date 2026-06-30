@@ -59,6 +59,10 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
   // 免费→「订阅会员」、付费未满级→「升级会员」、最高档(max)→灰色禁用。
   const isMaxTier = isPaid && authState.planCode === 'max';
   const subLabel = (!isPaid || authState.planCode === 'free') ? (isZh ? '订阅会员' : 'Subscribe') : (isZh ? '升级会员' : 'Upgrade');
+  // 到期前 3 天:pill 上挂红点 + 「N天后到期」轻提醒(强提醒走到期弹窗)。
+  const expMs = authState.subExpireAt ? new Date(authState.subExpireAt).getTime() : 0;
+  const daysLeft = isPaid && expMs ? Math.ceil((expMs - Date.now()) / 86_400_000) : null;
+  const expiringSoon = daysLeft != null && daysLeft >= 0 && daysLeft <= 3;
   const pillStyle: React.CSSProperties = isPaid
     ? { padding: compact ? '2px 8px' : '3px 10px', fontSize: compact ? 10 : 11, background: 'linear-gradient(135deg,#fde68a,#f59e0b)', color: '#3a2400', boxShadow: '0 0 10px rgba(245,158,11,0.45)' }
     : { padding: compact ? '2px 8px' : '3px 10px', fontSize: compact ? 10 : 11, background: 'rgba(255,255,255,0.06)', color: '#9aa0aa', border: '1px solid rgba(255,255,255,0.12)' };
@@ -77,11 +81,12 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
       <button
         type="button"
         onClick={() => openWallet('subscription')}
-        className="non-draggable inline-flex items-center gap-1 rounded-full font-bold leading-none whitespace-nowrap"
+        className="non-draggable relative inline-flex items-center gap-1 rounded-full font-bold leading-none whitespace-nowrap"
         style={pillStyle}
-        title={isZh ? '我的会员' : 'Membership'}
+        title={expiringSoon ? (isZh ? `会员将于 ${daysLeft} 天后到期,点此续费` : `Expires in ${daysLeft}d — renew`) : (isZh ? '我的会员' : 'Membership')}
       >
-        {isPaid ? '👑' : '🪙'} {planName}
+        {expiringSoon && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-1 ring-white" />}
+        {isPaid ? '👑' : '🪙'} {planName}{expiringSoon ? (isZh ? ` · ${daysLeft}天后到期` : ` · ${daysLeft}d left`) : ''}
       </button>
 
       {/* 积分余额(可消费总额) */}

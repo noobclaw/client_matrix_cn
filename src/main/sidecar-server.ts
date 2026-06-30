@@ -245,18 +245,28 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     const { runBinancePostTask } = await import('./libs/matrix/binancePostRunner');
     const { runBinanceRepostTask } = await import('./libs/matrix/binanceRepostRunner');
     const { addRun } = await import('./libs/matrix/runStore');
-    const { getAccount } = await import('./libs/matrix/accountManager');
+    const { getAccount, loadAccounts } = await import('./libs/matrix/accountManager');
+    const { getPlanLimit, allowedAccountIds } = await import('./libs/matrix/planLimit');
     const startedAt = Date.now();
     const collected = new Map<string, any>(); // 每号最后一条结果(用于运行记录)
     const accIds: string[] = task.accountIds || [];
-    const accN = accIds.length || 1;
+    // 会员号数墙:按当前生效档位上限,本平台只跑【最早绑定的前 N 个】号;超额号(会员到期/降级后
+    //   多出来的)暂停跳过——数据不删,续费/升级即恢复。limit 由渲染进程从 /api/ai/balance 推下来
+    //   (planLimit store);从未推送 → 默认很大 → 不暂停任何号(宁可不拦绝不误杀)。
+    const planLimit = getPlanLimit();
+    const platformAccts = loadAccounts().filter((a) => a.platform === platform);
+    const allowSet = allowedAccountIds(platformAccts, planLimit.maxAccountsPerPlatform);
+    const runIds: string[] = accIds.filter((id) => allowSet.has(id));
+    const suspendedIds: string[] = accIds.filter((id) => !allowSet.has(id));
+    const accN = runIds.length || 1;
     const q: any = task.quota || {};
     const zero = () => ({ like: 0, follow: 0, comment: 0 });
     const perAccount: MatrixLiveProgress['perAccount'] = {};
     for (const aid of accIds) {
+      const suspended = suspendedIds.includes(aid);
       perAccount[aid] = {
         displayName: getAccount(aid)?.displayName || aid,
-        status: 'running',
+        status: suspended ? 'skipped' : 'running',
         targets: { like: q.daily_like_max || 0, follow: q.daily_follow_max || 0, comment: q.daily_comment_max || 0 },
         done: zero(), cost: { credits: 0, usd: 0 }, logs: [],
       };
@@ -325,42 +335,47 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     //   这段时间一行日志都没有,用户以为卡死。任务一开始立刻给每个号播一条「排队中」日志,
     //   并解释为什么有延迟。所有任务类型(engage/reply_fan/image_text/viral/x_post/binance_post)
     //   都经过这里,单点覆盖,无需改各 runner。
-    for (const aid of accIds) {
+    for (const aid of runIds) {
       cbOnLog(aid, '⏳ 已加入运行队列,正在启动指纹浏览器…(为防多窗同时打开被风控,各账号错峰启动,首个最长约 15 秒,请稍候)');
+    }
+    // 超额号:播一条暂停说明 + 立刻广播 skipped item,让 UI 与运行记录都体现「会员到期已暂停」。
+    for (const aid of suspendedIds) {
+      cbOnLog(aid, '⏸️ 已暂停:超出当前会员可用号数(会员到期/降级后多出的账号)。续费或升级会员即可恢复;数据与任务均已保留。');
+      cbOnItem({ accountId: aid, state: 'skipped', reason: 'plan_limit_suspended', counts: zero(), chargedCredits: 0, chargedUsd: 0 });
     }
 
     const runP: Promise<any> = isBinanceRepost
       ? runBinanceRepostTask({
-          platform: task.platform, taskId: task.id, accountIds: accIds, config: task.binanceRepost as any,
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.binanceRepost as any,
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : isBinancePost
       ? runBinancePostTask({
-          platform: task.platform, taskId: task.id, accountIds: accIds, config: task.binancePost as any,
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.binancePost as any,
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : isTweetPost
       ? runTweetPostTask({
-          platform: task.platform, taskId: task.id, accountIds: accIds, config: task.tweetPost as any,
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.tweetPost as any,
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : isViralRewrite
       ? runViralRewriteTask({
-          platform: task.platform, taskId: task.id, accountIds: accIds, config: task.viralRewrite as any,
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.viralRewrite as any,
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : isImageText
       ? runImageTextTask({
-          platform: task.platform, taskId: task.id, accountIds: accIds, config: task.imageText as any,
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.imageText as any,
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : runEngageTask({
-          platform: task.platform, taskId: task.id, accountIds: accIds, quota: task.quota, concurrency: task.concurrency, kernelPath, signal: abort.signal,
+          platform: task.platform, taskId: task.id, accountIds: runIds, quota: task.quota, concurrency: task.concurrency, kernelPath, signal: abort.signal,
           taskType: task.type as any,
           scenarioId: isReplyFan ? `${task.platform}_reply_fans_comment` : isVideoDownload ? `${task.platform}_video_download` : undefined,
           funnel: isReplyFan ? task.funnel : undefined,
@@ -1662,6 +1677,18 @@ const server = http.createServer(async (req, res) => {
             const { setTaskEnabled } = await import('./libs/matrix/taskStore');
             setTaskEnabled((args[0] as any)?.id, !!(args[0] as any)?.enabled);
             return writeJSON(res, 200, { ok: true });
+          }
+          case 'matrix:setPlanLimit': {
+            // 渲染进程从 /api/ai/balance 拿到当前生效号数上限后推下来,持久化给 sidecar 的运行时截断用
+            //   (定时任务无 auth token,靠这个本地镜像按档位封顶)。
+            try {
+              const { setPlanLimit } = await import('./libs/matrix/planLimit');
+              const a = args[0] as any;
+              const v = setPlanLimit({ maxAccountsPerPlatform: a?.maxAccountsPerPlatform, planCode: a?.planCode, subExpireAt: a?.subExpireAt ?? null });
+              return writeJSON(res, 200, { ok: true, value: v });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
           }
           case 'matrix:runTaskById': {
             // 按保存的任务手动跑(定时调度走 sidecar startMatrixScheduler,同一个 helper)。

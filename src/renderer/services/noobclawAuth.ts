@@ -6,9 +6,12 @@ export interface AuthState {
   walletAddress: string | null;
   tokenBalance: number;       // 可消费总额(增量包永久桶 + 有效订阅桶)
   paidBalance: number;        // 增量包(永久桶)余额
+  subCredits: number;         // 订阅桶(本月发放、到期清零)可用余额
   planCode: string;           // 当前会员档位 free/basic/pro/max
   planName: string;           // 档位中文名
   subActive: boolean;         // 订阅是否有效
+  subExpireAt: string | null; // 订阅桶有效期(ISO);到期提醒角标/弹窗用
+  maxAccountsPerPlatform: number; // 当前生效的每平台号数上限(0/未知时按很大处理,不暂停)
   subUsedRatio: number;       // 订阅桶用量比例 0~1
   authToken: string | null;
   avatarUrl: string | null;
@@ -23,9 +26,12 @@ class NoobClawAuthService {
     walletAddress: null,
     tokenBalance: 0,
     paidBalance: 0,
+    subCredits: 0,
     planCode: 'free',
     planName: '免费版',
     subActive: false,
+    subExpireAt: null,
+    maxAccountsPerPlatform: 9999,
     subUsedRatio: 0,
     authToken: null,
     avatarUrl: null,
@@ -237,10 +243,16 @@ class NoobClawAuthService {
         this.state.tokenBalance = data.tokenBalance;
         // 双桶 + 会员档位明细(顶部条 tag / 订阅进度条 / 增量包数 用)。后端老版本不返这些时兜底。
         if (typeof data.paidBalance === 'number') this.state.paidBalance = data.paidBalance;
+        if (typeof data.subCredits === 'number') this.state.subCredits = data.subCredits;
         if (typeof data.planCode === 'string') this.state.planCode = data.planCode;
         if (typeof data.planName === 'string') this.state.planName = data.planName;
         if (typeof data.subActive === 'boolean') this.state.subActive = data.subActive;
+        this.state.subExpireAt = typeof data.subExpireAt === 'string' ? data.subExpireAt : null;
+        // 后端老版本不返 maxAccountsPerPlatform 时,保持很大值(不误暂停任何号)。
+        if (typeof data.maxAccountsPerPlatform === 'number' && data.maxAccountsPerPlatform > 0) this.state.maxAccountsPerPlatform = data.maxAccountsPerPlatform;
         if (typeof data.subUsedRatio === 'number') this.state.subUsedRatio = data.subUsedRatio;
+        // 把当前生效号数上限推给 sidecar(运行时截断超额号用),仅变化时推,避免每 15s 刷 IPC。
+        this.pushPlanLimitIfChanged();
         this.notify();
         // v1.x: 后端在 /api/ai/balance 顺道返回"已上链已结算但还没通知客户端"
         // 的 BUSDT 返佣列表(并原子标记 notified_at)。客户端每 15s 调一次本接口,
@@ -367,15 +379,34 @@ class NoobClawAuthService {
     };
   }
 
+  // 当前生效号数上限/到期变化时,推给 sidecar 的本地镜像(planLimit store),供定时任务运行时截断。
+  // 用一个 key 去重,只在真正变化时发 IPC(否则每 15s 一次浪费)。失败静默(不挡余额主链路)。
+  private lastPushedLimitKey = '';
+  private pushPlanLimitIfChanged(): void {
+    const key = `${this.state.maxAccountsPerPlatform}|${this.state.planCode}|${this.state.subExpireAt || ''}`;
+    if (key === this.lastPushedLimitKey) return;
+    this.lastPushedLimitKey = key;
+    try {
+      (window as any).electron?.matrix?.setPlanLimit?.({
+        maxAccountsPerPlatform: this.state.maxAccountsPerPlatform,
+        planCode: this.state.planCode,
+        subExpireAt: this.state.subExpireAt,
+      });
+    } catch { /* ignore — sidecar 未就绪/非矩阵版 */ }
+  }
+
   logout() {
     this.state = {
       isAuthenticated: false,
       walletAddress: null,
       tokenBalance: 0,
       paidBalance: 0,
+      subCredits: 0,
       planCode: 'free',
       planName: '免费版',
       subActive: false,
+      subExpireAt: null,
+      maxAccountsPerPlatform: 9999,
       subUsedRatio: 0,
       authToken: null,
       avatarUrl: null,

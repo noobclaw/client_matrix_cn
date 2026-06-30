@@ -192,6 +192,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [creditFrom, setCreditFrom] = useState('');
   const [creditTo, setCreditTo] = useState('');
   const [creditLoading, setCreditLoading] = useState(false);
+  // 明细 tab:all=全部 / spend=消耗 / earn=获得(参考即梦积分详情)
+  const [creditKind, setCreditKind] = useState<'all' | 'spend' | 'earn'>('all');
   const creditLoadedRef = React.useRef(false);
 
   useEffect(() => {
@@ -834,10 +836,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     const PAGE_SIZE = 20;
     const creditTotalPages = Math.ceil(creditTotal / PAGE_SIZE) || 1;
 
-    const loadCreditHistory = async (pg: number, from: string, to: string) => {
+    const loadCreditHistory = async (pg: number, from: string, to: string, kind: 'all' | 'spend' | 'earn' = creditKind) => {
       setCreditLoading(true);
       try {
-        const data = await noobClawApi.getCreditHistory(pg, PAGE_SIZE, from, to);
+        const data = await noobClawApi.getCreditHistory(pg, PAGE_SIZE, from, to, kind);
         setCreditRecords(data.list);
         setCreditTotal(data.total);
         setCreditStats(data.stats || {});
@@ -849,8 +851,15 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     // Auto-load (once only — ref prevents infinite loop on empty results)
     if (!creditLoadedRef.current && !creditLoading) {
       creditLoadedRef.current = true;
-      loadCreditHistory(1, '', '');
+      loadCreditHistory(1, '', '', 'all');
     }
+
+    // 切 tab:重置到第 1 页,按 kind 重新拉(保留日期筛选)。
+    const switchKind = (k: 'all' | 'spend' | 'earn') => {
+      if (k === creditKind) return;
+      setCreditKind(k);
+      loadCreditHistory(1, creditFrom, creditTo, k);
+    };
 
     const formatTokens = (n: number) => {
       if (!n) return '0';
@@ -876,6 +885,27 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-5 h-5 dark:text-claude-darkTextSecondary text-claude-textSecondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
             <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('walletCreditDetail')}</h2>
+          </div>
+
+          {/* 分桶头:剩余积分 = 订阅积分 + 充值积分(参考即梦积分详情) */}
+          <div className="rounded-2xl p-4 dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-2">
+              <div>
+                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">剩余积分</p>
+                <p className="text-2xl font-extrabold text-primary leading-none">{formatTokens(authState.tokenBalance)}</p>
+              </div>
+              <span className="text-lg dark:text-claude-darkTextSecondary text-claude-textSecondary">=</span>
+              <div>
+                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">订阅积分</p>
+                <p className="text-lg font-bold dark:text-claude-darkText text-claude-text leading-none">{formatTokens(authState.subCredits)}</p>
+              </div>
+              <span className="text-lg dark:text-claude-darkTextSecondary text-claude-textSecondary">+</span>
+              <div>
+                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">充值积分</p>
+                <p className="text-lg font-bold dark:text-claude-darkText text-claude-text leading-none">{formatTokens(authState.paidBalance)}</p>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary">订阅积分按月发放、到期清零;充值积分永久有效。</p>
           </div>
 
           {/* Stats Grid */}
@@ -906,33 +936,51 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             </button>
           </div>
 
+          {/* Tabs:全部 / 消耗 / 获得 */}
+          <div className="flex gap-1 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+            {([['all', '全部'], ['spend', '消耗'], ['earn', '获得']] as Array<['all' | 'spend' | 'earn', string]>).map(([k, label]) => (
+              <button key={k} onClick={() => switchKind(k)}
+                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${creditKind === k ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* Records List */}
           <div className="space-y-1.5">
             {creditRecords.length === 0 && !creditLoading && (
               <p className="text-center text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary py-8">{i18nService.t('walletCreditNoRecords')}</p>
             )}
-            {creditRecords.map((r: any, idx: number) => (
-              <div key={idx} className="flex items-center justify-between p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium dark:text-claude-darkText text-claude-text truncate">{r.model || 'unknown'}</p>
-                  <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
-                    {i18nService.t('walletCreditPrompt')}: {formatTokens(r.prompt_tokens)} · {i18nService.t('walletCreditCompletion')}: {formatTokens(r.completion_tokens)}
-                  </p>
+            {creditRecords.map((r: any, idx: number) => {
+              // amount 带符号:消耗为负(橙)、获得为正(绿)。兼容老客户端缺 amount 的行(按消耗处理)。
+              const amt = typeof r.amount === 'number' ? r.amount : -(r.billable_tokens ?? r.total_tokens ?? 0);
+              const isEarn = amt > 0;
+              const isUsage = r.type === 'usage' || (r.type == null && amt < 0);
+              return (
+                <div key={idx} className="flex items-center justify-between p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-medium dark:text-claude-darkText text-claude-text truncate">{r.model || '积分变动'}</p>
+                      {r.bucketLabel && <span className="px-1 py-0.5 rounded text-[9px] font-semibold shrink-0" style={{ background: '#a78bfa22', color: '#a78bfa' }}>{r.bucketLabel}</span>}
+                    </div>
+                    {/* 消耗行才显示输入/输出 breakdown;获得/清零行无 token 拆分 */}
+                    {isUsage && (r.prompt_tokens || r.completion_tokens) ? (
+                      <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
+                        {i18nService.t('walletCreditPrompt')}: {formatTokens(r.prompt_tokens)} · {i18nService.t('walletCreditCompletion')}: {formatTokens(r.completion_tokens)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="text-right ml-3 flex-shrink-0">
+                    <p className={`text-sm font-bold ${isEarn ? 'text-green-500' : 'text-orange-400'}`}>
+                      {isEarn ? '+' : '-'}{formatTokens(Math.abs(amt))}
+                    </p>
+                    <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
+                      {new Date(r.created_at).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right ml-3 flex-shrink-0">
-                  {/* 显示 billable（实际扣减，含缓存折扣）而不是 total（DeepSeek
-                      原始消耗）。后端钱包余额是按 billable 扣的，这里
-                      要和钱包实际减少的数对齐。fallback 到 total 兼容老
-                      记录（旧行 billable 字段可能为 null，迁移时已回填）。*/}
-                  <p className="text-sm font-bold text-orange-400">
-                    -{formatTokens(r.billable_tokens ?? r.total_tokens)}
-                  </p>
-                  <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
-                    {new Date(r.created_at).toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Pagination */}

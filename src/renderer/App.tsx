@@ -16,6 +16,7 @@ import Web3NewsPage from './components/web3/Web3NewsPage';
 import GlobalHotSearchPage from './components/web3/GlobalHotSearchPage';
 import MatrixView from './components/matrix/MatrixView';
 import HomeView from './components/home/HomeView';
+import MembershipExpiryModal from './components/membership/MembershipExpiryModal';
 import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
 import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import { configService } from './services/config';
@@ -998,6 +999,10 @@ const App: React.FC = () => {
           安静失败,避免黑屏。具体报错仍打到 console 方便排查。 */}
       <ErrorBoundary name="RebateDrawer" fallback={null}>
         <RebateDrawer onShowInvite={handleShowInvite} />
+      </ErrorBoundary>
+      {/* 会员到期续费提醒弹窗(矩阵版):订阅过期且有号被暂停时弹一次,引导续费恢复。 */}
+      <ErrorBoundary name="MembershipExpiryModal" fallback={null}>
+        <MembershipExpiryModal />
       </ErrorBoundary>
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar

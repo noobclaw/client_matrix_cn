@@ -736,11 +736,12 @@ class NoobClawApiService {
     }
   }
 
-  async getCreditHistory(page = 1, limit = 20, from = '', to = ''): Promise<{ list: any[]; total: number; stats: any }> {
+  async getCreditHistory(page = 1, limit = 20, from = '', to = '', kind: 'all' | 'spend' | 'earn' = 'all'): Promise<{ list: any[]; total: number; stats: any }> {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (from) params.set('from', from);
       if (to) params.set('to', to);
+      if (kind && kind !== 'all') params.set('kind', kind);
       const res = await this.authedFetch(`${this.backendUrl}/api/user/credits/history?${params}`, {
         headers: this.getAuthHeaders(),
       });

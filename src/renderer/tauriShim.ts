@@ -515,6 +515,7 @@ export function createTauriElectronShim(): typeof window.electron {
       removeTask: (args: unknown) => ipcInvoke('matrix:removeTask', args).then((r: any) => r ?? { ok: false }),
       setTaskEnabled: (args: unknown) => ipcInvoke('matrix:setTaskEnabled', args).then((r: any) => r ?? { ok: false }),
       runTaskById: (args: unknown) => ipcInvoke('matrix:runTaskById', args).then((r: any) => r ?? { ok: false }),
+      setPlanLimit: (args: unknown) => ipcInvoke('matrix:setPlanLimit', args).then((r: any) => r ?? { ok: false }),
       getRunProgress: (taskId?: string) => ipcInvoke('matrix:getRunProgress', { taskId }).then((r: any) => r ?? { ok: false }),
       stopTask: (arg?: unknown) => ipcInvoke('matrix:stopTask', arg).then((r: any) => r ?? { ok: false }),
       buildContent: (args: unknown) => ipcInvoke('matrix:buildContent', args).then((r: any) => r ?? { ok: false }),
