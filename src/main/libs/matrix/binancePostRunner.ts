@@ -250,6 +250,13 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
     coworkLog('ERROR', 'binancePost', `[${accountId}] threw: ${String(e?.stack || e?.message || e).slice(0, 300)}`);
     return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'binancepost_threw:' + String(e?.message || e).slice(0, 140) };
   } finally {
+    // 完成后留 20s 让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
+    if (!opts.signal?.aborted) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 20000);
+        try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
+      });
+    }
     try { closeKernel(accountId); } catch { /* ignore */ }
   }
 }
