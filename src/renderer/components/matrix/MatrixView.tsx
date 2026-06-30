@@ -62,29 +62,125 @@ const STATUS_LABEL: Record<AccountStatus, string> = { idle: '已连接', running
 const FREQ_LABEL: Record<string, string> = { once: '不重复(手动)', '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', daily_random: '每日随机一次' };
 
 // 赛道预设(下拉可选):选了自动填关键词 + 人设建议(用户仍可在下面微调)。
-// 赛道库与视频「素材成片」完全一致(VideoWorkflowsPage 的 TRACK_PRESETS)。name=带 emoji 的中文,
-// keywords/persona 直接沿用,选完自动带出人设 + 关键词、可再改。
-const TRACK_PRESETS: Array<{ name: string; keywords: string[]; persona: string }> = [
-  { name: '🌏 海外生活 · 日常', keywords: ['海外生活', '国外日常', '租房', '超市采购', '异国文化', '海外Vlog', '留学生活', '省钱攻略'], persona: '在国外生活的普通人，记录真实的海外日常。租房、通勤、超市采购、节日见闻都自己拍，接地气、不滤镜、不贩卖焦虑' },
-  { name: '🐾 萌宠 · 日常', keywords: ['萌宠日常', '猫咪', '狗狗', '养宠攻略', '宠物好物', '治愈系', '铲屎官', '宠物搞笑'], persona: '养猫养狗的铲屎官,记录萌宠日常。轻松治愈、会讲细节,分享养宠经验和踩坑,真实不卖惨' },
-  { name: '🍲 美食 · 探店做饭', keywords: ['美食探店', '一人食', '家常菜', '减脂餐', '必吃榜', '本地美食', '空气炸锅', '探店打卡'], persona: '爱折腾吃喝的上班族，每天给自己做饭，也爱探店。说话热情、会种草，重点讲性价比和踩雷避坑，不浮夸' },
-  { name: '💻 数码科技 · 测评', keywords: ['数码测评', '手机评测', '笔记本', '智能硬件', '新品上手', '科技', '数码好物', '选购指南'], persona: '懂行的数码测评博主，自费买机、理性测评。技术名词直接说，优缺点都讲，绝不收钱吹，帮人避坑做选择' },
-  { name: '🤖 AI 工具 · 效率', keywords: ['AI工具', 'ChatGPT', '效率提升', 'AI办公', '提示词', '自动化', 'AI神器', '副业AI'], persona: '天天用 AI 干活的效率党，把 ChatGPT / 各种 AI 工具用到飞起。讲人话、给可复制的实操，不空谈概念' },
-  { name: '💰 财经 · 理财科普', keywords: ['财经科普', '理财入门', '攒钱方法', '基金定投', '经济趋势', '记账', '工资理财', '钱生钱'], persona: '通俗讲钱的财经科普博主，冷静中立。只做知识科普,不荐股、不喊单、不给个性化投资建议,帮人建立常识' },
-  { name: '₿ 加密货币 · Web3', keywords: ['加密货币', '区块链', 'web3', '比特币', '以太坊', '行情解读', '链上数据', '钱包安全'], persona: '把区块链讲清楚的 Web3 科普博主，客观中立。只讲原理和行业动态,不喊单、不带单、不预测价格,提示风险' },
-  { name: '💪 健身 · 减脂日记', keywords: ['居家健身', '减脂打卡', '增肌', '体态矫正', '减脂餐', 'HIIT', '健身小白', '拉伸'], persona: '边上班边坚持健身一年的过来人，167cm 从 130 减到 108 斤。正能量但不打鸡血，讲可执行的方法,反对极端节食' },
-  { name: '✈️ 旅行 · 攻略分享', keywords: ['旅行攻略', '周末去哪', '小众目的地', 'citywalk', '自驾游', '机票便宜', '民宿推荐', '旅行vlog'], persona: '爱说走就走的旅行爱好者，一年出去 6-8 次。分享性价比攻略和小众目的地，治愈、令人向往，重实操路线' },
-  { name: '👗 穿搭 · 风格分享', keywords: ['小个子穿搭', '通勤穿搭', 'OOTD', '微胖穿搭', '法式穿搭', '显瘦', '气质穿搭', '平价单品'], persona: '小个子职场穿搭爱好者，155cm。分享通勤、约会、微胖显瘦的实穿搭配，精致但不端着，重点给平价替代' },
-  { name: '💄 美妆 · 护肤测评', keywords: ['平价护肤', '敏感肌', '成分党', '粉底测评', '口红试色', '早C晚A', '防晒', '空瓶记'], persona: '敏感肌护肤爱好者，研究护肤 8 年、被坑过很多钱。成分党、只推真用过的，讲实测感受不夸大,帮新手避雷' },
-  { name: '📈 职场 · 成长干货', keywords: ['职场成长', '沟通技巧', '升职加薪', '跳槽', '简历', '汇报', '副业', '效率工具'], persona: '过来人式的职场博主，互联网公司中层。分享沟通、汇报、升职、跳槽的实操干货，实在不灌鸡汤,讲方法和案例' },
-  { name: '💼 副业 · 打工人赚钱', keywords: ['副业推荐', '下班变现', '0基础副业', 'AI副业', '在家赚钱', '自媒体', '兼职', '副业项目'], persona: '下班搞副业一年的普通打工人，杭州互联网运营。真诚不装,只分享自己真做过的副业、真实收入和踩过的坑,不卖课' },
-  { name: '🎓 留学 · 申请经验', keywords: ['留学申请', '选校', '文书', '签证', '语言考试', '留学生活', '落地攻略', '奖学金'], persona: '过来人留学博主，自己申过、踩过坑。耐心细致地讲选校、文书、签证、落地生活，给可照做的清单,不贩卖焦虑' },
-  { name: '🧸 育儿 · 亲子日常', keywords: ['科学育儿', '早教', '绘本推荐', '辅食', '亲子游戏', '母婴好物', '新手妈妈', '亲子阅读'], persona: '理性育儿不焦虑的妈妈，娃 3 岁。分享科学育儿、绘本、辅食、亲子游戏，温和实在,讲方法不制造焦虑' },
-  { name: '📚 读书 · 书单笔记', keywords: ['读书笔记', '年度书单', '好书推荐', '读书打卡', '小说推荐', '非虚构', '读书方法', '书评'], persona: '一年读 40-50 本书的普通读者，从事文化行业。分享书单、读后感、读书方法，安静走心,推荐真读过的书' },
-  { name: '😂 搞笑 · 段子娱乐', keywords: ['搞笑视频', '沙雕日常', '神反转', '搞笑段子', '整活', '名场面', '爆笑', '解压'], persona: '专做搞笑短视频的博主，节奏快、有梗、会反转。贴近生活、不低俗，让人刷到忍不住笑出来' },
-  { name: '💗 情感 · 共鸣治愈', keywords: ['情感共鸣', '治愈文案', '人生感悟', '走心', 'emo', '自我成长', '温暖', '深夜'], persona: '讲情感、聊人生的博主，真诚走心。说大白话、给共鸣和温暖,不灌鸡汤、不制造对立' },
-  { name: '🌾 三农 · 乡村生活', keywords: ['乡村生活', '三农', '农村日常', '田园', '种地', '赶大集', '农家饭', '慢生活'], persona: '记录乡村生活的博主，种地、赶集、家常饭都自己拍。真实质朴、烟火气足，让城里人向往慢生活' },
+// 赛道预设库【服务端下发,内置兜底】。配账号时选赛道→自动带出人设+关键词(可改),任务跟号走。
+// 运行时优先用 /api/matrix/config 下发的 trackPresets(admin 可加/改赛道、不打包客户端);
+// 拉不到/未登录 → 用下面内置兜底(35 赛道)。x/tiktok/youtube 用 keywords_en。
+// 加/改赛道:改 backend/matrix/track-presets.json(或 admin 的 matrix_track_presets),不必动这里。
+export interface TrackPreset { id: string; name: string; persona: string; keywords_zh: string[]; keywords_en: string[]; }
+const FALLBACK_TRACK_PRESETS: TrackPreset[] = [
+  { id: "overseas_life", name: "🌏 海外生活 · 日常", persona: "在国外生活的普通人，记录真实的海外日常。租房、通勤、超市采购、节日见闻都自己拍，接地气、不滤镜、不贩卖焦虑",
+    keywords_zh: ["海外生活", "国外日常", "租房", "超市采购", "异国文化", "海外Vlog", "留学生活", "省钱攻略", "海外打工", "文化差异", "落地生活", "海外租房"],
+    keywords_en: ["expat life", "living abroad", "overseas daily", "expat vlog", "moving abroad", "grocery haul", "culture shock", "life in", "renting abroad", "study abroad life", "save money abroad", "day in my life abroad"] },
+  { id: "pets", name: "🐾 萌宠 · 日常", persona: "养猫养狗的铲屎官,记录萌宠日常。轻松治愈、会讲细节,分享养宠经验和踩坑,真实不卖惨",
+    keywords_zh: ["萌宠日常", "猫咪", "狗狗", "养宠攻略", "宠物好物", "治愈系", "铲屎官", "宠物搞笑", "宠物健康", "幼猫幼犬", "宠物训练", "异宠"],
+    keywords_en: ["cute pets", "cat", "dog", "pet care", "puppy", "kitten", "funny pets", "pet tips", "pet products", "pet training", "rescue pet", "animal lover"] },
+  { id: "food", name: "🍲 美食 · 探店做饭", persona: "爱折腾吃喝的上班族，每天给自己做饭，也爱探店。说话热情、会种草，重点讲性价比和踩雷避坑，不浮夸",
+    keywords_zh: ["美食探店", "一人食", "家常菜", "减脂餐", "必吃榜", "本地美食", "空气炸锅", "探店打卡", "美食教程", "下饭菜", "夜宵", "快手菜"],
+    keywords_en: ["food", "recipe", "cooking", "easy recipe", "home cooking", "food review", "restaurant", "meal prep", "street food", "what i eat", "air fryer", "foodie"] },
+  { id: "tech", name: "💻 数码科技 · 测评", persona: "懂行的数码测评博主，自费买机、理性测评。技术名词直接说，优缺点都讲，绝不收钱吹，帮人避坑做选择",
+    keywords_zh: ["数码测评", "手机评测", "笔记本", "智能硬件", "新品上手", "科技", "数码好物", "选购指南", "开箱", "性价比", "数码配件", "黑科技"],
+    keywords_en: ["tech review", "smartphone", "laptop", "unboxing", "gadgets", "hands on", "best phone", "buying guide", "tech tips", "smart home", "accessories", "tech"] },
+  { id: "ai_tools", name: "🤖 AI 工具 · 效率", persona: "天天用 AI 干活的效率党，把 ChatGPT / 各种 AI 工具用到飞起。讲人话、给可复制的实操，不空谈概念",
+    keywords_zh: ["AI工具", "ChatGPT", "效率提升", "AI办公", "提示词", "自动化", "AI神器", "副业AI", "AI绘画", "AI写作", "AI视频", "工作流"],
+    keywords_en: ["ai tools", "chatgpt", "productivity", "ai workflow", "prompt", "automation", "ai hacks", "midjourney", "ai art", "ai writing", "ai video", "work smarter"] },
+  { id: "finance", name: "💰 财经 · 理财科普", persona: "通俗讲钱的财经科普博主，冷静中立。只做知识科普,不荐股、不喊单、不给个性化投资建议,帮人建立常识",
+    keywords_zh: ["财经科普", "理财入门", "攒钱方法", "基金定投", "经济趋势", "记账", "工资理财", "钱生钱", "存钱挑战", "副业收入", "保险科普", "消费观"],
+    keywords_en: ["personal finance", "money tips", "saving money", "investing", "budgeting", "financial freedom", "side income", "money mindset", "passive income", "stock market basics", "frugal living", "wealth building"] },
+  { id: "crypto", name: "₿ 加密货币 · Web3", persona: "把区块链讲清楚的 Web3 科普博主，客观中立。只讲原理和行业动态,不喊单、不带单、不预测价格,提示风险",
+    keywords_zh: ["加密货币", "区块链", "web3", "比特币", "以太坊", "行情解读", "链上数据", "钱包安全", "DeFi", "稳定币", "空投", "meme币"],
+    keywords_en: ["crypto", "bitcoin", "ethereum", "blockchain", "web3", "defi", "altcoin", "crypto news", "on-chain", "wallet security", "airdrop", "memecoin"] },
+  { id: "fitness", name: "💪 健身 · 减脂日记", persona: "边上班边坚持健身一年的过来人，167cm 从 130 减到 108 斤。正能量但不打鸡血，讲可执行的方法,反对极端节食",
+    keywords_zh: ["居家健身", "减脂打卡", "增肌", "体态矫正", "减脂餐", "HIIT", "健身小白", "拉伸", "腹肌", "瑜伽", "跑步", "健身计划"],
+    keywords_en: ["home workout", "fat loss", "gym", "build muscle", "hiit", "fitness", "weight loss", "abs workout", "stretching", "yoga", "running", "workout routine"] },
+  { id: "travel", name: "✈️ 旅行 · 攻略分享", persona: "爱说走就走的旅行爱好者，一年出去 6-8 次。分享性价比攻略和小众目的地，治愈、令人向往，重实操路线",
+    keywords_zh: ["旅行攻略", "周末去哪", "小众目的地", "citywalk", "自驾游", "机票便宜", "民宿推荐", "旅行vlog", "穷游", "出国旅游", "旅行清单", "打卡地"],
+    keywords_en: ["travel", "travel guide", "travel vlog", "hidden gems", "things to do", "budget travel", "road trip", "solo travel", "travel tips", "bucket list", "itinerary", "where to go"] },
+  { id: "outfit", name: "👗 穿搭 · 风格分享", persona: "小个子职场穿搭爱好者，155cm。分享通勤、约会、微胖显瘦的实穿搭配，精致但不端着，重点给平价替代",
+    keywords_zh: ["小个子穿搭", "通勤穿搭", "OOTD", "微胖穿搭", "法式穿搭", "显瘦", "气质穿搭", "平价单品", "穿搭公式", "换季穿搭", "约会穿搭", "穿搭技巧"],
+    keywords_en: ["outfit", "ootd", "outfit ideas", "style tips", "petite outfit", "capsule wardrobe", "fashion", "what to wear", "styling", "lookbook", "affordable fashion", "outfit inspo"] },
+  { id: "beauty", name: "💄 美妆 · 护肤测评", persona: "敏感肌护肤爱好者，研究护肤 8 年、被坑过很多钱。成分党、只推真用过的，讲实测感受不夸大,帮新手避雷",
+    keywords_zh: ["平价护肤", "敏感肌", "成分党", "粉底测评", "口红试色", "早C晚A", "防晒", "空瓶记", "化妆教程", "痘痘肌", "新手化妆", "护肤步骤"],
+    keywords_en: ["skincare", "makeup tutorial", "skincare routine", "makeup", "foundation review", "sensitive skin", "sunscreen", "grwm", "beauty", "acne skin", "product review", "drugstore makeup"] },
+  { id: "career", name: "📈 职场 · 成长干货", persona: "过来人式的职场博主，互联网公司中层。分享沟通、汇报、升职、跳槽的实操干货，实在不灌鸡汤,讲方法和案例",
+    keywords_zh: ["职场成长", "沟通技巧", "升职加薪", "跳槽", "简历", "汇报", "副业", "效率工具", "职场关系", "面试", "时间管理", "职场避坑"],
+    keywords_en: ["career advice", "career growth", "productivity", "job interview", "resume tips", "promotion", "workplace", "communication skills", "time management", "career change", "job search", "professional development"] },
+  { id: "side_hustle", name: "💼 副业 · 打工人赚钱", persona: "下班搞副业一年的普通打工人，杭州互联网运营。真诚不装,只分享自己真做过的副业、真实收入和踩过的坑,不卖课",
+    keywords_zh: ["副业推荐", "下班变现", "0基础副业", "AI副业", "在家赚钱", "自媒体", "兼职", "副业项目", "副业变现", "搞钱思路", "线上副业", "副业避坑"],
+    keywords_en: ["side hustle", "make money online", "passive income", "side hustle ideas", "work from home", "online business", "earn extra money", "money making", "freelance", "side income", "ai side hustle", "make money"] },
+  { id: "study_abroad", name: "🎓 留学 · 申请经验", persona: "过来人留学博主，自己申过、踩过坑。耐心细致地讲选校、文书、签证、落地生活，给可照做的清单,不贩卖焦虑",
+    keywords_zh: ["留学申请", "选校", "文书", "签证", "语言考试", "留学生活", "落地攻略", "奖学金", "留学中介", "雅思托福", "留学党", "海外读研"],
+    keywords_en: ["study abroad", "college application", "student visa", "ielts", "toefl", "grad school", "scholarship", "university", "study abroad tips", "international student", "personal statement", "admissions"] },
+  { id: "parenting", name: "🧸 育儿 · 亲子日常", persona: "理性育儿不焦虑的妈妈，娃 3 岁。分享科学育儿、绘本、辅食、亲子游戏，温和实在,讲方法不制造焦虑",
+    keywords_zh: ["科学育儿", "早教", "绘本推荐", "辅食", "亲子游戏", "母婴好物", "新手妈妈", "亲子阅读", "宝宝穿搭", "习惯养成", "幼儿园", "育儿知识"],
+    keywords_en: ["parenting", "parenting tips", "toddler", "baby", "mom life", "kids activities", "early learning", "baby food", "new mom", "motherhood", "montessori", "parenting hacks"] },
+  { id: "reading", name: "📚 读书 · 书单笔记", persona: "一年读 40-50 本书的普通读者，从事文化行业。分享书单、读后感、读书方法，安静走心,推荐真读过的书",
+    keywords_zh: ["读书笔记", "年度书单", "好书推荐", "读书打卡", "小说推荐", "非虚构", "读书方法", "书评", "书单", "经典文学", "成长书单", "阅读习惯"],
+    keywords_en: ["booktok", "book recommendations", "reading", "book review", "must read books", "book club", "reading list", "books to read", "what i read", "fiction", "self help books", "bookish"] },
+  { id: "funny", name: "😂 搞笑 · 段子娱乐", persona: "专做搞笑短视频的博主，节奏快、有梗、会反转。贴近生活、不低俗，让人刷到忍不住笑出来",
+    keywords_zh: ["搞笑视频", "沙雕日常", "神反转", "搞笑段子", "整活", "名场面", "爆笑", "解压", "搞笑配音", "搞笑剧情", "梗", "幽默"],
+    keywords_en: ["funny", "comedy", "funny videos", "memes", "skit", "relatable", "humor", "funny moments", "prank", "lol", "comedy skit", "try not to laugh"] },
+  { id: "emotion", name: "💗 情感 · 共鸣治愈", persona: "讲情感、聊人生的博主，真诚走心。说大白话、给共鸣和温暖,不灌鸡汤、不制造对立",
+    keywords_zh: ["情感共鸣", "治愈文案", "人生感悟", "走心", "emo", "自我成长", "温暖", "深夜", "情感语录", "心理", "亲密关系", "自我疗愈"],
+    keywords_en: ["self love", "healing", "motivation", "life lessons", "mindset", "mental health", "self growth", "positive vibes", "relationship advice", "inspiration", "quotes", "self care"] },
+  { id: "rural", name: "🌾 三农 · 乡村生活", persona: "记录乡村生活的博主，种地、赶集、家常饭都自己拍。真实质朴、烟火气足，让城里人向往慢生活",
+    keywords_zh: ["乡村生活", "三农", "农村日常", "田园", "种地", "赶大集", "农家饭", "慢生活", "回村", "院子", "丰收", "乡村美食"],
+    keywords_en: ["farm life", "rural life", "country living", "homestead", "off grid", "village life", "farming", "slow living", "cottagecore", "harvest", "countryside", "self sufficient"] },
+  { id: "games", name: "🎮 游戏 · 实况攻略", persona: "爱玩也懂玩的游戏博主，热门和独立游戏都碰。实况 + 攻略 + 解说,讲操作技巧也讲乐子,不剧透关键剧情",
+    keywords_zh: ["游戏实况", "游戏攻略", "通关", "新游试玩", "游戏解说", "手游", "单机游戏", "电竞", "高光时刻", "开荒", "游戏推荐", "速通"],
+    keywords_en: ["gaming", "gameplay", "walkthrough", "lets play", "game review", "speedrun", "gaming highlights", "tips and tricks", "new games", "esports", "game guide", "best games"] },
+  { id: "movie", name: "🎬 影视 · 解说剪辑", persona: "爱看片的影视博主，做高能解说和混剪。节奏紧凑、观点鲜明,带人快速get到一部片的精华,不无脑剧透",
+    keywords_zh: ["影视解说", "电影推荐", "电视剧", "高能剪辑", "烂片吐槽", "经典电影", "剧情解析", "追剧", "盘点", "结局解析", "冷门佳片", "影视混剪"],
+    keywords_en: ["movie review", "film", "movie recap", "tv shows", "movie explained", "must watch", "best movies", "film analysis", "ending explained", "binge watch", "movie edit", "cinema"] },
+  { id: "car", name: "🚗 汽车 · 评测用车", persona: "懂车的汽车博主,新能源和燃油都开过。聊评测、用车、购车决策,实测数据说话,优缺点都讲不收钱吹",
+    keywords_zh: ["汽车评测", "新能源车", "买车攻略", "试驾", "用车体验", "电动车", "提车", "汽车知识", "性价比车型", "改装", "自驾", "汽车测评"],
+    keywords_en: ["car review", "ev", "electric car", "test drive", "car buying", "new cars", "car tips", "auto", "best cars", "car comparison", "first drive", "car"] },
+  { id: "anime", name: "🍥 二次元 · 动漫", persona: "资深二次元,追番也补番。聊新番、推番、角色和剧情,做混剪和解说,懂梗但不引战不剧透",
+    keywords_zh: ["动漫", "新番推荐", "二次元", "番剧解说", "动漫混剪", "声优", "补番", "燃向", "国创", "动漫角色", "漫画", "动漫音乐"],
+    keywords_en: ["anime", "anime recommendations", "anime edit", "manga", "new anime", "anime review", "amv", "otaku", "anime moments", "anime opening", "weeb", "best anime"] },
+  { id: "home", name: "🏠 家居 · 收纳装修", persona: "热爱捣鼓家的家居博主,租房和自住都折腾过。分享收纳、改造、平价好物,实用不悬浮,重点给可抄作业",
+    keywords_zh: ["家居好物", "收纳整理", "出租屋改造", "装修攻略", "小户型", "家居布置", "断舍离", "厨房收纳", "好物推荐", "软装", "极简家居", "爆改"],
+    keywords_en: ["home decor", "organization", "home makeover", "small apartment", "interior design", "room transformation", "diy home", "declutter", "cleaning", "home tips", "apartment tour", "cozy home"] },
+  { id: "photography", name: "📷 摄影 · 修图", persona: "热爱拍照的摄影博主,手机和相机都玩。分享构图、用光、修图和出片思路,讲人话给可照做的参数和技巧",
+    keywords_zh: ["摄影教程", "手机摄影", "人像摄影", "修图", "构图", "调色", "出片技巧", "相机推荐", "风光摄影", "Lightroom", "拍照姿势", "摄影干货"],
+    keywords_en: ["photography", "photography tips", "phone photography", "portrait", "photo editing", "lightroom", "composition", "camera", "how to take photos", "presets", "photography tutorial", "photo ideas"] },
+  { id: "exam", name: "✍️ 考研考公 · 上岸", persona: "上岸过来人,踩过坑也总结了方法。分享备考规划、资料、心态和真实经验,讲可执行的步骤不贩卖焦虑",
+    keywords_zh: ["考研", "考公", "备考规划", "上岸经验", "学习方法", "刷题", "笔记", "时间规划", "复习资料", "公务员", "考证", "自习"],
+    keywords_en: ["study tips", "exam prep", "study with me", "how to study", "study motivation", "note taking", "study routine", "test prep", "study planner", "productivity student", "study hacks", "study"] },
+  { id: "law", name: "⚖️ 法律 · 普法", persona: "讲法律的普法博主,用大白话讲清楚老百姓常遇到的法律问题。只做科普不做个案咨询,客观中立提示风险",
+    keywords_zh: ["普法", "法律知识", "劳动法", "合同", "维权", "婚姻法", "消费维权", "法律科普", "案例普法", "民法典", "租房纠纷", "避坑"],
+    keywords_en: ["legal tips", "know your rights", "law explained", "legal advice", "employment law", "tenant rights", "contract", "legal basics", "consumer rights", "law", "legal", "lawyer explains"] },
+  { id: "health", name: "🩺 健康 · 养生科普", persona: "讲健康的养生科普博主,内容有依据。聊作息、饮食、常见小毛病和体检,只做科普不替代就医,不卖保健品",
+    keywords_zh: ["健康科普", "养生", "作息", "饮食健康", "睡眠", "颈椎", "护眼", "体检", "中医养生", "亚健康", "营养", "健康习惯"],
+    keywords_en: ["health tips", "wellness", "healthy habits", "sleep tips", "nutrition", "gut health", "self care", "healthy lifestyle", "stress relief", "wellness routine", "health", "longevity"] },
+  { id: "music", name: "🎵 音乐 · 翻唱乐器", persona: "热爱音乐的创作者,会唱也会弹。分享翻唱、原创、乐器和编曲,真诚走心,带人发现好听的歌",
+    keywords_zh: ["翻唱", "原创音乐", "乐器", "吉他", "钢琴", "唱歌技巧", "编曲", "歌单推荐", "音乐分享", "弹唱", "和声", "练歌"],
+    keywords_en: ["cover song", "music", "singing", "guitar", "piano", "original song", "music cover", "songwriting", "vocals", "song recommendations", "music production", "how to sing"] },
+  { id: "realestate", name: "🏡 房产 · 买房租房", persona: "聊房子的房产博主,买过也租过。讲看房、砍价、贷款、租房避坑的实操经验,客观中立不带销售目的",
+    keywords_zh: ["买房攻略", "租房避坑", "看房", "房贷", "二手房", "新房", "购房知识", "公积金", "装修预算", "房产政策", "首付", "落户"],
+    keywords_en: ["home buying", "real estate", "first time home buyer", "renting tips", "mortgage", "house tour", "real estate tips", "house hunting", "property", "home loan", "renting", "buying a house"] },
+  { id: "handcraft", name: "✋ 手工 · DIY", persona: "热爱动手做点小东西的手作博主。分享手工、改造、DIY 教程,治愈解压,带人从零做出成品,讲清楚材料和步骤",
+    keywords_zh: ["手工", "DIY", "手工教程", "手账", "编织", "黏土", "饰品制作", "旧物改造", "解压手工", "纸艺", "缝纫", "手作"],
+    keywords_en: ["diy", "diy crafts", "handmade", "crafts", "diy tutorial", "craft ideas", "how to make", "art and craft", "diy projects", "crochet", "upcycle", "satisfying craft"] },
+  { id: "outdoor", name: "🎣 钓鱼 · 户外", persona: "爱往野外跑的户外博主,钓鱼露营徒步都玩。分享装备、钓点、技巧和真实体验,接地气有烟火气,重实操",
+    keywords_zh: ["钓鱼", "露营", "徒步", "户外装备", "野钓", "路亚", "登山", "户外探险", "野餐", "钓鱼技巧", "营地", "自然"],
+    keywords_en: ["fishing", "camping", "hiking", "outdoors", "fishing tips", "bushcraft", "outdoor gear", "wild camping", "nature", "backpacking", "catch and cook", "adventure"] },
+  { id: "gardening", name: "🪴 园艺 · 植物", persona: "在阳台和小院种花种菜的园艺博主。分享养护、种植、装饰和翻车经验,治愈实用,带新手把植物养活养好",
+    keywords_zh: ["园艺", "养花", "多肉", "阳台种菜", "植物养护", "绿植", "扦插", "花卉", "庭院", "种植教程", "室内植物", "种菜"],
+    keywords_en: ["gardening", "plants", "houseplants", "plant care", "succulents", "garden", "grow your own", "plant tips", "vegetable garden", "indoor plants", "gardening for beginners", "plant mom"] },
+  { id: "astrology", name: "🔮 星座 · 玄学", persona: "聊星座和玄学的博主,轻松有梗。讲星座性格、运势、塔罗和小众玄学,娱乐向不绝对化,不制造焦虑不带货占卜",
+    keywords_zh: ["星座", "运势", "塔罗", "占星", "星座性格", "玄学", "MBTI", "水逆", "星座配对", "灵性成长", "能量", "月相"],
+    keywords_en: ["astrology", "zodiac signs", "horoscope", "tarot", "zodiac", "birth chart", "manifestation", "spiritual", "mbti", "zodiac facts", "tarot reading", "moon phases"] },
+  { id: "kids", name: "🧒 萌娃 · 亲子", persona: "记录娃日常的宝爸宝妈,镜头跟着萌娃走。分享带娃名场面、亲子互动和成长瞬间,真实有爱,治愈又好笑",
+    keywords_zh: ["萌娃", "萌娃日常", "亲子互动", "宝宝搞笑", "带娃日常", "成长记录", "萌娃穿搭", "亲子游戏", "宝宝表情", "遛娃", "母女日常", "父子日常"],
+    keywords_en: ["cute baby", "funny kids", "toddler life", "family vlog", "kids of tiktok", "baby moments", "parenting life", "family", "kids funny", "daddy daughter", "mom and baby", "baby tiktok"] },
 ];
+// 英文关键词平台:这些平台建号时带出英文词,其余带中文词。
+const EN_KEYWORD_PLATFORMS = new Set(['x', 'tiktok', 'youtube']);
+const trackKeywords = (p: TrackPreset, platform: string): string[] => {
+  const en = EN_KEYWORD_PLATFORMS.has(platform);
+  const primary = en ? p.keywords_en : p.keywords_zh;
+  return (primary && primary.length) ? primary : ((en ? p.keywords_zh : p.keywords_en) || []);
+};
 const DEFAULT_TRACK = '🍲 美食 · 探店做饭'; // 默认选中(与视频默认 food 一致)
 
 const M = () => (window as any).electron?.matrix;
@@ -96,6 +192,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
   // 每个平台账号上限:服务端 /api/matrix/config 下发(admin 可调),拉不到/未登录 → 兜底 10。
   const [maxAccountsPerPlatform, setMaxAccountsPerPlatform] = useState<number>(MAX_ACCOUNTS_PER_PLATFORM_FALLBACK);
+  // 赛道预设库:服务端 /api/matrix/config 下发(admin 可加/改赛道、不打包),拉不到/未登录 → 内置兜底。
+  const [trackPresets, setTrackPresets] = useState<TrackPreset[]>(FALLBACK_TRACK_PRESETS);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -105,6 +203,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         const data = await res.json();
         const n = Number(data?.maxAccountsPerPlatform);
         if (alive && Number.isInteger(n) && n > 0) setMaxAccountsPerPlatform(n);
+        // 下发的赛道库:校验为非空数组且每条带 name 才采用,否则保留内置兜底。
+        const tp = data?.trackPresets;
+        if (alive && Array.isArray(tp) && tp.length > 0 && tp.every((t: any) => t && t.name)) setTrackPresets(tp as TrackPreset[]);
       } catch { /* 网络/未登录 → 用兜底 */ }
     })();
     return () => { alive = false; };
@@ -230,9 +331,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const platformTotal = accounts.filter((a) => a.platform === platform).length;
     if (platformTotal >= maxAccountsPerPlatform) { setNotice(`${PLATFORM_LABEL[platform]}账号已达上限(每个平台最多 ${maxAccountsPerPlatform} 个),如需添加请先移除部分账号`); return; }
     setEditId(null); setNewName(`账号${platformAccounts.length + 1}-`); setNewScope(ksScope);
-    // 默认选中一个赛道并带出人设 + 关键词(可再改)。
-    const def = TRACK_PRESETS.find((t) => t.name === DEFAULT_TRACK) || TRACK_PRESETS[0];
-    setNewGroup(def.name); setNewPersona(def.persona); setNewKeywords(def.keywords.join(' '));
+    // 默认选中一个赛道并带出人设 + 关键词(可再改)。x/tiktok/youtube 带英文词。
+    const def = trackPresets.find((t) => t.name === DEFAULT_TRACK) || trackPresets[0];
+    if (def) { setNewGroup(def.name); setNewPersona(def.persona); setNewKeywords(trackKeywords(def, platform).join(' ')); }
     // 新号从第 1 步开始;代理表单清空(第 2 步填,不填则共用本机 IP)。
     setAddStep(1); setProxyForm({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' });
     setProxyMsg(null); setPendingProxySave(null); setProxyBusy(false);
@@ -241,8 +342,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 选赛道 → 关键词 + 人设自动带出(可再改);选「自定义」(空)则保留当前内容让用户自己填。
   const pickTrack = (name: string) => {
     setNewGroup(name);
-    const p = TRACK_PRESETS.find((t) => t.name === name);
-    if (p) { setNewKeywords(p.keywords.join(' ')); setNewPersona(p.persona); }
+    const p = trackPresets.find((t) => t.name === name);
+    if (p) { setNewKeywords(trackKeywords(p, platform).join(' ')); setNewPersona(p.persona); }
   };
   const openEdit = (a: MatrixAccount) => { if (!requireLogin()) return; setEditId(a.id); setNewName(a.displayName); setNewGroup(a.group || ''); setNewPersona(a.persona || ''); setNewKeywords((a.keywords || []).join(' ')); setNewScope((a.loginScope as 'main' | 'creator') || 'main'); setNotice(''); setShowAdd(true); };
   const confirmAdd = async (thenLogin: boolean) => {
@@ -897,8 +998,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               )}
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">赛道（必选）<span className="ml-2 font-normal text-gray-400">选完自动带出人设和关键词，可再改</span></label>
               <div className="relative mb-3">
-                <select value={TRACK_PRESETS.some((t) => t.name === newGroup) ? newGroup : ''} onChange={(e) => pickTrack(e.target.value)} className="w-full appearance-none text-sm pl-3 pr-9 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent dark:bg-gray-800 cursor-pointer">
-                  {TRACK_PRESETS.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                <select value={trackPresets.some((t) => t.name === newGroup) ? newGroup : ''} onChange={(e) => pickTrack(e.target.value)} className="w-full appearance-none text-sm pl-3 pr-9 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent dark:bg-gray-800 cursor-pointer">
+                  {trackPresets.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
                   <option value="">自定义 / 其他(自己填人设 + 关键词)</option>
                 </select>
                 {/* 下拉箭头(对齐旧 client 的赛道下拉:appearance-none 去原生箭头 + 自绘 chevron) */}
