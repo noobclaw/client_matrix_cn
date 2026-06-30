@@ -20,6 +20,7 @@ import TickerMarquee from './TickerMarquee';
 import WindowTitleBar from '../window/WindowTitleBar';
 import type { SettingsOpenOptions } from '../Settings';
 import type { CoworkSession, CoworkImageAttachment } from '../../types/cowork';
+import { MATRIX_EDITION } from '../../matrixEdition';
 
 export interface CoworkViewProps {
   onRequestAppSettings?: (options?: SettingsOpenOptions) => void;
@@ -540,14 +541,14 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               {i18nService.t('coworkWelcome')}
             </h2>
             <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary max-w-md mx-auto">
-              {i18nService.t('coworkDescription')}
+              {i18nService.t(MATRIX_EDITION ? 'aiChatCapabilities' : 'coworkDescription')}
             </p>
           </div>
 
           {/* v1.x: 合伙人欢迎横幅 — 仅 partner 用户渲染。一行高度,贴 subtitle
               与 6 卡之间,不增加纵向滚动风险(高度 ~36px 远小于 space-y-6 间距)。
               点击跳到邀请返佣页;颜色 + emoji 跟 tier 走;rate_pct 取整数显示。 */}
-          {partnerInfo && (
+          {!MATRIX_EDITION && partnerInfo && (
             <button
               type="button"
               onClick={() => onShowInvite?.()}
@@ -587,7 +588,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               紧凑款 — emoji 包在小色块里,主体是中性卡片,hover 时
               整卡淡染对应主题色 + 微微抬起,信息密度高、视觉重量轻。
               2 行 × 3 列布局,既容得下 6 个平台又不触发滚动条。 */}
-          {onShowQuickUse && (
+          {!MATRIX_EDITION && onShowQuickUse && (
             <div className="grid grid-cols-3 gap-2.5">
               <button
                 type="button"
@@ -660,7 +661,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
             </div>
           </div>
 
-          {/* Security Badge */}
+          {/* Security Badge — 矩阵版「新建AI对话」首页精简,只留能力说明 + 输入框,
+              开源安全提示已收到独立「首页」上,这里不再重复。 */}
+          {!MATRIX_EDITION && (
           <div className="flex justify-center">
             <a
               href="#"
@@ -674,6 +677,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               <svg className="w-3 h-3 dark:text-emerald-400 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
             </a>
           </div>
+          )}
         </div>
       </div>
     </div>

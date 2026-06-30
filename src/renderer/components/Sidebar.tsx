@@ -14,7 +14,8 @@ import { MATRIX_EDITION } from '../matrixEdition';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns';
+  activeView: 'home' | 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns';
+  onShowHome: () => void;
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
@@ -42,6 +43,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({
   onShowSettings,
   activeView,
+  onShowHome,
   onShowSkills,
   onShowCowork,
   onShowScheduledTasks,
@@ -71,7 +73,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   // v6.x:「AI对话」二级折叠组(新建对话 / web3连接 / 行业热点)。默认收起;
   //   当组内某子项激活时强制展开,避免高亮项被折叠藏起来。
   const [aiChatOpen, setAiChatOpen] = useState(false);
-  const aiChildActive = activeView === 'cowork' || activeView === 'mcp' || activeView === 'web3news' || activeView === 'scheduledTasks';
+  const aiChildActive = activeView === 'cowork' || activeView === 'mcp' || activeView === 'web3news' || activeView === 'scheduledTasks' || activeView === 'skills';
   useEffect(() => { if (aiChildActive) setAiChatOpen(true); }, [aiChildActive]);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -184,6 +186,20 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
         <div className="mt-3 space-y-1 px-3">
+          {/* 首页 — 置顶,默认进入。产品定位 + 三步使用流程 + 涨粉教程 + 开源提示 */}
+          <button
+            type="button"
+            onClick={() => { setIsSearchOpen(false); onShowHome(); }}
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              activeView === 'home'
+                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <span className="text-sm">{'🏠'}</span>
+            {i18nService.t('home')}
+          </button>
+
           {!MATRIX_EDITION && (<>
           {/* 1. 新建涨粉任务 — 新建页提升为一级菜单 (create 模式) */}
           <button
@@ -226,22 +242,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-sm">{'📊'}</span>
             {i18nService.t('fanRunHistory')}
           </button>
-
-          {/* 全网热搜 — 仅简体/繁体中文显示(知乎/微博/百度/雪球/抖音/B站热榜) */}
-          {(i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') && (
-            <button
-              type="button"
-              onClick={() => { setIsSearchOpen(false); onShowHotSearch(); }}
-              className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-                activeView === 'hotsearch'
-                  ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
-                  : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-              }`}
-            >
-              <span className="text-sm">{'🔥'}</span>
-              {i18nService.t('globalHotSearch')}
-            </button>
-          )}
           </>)}
 
           {/* 矩阵号导航:我的矩阵号 / 新建涨粉任务 / 我的涨粉任务 / 运行记录(矩阵 edition 整个 app 就这一组,不再加组头) */}
@@ -271,7 +271,22 @@ const Sidebar: React.FC<SidebarProps> = ({
             ))}
           </div>
 
-          {!MATRIX_EDITION && (<>
+          {/* 全网热搜 — 仅简体/繁体中文显示(知乎/微博/百度/雪球/抖音/B站热榜) */}
+          {(i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') && (
+            <button
+              type="button"
+              onClick={() => { setIsSearchOpen(false); onShowHotSearch(); }}
+              className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                activeView === 'hotsearch'
+                  ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                  : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+              }`}
+            >
+              <span className="text-sm">{'🔥'}</span>
+              {i18nService.t('globalHotSearch')}
+            </button>
+          )}
+
           {/* 4. AI对话 — 折叠二级菜单：新建对话 / web3连接 / 行业热点 */}
           <button
             type="button"
@@ -303,6 +318,16 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 <ComposeIcon className="h-4 w-4" />
                 {i18nService.t('newChat')}
+              </button>
+
+              {/* 所有AI对话 — 矩阵版没有常驻的对话历史列表,收成一个菜单项;点开弹出会话列表+搜索框 */}
+              <button
+                type="button"
+                onClick={() => { onShowCowork(); setIsSearchOpen(true); }}
+                className="w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover"
+              >
+                <span className="text-sm">{'📚'}</span>
+                {i18nService.t('coworkHistory')}
               </button>
 
               {/* AI定时任务 — 原顶级"自建定时任务",收进 AI对话组,排在新建对话下面 */}
@@ -346,26 +371,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-sm">{'🔥'}</span>
                 {i18nService.t('hotTopics')}
               </button>
+
+              {/* AI技能商店 — 原顶级「技能商店」收进 AI对话组并改名 */}
+              <button
+                type="button"
+                onClick={() => { setIsSearchOpen(false); onShowSkills(); }}
+                className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                  activeView === 'skills'
+                    ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                <span className="text-sm">🧩</span>
+                {i18nService.t('aiSkillStore')}
+              </button>
             </div>
           )}
-
-          {/* 5. Skill Store */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onShowSkills();
-            }}
-            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-              activeView === 'skills'
-                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
-                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-            }`}
-          >
-            <span className="text-sm">🧩</span>
-            {i18nService.t('skills')}
-          </button>
-          </>)}
 
           {/* My Wallet */}
           <button
@@ -409,6 +430,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-sm">🧠</span>
             {i18nService.t('personalityTests')}
           </button>
+          </>)}
 
           {/* Events & Partners */}
           <button
@@ -423,7 +445,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-sm">🤝</span>
             {i18nService.t('eventsPartners')}
           </button>
-          </>)}
         </div>
       </div>
       {!MATRIX_EDITION && (

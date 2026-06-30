@@ -14,6 +14,7 @@ import { Web3View } from './components/web3/Web3View';
 import Web3NewsPage from './components/web3/Web3NewsPage';
 import GlobalHotSearchPage from './components/web3/GlobalHotSearchPage';
 import MatrixView from './components/matrix/MatrixView';
+import HomeView from './components/home/HomeView';
 import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
 import CoworkQuestionWizard from './components/cowork/CoworkQuestionWizard';
 import { configService } from './services/config';
@@ -52,7 +53,7 @@ const App: React.FC = () => {
   // 启动默认落到「一键涨粉」(scenarioCreate),而不是 AI 对话(cowork)。副作用:Sidebar 的
   // 「AI对话」二级折叠组只在其子项(cowork/mcp/web3news/scheduledTasks)激活时才强制展开,
   // 默认页非该组子项 → 该组保持收起(aiChatOpen 初始 false),正好满足「AI对话菜单默认收起」。
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns'>(MATRIX_EDITION ? 'matrix' : 'scenarioCreate');
+  const [mainView, setMainView] = useState<'home' | 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns'>(MATRIX_EDITION ? 'home' : 'scenarioCreate');
   // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
   const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video' | undefined>(undefined);
   // ScenarioView 下钻到任务/运行记录详情时为 true:任务详情逻辑上属于「我的涨粉任务」,
@@ -928,6 +929,7 @@ const App: React.FC = () => {
     );
   }
 
+  const handleShowHome = () => setMainView('home');
   const handleShowWallet = () => setMainView('wallet');
   const handleShowInvite = () => setMainView('invite');
   // v6.x: 菜单拆分 ——「一键涨粉」(新建页)= 'scenarioCreate';「我的涨粉任务」(管理页)= 'quickuse'。
@@ -997,6 +999,7 @@ const App: React.FC = () => {
           /* create/runs 菜单下钻到任务详情时,高亮临时归到「我的涨粉任务」(quickuse),
              保持「任务详情属于我的涨粉任务」的认知一致;其余情况按真实 mainView 高亮。 */
           activeView={scenarioInDetail && mainView === 'scenarioCreate' ? 'quickuse' : mainView}
+          onShowHome={handleShowHome}
           onShowSkills={handleShowSkills}
           onShowCowork={handleShowCowork}
           onShowScheduledTasks={handleShowScheduledTasks}
@@ -1029,7 +1032,19 @@ const App: React.FC = () => {
                 暗色背景 (#09090E) = 黑屏。包一层 ErrorBoundary,出错时让用户至少
                 看到"哪个 view 哪一行炸了"的红色卡片 + Reload 按钮,而不是死黑屏。 */}
             <ErrorBoundary name={`MainView:${mainView}`} key={mainView}>
-            {mainView === 'skills' ? (
+            {mainView === 'home' ? (
+              <HomeView
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                onNewChat={handleNewChat}
+                updateBadge={isSidebarCollapsed ? updateBadge : null}
+                onShowMatrix={handleShowMatrix}
+                onShowMatrixTaskNew={handleShowMatrixTaskNew}
+                onShowMatrixRuns={handleShowMatrixRuns}
+                onShowWallet={handleShowWallet}
+                matrixExpiredCount={matrixExpiredTotal}
+              />
+            ) : mainView === 'skills' ? (
               <SkillsView
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
