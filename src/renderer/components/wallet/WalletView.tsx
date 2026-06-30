@@ -1562,7 +1562,22 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         )}
 
         {/* 会员订阅 tab:选档/周期/支付方式 → onPay 复用下方同一套支付步骤 */}
-        {step === 'select' && topTab === 'subscription' && <MembershipPanel onPay={startSubscriptionPay} />}
+        {step === 'select' && topTab === 'subscription' && (
+        <div>
+          {/* 标题行:对齐「购买积分」那行(左标题 + 右「购买记录」入口,走同一套订单历史子页) */}
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">订阅会员</h3>
+            <button
+              onClick={() => { setSubPage('orderHistory'); setStatusFilter(''); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(''); }}
+              className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors flex items-center gap-1"
+            >
+              {i18nService.t('walletHistory')}
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
+          <MembershipPanel onPay={startSubscriptionPay} />
+        </div>
+        )}
 
         {step === 'select' && topTab === 'topup' && (
         <div>
@@ -1710,6 +1725,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               )}
             </>
           )}
+          <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">单独购买的积分永久有效、不受影响。</p>
         </div>
         )}
 
