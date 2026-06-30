@@ -138,13 +138,35 @@ export interface BinancePostConfig {
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
 }
 
+/**
+ * 「币安广场批量搬运」(binance_repost)任务配置。区别于其它矩阵任务:本任务有【两种账号角色】——
+ *   · 1 个【采集号】(sourceAccountId,在 sourcePlatform 上已登录):按关键词搜索 → 筛选 → 下载,
+ *     一次性采够 N 条候选素材(图文 / 视频);
+ *   · N 个【币安号】(task.accountIds):各领一条候选,AI 仿写改成币安口吻 + 配图 → 发到各自币安广场。
+ * 「采集发布解耦」:采集只跑一次(不需要每个币安号自己登录源平台),候选任务级去重保证两号不撞同源,
+ * 每号独立改写降低连坐。计费按成功条数(repost_image_text / repost_video)+ AI 仿写 token。
+ *   material='image':搬图文(源图 + 仿写正文 → 币安图文帖);'video':搬视频(无水印源视频 → 币安视频帖)。
+ *   sourcePlatform 决定采集剧本(douyin/xhs/tiktok/x);keyword 为空则用采集号自己的关键词。
+ */
+export interface BinanceRepostConfig {
+  sourcePlatform: 'douyin' | 'xhs' | 'tiktok' | 'x'; // 搬运来源平台(决定采集剧本)
+  sourceAccountId: string;       // 采集号(该 sourcePlatform 上已登录的矩阵账号 id)
+  keyword?: string;              // 搜索词(选填;空则用采集号 account.keywords)
+  material: 'image' | 'video';   // 搬运形态:图文 / 视频
+  withImage: boolean;            // 图文模式恒配源图;视频模式此项保留兼容(一般 true)
+  language: 'zh' | 'en' | 'mixed'; // 仿写语言(mixed 跟随客户端)
+  autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
+  perRunCount?: number;          // 本轮目标条数;缺省=min(币安号数, 候选池数)。封顶见 runner
+}
+
 // 互动(点赞/评论/关注)= engage;自动回复粉丝评论 = reply_fan(抖音创作者中心评论管理);
 // 视频无水印下载 = video_download(单账号:选 1 个号 + 粘贴多个链接,逐个下载,不多开);
 // 图文创作 = image_text(N 个号各自按身份生成图文 + 配图 + 发到各自创作者中心);
 // 爆款批量仿写 = viral_rewrite(N 个号各自按关键词搜小红书爆款 → 仿写 → AI 生图 → 发布);
 // 自动发推 = x_post(N 个号各自按身份 AI 原创一条推文 + 可选配图 → 发到各自时间线,仅推特);
-// 币安广场自动发帖 = binance_post(N 个号各自抓 web3 资讯 AI 原创一条币安广场图文 + 可选配图 → 发币安广场,仅币安)。
-export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post';
+// 币安广场自动发帖 = binance_post(N 个号各自抓 web3 资讯 AI 原创一条币安广场图文 + 可选配图 → 发币安广场,仅币安);
+// 币安广场批量搬运 = binance_repost(1 个采集号从源平台搜+下 N 条 → N 个币安号各领一条 AI 仿写 + 配图 → 发币安广场)。
+export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost';
 // 频率枚举对齐老客户端 DouyinConfigWizard(便于复用频率算法/文案)。
 export type MatrixTaskFrequency = 'once' | '30min' | '1h' | '3h' | '6h' | 'daily_random';
 
@@ -165,6 +187,7 @@ export interface MatrixTask {
   viralRewrite?: ViralRewriteConfig; // 仅 viral_rewrite 用:爆款仿写配置
   tweetPost?: TweetPostConfig;     // 仅 x_post 用:自动发推配置
   binancePost?: BinancePostConfig; // 仅 binance_post 用:币安广场自动发帖配置
+  binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
   urls?: string[];                 // 仅 video_download 用:用户粘贴的待下载视频链接清单
   concurrency?: number;            // 同时开窗数(video_download 固定 1,单账号顺序下载)
   frequency: MatrixTaskFrequency;  // 运行频率

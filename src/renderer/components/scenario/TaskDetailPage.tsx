@@ -1841,6 +1841,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {isZh ? '爆款仿写' : 'Viral rewrite'}</span>;
                           if (sid === 'x_post') return <span className="text-gray-400 font-sans">🐦 {isZh ? '发推' : 'Tweet'}</span>;
                           if (sid === 'binance_post') return <span className="text-gray-400 font-sans">📊 {isZh ? '发帖' : 'Post'}</span>;
+                          if (sid === 'binance_repost') return <span className="text-gray-400 font-sans">♻️ {isZh ? '搬运' : 'Repost'}</span>;
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
                       </div>
@@ -2087,6 +2088,11 @@ function formatActionBreakdown(
   }
   // 币安广场自动发帖(矩阵版 binance_post):同 x_post,只产生「发帖数」,显示 📤 N 发帖,绝不显示赞/关注/评论。
   if (sid === 'binance_post') {
+    const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
+    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+  }
+  // 币安广场批量搬运(矩阵版 binance_repost):同上,只产生「发帖数」。
+  if (sid === 'binance_repost') {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
   }

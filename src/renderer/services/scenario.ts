@@ -144,6 +144,10 @@ const MATRIX_BINANCE_META: Record<string, { name_zh: string; icon: string }> = {
   binance: { name_zh: '币安广场 自动发帖', icon: '📊' },
 };
 
+// 「币安广场批量搬运」剧本(backend/matrix/scenarios/binance_repost)。1 源平台采集号搜+下 → N 币安号各领一条仿写发。发布目标=币安,scenario_id 固定 'binance_repost'(非平台后缀)。
+const MATRIX_REPOST_SCENARIO_ID = 'binance_repost';
+const MATRIX_REPOST_PLATFORM = 'binance';
+
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
  *  配额映射到 daily_*_min/max 这套 douyin_auto_engage 字段)。 */
 function mxTaskToScenario(t: any): ScenarioTaskIPC {
@@ -157,18 +161,20 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const isViral = t?.type === 'viral_rewrite';
   const isTweet = t?.type === 'x_post';
   const isBinancePost = t?.type === 'binance_post';
+  const isRepost = t?.type === 'binance_repost';
   const fn = t?.funnel || {};
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
   return {
     id: t.id,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
-    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : (isTweet || isBinancePost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
-    track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : 'matrix',
-    // image_text / viral_rewrite / x_post / binance_post 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
+    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? 'binance_repost' : (isTweet || isBinancePost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
+    track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isRepost ? 'binance_repost' : 'matrix',
+    // image_text / viral_rewrite / x_post / binance_post / binance_repost 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     imageText: isImageText ? t.imageText : undefined,
     viralRewrite: isViral ? t.viralRewrite : undefined,
     tweetPost: isTweet ? t.tweetPost : undefined,
     binancePost: isBinancePost ? t.binancePost : undefined,
+    binanceRepost: isRepost ? t.binanceRepost : undefined,
     // viral_rewrite 也摊平 AI 风格/发布给详情页(它也走 AI 生图 + 发布)。
     ...(isViral && t.viralRewrite ? { ai_image_style: t.viralRewrite.aiImageStyle || '', auto_publish: !!t.viralRewrite.autoPublish, auto_upload: !!t.viralRewrite.autoPublish } : {}),
     // 摊平给详情页 ConfigCard 读(它读 use_real_photos / real_photo_count / ai_image_style 这套老字段)。
@@ -303,6 +309,21 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       quota: {},
       binancePost: input.binancePost,
       concurrency: accountIds.length,
+      frequency: input.run_interval || 'daily_random',
+      enabled: input.enabled !== false,
+    };
+  }
+  // 币安广场搬运任务(scenario_id = binance_repost):保持 type='binance_repost' + 透传 binanceRepost,否则经 updateTask 兜底会被改成 engage、配置丢失。
+  if (input.scenario_id === MATRIX_REPOST_SCENARIO_ID) {
+    return {
+      id,
+      platform: MATRIX_REPOST_PLATFORM,
+      type: 'binance_repost',
+      name: input.name || (accountIds.length ? `币安广场搬运 · ${accountIds.length} 个号` : '币安广场搬运'),
+      accountIds,
+      quota: {},
+      binanceRepost: input.binanceRepost,
+      concurrency: 1,
       frequency: input.run_interval || 'daily_random',
       enabled: input.enabled !== false,
     };
@@ -494,7 +515,12 @@ class ScenarioService {
           name_zh: MATRIX_BINANCE_META[platform]?.name_zh || sid, name_en: '',
           icon: MATRIX_BINANCE_META[platform]?.icon || '📊',
         }));
-      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance] as unknown as Scenario[];
+      // 同理补「币安广场批量搬运」剧本快照,让 binance_repost 任务能归到币安 tab。
+      const synthRepost = have.has(MATRIX_REPOST_SCENARIO_ID) ? [] : [{
+        id: MATRIX_REPOST_SCENARIO_ID, version: '1.0.0', platform: MATRIX_REPOST_PLATFORM, workflow_type: 'binance_repost_creation', category: 'creation',
+        name_zh: '币安广场 批量搬运', name_en: '', icon: '♻️',
+      }];
+      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost] as unknown as Scenario[];
     }
     try {
       const res = await window.electron.scenario.listScenarios();

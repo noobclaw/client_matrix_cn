@@ -44,6 +44,7 @@ import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
 import MatrixImageTextWizard, { type ImageTextWizardSave } from '../matrix/MatrixImageTextWizard';
 import MatrixTweetPostWizard, { type TweetPostWizardSave } from '../matrix/MatrixTweetPostWizard';
 import MatrixBinancePostWizard, { type BinancePostWizardSave } from '../matrix/MatrixBinancePostWizard';
+import MatrixBinanceRepostWizard, { type BinanceRepostWizardSave } from '../matrix/MatrixBinanceRepostWizard';
 import MatrixViralRewriteWizard, { type ViralRewriteWizardSave } from '../matrix/MatrixViralRewriteWizard';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'video';
@@ -79,6 +80,8 @@ const MATRIX_VIRAL_PLATFORMS = new Set<PlatformId>(['xhs']);
 const MATRIX_TWEET_POST_PLATFORMS = new Set<PlatformId>(['x']);
 // 后端 backend/matrix/scenarios 有 binance_post「币安广场自动发帖」剧本的平台(N 号各自抓 web3 资讯 AI 原创一条币安广场图文+可选配图→发币安广场)。目前仅币安。
 const MATRIX_BINANCE_POST_PLATFORMS = new Set<PlatformId>(['binance']);
+// 「币安广场批量搬运」(binance_repost):1 个源平台采集号搜+下 → N 个币安号各领一条仿写发。发布目标=币安。
+const MATRIX_BINANCE_REPOST_PLATFORMS = new Set<PlatformId>(['binance']);
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -236,6 +239,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixBinanceAccounts, setMatrixBinanceAccounts] = useState<WizardAccount[]>([]);
   const [matrixBinanceAccountsLoading, setMatrixBinanceAccountsLoading] = useState(false);
   const [matrixBinanceTask, setMatrixBinanceTask] = useState<any | null>(null);
+  // ── 币安广场批量搬运(binance_repost)向导状态 ──
+  const [matrixRepostPlatform, setMatrixRepostPlatform] = useState<string | null>(null);
+  const [matrixRepostAccounts, setMatrixRepostAccounts] = useState<WizardAccount[]>([]);        // 币安发布号
+  const [matrixRepostSourceAccounts, setMatrixRepostSourceAccounts] = useState<WizardAccount[]>([]); // 全部号(挑采集号)
+  const [matrixRepostAccountsLoading, setMatrixRepostAccountsLoading] = useState(false);
+  const [matrixRepostTask, setMatrixRepostTask] = useState<any | null>(null);
   // 「爆款批量仿写」向导(多账号:勾选 N 个号 + 篇数/AI风格/发布)。
   const [matrixViralPlatform, setMatrixViralPlatform] = useState<string | null>(null);
   const [matrixViralAccounts, setMatrixViralAccounts] = useState<WizardAccount[]>([]);
@@ -621,6 +630,57 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const plat = matrixBinancePlatform;
     setMatrixBinancePlatform(null);
     setMatrixBinanceTask(null);
+    await refreshAll();
+    if (!wasEdit) onSwitchToManage?.(plat as any);
+  };
+  // ── 币安广场批量搬运向导:发布号取币安(replyAccountFilter),采集号取【全部账号】(按所选源平台过滤在 wizard 内做)。 ──
+  const loadRepostAccounts = async (plat: string) => {
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixRepostAccounts(accs.filter((a) => replyAccountFilter(a, plat)).map(mapWizardAccount));
+      setMatrixRepostSourceAccounts(accs.map(mapWizardAccount));
+    } catch { setMatrixRepostAccounts([]); setMatrixRepostSourceAccounts([]); }
+    finally { setMatrixRepostAccountsLoading(false); }
+  };
+  const openMatrixRepostWizard = async (platform: string) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    setMatrixRepostAccounts([]); setMatrixRepostSourceAccounts([]);
+    setMatrixRepostAccountsLoading(true);
+    setMatrixRepostTask(null);
+    setMatrixRepostPlatform(platform);
+    await loadRepostAccounts(platform);
+  };
+  const openMatrixRepostWizardEdit = async (task: any) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    const plat = (task?.platform as string) || currentPlatform || 'binance';
+    setMatrixRepostAccounts([]); setMatrixRepostSourceAccounts([]);
+    setMatrixRepostAccountsLoading(true);
+    setMatrixRepostTask({ id: task.id, name: task.name, accountIds: task.account_ids || [], binanceRepost: (task as any).binanceRepost, frequency: task.run_interval });
+    setMatrixRepostPlatform(plat);
+    await loadRepostAccounts(plat);
+  };
+  const saveMatrixRepostTask = async (input: BinanceRepostWizardSave) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
+    const m = (window as any).electron?.matrix;
+    const binanceRepost = {
+      sourcePlatform: input.sourcePlatform,
+      sourceAccountId: input.sourceAccountId,
+      keyword: input.keyword,
+      material: input.material,
+      withImage: input.withImage,
+      language: input.language,
+      autoPublish: input.autoPublish,
+    };
+    const r = await m?.saveTask?.({ id: matrixRepostTask?.id, platform: matrixRepostPlatform, type: 'binance_repost', name: input.name, accountIds: input.accountIds, binanceRepost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) {
+      if (r?.error === 'duplicate_type') { const dp = matrixRepostPlatform; setMatrixRepostPlatform(null); setMatrixRepostTask(null); setDupNotice({ platform: dp as string, label: '币安广场搬运' }); return; }
+      throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
+    }
+    const wasEdit = !!matrixRepostTask?.id;
+    const plat = matrixRepostPlatform;
+    setMatrixRepostPlatform(null);
+    setMatrixRepostTask(null);
     await refreshAll();
     if (!wasEdit) onSwitchToManage?.(plat as any);
   };
@@ -1038,7 +1098,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (String(task.scenario_id || '') === 'binance_post') { void openMatrixBinanceWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (String(task.scenario_id || '') === 'binance_post') { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'binance_repost') { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -1289,6 +1349,22 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               >
                 已有任务 »
               </button>
+              </div>
+            </div>
+          )}
+          {/* 币安广场批量搬运(矩阵多账号)—— 币安:1 个源平台采集号搜+下素材 → N 个币安号各领一条 AI 仿写 + 配源图 → 发币安广场。 */}
+          {MATRIX_BINANCE_REPOST_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> 内容搬运 · 多账号
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">♻️ {platLabel} · 批量搬运</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                选 1 个源平台(小红书…)采集号按关键词搜+下素材,N 个币安号<strong>各领一条独立仿写</strong> + 配源图,顺序发到各自币安广场(相邻两条间隔 1-2 分钟防连坐)。跨平台搬运、批量养号。
+              </div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+                <button type="button" onClick={() => openMatrixRepostWizard(currentPlatform)} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 shadow-sm shadow-amber-500/25 transition-all active:scale-95">♻️ 开始搬运 →</button>
+                <button type="button" onClick={() => onSwitchToManage?.(currentPlatform as any)} className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">已有任务 »</button>
               </div>
             </div>
           )}
@@ -1935,6 +2011,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               initialTask={matrixBinanceTask}
               onCancel={() => { setMatrixBinancePlatform(null); setMatrixBinanceTask(null); }}
               onSave={saveMatrixBinanceTask}
+            />
+          </div>
+        </div>
+      )}
+
+      {matrixRepostPlatform && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto" onClick={() => { setMatrixRepostPlatform(null); setMatrixRepostTask(null); }}>
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <MatrixBinanceRepostWizard
+              platformLabel={(() => { const p = matrixRepostPlatform; return p === 'binance' ? '币安广场' : String(p); })()}
+              platform={matrixRepostPlatform}
+              accounts={matrixRepostAccounts}
+              sourceAccounts={matrixRepostSourceAccounts}
+              accountsLoading={matrixRepostAccountsLoading}
+              initialTask={matrixRepostTask}
+              onCancel={() => { setMatrixRepostPlatform(null); setMatrixRepostTask(null); }}
+              onSave={saveMatrixRepostTask}
             />
           </div>
         </div>
