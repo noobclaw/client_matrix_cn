@@ -980,10 +980,6 @@ const App: React.FC = () => {
       {showLoginWall && !authState.isAuthenticated && (
         <LoginWall
           onDismiss={() => setShowLoginWall(false)}
-          onSwitchToCustomApi={() => {
-            setShowLoginWall(false);
-            handleShowSettings({ initialTab: 'model' as any, forceCustomApi: true });
-          }}
         />
       )}
       {showTokenDialog && (

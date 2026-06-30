@@ -1584,7 +1584,8 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
   // Render tabs
   const sidebarTabs: { key: TabType; label: string; icon: React.ReactNode }[] = useMemo(() => [
     { key: 'general',        label: i18nService.t('general'),        icon: <span className="text-base">&#x2699;&#xFE0F;</span> },
-    { key: 'model',          label: language === 'zh' ? 'AI服务' : 'AI Service', icon: <span className="text-base">&#x1F916;</span> },
+    // 「AI服务」tab(model)已下线:矩阵版始终用 NoobClaw AI 服务,不暴露切换自定义 API Key 的入口。
+    // useNoobClawServer 默认 true,渲染分支与 LoginWall/Cowork 的旧入口保留但侧栏不再可达。
     { key: 'email',          label: i18nService.t('emailTab'),       icon: <span className="text-base">&#x1F4E7;</span> },
     { key: 'coworkMemory',   label: i18nService.t('coworkMemoryTitle'), icon: <span className="text-base">&#x1F9E0;</span> },
     { key: 'advanced',       label: language === 'zh' ? '高级' : 'Advanced', icon: <span className="text-base">&#x1F527;</span> },
@@ -2453,7 +2454,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
                   }
                 }}
               />
-              <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text">NoobClaw</h3>
+              <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text">NoobClaw矩阵版</h3>
               <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">v{appVersion}</span>
             </div>
 

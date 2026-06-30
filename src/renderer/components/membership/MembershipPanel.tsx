@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
+import { readCachedPlanConfig, writeCachedPlanConfig } from '../../services/paymentInfoCache';
 
 // 嵌入「我的充值」页「会员订阅」tab 的会员面板(无独立页面 chrome)。
 // 4 档(免费版第一)+ 周期选择 + 支付方式(USDT / BNB / 人民币兑换码)。
@@ -8,6 +9,25 @@ import { noobClawApi } from '../../services/noobclawApi';
 
 type Period = 'month' | 'quarter' | 'half' | 'year';
 type PayMethod = 'TRON' | 'BSC' | 'RMB';
+
+// 币种图标(对齐购买积分那排支付方式 tab)。本地复制自 WalletView 的 ChainLogo:
+// WalletView 已 import 本组件,反向 import 会形成循环依赖,故按矩阵惯例就地复制两枚 SVG。
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON'; size?: number }> = ({ chain, size = 16 }) => {
+  if (chain === 'TRON') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+        <rect width={24} height={24} rx={12} fill="#EF0027" />
+        <path fill="white" d="M17.5 5.5L7.5 4 12 17.5l1.5-4.2L17.5 5.5zm-1.7.8L12.7 11l-2-4.8 4.6-.4-.4.3zm-7.6-1l3.5 1.4-.8 4.4-3.4-5.5L8.2 5.3zm5.1 6.4l-1.3 3.6L7.5 7l5 4.5z" />
+      </svg>
+    );
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+      <circle cx={16} cy={16} r={16} fill="#F3BA2F" />
+      <path fill="white" d="M12.116 14.404L16 10.52l3.886 3.886 2.26-2.258L16 6l-6.146 6.146 2.262 2.258zM6 16l2.26-2.26L10.52 16l-2.26 2.26L6 16zm6.116 1.596L16 21.48l3.886-3.886 2.26 2.259L16 26l-6.146-6.146-.003-.003 2.265-2.255zM21.48 16l2.26-2.26L26 16l-2.26 2.26L21.48 16zm-3.188-.002h.002V16L16 18.294 13.706 16.002l-.004-.004.004-.004.402-.402.195-.195L16 13.706l2.293 2.293z" />
+    </svg>
+  );
+};
 
 const PERIODS: Array<{ key: Period; label: string }> = [
   { key: 'month', label: '月付' },
@@ -29,8 +49,10 @@ function fmtCredits(n: number): string {
 }
 
 const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC') => Promise<string | null> }> = ({ onPay }) => {
-  const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(null);
-  const [loading, setLoading] = useState(true);
+  // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
+  // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
+  const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
+  const [loading, setLoading] = useState<boolean>(() => !readCachedPlanConfig());
   const [period, setPeriod] = useState<Period>('month');
   const [method, setMethod] = useState<PayMethod>('TRON');
   const [busy, setBusy] = useState(false);
@@ -41,9 +63,8 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
   const [redeemBusy, setRedeemBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     const data = await noobClawApi.getPlanConfig();
-    if (data) setCfg(data);
+    if (data) { setCfg(data); writeCachedPlanConfig(data); }
     setLoading(false);
   }, []);
 
@@ -90,18 +111,21 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
 
   return (
     <div>
-      {/* 支付方式 */}
-      <div className="mb-3 flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-        {([['TRON', 'USDT'], ['BSC', 'BNB'], ['RMB', 'CNY(兑换码)']] as Array<[PayMethod, string]>).map(([m, label]) => (
-          <button key={m} onClick={() => { setMethod(m); setError(''); }} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{label}</button>
-        ))}
-      </div>
-
-      {/* 周期(折扣在卡片里显示,这里只切周期) */}
-      <div className="mb-4 inline-flex rounded-lg overflow-hidden border dark:border-claude-darkBorder border-claude-border">
-        {PERIODS.map(p => (
-          <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>
-        ))}
+      {/* 支付方式 + 周期:同一行两组菜单(左=支付方式 / 右=周期),折扣在卡片里显示 */}
+      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+          {([['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC'], ['RMB', 'CNY(兑换码)']] as Array<[PayMethod, string]>).map(([m, label]) => (
+            <button key={m} onClick={() => { setMethod(m); setError(''); }} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
+              {(m === 'TRON' || m === 'BSC') && <ChainLogo chain={m} size={16} />}
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="inline-flex rounded-lg overflow-hidden border dark:border-claude-darkBorder border-claude-border">
+          {PERIODS.map(p => (
+            <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>
+          ))}
+        </div>
       </div>
 
       {error && <div className="mb-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-red-400">{error}</div>}
@@ -141,11 +165,11 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
               </div>
               <ul className="mt-3 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary flex-1">
                 <li>· {isFree ? '注册礼 100万 积分' : `每月 ${fmtCredits(plan.monthly_credits)} 积分`}</li>
-                <li>· 单平台最多 {plan.max_accounts_per_platform} 个号</li>
+                <li>· 最大 {plan.max_accounts_per_platform} 矩阵号/平台</li>
                 <li>· {isFree ? '仅基础能力' : '全部能力可用'}</li>
               </ul>
               {isFree ? (
-                <div className="mt-3 py-2 text-center text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{isCur ? '当前方案' : '免费'}</div>
+                <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{isCur ? '当前方案' : '免费'}</button>
               ) : method === 'RMB' ? (
                 <div className="mt-3 py-2 text-center text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">CNY 请用下方兑换码</div>
               ) : (
@@ -169,7 +193,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
         </div>
       )}
 
-      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">订阅赠送的算力按月发放、到期清零;你充值的算力永久有效、不受影响。到期需手动续费(暂不自动扣款)。</p>
+      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">订阅赠送的算力按月发放、到期清零。</p>
     </div>
   );
 };

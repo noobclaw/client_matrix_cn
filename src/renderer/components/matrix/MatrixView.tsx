@@ -5,6 +5,7 @@ import MatrixReplyFansWizard from './MatrixReplyFansWizard';
 import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { getBackendApiUrl } from '../../services/endpoints';
+import { openWallet } from '../../services/walletNav';
 
 /**
  * 矩阵号主界面 —— 由左侧分组菜单驱动的 4 屏(screen prop):
@@ -192,6 +193,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
   // 每个平台账号上限:服务端 /api/matrix/config 下发(admin 可调),拉不到/未登录 → 兜底 10。
   const [maxAccountsPerPlatform, setMaxAccountsPerPlatform] = useState<number>(MAX_ACCOUNTS_PER_PLATFORM_FALLBACK);
+  // 代理IP购买页:服务端 /api/matrix/config 下发(admin 配 matrix_proxy_purchase_url),空则不显示「前往购买」入口。
+  const [proxyPurchaseUrl, setProxyPurchaseUrl] = useState<string>('');
   // 赛道预设库:服务端 /api/matrix/config 下发(admin 可加/改赛道、不打包),拉不到/未登录 → 内置兜底。
   const [trackPresets, setTrackPresets] = useState<TrackPreset[]>(FALLBACK_TRACK_PRESETS);
   // 赛道下拉是否展开(自绘两列面板,替代原生 select:赛道多,两列更矮)。
@@ -205,6 +208,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         const data = await res.json();
         const n = Number(data?.maxAccountsPerPlatform);
         if (alive && Number.isInteger(n) && n > 0) setMaxAccountsPerPlatform(n);
+        if (alive && typeof data?.proxyPurchaseUrl === 'string') setProxyPurchaseUrl(data.proxyPurchaseUrl.trim());
         // 下发的赛道库:校验为非空数组且每条带 name 才采用,否则保留内置兜底。
         const tp = data?.trackPresets;
         if (alive && Array.isArray(tp) && tp.length > 0 && tp.every((t: any) => t && t.name)) setTrackPresets(tp as TrackPreset[]);
@@ -222,6 +226,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       } catch { /* 拉不到 → 沿用 matrix/config 或兜底上限 */ }
     })();
     return () => { alive = false; };
+  }, []);
+  // 号数墙最终以 /api/ai/balance 返回的【当前生效上限】为准(后端已按订阅是否有效做 free 兜底,
+  //   且与 sidecar 运行时截断同源)。9999 = 老后端没返该字段的哨兵值,此时不覆盖、沿用 plan/config。
+  useEffect(() => {
+    const sync = (s: { maxAccountsPerPlatform: number }) => {
+      if (s.maxAccountsPerPlatform > 0 && s.maxAccountsPerPlatform !== 9999) setMaxAccountsPerPlatform(s.maxAccountsPerPlatform);
+    };
+    sync(noobClawAuth.getState());
+    return noobClawAuth.subscribe(sync);
   }, []);
   const [tasks, setTasks] = useState<MatrixTask[]>([]);
   const [runs, setRuns] = useState<RunRecord[]>([]);
@@ -359,6 +372,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
   // 快手按子 tab 过滤(老号无 loginScope → 当主站);其它平台不分。
   const platformAccounts = accounts.filter((a) => a.platform === platform && (platform !== 'kuaishou' || (a.loginScope || 'main') === ksScope));
+  // 会员号数墙:本平台按【绑定先后】(id 内嵌 base36 创建时间戳)排序,超出当前生效档位上限的号 = 暂停。
+  //   与 sidecar 运行时截断(planLimit.allowedAccountIds)完全同一口径 → UI 置灰的号 == 实际被跳过的号。
+  const suspendedIds: Set<string> = (() => {
+    const allPlat = accounts.filter((a) => a.platform === platform);
+    if (!(maxAccountsPerPlatform > 0) || allPlat.length <= maxAccountsPerPlatform) return new Set();
+    const tsOf = (id: string) => { const n = parseInt(String(id).split('_')[1] || '', 36); return Number.isFinite(n) && n > 0 ? n : 0; };
+    const sorted = [...allPlat].sort((a, b) => tsOf(a.id) - tsOf(b.id));
+    return new Set(sorted.slice(maxAccountsPerPlatform).map((a) => a.id));
+  })();
   const platformTasks = tasks.filter((t) => t.platform === platform);
   // 各平台「登录过期」账号数 —— 在平台 tab 右上角红圈角标展示。
   // 「登录过期」= login_required 但连过有身份(过期流程只翻状态不清身份),与卡片角标判定一致。
@@ -381,7 +403,16 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     if (!requireKernel()) return;
     // 每个平台账号数上限(快手两端按平台总数合并计):达上限不开弹窗,只提示。上限服务端可调。
     const platformTotal = accounts.filter((a) => a.platform === platform).length;
-    if (platformTotal >= maxAccountsPerPlatform) { setNotice(`${PLATFORM_LABEL[platform]}账号已达套餐上限(每个平台最多 ${maxAccountsPerPlatform} 个)。升级订阅可提升上限 —— 见左侧「会员中心」;或先移除部分账号`); return; }
+    // 达套餐上限:弹窗(带「去升级会员」按钮直达会员订阅)而非一次性 toast,引导用户升级。
+    if (platformTotal >= maxAccountsPerPlatform) {
+      setConfirmDlg({
+        title: `${PLATFORM_LABEL[platform]}账号已达套餐上限`,
+        body: `当前套餐每个平台最多可连接 ${maxAccountsPerPlatform} 个账号。升级会员可提升上限,或先移除部分账号再连接。`,
+        okText: '去升级会员',
+        onYes: () => { setConfirmDlg(null); openWallet('subscription'); },
+      });
+      return;
+    }
     setEditId(null); setNewName(`账号${platformAccounts.length + 1}-`); setNewScope(ksScope);
     // 默认选中一个赛道并带出人设 + 关键词(可再改)。x/tiktok/youtube 带英文词。
     const def = trackPresets.find((t) => t.name === DEFAULT_TRACK) || trackPresets[0];
@@ -711,8 +742,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     : 'bg-gray-400';
                   const stLabel = expired ? '登录过期' : STATUS_LABEL[a.status];
                   const stDot = expired ? 'bg-red-500' : STATUS_DOT[a.status];
+                  const isSuspended = suspendedIds.has(a.id);
                   return (
-                  <div key={a.id} className="relative h-full rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-2 transition-colors bg-white dark:bg-gray-900">
+                  <div key={a.id} className={`relative h-full rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-2 transition-colors bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
                     {/* 左上角状态实心角标(更显眼:已连接绿底白字 / 尚未连接黄底白字) */}
                     <span className={`absolute -top-px -left-px px-2.5 py-0.5 text-[11px] font-semibold text-white rounded-tl-xl rounded-br-lg ${stSolid}`}>{stLabel}</span>
                     {/* 右上角移除 ✕ */}
@@ -730,6 +762,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-semibold dark:text-white truncate">{a.nickname || a.displayName}</span>
+                          {isSuspended && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-400/20 text-gray-500 dark:text-gray-400" title="会员到期/降级后超出当前可用号数,任务会自动跳过该号;续费或升级会员即可恢复,数据不会丢失。">⏸️ 超出会员额度·已暂停</span>}
                           <span className={`shrink-0 max-w-[16rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? (a.proxy.health === 'ok' ? 'text-green-600 dark:text-green-400 bg-green-500/15' : a.proxy.health === 'dead' ? 'text-red-600 dark:text-red-400 bg-red-500/15' : 'text-blue-600 dark:text-blue-400 bg-blue-500/15') : (idx === 0 ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15')}`}>代理IP:{a.proxy ? ((a.proxy.geo || a.proxy.host) + (a.proxy.health === 'dead' ? ' ·不通' : '')) : (a.egressIp ? `本机 ${a.egressIp}` : (idx === 0 ? '本地IP(默认)' : '尚未配置'))}</span>
                         </div>
                         <div className="text-[11px] space-y-0.5" title={a.boundUid ? `uid: ${a.boundUid}` : undefined}>
@@ -1110,7 +1143,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
             {showProxy && (<>
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed mb-4">
-                ⚠️ 本平台已有账号。建议给这个新号配一个<strong>独立代理 IP</strong>:不配的话,它会和本平台其它号<strong>共用同一个本机 IP</strong>,多个号同 IP 容易被平台判定关联、有<strong>被风控/封号</strong>的风险。确实没有代理也可<strong>留空直接保存</strong>。
+                ⚠️ 本平台已有账号。建议给这个新号配一个<strong>独立代理 IP</strong>:不配的话,它会和本平台其它号<strong>共用同一个本机 IP</strong>,多个号同 IP 容易被平台判定关联、有<strong>被风控/封号</strong>的风险。确实没有代理也可<strong>留空直接保存</strong>。{proxyPurchaseUrl && (<> 没有代理?<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="underline font-semibold hover:opacity-80">前往购买 →</button></>)}
               </div>
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">代理 IP（可选）</label>
               <div className="flex gap-2 mb-2">
@@ -1120,12 +1153,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   <option value="http">http</option>
                   <option value="https">https</option>
                 </select>
-                <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder="host(如 1.2.3.4)" className="flex-1 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder="host(如 1.2.3.4)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
                 <input value={proxyForm.port} onChange={(e) => setProxyForm((f) => ({ ...f, port: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="port" className="w-20 text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
               </div>
               <div className="flex gap-2 mb-2">
-                <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder="用户名(可选)" className="flex-1 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-                <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder="密码(可选)" className="flex-1 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder="用户名(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder="密码(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
               </div>
               <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder="归属地标注(可选,仅显示用)" className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-4" />
             </>)}
@@ -1213,17 +1246,17 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
-            <div className="text-xs opacity-60 mb-3">多开同平台必须每号一个独立 IP,否则同 IP 会被风控。第一个号可留空走本地 IP。</div>
+            <div className="text-xs opacity-60 mb-3">多开同平台必须每号一个独立 IP,否则同 IP 会被风控。第一个号可留空走本地 IP。{proxyPurchaseUrl && (<> 没有代理?<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">前往购买 →</button></>)}</div>
             <div className="flex gap-2 mb-2">
               <select value={proxyForm.protocol} onChange={(e) => setProxyForm((f) => ({ ...f, protocol: e.target.value }))} className="text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent">
                 <option value="socks5">socks5</option><option value="socks5h">socks5h</option><option value="http">http</option><option value="https">https</option>
               </select>
-              <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder="host(如 1.2.3.4)" className="flex-1 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+              <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder="host(如 1.2.3.4)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
               <input value={proxyForm.port} onChange={(e) => setProxyForm((f) => ({ ...f, port: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="port" className="w-20 text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
             </div>
             <div className="flex gap-2 mb-2">
-              <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder="用户名(可选)" className="flex-1 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-              <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder="密码(可选)" className="flex-1 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+              <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder="用户名(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+              <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder="密码(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
             </div>
             <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder="归属地标注(可选,仅显示用)" className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3" />
             {proxyMsg && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}

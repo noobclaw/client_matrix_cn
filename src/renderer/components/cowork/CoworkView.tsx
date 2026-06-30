@@ -118,21 +118,6 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
 
 
 
-  const buildApiConfigNotice = (error?: string) => {
-    const baseNotice = i18nService.t('coworkModelSettingsRequired');
-    if (!error) {
-      return baseNotice;
-    }
-    const normalizedError = error.trim();
-    if (
-      normalizedError.startsWith('No enabled provider found for model:')
-      || normalizedError === 'No available model configured in enabled providers.'
-    ) {
-      return baseNotice;
-    }
-    return `${baseNotice} (${error})`;
-  };
-
   useEffect(() => {
     const init = async () => {
       await coworkService.init();
@@ -152,10 +137,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
           if (errMsg.includes('401') || errMsg.includes('Unauthorized') || errMsg.includes('Missing auth token')) {
             window.dispatchEvent(new CustomEvent('noobclaw:need-login'));
           } else {
-            onRequestAppSettings?.({
-              initialTab: 'model',
-              notice: buildApiConfigNotice(apiConfig.error),
-            });
+            // AI服务始终用 NoobClaw,不再跳「自定义 API」设置(该入口已下线);无配置一律引导登录。
+            window.dispatchEvent(new CustomEvent('noobclaw:need-login'));
           }
         }
       } catch (error) {
@@ -222,10 +205,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
           if (errMsg.includes('401') || errMsg.includes('Unauthorized') || errMsg.includes('Missing auth token')) {
             window.dispatchEvent(new CustomEvent('noobclaw:need-login'));
           } else {
-            onRequestAppSettings?.({
-              initialTab: 'model',
-              notice: buildApiConfigNotice(apiConfig.error),
-            });
+            // AI服务始终用 NoobClaw,不再跳「自定义 API」设置(该入口已下线);无配置一律引导登录。
+            window.dispatchEvent(new CustomEvent('noobclaw:need-login'));
           }
           isStartingRef.current = false;
           return;
