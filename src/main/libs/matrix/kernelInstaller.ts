@@ -213,8 +213,9 @@ function findDirEndingWith(dir: string, suffix: string): string | null {
 const mb = (n: number) => Math.round(n / 1048576);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** 把一个 Response body 落盘(可追加);带背压;返回累计落盘字节;网络/写错误时抛。 */
-async function streamToFile(res: Response, dest: string, append: boolean, total: number, baseGot: number, onProgress?: ProgressFn): Promise<number> {
+/** 把一个 Response body 落盘(可追加);带背压;返回累计落盘字节;网络/写错误时抛。
+ *  onChunk:每收到一块就回调(用于重置「卡死看门狗」计时器)。 */
+async function streamToFile(res: Response, dest: string, append: boolean, total: number, baseGot: number, onProgress?: ProgressFn, onChunk?: () => void): Promise<number> {
   const out = fs.createWriteStream(dest, { flags: append ? 'a' : 'w' });
   let writeErr: Error | null = null;
   out.on('error', (e) => { writeErr = e; }); // 磁盘满/无权限:捕获,避免 uncaught 崩 sidecar
@@ -225,6 +226,7 @@ async function streamToFile(res: Response, dest: string, append: boolean, total:
       if (writeErr) throw writeErr;
       const { done, value } = await reader.read();
       if (done) break;
+      onChunk?.(); // 收到字节 → 重置看门狗(只有「连续 N 秒一个字节都没来」才算卡死)
       const buf = Buffer.from(value);
       if (!out.write(buf)) { // 背压:write 返回 false 等 drain(否则大文件内存堆积)
         await new Promise<void>((resolve, reject) => { out.once('drain', resolve); out.once('error', reject); });
@@ -261,15 +263,22 @@ async function download(url: string, dest: string, onProgress?: ProgressFn): Pro
     return false;
   }
   const href = parsed.href;
-  const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = 8;       // 跨境大文件:多给几次续传机会,末段卡死能恢复
+  const STALL_MS = 20000;       // 连续 20s 一个字节都没来 = 卡死 → 主动断开续传(undici fetch 无 body 超时)
   let total = 0, got = 0;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let resume = got > 0;
+    const controller = new AbortController();
+    let stall: ReturnType<typeof setTimeout> | null = null;
+    const armStall = () => { if (stall) clearTimeout(stall); stall = setTimeout(() => { try { controller.abort(); } catch { /* ignore */ } }, STALL_MS); };
+    const clearStall = () => { if (stall) { clearTimeout(stall); stall = null; } };
     try {
       const headers: Record<string, string> = resume ? { Range: `bytes=${got}-` } : {};
-      const res = await fetch(href, { headers });
+      armStall(); // 连接阶段也算:连不上/握手卡住 20s 也 abort 重试
+      const res = await fetch(href, { headers, signal: controller.signal });
       if (resume && res.status !== 206) { resume = false; got = 0; } // 服务端没给续传 → 从头来
       if (!res.ok || !res.body) {
+        clearStall();
         if (attempt === MAX_ATTEMPTS) { coworkLog('ERROR', 'kernelInstaller', 'kernel download http error', { status: res.status, href }); onProgress?.(0, '下载失败,服务暂时不可用,请稍后重试'); return false; }
         await sleep(1500 * attempt); continue;
       }
@@ -277,14 +286,16 @@ async function download(url: string, dest: string, onProgress?: ProgressFn): Pro
         if (res.status === 206) { const m = (res.headers.get('content-range') || '').match(/\/(\d+)\s*$/); if (m) total = Number(m[1]); }
         else total = Number(res.headers.get('content-length') || 0);
       }
-      got = await streamToFile(res, dest, resume, total, got, onProgress);
+      got = await streamToFile(res, dest, resume, total, got, onProgress, armStall);
+      clearStall();
       if (total && got < total) { // 流提前结束(连接被掐)→ 续传重试
         if (attempt === MAX_ATTEMPTS) { coworkLog('ERROR', 'kernelInstaller', 'kernel download incomplete', { got, total, href }); onProgress?.(0, '网络不稳定,下载未完成,请重试'); return false; }
-        onProgress?.(Math.round((got / total) * 100), `网络较慢,正在重试 ${attempt}/${MAX_ATTEMPTS}…`);
-        await sleep(1500 * attempt); continue;
+        onProgress?.(Math.round((got / total) * 100), `网络较慢,正在续传…`);
+        await sleep(1000 * attempt); continue;
       }
       return true; // 完整(或无 total 时流正常结束)
     } catch (e: any) {
+      clearStall();
       try { got = fs.existsSync(dest) ? fs.statSync(dest).size : got; } catch { /* keep got */ } // 以实际落盘为准续传
       if (attempt === MAX_ATTEMPTS) {
         try { fs.rmSync(dest, { force: true }); } catch { /* ignore */ }
@@ -293,8 +304,9 @@ async function download(url: string, dest: string, onProgress?: ProgressFn): Pro
         onProgress?.(0, '下载失败,请检查网络后重试');
         return false;
       }
-      onProgress?.(total ? Math.round((got / total) * 100) : 0, `网络较慢,正在重试 ${attempt}/${MAX_ATTEMPTS}…`);
-      await sleep(1500 * attempt);
+      // 续传是正常恢复,不是失败 → 平静文案,不显示尝试次数/失败字样。
+      onProgress?.(total ? Math.round((got / total) * 100) : 0, `网络较慢,正在续传…`);
+      await sleep(1000 * attempt);
     }
   }
   return false;
@@ -328,7 +340,7 @@ export async function ensureKernel(version?: string, onProgress?: ProgressFn): P
   try {
     const ok = await download(entry.url, tmp, onProgress);
     if (!ok) return null;
-    onProgress?.(100, '下载完成,正在解压…');
+    onProgress?.(100, '下载完成,正在安装内核(约需十几秒)…');
 
     fs.rmSync(d, { recursive: true, force: true });
     fs.mkdirSync(d, { recursive: true });
