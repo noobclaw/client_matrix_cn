@@ -461,9 +461,17 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                 <span className="text-xs font-mono dark:text-claude-darkText text-claude-text">
                   {formatWalletAddress(authState.walletAddress)}
                 </span>
-                <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">|</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${authState.subActive ? 'bg-primary/15 text-primary' : 'dark:bg-claude-darkBg bg-claude-bg dark:text-claude-darkTextSecondary text-claude-textSecondary'}`}>
+                  {authState.subActive ? '👑 ' : ''}{authState.planName || (i18nService.currentLanguage === 'zh' ? '免费版' : 'Free')}
+                </span>
+                {authState.subActive && (
+                  <span className="w-10 h-1.5 rounded-full dark:bg-claude-darkBg bg-claude-bg overflow-hidden" title={`${Math.min(100, Math.round((authState.subUsedRatio || 0) * 100))}%`}>
+                    <span className="block h-full bg-primary" style={{ width: `${Math.min(100, Math.round((authState.subUsedRatio || 0) * 100))}%` }} />
+                  </span>
+                )}
+                <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">·</span>
                 <span className={`text-xs font-semibold ${authState.tokenBalance < 1000 ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>
-                  {i18nService.t('coworkTokenBalance', { n: authState.tokenBalance.toLocaleString() })}
+                  {(i18nService.currentLanguage === 'zh' ? '增量包 ' : 'Add-on ') + (authState.paidBalance || 0).toLocaleString()}
                 </span>
                 {/* 充值入口 — 始终显示,实心彩色按钮让 user 一眼看到。点击跳到「我的钱包」。 */}
                 <button

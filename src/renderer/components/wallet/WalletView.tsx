@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi, PaymentInfo, RedeemPackagesResponse } from '../../services/noobclawApi';
 import { CnyWithdrawModal } from './CnyWithdrawModal';
+import MembershipPanel from '../membership/MembershipPanel';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
 import { readCachedPaymentInfo, writeCachedPaymentInfo, readCachedRedeemInfo, writeCachedRedeemInfo } from '../../services/paymentInfoCache';
 import { i18nService } from '../../services/i18n';
@@ -125,6 +126,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     return cached?.chains?.TRON ? 'TRON' : 'BSC';
   });
   const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
+  // 顶部卡片下的两个 tab:会员订阅(默认第一)/ 增量包(=原充值套餐)。
+  const [topTab, setTopTab] = useState<'subscription' | 'topup'>('subscription');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   // ─── CNY 卡密充值 ───
@@ -1428,7 +1431,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletTokenBalance')}</p>
               <div className="flex items-center gap-2">
                 <p className="text-2xl font-bold text-primary">
-                  {(balance / 1_000_000).toFixed(2)}M
+                  {(authState.paidBalance / 1_000_000).toFixed(2)}M
                 </p>
                 <button
                   onClick={() => setSubPage('creditDetail')}
@@ -1506,10 +1509,18 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           </div>{/* /relative z-10 wrapper */}
         </div>
 
-        {/* Buy Tokens */}
+        {/* 顶部 tab:会员订阅(默认) / 增量包(=原充值套餐) */}
+        <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+          <button onClick={() => setTopTab('subscription')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'subscription' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>👑 会员订阅</button>
+          <button onClick={() => setTopTab('topup')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'topup' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>💎 增量包</button>
+        </div>
+
+        {topTab === 'subscription' && <MembershipPanel />}
+
+        {topTab === 'topup' && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('walletTopUp')}</h3>
+            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">增量包</h3>
             <button
               onClick={() => { setSubPage('orderHistory'); setStatusFilter(''); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(''); }}
               className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors flex items-center gap-1"
@@ -1780,6 +1791,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             </div>
           )}
         </div>
+        )}
 
 
       </div>

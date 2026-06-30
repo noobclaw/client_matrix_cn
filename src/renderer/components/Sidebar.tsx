@@ -14,7 +14,7 @@ import { MATRIX_EDITION } from '../matrixEdition';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns' | 'membership';
+  activeView: 'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns';
   onShowHome: () => void;
   onShowSkills: () => void;
   onShowCowork: () => void;
@@ -22,7 +22,6 @@ interface SidebarProps {
   onShowScheduledTasks: () => void;
   onShowMcp: () => void;
   onShowWallet: () => void;
-  onShowMembership: () => void;
   onShowInvite: () => void;
   onShowQuickUse: () => void;
   onShowScenarioRuns: () => void;
@@ -52,7 +51,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowScheduledTasks,
   onShowMcp,
   onShowWallet,
-  onShowMembership,
   onShowInvite,
   onShowQuickUse,
   onShowScenarioRuns,
@@ -395,20 +393,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               </button>
             </div>
           )}
-
-          {/* 会员中心(订阅) */}
-          <button
-            type="button"
-            onClick={() => { setIsSearchOpen(false); onShowMembership(); }}
-            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-              activeView === 'membership'
-                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
-                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-            }`}
-          >
-            <span className="text-sm">👑</span>
-            会员中心
-          </button>
 
           {/* My Wallet */}
           <button

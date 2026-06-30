@@ -4,7 +4,12 @@ import { getBackendApiUrl, getWebsiteUrl } from './endpoints';
 export interface AuthState {
   isAuthenticated: boolean;
   walletAddress: string | null;
-  tokenBalance: number;
+  tokenBalance: number;       // 可消费总额(增量包永久桶 + 有效订阅桶)
+  paidBalance: number;        // 增量包(永久桶)余额
+  planCode: string;           // 当前会员档位 free/basic/pro/max
+  planName: string;           // 档位中文名
+  subActive: boolean;         // 订阅是否有效
+  subUsedRatio: number;       // 订阅桶用量比例 0~1
   authToken: string | null;
   avatarUrl: string | null;
   // Web3Auth social login provenance (null when user signed in with their own wallet)
@@ -17,6 +22,11 @@ class NoobClawAuthService {
     isAuthenticated: false,
     walletAddress: null,
     tokenBalance: 0,
+    paidBalance: 0,
+    planCode: 'free',
+    planName: '免费版',
+    subActive: false,
+    subUsedRatio: 0,
     authToken: null,
     avatarUrl: null,
     socialEmail: null,
@@ -225,6 +235,12 @@ class NoobClawAuthService {
       if (res.ok) {
         const data = await res.json();
         this.state.tokenBalance = data.tokenBalance;
+        // 双桶 + 会员档位明细(顶部条 tag / 订阅进度条 / 增量包数 用)。后端老版本不返这些时兜底。
+        if (typeof data.paidBalance === 'number') this.state.paidBalance = data.paidBalance;
+        if (typeof data.planCode === 'string') this.state.planCode = data.planCode;
+        if (typeof data.planName === 'string') this.state.planName = data.planName;
+        if (typeof data.subActive === 'boolean') this.state.subActive = data.subActive;
+        if (typeof data.subUsedRatio === 'number') this.state.subUsedRatio = data.subUsedRatio;
         this.notify();
         // v1.x: 后端在 /api/ai/balance 顺道返回"已上链已结算但还没通知客户端"
         // 的 BUSDT 返佣列表(并原子标记 notified_at)。客户端每 15s 调一次本接口,
@@ -356,6 +372,11 @@ class NoobClawAuthService {
       isAuthenticated: false,
       walletAddress: null,
       tokenBalance: 0,
+      paidBalance: 0,
+      planCode: 'free',
+      planName: '免费版',
+      subActive: false,
+      subUsedRatio: 0,
       authToken: null,
       avatarUrl: null,
       socialEmail: null,

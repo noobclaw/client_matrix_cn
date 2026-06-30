@@ -82,9 +82,17 @@ const HomeView: React.FC<HomeViewProps> = ({
                 <span className="text-xs font-mono dark:text-claude-darkText text-claude-text">
                   {formatWalletAddress(authState.walletAddress)}
                 </span>
-                <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">|</span>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap ${authState.subActive ? 'bg-primary/15 text-primary' : 'dark:bg-claude-darkBg bg-claude-bg dark:text-claude-darkTextSecondary text-claude-textSecondary'}`}>
+                  {authState.subActive ? '👑 ' : ''}{authState.planName || (isZh ? '免费版' : 'Free')}
+                </span>
+                {authState.subActive && (
+                  <span className="w-10 h-1.5 rounded-full dark:bg-claude-darkBg bg-claude-bg overflow-hidden" title={`${Math.min(100, Math.round((authState.subUsedRatio || 0) * 100))}%`}>
+                    <span className="block h-full bg-primary" style={{ width: `${Math.min(100, Math.round((authState.subUsedRatio || 0) * 100))}%` }} />
+                  </span>
+                )}
+                <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">·</span>
                 <span className={`text-xs font-semibold ${authState.tokenBalance < 1000 ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>
-                  {i18nService.t('coworkTokenBalance', { n: authState.tokenBalance.toLocaleString() })}
+                  {(isZh ? '增量包 ' : 'Add-on ') + (authState.paidBalance || 0).toLocaleString()}
                 </span>
                 <button
                   type="button"

@@ -1949,8 +1949,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             {authState.isAuthenticated && authState.walletAddress ? (
               <>
                 <span className="text-[10px] font-mono dark:text-claude-darkText text-claude-text">{formatWalletAddress(authState.walletAddress)}</span>
-                <span className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary">|</span>
-                <span className={`text-[10px] font-semibold ${authState.tokenBalance < 1000 ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>{i18nService.t('coworkTokenBalance', { n: authState.tokenBalance.toLocaleString() })}</span>
+                <span className={`px-1 py-0.5 rounded text-[9px] font-semibold whitespace-nowrap ${authState.subActive ? 'bg-primary/15 text-primary' : 'dark:bg-claude-darkBg bg-claude-bg dark:text-claude-darkTextSecondary text-claude-textSecondary'}`}>{authState.subActive ? '👑 ' : ''}{authState.planName || (i18nService.currentLanguage === 'zh' ? '免费版' : 'Free')}</span>
+                {authState.subActive && (
+                  <span className="w-8 h-1 rounded-full dark:bg-claude-darkBg bg-claude-bg overflow-hidden" title={`${Math.min(100, Math.round((authState.subUsedRatio || 0) * 100))}%`}><span className="block h-full bg-primary" style={{ width: `${Math.min(100, Math.round((authState.subUsedRatio || 0) * 100))}%` }} /></span>
+                )}
+                <span className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary">·</span>
+                <span className={`text-[10px] font-semibold ${authState.tokenBalance < 1000 ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>{(i18nService.currentLanguage === 'zh' ? '增量包 ' : 'Add-on ') + (authState.paidBalance || 0).toLocaleString()}</span>
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'))}
