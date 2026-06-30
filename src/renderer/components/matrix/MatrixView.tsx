@@ -1159,7 +1159,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       {showKernelModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-[26rem] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
-            <div className="text-sm font-medium mb-1">指纹浏览器</div>
+            <div className="flex items-center mb-1">
+              <div className="text-sm font-medium">指纹浏览器</div>
+              <button type="button" onClick={() => setShowKernelModal(false)} aria-label="关闭" title="关闭" className="ml-auto shrink-0 -mr-1 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
             {kernelReady && !kernelBusy ? (
               <div className="text-sm text-green-500 my-3">✓ 指纹浏览器已就绪{selectedVersion ? `(v${selectedVersion})` : ''},现在可以连接账号 / 扫码连接 / 跑任务了。</div>
             ) : (
@@ -1183,7 +1188,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       {proxyFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-[26rem] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
-            <div className="text-sm font-medium mb-1">绑定代理 IP</div>
+            <div className="flex items-center mb-1">
+              <div className="text-sm font-medium">绑定代理 IP</div>
+              <button type="button" onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} aria-label="关闭" title="关闭" className="ml-auto shrink-0 -mr-1 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
             <div className="text-xs opacity-60 mb-3">多开同平台必须每号一个独立 IP,否则同 IP 会被风控。第一个号可留空走本地 IP。</div>
             <div className="flex gap-2 mb-2">
               <select value={proxyForm.protocol} onChange={(e) => setProxyForm((f) => ({ ...f, protocol: e.target.value }))} className="text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent">
