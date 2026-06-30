@@ -237,7 +237,12 @@ async function collectFromSource(
   const cfg = opts.config;
   const srcAccId = cfg.sourceAccountId;
   const acc = getAccount(srcAccId);
-  const log = (m: string) => { try { opts.onLog?.(srcAccId, '🧺 ' + m); } catch { /* ignore */ } };
+  // 采集阶段进度上报:采集号(srcAccId)不在任务的发布号面板里 → 把采集日志【广播到每个币安发布号的进度框】,
+  // 否则采集那几分钟右边面板一片空白(用户以为卡死)。前缀 🧺 区分这是采集阶段。
+  const log = (m: string) => {
+    try { opts.onLog?.(srcAccId, '🧺 ' + m); } catch { /* ignore */ }
+    for (const pid of (opts.accountIds || [])) { try { opts.onLog?.(pid, '🧺 ' + m); } catch { /* ignore */ } }
+  };
   if (!acc) { log('❌ 采集号不存在'); return { candidates: [], reason: 'source_account_not_found' }; }
   if (acc.platform !== cfg.sourcePlatform) { log('❌ 采集号平台与来源平台不符'); return { candidates: [], reason: 'source_platform_mismatch' }; }
 
