@@ -62,7 +62,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
   const [redeemBusy, setRedeemBusy] = useState(false);
   // CNY 店铺地址:复用「购买积分」同一个后端下发地址(system_config.xianyu_shop_url,admin 可改)。
-  const [shopUrl, setShopUrl] = useState('https://pay.ldxp.cn/shop/LDH5OSFE');
+  const [shopUrl, setShopUrl] = useState('https://pay.ldxp.cn/shop/noobclaw');
 
   const load = useCallback(async () => {
     const data = await noobClawApi.getPlanConfig();
