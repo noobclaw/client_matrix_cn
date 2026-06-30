@@ -203,7 +203,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
       {method === 'RMB' && (
         <div className="mt-4 p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
           <div className="flex items-center justify-between gap-2 mb-1">
-            <div className="text-sm font-medium dark:text-claude-darkText text-claude-text">CNY 订阅(兑换码)</div>
+            <div className="text-sm font-medium dark:text-claude-darkText text-claude-text">会员兑换码</div>
             <button disabled={!shopUrl} onClick={openShop} className="px-3 py-1 rounded-lg text-xs font-semibold bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-40">去店铺购买 →</button>
           </div>
           <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">点上方档位「订阅」或「去店铺购买」进店买卡密,回来在此输入兑换即可开通对应档位与周期。</div>
