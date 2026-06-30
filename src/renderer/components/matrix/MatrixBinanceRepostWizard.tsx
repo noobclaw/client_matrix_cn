@@ -198,7 +198,19 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
         {step === 2 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 来源平台<span className="text-xs text-gray-400 font-normal ml-1">· 随搬运形态(图文→小红书 / 视频→TikTok)</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🎞️ 搬运形态<span className="text-xs text-gray-400 font-normal ml-1">· 先选形态,下面来源平台跟着变</span></label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => { setMaterial('image'); setSourcePlatform(firstEnabledSource('image')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'image' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
+                  🖼️ 图文<div className="text-[11px] text-gray-400 font-normal mt-0.5">小红书源图 + 仿写正文 → 币安图文帖</div>
+                </button>
+                <button type="button" onClick={() => { setMaterial('video'); setSourcePlatform(firstEnabledSource('video')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'video' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
+                  🎬 视频<div className="text-[11px] text-gray-400 font-normal mt-0.5">抖音 / TikTok 无水印源视频 + 仿写配文 → 币安视频帖(TikTok 须VPN)</div>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 来源平台<span className="text-xs text-gray-400 font-normal ml-1">· {material === 'image' ? '图文源:小红书(X 敬请期待)' : '视频源:抖音 / TikTok'}</span></label>
               <div className="flex gap-2 flex-wrap">
                 {SOURCE_BY_MATERIAL[material].map((sp) => (
                   <button key={sp.id} type="button" disabled={!sp.enabled} onClick={() => { if (sp.enabled) { setSourcePlatform(sp.id); setSourceAccountId(''); } }} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${sourcePlatform === sp.id ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'} ${!sp.enabled ? 'opacity-40 cursor-not-allowed' : ''}`}>{sp.label}{!sp.enabled ? '(敬请期待)' : ''}</button>
@@ -221,14 +233,17 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
                       <input type="radio" name="src-acc" checked={sourceAccountId === a.id} onChange={() => ready && setSourceAccountId(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-amber-500 shrink-0" />
-                      <span className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</span>
+                      {a.avatar
+                        ? <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-7 h-7 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                        : <span className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">{PLATFORM_NAME[a.platform || ''] || a.platform}</span>
                           <span className="font-medium truncate dark:text-white">{title}</span>
                           {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">@{a.displayId}</span>}
                           {!ready && <span className="text-[11px] text-amber-500 shrink-0">{a.status === 'banned' ? '已封' : '未连接'}</span>}
                         </div>
-                        {Array.isArray(a.keywords) && a.keywords.length > 0 && <div className="text-[11px] text-gray-400 truncate">关键词:{a.keywords.join('、')}</div>}
+                        <div className="text-[11px] text-gray-400 truncate">备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}{Array.isArray(a.keywords) && a.keywords.length > 0 ? ` · 关键词:${a.keywords.join('、')}` : ''}</div>
                       </div>
                     </label>
                   );
@@ -241,17 +256,6 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
               <input type="text" value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder={srcAcc && Array.isArray(srcAcc.keywords) && srcAcc.keywords.length ? `留空则用:${srcAcc.keywords[0]}` : '例:比特币、链上数据、DeFi'} className="w-full px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-white focus:border-amber-500 outline-none" />
             </div>
 
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🎞️ 搬运形态<span className="text-xs text-gray-400 font-normal ml-1">· 切换会自动切来源平台</span></label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => { setMaterial('image'); setSourcePlatform(firstEnabledSource('image')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'image' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  🖼️ 图文<div className="text-[11px] text-gray-400 font-normal mt-0.5">小红书源图 + 仿写正文 → 币安图文帖</div>
-                </button>
-                <button type="button" onClick={() => { setMaterial('video'); setSourcePlatform(firstEnabledSource('video')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'video' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  🎬 视频<div className="text-[11px] text-gray-400 font-normal mt-0.5">TikTok 无水印源视频 + 仿写配文 → 币安视频帖(须VPN)</div>
-                </button>
-              </div>
-            </div>
           </>
         )}
 

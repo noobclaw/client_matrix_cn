@@ -193,6 +193,53 @@ function nextRunLabel(task: Task, isZh: boolean): string {
   return isZh ? '即将' : 'Soon';
 }
 
+// 任务卡片「配置摘要」小标签:按任务类型从透传的 config 里抠关键参数(来源/形态/关键词/语言/配图/发布等),
+// 让列表卡片一眼看清这条任务在干嘛(不止「N 条/次」)。无对应配置则返回空数组、不渲染。
+function langShort(l: string | undefined, isZh: boolean): string {
+  if (l === 'en') return 'EN';
+  if (l === 'zh') return isZh ? '中文' : 'ZH';
+  return isZh ? '中/EN' : 'Auto';
+}
+function taskConfigChips(task: Task, isZh: boolean): string[] {
+  const sid = String(task.scenario_id || '');
+  const t = task as any;
+  const pubChip = (auto: boolean) => (auto ? (isZh ? '🚀 直接发布' : '🚀 Publish') : (isZh ? '💾 仅本地' : '💾 Local'));
+  const chips: string[] = [];
+  if (sid === 'binance_repost' && t.binanceRepost) {
+    const c = t.binanceRepost;
+    const srcMap: Record<string, string> = { xhs: '小红书', douyin: '抖音', tiktok: 'TikTok', x: 'X' };
+    chips.push(c.material === 'video' ? '🎬 视频' : '🖼️ 图文');
+    chips.push(`📥 ${srcMap[c.sourcePlatform] || c.sourcePlatform}${isZh ? '→币安' : '→BN'}`);
+    if (c.keyword) chips.push(`🔍 ${String(c.keyword).slice(0, 12)}`);
+    chips.push(`🌐 ${langShort(c.language, isZh)}`);
+    chips.push(pubChip(c.autoPublish !== false));
+  } else if (sid === 'binance_post' && t.binancePost) {
+    const c = t.binancePost;
+    chips.push(isZh ? '📰 web3 资讯' : '📰 web3 news');
+    chips.push(`🌐 ${langShort(c.language, isZh)}`);
+    chips.push(c.withImage !== false ? (isZh ? '🖼️ 配图' : '🖼️ Image') : (isZh ? '📝 纯文字' : '📝 Text'));
+    chips.push(pubChip(c.autoPublish !== false));
+  } else if (sid === 'x_post' && t.tweetPost) {
+    const c = t.tweetPost;
+    chips.push(c.mode === 'web3' ? (isZh ? '📰 web3 资讯' : '📰 web3 news') : (isZh ? '✍️ 自由创作' : '✍️ Freeform'));
+    chips.push(`🌐 ${langShort(c.language, isZh)}`);
+    chips.push(c.withImage ? (isZh ? '🖼️ 配图' : '🖼️ Image') : (isZh ? '📝 纯文字' : '📝 Text'));
+    if (c.isBlueV) chips.push(isZh ? '✔️ 蓝V' : '✔️ Blue');
+  } else if (/_image_text$/.test(sid) && t.imageText) {
+    const c = t.imageText;
+    chips.push(c.useRealPhotos ? (isZh ? '📷 网络图' : '📷 Web img') : (isZh ? '🎨 AI 生图' : '🎨 AI img'));
+    if (c.imageCount) chips.push(`🖼️ ${c.imageCount}${isZh ? ' 张/篇' : ' imgs'}`);
+    if (c.dailyCount) chips.push(`📄 ${c.dailyCount}${isZh ? ' 篇/号' : '/acct'}`);
+    chips.push(pubChip(c.autoPublish !== false));
+  } else if (/_viral_production_career$/.test(sid) && t.viralRewrite) {
+    const c = t.viralRewrite;
+    chips.push(isZh ? '🔥 爆款仿写' : '🔥 Viral');
+    if (c.dailyCount) chips.push(`📄 ${c.dailyCount}${isZh ? ' 篇/号' : '/acct'}`);
+    chips.push(pubChip(c.autoPublish !== false));
+  }
+  return chips;
+}
+
 export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh, onGoCreate, platformId }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
@@ -671,6 +718,13 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               ? `${cMin}-${cMax}` : String(task.daily_count || 1);
                             return `⏰ ${scheduleLabel(task, isZh)} · ${cStr} ${isZh ? '篇/次' : 'articles/run'}`;
                           }
+                          // 币安广场自动发帖 / 批量搬运:每号每轮 1 条,共 N 条/轮(N=账号数)。
+                          if (sid === 'binance_post' || sid === 'binance_repost') {
+                            const accN = Array.isArray(t.account_ids) ? t.account_ids.length : 1;
+                            return isZh
+                              ? `⏰ ${scheduleLabel(task, isZh)} · 每号 1 条(共 ${accN} 条/轮)`
+                              : `⏰ ${scheduleLabel(task, isZh)} · 1/account (${accN}/run)`;
+                          }
                           // 兜底:旧 daily_count 单值
                           return `⏰ ${scheduleLabel(task, isZh)} · ${task.daily_count || 1} ${isZh ? '条/次' : '/run'}`;
                         })()}
@@ -684,6 +738,17 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           : `👥 Accounts: ${(task as any).account_ids.length}`}
                       </div>
                     )}
+                    {/* 配置摘要小标签(来源/形态/关键词/语言/配图/发布等),让卡片信息更丰富 */}
+                    {(() => {
+                      const chips = taskConfigChips(task, isZh);
+                      return chips.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {chips.map((c, i) => (
+                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200/70 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40">{c}</span>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="text-[11px] text-gray-400">
                       {isZh ? '创建于 ' : 'Created '}
                       {new Date(task.created_at || 0).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
