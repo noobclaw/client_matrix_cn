@@ -46,6 +46,7 @@ import MatrixTweetPostWizard, { type TweetPostWizardSave } from '../matrix/Matri
 import MatrixBinancePostWizard, { type BinancePostWizardSave } from '../matrix/MatrixBinancePostWizard';
 import MatrixBinanceRepostWizard, { type BinanceRepostWizardSave } from '../matrix/MatrixBinanceRepostWizard';
 import MatrixViralRewriteWizard, { type ViralRewriteWizardSave } from '../matrix/MatrixViralRewriteWizard';
+import { HIDE_WEB3 } from '../../buildFlags';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'video';
 
@@ -1799,7 +1800,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。 */}
-          {(matrixMode ? MATRIX_TAB_ORDER.map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
+          {/* 国内版(HIDE_WEB3):过滤掉「币安广场」平台 tab(web3),其余含海外平台保留。 */}
+          {(matrixMode ? MATRIX_TAB_ORDER.map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).filter((tab) => !(HIDE_WEB3 && tab.id === 'binance')).map((tab) => {
             const active = currentPlatform === tab.id;
             // 矩阵号:对齐「我的矩阵账号」的简洁 pill 切换(纯文字 + violet 选中,rounded-full),
             // 顺序同账号页(MATRIX_TAB_ORDER 已与 PLATFORMS 一致)。非矩阵(旧视频版)保持原绿卡样式。
