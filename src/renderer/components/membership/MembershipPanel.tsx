@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import { readCachedPlanConfig, writeCachedPlanConfig } from '../../services/paymentInfoCache';
+import { HIDE_WEB3 } from '../../buildFlags';
 
 // 嵌入「我的充值」页「会员订阅」tab 的会员面板(无独立页面 chrome)。
 // 4 档(免费版第一)+ 周期选择 + 支付方式(USDT / BNB / 人民币兑换码)。
@@ -54,7 +55,8 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
   const [loading, setLoading] = useState<boolean>(() => !readCachedPlanConfig());
   const [period, setPeriod] = useState<Period>('month');
-  const [method, setMethod] = useState<PayMethod>('TRON');
+  // 国内版(HIDE_WEB3):只走 CNY 兑换码,默认支付方式即 RMB,不给 USDT/BNB 入口。
+  const [method, setMethod] = useState<PayMethod>(HIDE_WEB3 ? 'RMB' : 'TRON');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // rmb redeem
@@ -125,6 +127,8 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
     <div>
       {/* 支付方式 + 周期:同一行两组菜单(左=支付方式 / 右=周期),折扣在卡片里显示 */}
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+        {/* 支付方式选择器 —— 国内版(HIDE_WEB3)只有 CNY 兑换码一种,整行隐藏(method 已锁定 RMB) */}
+        {!HIDE_WEB3 && (
         <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
           {([['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC'], ['RMB', 'CNY(兑换码)']] as Array<[PayMethod, string]>).map(([m, label]) => (
             <button key={m} onClick={() => { setMethod(m); setError(''); }} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
@@ -133,6 +137,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
             </button>
           ))}
         </div>
+        )}
         <div className="inline-flex rounded-lg overflow-hidden border dark:border-claude-darkBorder border-claude-border">
           {PERIODS.map(p => (
             <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>

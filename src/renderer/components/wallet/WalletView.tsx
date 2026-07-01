@@ -7,6 +7,7 @@ import MembershipPanel from '../membership/MembershipPanel';
 import { getPendingWalletTab } from '../../services/walletNav';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
 import { readCachedPaymentInfo, writeCachedPaymentInfo, readCachedRedeemInfo, writeCachedRedeemInfo } from '../../services/paymentInfoCache';
+import { HIDE_WEB3 } from '../../buildFlags';
 import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
@@ -138,7 +139,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // 链上充值 grid。
   // lazy-init 卡密档位:先用 localStorage 缓存秒出(对齐 USDT/BNB),后台 fetch 静默覆盖。
   const [redeemInfo, setRedeemInfo] = useState<RedeemPackagesResponse | null>(() => readCachedRedeemInfo());
-  const [cnySelected, setCnySelected] = useState(false);
+  // 国内版(HIDE_WEB3):默认直接进 CNY 卡密面板,链上充值(USDT/BNB)tab 整行隐藏。
+  const [cnySelected, setCnySelected] = useState(HIDE_WEB3);
   const [redeemCodeInput, setRedeemCodeInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
   const [redeemBusy, setRedeemBusy] = useState(false);
@@ -1677,8 +1679,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               {/* 支付方式 tabs。原本只在后端报 TRON 通道时渲染(BSC-only 部署看
                   老单 grid)。现在 CNY 卡密通道(redeemInfo 非空)也会让这行露出,
                   即使只有 BSC + CNY 两个选项。USDT/TRON 按产品决策排第一。
-                  cnySelected 标记当前是否在卡密面板,与 currentChain 正交。 */}
-              {(paymentInfo?.chains?.TRON || redeemInfo) && (
+                  cnySelected 标记当前是否在卡密面板,与 currentChain 正交。
+                  国内版(HIDE_WEB3):只走 CNY 卡密,链上充值 tab 整行隐藏。 */}
+              {!HIDE_WEB3 && (paymentInfo?.chains?.TRON || redeemInfo) && (
                 <div className="mb-3 flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
                   {paymentInfo?.chains?.TRON && (
                     <button

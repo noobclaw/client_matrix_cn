@@ -8,6 +8,7 @@
  */
 
 import { configService } from './config';
+import { HIDE_WEB3 } from '../buildFlags';
 
 // VITE_TEST_MODE is replaced by Vite at compile time as a literal, unaffected by localStorage config
 // When building with dist:win:test = 'true'; for dist:win production build = undefined
@@ -34,15 +35,16 @@ export const getBackendApiUrl = () => isTestMode()
   ? 'http://127.0.0.1:3001'
   : 'https://api.noobclaw.com';
 
-/** Website URL (wallet login redirect) */
+/** Website URL (wallet login redirect) —— 国内版走 /cn 站 */
 export const getWebsiteUrl = () => isTestMode()
   ? 'http://127.0.0.1:3001'
-  : 'https://noobclaw.com';
+  : (HIDE_WEB3 ? 'https://noobclaw.com/cn' : 'https://noobclaw.com');
 
 // ── Auto-update (fetched from own backend) ─────────────────────────────────
-export const getUpdateCheckUrl = () => `${getBackendApiUrl()}/api/skills/latest-releases`;
+// 国内版(HIDE_WEB3):带 edition=cn,后端据此返回【中文版】发布渠道,避免国内版自动更新成国际版。
+export const getUpdateCheckUrl = () => `${getBackendApiUrl()}/api/skills/latest-releases${HIDE_WEB3 ? '?edition=cn' : ''}`;
 
-export const getFallbackDownloadUrl = () => 'https://noobclaw.com/#/download-list';
+export const getFallbackDownloadUrl = () => HIDE_WEB3 ? 'https://noobclaw.com/cn/#/download-list' : 'https://noobclaw.com/#/download-list';
 
 // Skill store
 export const getSkillStoreUrl = () => `${getBackendApiUrl()}/api/skills/marketplace`;
