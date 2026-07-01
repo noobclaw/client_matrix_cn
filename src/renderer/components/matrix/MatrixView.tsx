@@ -6,6 +6,7 @@ import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { getBackendApiUrl } from '../../services/endpoints';
 import { openWallet } from '../../services/walletNav';
+import { HIDE_WEB3 } from '../../buildFlags';
 
 /**
  * 矩阵号主界面 —— 由左侧分组菜单驱动的 4 屏(screen prop):
@@ -37,6 +38,8 @@ function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).m
 
 // 对齐支持「互动涨粉」的平台(与新建页一致)。
 const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'binance', 'youtube', 'tiktok'];
+// 国内版(HIDE_WEB3):平台选择器里隐藏「币安广场」(web3),其余平台(含海外 推特/TikTok/YouTube)保留。
+const VISIBLE_PLATFORMS = HIDE_WEB3 ? PLATFORMS.filter((p) => p !== 'binance') : PLATFORMS;
 // 每个平台最多添加的账号数:客户端兜底 10,服务端 /api/matrix/config 的 maxAccountsPerPlatform 可覆盖(admin 调,不打包)。
 const MAX_ACCOUNTS_PER_PLATFORM_FALLBACK = 10;
 const PLATFORM_LABEL: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: '推特', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
@@ -699,7 +702,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             </div>
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {PLATFORMS.map((p) => {
+              {VISIBLE_PLATFORMS.map((p) => {
                 const expiredCount = expiredCountByPlatform[p] || 0;
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
@@ -818,7 +821,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {screen === 'newTask' && (
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-wrap gap-2 mb-6">
-              {PLATFORMS.map((p) => (
+              {VISIBLE_PLATFORMS.map((p) => (
                 <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>{PLATFORM_LABEL[p]}</button>
               ))}
             </div>
@@ -890,7 +893,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <h2 className="text-lg font-bold dark:text-white">📋 我的{PLATFORM_LABEL[platform]}涨粉任务</h2>
               <div className="flex items-center gap-2">
                 <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="text-sm px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-white">
-                  {PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>)}
+                  {VISIBLE_PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>)}
                 </select>
                 <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">🎶 新建任务</button>
               </div>

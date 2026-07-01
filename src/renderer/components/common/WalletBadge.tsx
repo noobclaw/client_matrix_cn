@@ -15,6 +15,7 @@ import React from 'react';
 import { i18nService } from '../../services/i18n';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { openWallet } from '../../services/walletNav';
+import { HIDE_WEB3 } from '../../buildFlags';
 
 function formatAddr(addr: string) {
   if (!addr || addr.length <= 10) return addr || '';
@@ -40,8 +41,9 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
   if (!authState.isAuthenticated || !authState.walletAddress) {
     return (
       <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface`}>
-        <img src="bsc.svg" alt="BSC" className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
-        <span className={`${txt} font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary`}>BSC</span>
+        {/* BSC 链标识 — 国内版隐藏(HIDE_WEB3) */}
+        {!HIDE_WEB3 && <img src="bsc.svg" alt="BSC" className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />}
+        {!HIDE_WEB3 && <span className={`${txt} font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary`}>BSC</span>}
         <button
           type="button"
           onClick={() => noobClawAuth.requireLoginUI()}
@@ -77,7 +79,8 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
   const btnFs = compact ? 11 : 13;
   return (
     <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface">
-      <img src="bsc.svg" alt="BSC" className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+      {/* BSC 链图标 — 国内版隐藏(HIDE_WEB3),地址作为 UID 保留显示 */}
+      {!HIDE_WEB3 && <img src="bsc.svg" alt="BSC" className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />}
       {!compact && (
         <span className={`${txt} font-mono dark:text-claude-darkText text-claude-text`}>
           {formatAddr(authState.walletAddress)}
