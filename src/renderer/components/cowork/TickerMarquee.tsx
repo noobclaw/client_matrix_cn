@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { i18nService } from '../../services/i18n';
 import { getBackendApiUrl } from '../../services/endpoints';
+import { HIDE_WEB3 } from '../../buildFlags';
 
 interface TickerItem {
   symbol: string;
@@ -65,9 +66,15 @@ async function fetchAnnouncements(): Promise<Announcement[]> {
 // Start global polling (only once)
 function ensurePolling() {
   if (_fetchTimer) return;
-  fetchTickerData();
+  // 国内版隐藏加密币价(HIDE_WEB3):不轮询 /api/ticker,只保留公告轮询。
+  if (!HIDE_WEB3) {
+    fetchTickerData();
+    _fetchTimer = setInterval(fetchTickerData, 30000);
+  } else {
+    // 占位,避免重复进入 ensurePolling
+    _fetchTimer = setInterval(() => {}, 30000);
+  }
   fetchAnnouncements();
-  _fetchTimer = setInterval(fetchTickerData, 30000);
   setInterval(fetchAnnouncements, 60000);
 }
 
@@ -146,7 +153,8 @@ const TickerMarquee: React.FC = () => {
     );
   }
 
-  // Default: show crypto tickers
+  // Default: show crypto tickers — 国内版隐藏(HIDE_WEB3),无公告时整条不显示
+  if (HIDE_WEB3) return null;
   if (tickers.length === 0) return null;
 
   const renderItem = (t: TickerItem, idx: number) => {

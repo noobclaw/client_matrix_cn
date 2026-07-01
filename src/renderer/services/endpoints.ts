@@ -41,8 +41,10 @@ export const getWebsiteUrl = () => isTestMode()
   : (HIDE_WEB3 ? 'https://noobclaw.com/cn' : 'https://noobclaw.com');
 
 // ── Auto-update (fetched from own backend) ─────────────────────────────────
-// 国内版(HIDE_WEB3):带 edition=cn,后端据此返回【中文版】发布渠道,避免国内版自动更新成国际版。
-export const getUpdateCheckUrl = () => `${getBackendApiUrl()}/api/skills/latest-releases${HIDE_WEB3 ? '?edition=cn' : ''}`;
+// 国内矩阵版:更新渠道 edition=cn-matrix(HIDE_WEB3 时);非国内则 global-matrix。
+// 后端 4 个 edition:global(国际原版)/global-matrix(国际矩阵版)/cn(国内原版)/cn-matrix(国内矩阵版),
+// 各自独立版本号+安装包,strict 不跨 edition fallback。这里必须发 *-matrix,绝不能是 cn(那是国内【原版】,会撞 client_cn)。
+export const getUpdateCheckUrl = () => `${getBackendApiUrl()}/api/skills/latest-releases?edition=${HIDE_WEB3 ? 'cn-matrix' : 'global-matrix'}`;
 
 export const getFallbackDownloadUrl = () => HIDE_WEB3 ? 'https://noobclaw.com/cn/#/download-list' : 'https://noobclaw.com/#/download-list';
 

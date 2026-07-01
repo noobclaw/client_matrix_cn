@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { getBackendApiUrl } from '../../services/endpoints';
+import { HIDE_WEB3 } from '../../buildFlags';
 import { noobClawApi } from '../../services/noobclawApi';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
@@ -174,7 +175,8 @@ const ActivitiesTab: React.FC<{
         onClaim={() => claim('xhs_rewrite', () => onShowXhs?.())}
       />
 
-      {/* Card C: OG Brawl Game */}
+      {/* Card C: OG Brawl Game — 国内版隐藏(HIDE_WEB3) */}
+      {!HIDE_WEB3 && (
       <ActivityCard
         isZh={isZh}
         icon="⚔️"
@@ -195,8 +197,10 @@ const ActivitiesTab: React.FC<{
           try { window.electron?.shell?.openExternal?.('https://noobclaw.com/brawl'); } catch {}
         })}
       />
+      )}
 
-      {/* Card D: Personality Test */}
+      {/* Card D: Personality Test — 国内版隐藏(HIDE_WEB3) */}
+      {!HIDE_WEB3 && (
       <ActivityCard
         isZh={isZh}
         icon="🧠"
@@ -212,6 +216,7 @@ const ActivitiesTab: React.FC<{
         isAuthenticated={authState.isAuthenticated}
         onClaim={() => claim('personality_test', () => onShowPersonality?.())}
       />
+      )}
 
       {/* Card E: Invite Friends */}
       <div className="rounded-2xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface p-6">
@@ -373,7 +378,8 @@ const RewardPopup: React.FC<{
         <div className="text-2xl font-bold text-white mb-1 drop-shadow">{info.title}</div>
         <div className="text-sm text-white/80 mb-5">{isZh ? '恭喜获得今日奖励 🎊' : 'Enjoy your daily rewards 🎊'}</div>
         <div className="space-y-2 mb-6">
-          {reward.noob > 0 && (
+          {/* $NoobCoin 奖励 — 国内版隐藏(HIDE_WEB3) */}
+          {!HIDE_WEB3 && reward.noob > 0 && (
             <div className="rounded-xl bg-white/20 backdrop-blur px-4 py-3 text-white text-left flex items-center justify-between">
               <span className="text-sm">💰 $NoobCoin</span>
               <span className="text-xl font-bold">+{reward.noob}</span>

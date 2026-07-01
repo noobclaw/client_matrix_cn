@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { noobClawApi } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
+import { USD_CNY_RATE } from '../../buildFlags';
 
 interface Item { wallet: string; amount: number; }
 
@@ -86,7 +87,7 @@ const InviteTicker: React.FC = () => {
       <span className="text-yellow-500 mr-1.5">💰</span>
       <span className="font-mono dark:text-claude-darkText text-claude-text">{maskWallet(it.wallet)}</span>
       <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary mx-1.5">{earnedLabel}</span>
-      <span className="font-bold text-primary">{it.amount.toFixed(2)} USDT</span>
+      <span className="font-bold text-primary">¥{(it.amount * USD_CNY_RATE).toFixed(2)}</span>
     </span>
   );
 

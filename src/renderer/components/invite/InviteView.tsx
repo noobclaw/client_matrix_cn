@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CnyWithdrawModal } from '../wallet/CnyWithdrawModal';
+import { HIDE_WEB3 } from '../../buildFlags';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
@@ -67,7 +68,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   // the NoobCoin reward stream. Older states used a flat 3-tab list — this
   // pair of states preserves the same content via composition.
   const [detailTab, setDetailTab] = useState<'records' | 'rebate'>('records');
-  const [rebateSubTab, setRebateSubTab] = useState<'usdt' | 'noob' | 'cny'>('usdt');
+  // 国内版(HIDE_WEB3):返佣默认进 CNY 子 tab(USDT/NoobCoin 子 tab 隐藏)。
+  const [rebateSubTab, setRebateSubTab] = useState<'usdt' | 'noob' | 'cny'>(HIDE_WEB3 ? 'cny' : 'usdt');
   // v5.x+: list now spans 6 levels (was only L1). Each row carries the level
   // (1..6) so we can render an L1/L2.../L6 chip identical to the rewards tab.
   const [inviteList, setInviteList] = useState<Array<{ wallet: string; createdAt: string; level?: number }>>([]);
@@ -197,7 +199,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   };
 
   const hasReferrer = !!profile?.referrerWallet;
-  const referralLink = profile?.referralLink || `https://noobclaw.com/r/${authState.walletAddress}`;
+  // 国内版:强制用 cn 站邀请格式(官网按 ?ref= 读取;/r/ 路径正则只认根域不认 /cn/)。
+  const referralLink = HIDE_WEB3
+    ? `https://noobclaw.com/cn/?ref=${authState.walletAddress}`
+    : (profile?.referralLink || `https://noobclaw.com/r/${authState.walletAddress}`);
 
   const copyLink = () => {
     // v1.x:复制的不是裸链接,而是营销介绍 + 教程 + 邀请链接的完整分享文,
@@ -757,10 +762,21 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     </div>
                   </div>
                 ))}
-                {/* Step 3: dual-reward composite (was: brief NOOB-only one-liner).
+                {/* Step 3（国内版 CNY 返佣）：好友充值即得邀请奖励 */}
+                {HIDE_WEB3 && (
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
+                  <div>
+                    <div className="text-sm dark:text-claude-darkText text-claude-text">{i18nService.currentLanguage === 'zh' ? '好友充值时，您将获得邀请奖励' : 'When your friend tops up, you earn a referral reward'}</div>
+                    <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">{i18nService.currentLanguage === 'zh' ? '邀请关系生效后，按好友充值金额给您返佣' : "Rebate based on your friend's top-up once the referral is bound"}</div>
+                  </div>
+                </div>
+                )}
+                {/* Step 3: dual-reward composite — 国内版隐藏(HIDE_WEB3,改走 CNY 返佣)。
                     Replaces the old separate USDT explainer card too — both
                     rewards are surfaced inline with parallel structure so the
                     user sees them as siblings, not as competing systems. */}
+                {!HIDE_WEB3 && (
                 <div className="flex items-start gap-2">
                   <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
                   <div className="flex-1">
@@ -797,6 +813,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     </div>
                   </div>
                 </div>
+                )}
               </div>
 
               {/* 6-level reward percentage chart — applies to BOTH rewards above.
@@ -837,15 +854,20 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNetwork)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteTotalNetwork')}</div>
               </div>
+              {/* USDT 总返佣 + NoobCoin 奖励统计 — 国内版隐藏(HIDE_WEB3) */}
+              {!HIDE_WEB3 && (
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">${animUsdt.toFixed(2)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
               </div>
+              )}
               {/* v6.x→: CNY 总返佣已从这排统计移走 —— 改成「收到返佣 (CNY) + 提现」放到顶部我的钱包卡框的右侧(用户要求)。 */}
+              {!HIDE_WEB3 && (
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNoob).toLocaleString()}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteNoobReward')}</div>
               </div>
+              )}
             </div>
 
             {/* ── Invite Details / Rewards ── */}
@@ -881,6 +903,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               (real cash, BSC chain) vs NoobCoin (in-app reward ledger). */}
           {detailTab === 'rebate' && (
             <div className="flex gap-1 px-2 py-1.5 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+              {/* USDT(链上真金返佣)子 tab — 国内版隐藏(HIDE_WEB3) */}
+              {!HIDE_WEB3 && (
               <button
                 onClick={() => switchRebateSub('usdt')}
                 className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
@@ -891,6 +915,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               >
                 {i18nService.t('inviteRebateUsdtSub')}
               </button>
+              )}
               <button
                 onClick={() => switchRebateSub('cny')}
                 className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
@@ -901,6 +926,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               >
                 {i18nService.currentLanguage === 'zh' ? 'CNY 返佣' : 'CNY Rebate'}
               </button>
+              {/* NoobCoin(链上代币奖励)子 tab — 国内版隐藏(HIDE_WEB3) */}
+              {!HIDE_WEB3 && (
               <button
                 onClick={() => switchRebateSub('noob')}
                 className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
@@ -911,6 +938,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               >
                 {i18nService.t('inviteRebateNoobSub')}
               </button>
+              )}
             </div>
           )}
 

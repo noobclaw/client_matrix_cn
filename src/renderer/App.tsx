@@ -5,6 +5,7 @@ import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
 import Toast from './components/Toast';
 import RebateDrawer from './components/RebateDrawer';
+import { HIDE_WEB3 } from './buildFlags';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import WindowTitleBar from './components/window/WindowTitleBar';
 import { CoworkView } from './components/cowork';
@@ -997,9 +998,12 @@ const App: React.FC = () => {
           SSE handler 在 _noobclaw payload 含 rebate 字段时桥接派发。点击跳邀请页。
           v2.x: ErrorBoundary fallback={null} — 浮层组件出错不显示红色错误卡,
           安静失败,避免黑屏。具体报错仍打到 console 方便排查。 */}
+      {/* 加密返佣到账抽屉 — 国内版隐藏(HIDE_WEB3) */}
+      {!HIDE_WEB3 && (
       <ErrorBoundary name="RebateDrawer" fallback={null}>
         <RebateDrawer onShowInvite={handleShowInvite} />
       </ErrorBoundary>
+      )}
       {/* 会员到期续费提醒弹窗(矩阵版):订阅过期且有号被暂停时弹一次,引导续费恢复。 */}
       <ErrorBoundary name="MembershipExpiryModal" fallback={null}>
         <MembershipExpiryModal />

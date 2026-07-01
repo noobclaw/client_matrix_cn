@@ -15,6 +15,7 @@ import { LoginRequiredModal } from './LoginRequiredModal';
 import { MATRIX_EDITION } from '../../matrixEdition';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { i18nService } from '../../services/i18n';
+import { HIDE_WEB3, cnyFromUsd } from '../../buildFlags';
 import { friendlyRunError } from '../../services/runErrorMessage';
 import type { ScenarioRunProgress } from '../../types/scenario';
 import LuckyBag from '../cowork/LuckyBag';
@@ -1625,7 +1626,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </strong>
                 <span className="text-gray-400 dark:text-gray-600">≈</span>
                 <strong className="text-green-600 dark:text-green-400 text-base">
-                  ${(progress.cost_usd || 0).toFixed(4)}
+                  {HIDE_WEB3 ? `￥${cnyFromUsd(progress.cost_usd || 0)}` : `$${(progress.cost_usd || 0).toFixed(4)}`}
                 </strong>
               </div>
             </div>
@@ -2206,6 +2207,7 @@ function compactNumber(n: number): string {
 function formatCreditsCost(credits: number, costUsd: number, _isZh: boolean): string {
   if (!credits || credits <= 0) return '-';
   const c = Math.round(credits);
+  if (HIDE_WEB3) return `💎 ${compactNumber(c)} ≈ ￥${cnyFromUsd(Number(costUsd) || 0)}`;
   const usd = (Number(costUsd) || 0).toFixed(4);
   return `💎 ${compactNumber(c)} ≈ $${usd}`;
 }

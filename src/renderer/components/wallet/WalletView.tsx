@@ -1561,7 +1561,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 </button>
               </div>
             </div>
-            {/* NoobCoin - Middle */}
+            {/* NoobCoin - Middle — 国内版隐藏(HIDE_WEB3) */}
+            {!HIDE_WEB3 && (
             <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
               <div className="flex items-center gap-2 mb-1">
                 <img src="logo.png" alt="NoobCoin" className="w-6 h-6 rounded-full" />
@@ -1578,7 +1579,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 </button>
               </div>
             </div>
-            {/* USDT Rebate - Right (v6.x) */}
+            )}
+            {/* USDT Rebate - Right (v6.x) — 国内版隐藏(HIDE_WEB3),保留 CNY 返佣 */}
+            {!HIDE_WEB3 && (
             <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
               <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletUsdtRebateReceived')}</p>
               <div className="flex items-center gap-2">
@@ -1595,6 +1598,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 </button>
               </div>
             </div>
+            )}
             {/* CNY Rebate - 收到返佣(¥),带提现入口(v6.x CNY 返佣) */}
             <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
               <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{isZh ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</p>

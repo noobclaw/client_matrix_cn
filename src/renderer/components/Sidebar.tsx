@@ -10,6 +10,7 @@ import SidebarToggleIcon from './icons/SidebarToggleIcon';
 import TrashIcon from './icons/TrashIcon';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import { MATRIX_EDITION } from '../matrixEdition';
+import { HIDE_WEB3 } from '../buildFlags';
 
 interface SidebarProps {
   onShowSettings: () => void;
@@ -175,7 +176,10 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="draggable sidebar-header-drag h-10 flex items-center justify-between px-3">
           <div className="non-draggable flex items-center gap-2">
             <img src="logo.png" alt="logo" className="w-6 h-6 rounded-lg" />
-            <span className="font-bold text-sm dark:text-claude-darkText text-claude-text tracking-wide">NoobClaw矩阵版</span>
+            <div className="flex flex-col justify-center leading-none gap-0.5">
+              <span className="font-bold text-sm dark:text-claude-darkText text-claude-text tracking-wide whitespace-nowrap">NoobClaw矩阵版</span>
+              {HIDE_WEB3 ? <span className="text-[10px] font-medium tracking-[0.18em] whitespace-nowrap dark:text-claude-darkText text-claude-text">中文版</span> : null}
+            </div>
             {updateBadge}
           </div>
           <button
@@ -350,7 +354,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {i18nService.t('scheduledTasks')}
               </button>
 
-              {/* web3连接 */}
+              {/* web3连接 — 国内版隐藏(HIDE_WEB3) */}
+              {!HIDE_WEB3 && (
               <button
                 type="button"
                 onClick={() => { setIsSearchOpen(false); onShowMcp(); }}
@@ -363,8 +368,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-sm">{'🌐'}</span>
                 {i18nService.t('mcpServers')}
               </button>
+              )}
 
-              {/* 行业热点 */}
+              {/* 行业热点 — 国内版隐藏(HIDE_WEB3) */}
+              {!HIDE_WEB3 && (
               <button
                 type="button"
                 onClick={() => { setIsSearchOpen(false); onShowWeb3News(); }}
@@ -377,6 +384,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="text-sm">{'🔥'}</span>
                 {i18nService.t('hotTopics')}
               </button>
+              )}
 
               {/* AI技能商店 — 原顶级「技能商店」收进 AI对话组并改名 */}
               <button
@@ -422,8 +430,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             {i18nService.t('inviteRebateMenu')}
           </button>
 
-          {!MATRIX_EDITION && (<>
-          {/* Personality Tests */}
+          {!MATRIX_EDITION && !HIDE_WEB3 && (<>
+          {/* Personality Tests — 国内版隐藏(HIDE_WEB3) */}
           <button
             type="button"
             onClick={() => { setIsSearchOpen(false); onShowPersonality(); }}

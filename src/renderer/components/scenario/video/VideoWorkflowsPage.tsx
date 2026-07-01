@@ -16,6 +16,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { shortId } from '../../../utils/shortId';
 import { i18nService } from '../../../services/i18n';
+import { HIDE_WEB3, cnyFromUsd } from '../../../buildFlags';
 import { CardActionRow } from '../CardActionRow';
 import { VideoLoginCheckModal } from './VideoLoginCheckModal';
 import { MATRIX_EDITION } from '../../../matrixEdition';
@@ -211,7 +212,8 @@ function formatCreditsCost(credits: number, costUsd: number): string {
   if (!credits || credits <= 0) return '-';
   const c = Math.round(credits);
   const usd = Number(costUsd) || 0;
-  return usd > 0 ? `💎 ${compactNumber(c)} ≈ $${usd.toFixed(4)}` : `💎 ${compactNumber(c)}`;
+  if (usd <= 0) return `💎 ${compactNumber(c)}`;
+  return HIDE_WEB3 ? `💎 ${compactNumber(c)} ≈ ￥${cnyFromUsd(usd)}` : `💎 ${compactNumber(c)} ≈ $${usd.toFixed(4)}`;
 }
 
 /** 相对时间:刚刚 / N 分钟前 / N 小时前 / N 天前,对齐 scenario「上次运行」。 */
@@ -458,7 +460,7 @@ function scriptSummary(input: VideoCreationInput, isZh: boolean): string {
 // 视频创作卖点标签(空状态 + 新建页都用,改一处即可)。突出:批量日更 100 条、百条成本 < $4、全自动、一键全平台。
 const VIDEO_FEATURE_PILLS: Array<{ icon: string; zh: string; en: string }> = [
   { icon: '🔥', zh: '批量日更,一次最多 100 条', en: 'Batch up to 100 shorts per run' },
-  { icon: '💰', zh: '100 条高质量视频成本低于 $4 · 单条低至 $0.04', en: 'Under $4 for 100 HD clips · from $0.04 each' },
+  { icon: '💰', zh: HIDE_WEB3 ? '100 条高质量视频成本低于 ￥29 · 单条低至 ￥0.3' : '100 条高质量视频成本低于 $4 · 单条低至 $0.04', en: 'Under $4 for 100 HD clips · from $0.04 each' },
   { icon: '🎙️', zh: 'AI 写稿 + AI 配音 + 自动字幕,全程零剪辑', en: 'AI script + voiceover + subtitles, zero editing' },
   { icon: '🚀', zh: '一键发抖音 / 小红书 / 快手 / 视频号 等全平台', en: 'One-click to Douyin / XHS / Kuaishou / Channels & more' },
 ];
@@ -1822,7 +1824,7 @@ const VideoCreateFlow: React.FC<{
     fetchVideoFeeRange().then(setFee).catch(() => { /* 兜底 */ });
     noobClawApi.seedanceRate('720p').then((r) => { if (r && r.usdPerSec > 0) setAiUsdPerSec(r.usdPerSec); }).catch(() => {});
   }, []);
-  const feeZh = `$${fee.min}~$${fee.max}`;
+  const feeZh = HIDE_WEB3 ? `￥${cnyFromUsd(fee.min)}~￥${cnyFromUsd(fee.max)}` : `$${fee.min}~$${fee.max}`;
   const feeEn = `$${fee.min}–${fee.max}`;
   const aiSec = aiUsdPerSec.toFixed(2);
 
@@ -1851,7 +1853,7 @@ const VideoCreateFlow: React.FC<{
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
           descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成、自动配音+字幕,拍不到的镜头也能生,还能传参考图锁画风。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film; add reference images to lock the style. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh={`按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
+          costZh={HIDE_WEB3 ? `按秒计费 · 约 ￥${cnyFromUsd(aiUsdPerSec)}/秒(720p)` : `按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={openWithLogin(() => setTemplateOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
@@ -2805,7 +2807,7 @@ const VideoConfigModal: React.FC<{
                     }}
                     title={isZh ? 'AI 口播稿 + 素材库/本地' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
-                    cost={isZh ? '单条约 $0.02~$0.1' : '~$0.02–0.1 per clip'}
+                    cost={isZh ? (HIDE_WEB3 ? '单条约 ￥0.14~￥0.72' : '单条约 $0.02~$0.1') : '~$0.02–0.1 per clip'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
@@ -2822,7 +2824,7 @@ const VideoConfigModal: React.FC<{
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '想要的画面,AI 直接造 —— 不用拍摄、不用找素材、不用露脸。给个主题,Seedance 逐镜生成全新画面,自动配 AI 配音 + 字幕,一条成片直接出炉。脑洞 / 概念 / 想象类内容的最强搭子,现实里拍不到的画面也能生出来;还能传参考图锁定画风与人设。' : 'Whatever you picture, AI makes it — no filming, no stock, no face on camera. Give a topic and Seedance generates brand-new footage shot by shot, auto-adds AI voice-over + subtitles, and outputs a finished video. The best fit for creative / concept / imaginative content — even shots you could never film; add reference images to lock the style & character.'}
                     cost={isZh
-                      ? `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})`
+                      ? (HIDE_WEB3 ? `按秒计费 · 约 ￥${cnyFromUsd(aiUsdPerSec ?? 0.04)}/秒(${seedanceResolution})` : `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})`)
                       : `Per-second · ~$${(aiUsdPerSec ?? 0.04).toFixed(2)}/s (${seedanceResolution})`}
                     costTag={isZh ? '最贴近文案 / 画质最佳' : 'Closest to script / Best quality'}
                   />
@@ -2907,7 +2909,8 @@ const VideoConfigModal: React.FC<{
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 >
                   <option value="">{isZh ? '— 请选择赛道 —' : '— Select a track —'}</option>
-                  {TRACK_PRESETS.map((t) => (
+                  {/* 国内版隐藏「加密货币 · Web3」赛道(HIDE_WEB3) */}
+                  {TRACK_PRESETS.filter((t) => !(HIDE_WEB3 && t.id === 'crypto')).map((t) => (
                     <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>
                   ))}
                 </select>
@@ -3024,7 +3027,7 @@ const VideoConfigModal: React.FC<{
                 return (
                   <div className="mt-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 px-3 py-2.5 text-sm">
                     <span className="text-fuchsia-600 dark:text-fuchsia-400 font-semibold">💎 {isZh ? '预估费用' : 'Est. cost'}</span>
-                    <span className="ml-2 dark:text-gray-200">{isZh ? `约 ${estCredits.toLocaleString()} 积分(≈$${estUsd.toFixed(2)})` : `~${estCredits.toLocaleString()} credits (≈$${estUsd.toFixed(2)})`}</span>
+                    <span className="ml-2 dark:text-gray-200">{isZh ? (HIDE_WEB3 ? `约 ${estCredits.toLocaleString()} 积分(≈￥${cnyFromUsd(estUsd)})` : `约 ${estCredits.toLocaleString()} 积分(≈$${estUsd.toFixed(2)})`) : `~${estCredits.toLocaleString()} credits (≈$${estUsd.toFixed(2)})`}</span>
                     <div className="text-[11px] text-gray-400 mt-1">{isZh ? `${seedanceResolution} · 约 ${estSec}s · 实际按真实时长逐镜扣` : `${seedanceResolution} · ~${estSec}s · charged per real shot length`}</div>
                   </div>
                 );
@@ -3534,10 +3537,10 @@ const VideoConfigModal: React.FC<{
                 </div>
                 <div className="text-[11px] text-gray-400 mt-1">{
                   mode === 'pure_ai'
-                    ? (isZh ? '1-10 条 / 次 · 纯 AI 按秒计费,约 $0.04/秒(720p)' : '1-10 per run · pure-AI billed per second (~$0.04/s @720p)')
+                    ? (isZh ? (HIDE_WEB3 ? '1-10 条 / 次 · 纯 AI 按秒计费,约 ￥0.3/秒(720p)' : '1-10 条 / 次 · 纯 AI 按秒计费,约 $0.04/秒(720p)') : '1-10 per run · pure-AI billed per second (~$0.04/s @720p)')
                     : mode === 'stock'
-                      ? (isZh ? '1-100 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)' : '1-100 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
-                      : (isZh ? '1-10 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)' : '1-10 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
+                      ? (isZh ? (HIDE_WEB3 ? '1-100 条 / 次 · 单条约 ￥0.14~￥0.72(配音/字幕/合成免费,AI 写稿另计)' : '1-100 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)') : '1-100 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
+                      : (isZh ? (HIDE_WEB3 ? '1-10 条 / 次 · 单条约 ￥0.14~￥0.72(配音/字幕/合成免费,AI 写稿另计)' : '1-10 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)') : '1-10 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
                 }</div>
               </Field>
 
@@ -3848,7 +3851,8 @@ const PublishPlatformPicker: React.FC<{
   return (
     <Field label={isZh ? '发布平台（可多选）' : 'Target platforms (multi-select)'}>
       <div className="flex flex-wrap gap-2">
-        {PUBLISH_PLATFORMS.map((m) => (
+        {/* 国内版隐藏「币安广场」发布平台(HIDE_WEB3) */}
+        {PUBLISH_PLATFORMS.filter((m) => !(HIDE_WEB3 && m.id === 'binance')).map((m) => (
           <PlatformCheck key={m.id} checked={!!platforms[m.id]} onClick={() => togglePlatform(m.id)} label={`${m.emoji} ${isZh ? m.zh : m.en}`} />
         ))}
       </div>
@@ -4352,7 +4356,8 @@ export const HotspotVideoModal: React.FC<{
               </p>
               <Field label={isZh ? '热点源(可多选,榜单实时更新)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
                 <div className="grid grid-cols-2 gap-2">
-                  {HOTSPOT_SOURCES.map((s) => {
+                  {/* 国内版隐藏「Web3 资讯」热源(HIDE_WEB3) */}
+                  {HOTSPOT_SOURCES.filter((s) => !(HIDE_WEB3 && s.id === 'web3')).map((s) => {
                     const on = !!sources[s.id];
                     const items = previews[s.id];
                     return (
@@ -4583,7 +4588,7 @@ export const HotspotVideoModal: React.FC<{
                   className="w-full accent-amber-500 cursor-pointer" />
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
-                    ? `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
+                    ? (HIDE_WEB3 ? `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 ￥${cnyFromUsd(fee.min)}~￥${cnyFromUsd(fee.max)})` : `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`)
                     : `${count} per run · each its own topic+script · billed per video (~$${fee.min}-${fee.max} each)`}
                 </p>
               </Field>
@@ -5154,7 +5159,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
               </Field>
               <div className="text-[11px] text-gray-400 space-y-0.5">
                 <div>{isZh
-                  ? `单条约 $0.02~$0.1(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`
+                  ? (HIDE_WEB3 ? `单条约 ￥0.14~￥0.72(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径` : `单条约 $0.02~$0.1(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`)
                   : `~$0.02–0.1 per clip (data / ${narration ? 'script / ' : ''}compose) · same as Stock`}</div>
                 <div>{isZh
                   ? `时长 ${narration ? '由 AI 口播稿决定' : '按数据行数自动估算(每行约 0.9s,clamp 4–14s)'}`

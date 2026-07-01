@@ -17,6 +17,7 @@
 import React, { useEffect, useState } from 'react';
 import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
+import { HIDE_WEB3, cnyFromUsd } from '../../buildFlags';
 import { scenarioService } from '../../services/scenario';
 
 interface Props {
@@ -345,7 +346,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
           return (
             <Stat
               label={isZh ? '运行成本' : 'AI cost'}
-              value={<span>💎 {compactNum(tokens)}<br/><span className="text-[11px]">≈ ${cost.toFixed(4)}</span></span>}
+              value={<span>💎 {compactNum(tokens)}<br/><span className="text-[11px]">{HIDE_WEB3 ? `≈ ￥${cnyFromUsd(cost)}` : `≈ $${cost.toFixed(4)}`}</span></span>}
             />
           );
         })()}
@@ -392,7 +393,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
               {typeof (rec.result as any).tokens_used === 'number' && (rec.result as any).tokens_used > 0 && (
                 <span className="text-gray-600 dark:text-gray-300" title={isZh ? 'tokens × $/M ≈ USD' : ''}>
                   💎 Tokens: <strong>{compactNum((rec.result as any).tokens_used)}</strong>
-                  {' '}· <strong>≈ ${((rec.result as any).cost_usd || 0).toFixed(4)}</strong></span>
+                  {' '}· <strong>{HIDE_WEB3 ? `≈ ￥${cnyFromUsd((rec.result as any).cost_usd || 0)}` : `≈ $${((rec.result as any).cost_usd || 0).toFixed(4)}`}</strong></span>
               )}
             </div>
           )}

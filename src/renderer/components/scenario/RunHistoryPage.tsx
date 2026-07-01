@@ -15,6 +15,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
+import { HIDE_WEB3, cnyFromUsd } from '../../buildFlags';
 import { friendlyRunError } from '../../services/runErrorMessage';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
 
@@ -347,7 +348,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                         const cost = Number((rec.result as any)?.cost_usd) || 0;
                         return (
                           <span title={isZh ? 'AI Token × 每百万单价 ≈ 美金' : 'tokens × $/M ≈ USD'}>
-                            · 💎 {compactNum(tokens)} ≈ ${cost.toFixed(4)}
+                            · 💎 {compactNum(tokens)} {HIDE_WEB3 ? `≈ ￥${cnyFromUsd(cost)}` : `≈ $${cost.toFixed(4)}`}
                           </span>
                         );
                       })()}
