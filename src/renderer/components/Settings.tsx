@@ -2458,7 +2458,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
                   }
                 }}
               />
-              <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text">{HIDE_WEB3 ? 'NoobClaw矩阵版 中文版' : 'NoobClaw矩阵版'}</h3>
+              <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text">{HIDE_WEB3 ? 'NoobClaw 矩阵号 中文版' : 'NoobClaw 矩阵号'}</h3>
               <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">v{appVersion}</span>
             </div>
 

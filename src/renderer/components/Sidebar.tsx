@@ -177,7 +177,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="non-draggable flex items-center gap-2">
             <img src="logo.png" alt="logo" className="w-6 h-6 rounded-lg" />
             <div className="flex flex-col justify-center leading-none gap-0.5">
-              <span className="font-bold text-sm dark:text-claude-darkText text-claude-text tracking-wide whitespace-nowrap">NoobClaw矩阵版</span>
+              <span className="font-bold text-sm dark:text-claude-darkText text-claude-text tracking-wide whitespace-nowrap">NoobClaw 矩阵号</span>
               {HIDE_WEB3 ? <span className="text-[10px] font-medium tracking-[0.18em] whitespace-nowrap dark:text-claude-darkText text-claude-text">中文版</span> : null}
             </div>
             {updateBadge}
