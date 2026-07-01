@@ -221,8 +221,12 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     setBindResult(null);
     try {
       let referrerWallet = inviteCode.trim();
-      const linkMatch = referrerWallet.match(/\/r\/([^/\s?]+)/);
-      if (linkMatch) referrerWallet = linkMatch[1];
+      // 支持直接粘贴邀请链接:国内版 cn 站是 noobclaw.com/cn/?ref=<钱包>,国际版是 noobclaw.com/r/<钱包>。
+      //   两种格式都解析出钱包地址(只认 /r/ 会导致 CN 用户粘 CN 链接绑定失败)。
+      const refMatch = referrerWallet.match(/[?&]ref=([^&#\s]+)/);
+      const pathMatch = referrerWallet.match(/\/r\/([^/\s?#]+)/);
+      if (refMatch) referrerWallet = decodeURIComponent(refMatch[1]);
+      else if (pathMatch) referrerWallet = pathMatch[1];
       const resp = await fetch(`${noobClawApi.getBaseUrl().replace('/api/ai', '')}/api/user/referral/register`, {
         method: 'POST',
         headers: { ...noobClawApi.getAuthHeaders(), 'Content-Type': 'application/json' },
