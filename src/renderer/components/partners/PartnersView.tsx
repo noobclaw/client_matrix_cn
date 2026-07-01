@@ -194,7 +194,7 @@ const ActivitiesTab: React.FC<{
           // 用 window.electron.shell.openExternal（和 Partners 卡点击跳转的
           // API 一致）。之前这里写的 (window as any).api.openExternal 根本
           // 不存在，点完"太棒了"就啥也不发生。
-          try { window.electron?.shell?.openExternal?.('https://noobclaw.com/brawl'); } catch {}
+          try { window.electron?.shell?.openExternal?.('https://noobclaw.com/cn/brawl'); } catch {}
         })}
       />
       )}

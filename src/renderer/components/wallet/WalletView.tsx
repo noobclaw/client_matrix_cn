@@ -1128,7 +1128,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             {/* Footer link */}
             <div className="px-5 pb-4">
               <button
-                onClick={() => window.electron?.shell?.openExternal('https://noobclaw.com')}
+                onClick={() => window.electron?.shell?.openExternal('https://noobclaw.com/cn/')}
                 className="text-xs text-primary hover:text-primary/80 hover:underline transition-colors flex items-center gap-1"
               >
                 {i18nService.t('walletSeeWebsite')}

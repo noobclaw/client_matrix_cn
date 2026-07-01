@@ -161,7 +161,7 @@ const normalizeApiFormat = (value: unknown): 'anthropic' | 'openai' => (
   value === 'openai' ? 'openai' : 'anthropic'
 );
 const ABOUT_CONTACT_EMAIL = 'hi@noobclaw.com';
-const ABOUT_USER_MANUAL_URL = 'https://noobclaw.com';
+const ABOUT_USER_MANUAL_URL = 'https://noobclaw.com/cn/';
 
 const copyTextFallback = (text: string): boolean => {
   const textarea = document.createElement('textarea');
@@ -2497,7 +2497,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-claude-border dark:border-claude-darkBorder">
                 <span className="dark:text-claude-darkText text-claude-text">{i18nService.t('aboutUserManual')}</span>
                 <button type="button" onClick={(e) => { e.stopPropagation(); handleOpenUserManual(); }} className="dark:text-claude-darkTextSecondary text-claude-textSecondary bg-transparent border-none p-0 cursor-pointer hover:text-claude-accent transition-colors">
-                  https://noobclaw.com
+                  https://noobclaw.com/cn/
                 </button>
               </div>
               <div className={`flex items-center justify-between px-4 py-2.5${isTestMode() ? ' border-b border-claude-border dark:border-claude-darkBorder' : ''}`}>

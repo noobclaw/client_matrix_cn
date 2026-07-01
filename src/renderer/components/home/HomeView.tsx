@@ -26,7 +26,7 @@ export interface HomeViewProps {
   matrixExpiredCount?: number;
 }
 
-const OFFICIAL_SITE = 'https://noobclaw.com';
+const OFFICIAL_SITE = 'https://noobclaw.com/cn/';
 const TUTORIAL_URL = 'https://docs.noobclaw.com/';
 const GITHUB_URL = 'https://github.com/noobclaw';
 

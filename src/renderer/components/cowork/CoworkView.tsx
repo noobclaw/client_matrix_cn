@@ -437,7 +437,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
         <div className="non-draggable flex items-center gap-1 mr-1">
           <button
             type="button"
-            onClick={() => window.electron?.shell?.openExternal('https://noobclaw.com')}
+            onClick={() => window.electron?.shell?.openExternal('https://noobclaw.com/cn/')}
             className="h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
             title="Official Website"
           >

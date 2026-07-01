@@ -1956,7 +1956,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
           {/* Website + Twitter links */}
           <button
             type="button"
-            onClick={() => window.electron?.shell?.openExternal('https://noobclaw.com')}
+            onClick={() => window.electron?.shell?.openExternal('https://noobclaw.com/cn/')}
             className="h-7 px-1.5 inline-flex items-center gap-1 rounded-md text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
             title="Official Website"
           >

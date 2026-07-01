@@ -13,7 +13,7 @@ interface PersonalityViewProps {
 
 type TabKey = 'home' | 'sbti' | 'web3bti' | 'brawl';
 
-const BASE_URL = 'https://noobclaw.com';
+const BASE_URL = 'https://noobclaw.com/cn';
 
 const PersonalityView: React.FC<PersonalityViewProps> = ({
   isSidebarCollapsed,
