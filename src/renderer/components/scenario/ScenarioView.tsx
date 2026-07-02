@@ -1052,7 +1052,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // showed "暂无任务。从下面选一个场景开始。" which had no buttons,
         // so the user was stuck and had to click L1 nav manually. Now
         // we offer one-click jumps to the create page for either platform.
-        const isZh = i18nService.currentLanguage === 'zh';
         // 余额门槛 + create/manage 分流统一走 goCreatePlatform。
         const goCreate = (platform: PlatformId) => goCreatePlatform(platform);
         return (
@@ -1060,12 +1059,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
               <div className="text-5xl mb-3">🗑️</div>
               <div className="text-base font-medium text-gray-700 dark:text-gray-200 mb-1">
-                {isZh ? '该任务已被删除' : 'This task has been deleted'}
+                {i18nService.t('svTaskDeleted')}
               </div>
               <div className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                {isZh
-                  ? '从下面选一个场景新建任务开始'
-                  : 'Pick a platform below to create a new task'}
+                {i18nService.t('svTaskDeletedHint')}
               </div>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <button
@@ -1073,14 +1070,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   onClick={() => goCreate('xhs')}
                   className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 shadow-sm shadow-green-500/25 transition-all active:scale-95"
                 >
-                  📕 {isZh ? '新建小红书任务' : 'New Xiaohongshu task'}
+                  📕 {i18nService.t('svNewXhsTask')}
                 </button>
                 <button
                   type="button"
                   onClick={() => goCreate('x')}
                   className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95"
                 >
-                  🐦 {isZh ? '新建推特任务' : 'New Twitter task'}
+                  🐦 {i18nService.t('svNewTwitterTask')}
                 </button>
               </div>
               <button
@@ -1088,7 +1085,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={goBack}
                 className="mt-5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                ← {isZh ? '返回上一页' : 'Back'}
+                ← {i18nService.t('svBack')}
               </button>
             </div>
           </div>
@@ -1191,11 +1188,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {engageReady && (
           <div className="rounded-2xl border border-violet-500/30 bg-violet-500/5 dark:bg-violet-500/10 p-6 flex flex-col">
             <div className="flex items-center gap-2 text-xs font-semibold text-violet-600 dark:text-violet-400 mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> 矩阵互动 · 多账号涨粉
+              <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> {i18nService.t('svSectionEngage')}
             </div>
-            <div className="text-xl font-bold dark:text-white mb-1">🎯 {platLabel} · 互动涨粉</div>
+            <div className="text-xl font-bold dark:text-white mb-1">🎯 {platLabel} · {i18nService.t('svCardEngageTitle')}</div>
             <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-              多个号同时开窗,各按自己赛道精准点赞 / 关注 / 评论。<strong>AI 模拟真人不封号</strong>,选几个号开几个窗 —— 涨粉快、成本低、全程托管。
+              {i18nService.t('svCardEngageDesc1')}<strong>{i18nService.t('svCardEngageDescStrong')}</strong>{i18nService.t('svCardEngageDesc2')}
             </div>
             <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1203,14 +1200,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-500 text-white text-sm font-bold hover:bg-violet-600 shadow-sm shadow-violet-500/25 transition-all active:scale-95"
               >
-                🎯 开始创作 →
+                🎯 {i18nService.t('svStartCreate')}
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
                 className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                已有任务 »
+                {i18nService.t('svHasTasks')}
               </button>
             </div>
           </div>
@@ -1219,11 +1216,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {MATRIX_REPLY_FAN_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/5 dark:bg-fuchsia-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-fuchsia-600 dark:text-fuchsia-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500" /> 粉丝维护 · 多账号回复
+                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500" /> {i18nService.t('svSectionReply')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">💌 {platLabel} · 自动回复粉丝</div>
+              <div className="text-xl font-bold dark:text-white mb-1">💌 {platLabel} · {i18nService.t('svCardReplyTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                粉丝评论<strong>不漏回、秒回</strong>:多个号自动进创作者中心,AI 贴着每条评论 + 你的人设暖心回应,可带引流尾巴。已回的、自己留的自动跳过,只回粉丝。
+                {i18nService.t('svCardReplyDesc1')}<strong>{i18nService.t('svCardReplyDescStrong')}</strong>{i18nService.t('svCardReplyDesc2')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1231,14 +1228,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixReplyWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-fuchsia-500 text-white text-sm font-bold hover:bg-fuchsia-600 shadow-sm shadow-fuchsia-500/25 transition-all active:scale-95"
               >
-                💌 开始回复 →
+                💌 {i18nService.t('svStartReply')}
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
                 className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                已有任务 »
+                {i18nService.t('svHasTasks')}
               </button>
               </div>
             </div>
@@ -1247,11 +1244,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {MATRIX_VIRAL_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> 爆款仿写 · 多账号
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {i18nService.t('svSectionViral')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🔥 {platLabel} · 爆款批量仿写</div>
+              <div className="text-xl font-bold dark:text-white mb-1">🔥 {platLabel} · {i18nService.t('svCardViralTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                每个号用<strong>自己的赛道/关键词</strong>去小红书搜本领域<strong>爆款笔记</strong>,按自己的人设 + 随机文风仿写成原创(N 号各不相同),AI 配图后发布。关键词/人设在「我的矩阵账号」里给每个号设。
+                {i18nService.t('svCardViralDesc1')}<strong>{i18nService.t('svCardViralDescStrong1')}</strong>{i18nService.t('svCardViralDesc2')}<strong>{i18nService.t('svCardViralDescStrong2')}</strong>{i18nService.t('svCardViralDesc3')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1259,14 +1256,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixViralWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-500 text-white text-sm font-bold hover:bg-rose-600 shadow-sm shadow-rose-500/25 transition-all active:scale-95"
               >
-                🔥 开始仿写 →
+                🔥 {i18nService.t('svStartViral')}
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
                 className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                已有任务 »
+                {i18nService.t('svHasTasks')}
               </button>
               </div>
             </div>
@@ -1275,11 +1272,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {MATRIX_IMAGE_TEXT_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> 内容创作 · 多账号图文
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {i18nService.t('svSectionImageText')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">📝 {platLabel} · 图文创作</div>
+              <div className="text-xl font-bold dark:text-white mb-1">📝 {platLabel} · {i18nService.t('svCardImageTextTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                多个号各按自己人设 / 赛道 + 随机文风,AI 出<strong>条条不重样</strong>的原创图文,自动配图(AI 生图或实景图)直发创作者中心。批量日更不愁素材。
+                {i18nService.t('svCardImageTextDesc1')}<strong>{i18nService.t('svUniqueEach')}</strong>{i18nService.t('svCardImageTextDesc2')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1287,14 +1284,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixImageTextWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition-all active:scale-95"
               >
-                📝 开始创作 →
+                📝 {i18nService.t('svStartCreate')}
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
                 className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                已有任务 »
+                {i18nService.t('svHasTasks')}
               </button>
               </div>
             </div>
@@ -1303,11 +1300,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {MATRIX_TWEET_POST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> 内容创作 · 多账号发推
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionTweet')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🐦 {platLabel} · 自动发推</div>
+              <div className="text-xl font-bold dark:text-white mb-1">🐦 {platLabel} · {i18nService.t('svCardTweetTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                多个号各按自己人设 / 赛道,AI 出<strong>条条不重样</strong>的原创推文(web3 资讯深度创作 或 按身份自由创作),可选 AI 配图,自动发到各自时间线。批量养号日更省心。
+                {i18nService.t('svCardTweetDesc1')}<strong>{i18nService.t('svUniqueEach')}</strong>{i18nService.t('svCardTweetDesc2')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1315,14 +1312,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixTweetWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-bold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95"
               >
-                🐦 开始发推 →
+                🐦 {i18nService.t('svStartTweet')}
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
                 className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                已有任务 »
+                {i18nService.t('svHasTasks')}
               </button>
               </div>
             </div>
@@ -1331,11 +1328,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {MATRIX_BINANCE_POST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> 内容创作 · 多账号发帖
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {i18nService.t('svSectionBinancePost')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">📊 {platLabel} · 自动发帖</div>
+              <div className="text-xl font-bold dark:text-white mb-1">📊 {platLabel} · {i18nService.t('svCardBinancePostTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                多个号各按自己人设 / 赛道,抓近 3 周 web3 热点资讯,AI 深度创作<strong>条条不重样</strong>的币安广场图文,可选配图(源图优先,无则 AI 生图),自动挂 cashtag 发到币安广场。批量养号日更省心。
+                {i18nService.t('svCardBinancePostDesc1')}<strong>{i18nService.t('svUniqueEach')}</strong>{i18nService.t('svCardBinancePostDesc2')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1343,14 +1340,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixBinanceWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 shadow-sm shadow-amber-500/25 transition-all active:scale-95"
               >
-                📊 开始发帖 →
+                📊 {i18nService.t('svStartBinancePost')}
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
                 className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                已有任务 »
+                {i18nService.t('svHasTasks')}
               </button>
               </div>
             </div>
@@ -1359,15 +1356,15 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {MATRIX_BINANCE_REPOST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> 内容搬运 · 多账号
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {i18nService.t('svSectionRepost')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">♻️ {platLabel} · 批量搬运</div>
+              <div className="text-xl font-bold dark:text-white mb-1">♻️ {platLabel} · {i18nService.t('svCardRepostTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                选 1 个源平台(小红书…)采集号按关键词搜+下素材,N 个币安号<strong>各领一条独立仿写</strong> + 配源图,顺序发到各自币安广场(相邻两条间隔 1-2 分钟防连坐)。跨平台搬运、批量养号。
+                {i18nService.t('svCardRepostDesc1')}<strong>{i18nService.t('svCardRepostDescStrong')}</strong>{i18nService.t('svCardRepostDesc2')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
-                <button type="button" onClick={() => openMatrixRepostWizard(currentPlatform)} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 shadow-sm shadow-amber-500/25 transition-all active:scale-95">♻️ 开始搬运 →</button>
-                <button type="button" onClick={() => onSwitchToManage?.(currentPlatform as any)} className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">已有任务 »</button>
+                <button type="button" onClick={() => openMatrixRepostWizard(currentPlatform)} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 shadow-sm shadow-amber-500/25 transition-all active:scale-95">♻️ {i18nService.t('svStartRepost')}</button>
+                <button type="button" onClick={() => onSwitchToManage?.(currentPlatform as any)} className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">{i18nService.t('svHasTasks')}</button>
               </div>
             </div>
           )}
@@ -1375,11 +1372,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> 实用工具 · 单账号下载
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionDownload')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">⬇️ {platLabel} · 视频无水印下载</div>
+              <div className="text-xl font-bold dark:text-white mb-1">⬇️ {platLabel} · {i18nService.t('svCardDownloadTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                粘贴 1-20 个链接,一键批量下<strong>无水印</strong>原视频到本地 —— 攒素材、做二创随手就来。选 1 个号顺序下,图文/合集自动跳过。{currentPlatform === 'tiktok' ? '(TikTok 须 VPN)' : ''}
+                {i18nService.t('svCardDownloadDesc1')}<strong>{i18nService.t('svCardDownloadDescStrong')}</strong>{i18nService.t('svCardDownloadDesc2')}{currentPlatform === 'tiktok' ? i18nService.t('svCardDownloadTiktokVpn') : ''}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1387,14 +1384,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixDownloadWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-bold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95"
               >
-                ⬇️ 开始下载 →
+                ⬇️ {i18nService.t('svStartDownload')}
               </button>
               <button
                 type="button"
                 onClick={() => onSwitchToManage?.(currentPlatform as any)}
                 className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                已有任务 »
+                {i18nService.t('svHasTasks')}
               </button>
               </div>
             </div>
@@ -1403,11 +1400,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {currentPlatform === 'xhs' && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> 实用工具 · 发布前自查
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {i18nService.t('svSectionSensitive')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🛡️ 小红书 · 敏感词检查</div>
+              <div className="text-xl font-bold dark:text-white mb-1">🛡️ {i18nService.t('svCardSensitiveTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                粘贴笔记文案,检测<strong>违禁词 / 广告法 / 站外引流 / 限流触发词</strong>(2026 版词库),发布前自查避免限流。无需选账号,即开即用。
+                {i18nService.t('svCardSensitiveDesc1')}<strong>{i18nService.t('svCardSensitiveDescStrong')}</strong>{i18nService.t('svCardSensitiveDesc2')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -1415,7 +1412,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openSensitiveCheck()}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 shadow-sm shadow-amber-500/25 transition-all active:scale-95"
               >
-                🛡️ 开始检查 →
+                🛡️ {i18nService.t('svStartSensitive')}
               </button>
               </div>
             </div>
@@ -1423,7 +1420,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           </div>
           {/* 优势标签(对齐旧版各平台 WorkflowsPage 底部):矩阵涨粉通用卖点。 */}
           <div className="mt-6 flex flex-wrap gap-2 justify-center">
-            {[['🛡️', '完全模拟人类行为不封号'], ['🚀', '涨粉丝快(真实互动飞速涨粉)'], ['💰', '成本超低（1000点赞+500关注+300评论+500图文<$1）'], ['🤖', '全智能控制']].map(([icon, t]) => (
+            {[['🛡️', i18nService.t('svBannerNoBan')], ['🚀', i18nService.t('svBannerFastGrow')], ['💰', i18nService.t('svBannerLowCost')], ['🤖', i18nService.t('svBannerSmart')]].map(([icon, t]) => (
               <span key={t} className="inline-flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-full border border-violet-500/20 bg-violet-500/5 text-gray-700 dark:text-gray-300">{icon} {t}</span>
             ))}
           </div>
@@ -1628,7 +1625,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 : mode === 'create'
                   ? i18nService.t('quickUse')
                   : mode === 'runs'
-                    ? (i18nService.currentLanguage === 'zh' ? '涨粉运行记录' : 'Run History')
+                    ? i18nService.t('svRunHistory')
                     : i18nService.t('myFanTasks')}
           </h1>
           {/* v1.x: 钱包余额 + 充值入口紧跟标题,跟 CoworkView 顶栏一致 */}
@@ -1646,11 +1643,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               type="button"
               onClick={onShowInvite}
               className="non-draggable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap bg-green-500/10 text-green-500 border border-green-500/40 hover:bg-green-500/20 hover:border-green-500/60 active:scale-95"
-              title={i18nService.currentLanguage === 'zh' ? '分享邀请链接给好友,赚 BUSDT 返佣' : 'Share your invite link and earn BUSDT rebate'}
-              aria-label={i18nService.currentLanguage === 'zh' ? '分享给好友' : 'Share to friends'}
+              title={i18nService.t('svShareInviteTitle')}
+              aria-label={i18nService.t('svShareToFriends')}
             >
               <span aria-hidden>🎁</span>
-              <span>{i18nService.currentLanguage === 'zh' ? '分享给好友' : 'Share to friends'}</span>
+              <span>{i18nService.t('svShareToFriends')}</span>
             </button>
           )}
           <WindowTitleBar inline />
@@ -1674,7 +1671,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             of "task vs view" actions. */}
       {view.kind === 'main' && currentSection !== 'create' && !(currentPlatform === 'video' && videoInDetail) && (() => {
         const isVideo = currentPlatform === 'video';
-        const isZh = i18nService.currentLanguage === 'zh';
         const isHistory = currentSection === 'history';
         // v6.x: 原「我的涨粉任务 / 运行记录」两个 L1 段 tab 已拆成两个独立左侧菜单,
         // 这里改成只展示【当前菜单】的段标题(样式对齐「✨ 新建涨粉任务」头部)。
@@ -1684,9 +1680,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // section 临时切到 history)时,补一个「← 返回」回到任务列表,避免没了 L1
         // tab 之后无路可退。
         const sectionTitle = isHistory
-          ? (isZh ? '📊 涨粉运行记录' : '📊 Run History')
-          : isVideo ? (isZh ? '🎬 我的视频任务' : '🎬 My Videos')
-                    : (isZh ? '📋 我的涨粉任务' : '📋 My Tasks');
+          ? i18nService.t('svRunHistoryTitle')
+          : isVideo ? i18nService.t('svMyVideosTitle')
+                    : i18nService.t('svMyTasksTitle');
         return (
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -1695,10 +1691,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 type="button"
                 onClick={() => setSection('tasks')}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
-                title={isZh ? '返回我的涨粉任务' : 'Back to My Tasks'}
+                title={i18nService.t('svBackToMyTasks')}
               >
                 <span>←</span>
-                <span>{isZh ? '返回' : 'Back'}</span>
+                <span>{i18nService.t('svBack')}</span>
               </button>
             )}
             <h2 className="text-base font-bold dark:text-white text-gray-900 whitespace-nowrap">
@@ -1722,9 +1718,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             }`}
           >
             <span>✨</span>
-            <span>{isZh
-              ? (isVideo ? '新建视频创作任务' : '新建涨粉任务')
-              : (isVideo ? 'New Video Task' : 'New Task')}</span>
+            <span>{isVideo ? i18nService.t('svNewVideoTask') : i18nService.t('svNewFanTask')}</span>
           </button>
           )}
         </div>
@@ -1742,18 +1736,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               type="button"
               onClick={() => setSection('tasks')}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
-              title={i18nService.currentLanguage === 'zh'
-                ? (currentPlatform === 'video' ? '返回视频创作' : '返回我的涨粉任务')
-                : 'Back'}
+              title={currentPlatform === 'video' ? i18nService.t('svBackToVideoCreate') : i18nService.t('svBackToMyTasks')}
             >
               <span>←</span>
-              <span>{i18nService.currentLanguage === 'zh' ? '返回' : 'Back'}</span>
+              <span>{i18nService.t('svBack')}</span>
             </button>
             )}
             <h2 className="text-base font-bold dark:text-white text-gray-900 ml-2 whitespace-nowrap">
-              ✨ {i18nService.currentLanguage === 'zh'
-                ? (currentPlatform === 'video' ? '新建视频创作任务' : '新建涨粉任务')
-                : (currentPlatform === 'video' ? 'New Video Task' : 'New Task')}
+              ✨ {currentPlatform === 'video' ? i18nService.t('svNewVideoTask') : i18nService.t('svNewFanTask')}
             </h2>
           </div>
           {/* v6.x: 「涨粉教程」入口 → 外部浏览器打开文档站。样式与「我的涨粉任务」
@@ -1767,8 +1757,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               ? (isZhDoc ? 'https://docs.noobclaw.com/zhong-wen-ban/kua-ping-tai-shi-pin-chuang-zuo' : 'https://docs.noobclaw.com/english/video-creation')
               : 'https://docs.noobclaw.com';
             const tutorialLabel = isVideoTab
-              ? (isZhDoc ? '视频教程' : 'Video Tutorial')
-              : (isZhDoc ? '涨粉教程' : 'Growth Tutorial');
+              ? i18nService.t('svVideoTutorial')
+              : i18nService.t('svGrowthTutorial');
             return (
             <button
               type="button"
@@ -1861,7 +1851,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               onClick={() => { setFatalError(null); void refreshAll(); }}
               className="px-4 py-2 text-sm rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900"
             >
-              重试
+              {i18nService.t('svRetry')}
             </button>
           </div>
         ) : (
@@ -1883,11 +1873,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       {matrixKernelMissing && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => { if (!matrixKernelBusy) setMatrixKernelMissing(false); }}>
           <div className="w-[28rem] max-w-full rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="text-base font-semibold mb-2 dark:text-white">🧬 需要指纹浏览器</div>
-            <div className="text-sm text-gray-600 dark:text-gray-300 mb-5 leading-relaxed">矩阵任务必须在专属指纹浏览器内核里运行(每个账号独立指纹隔离,普通浏览器无法替代)。约 130MB,只需下载一次,下载后即可创建 / 运行任务。</div>
+            <div className="text-base font-semibold mb-2 dark:text-white">🧬 {i18nService.t('svKernelTitle')}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-300 mb-5 leading-relaxed">{i18nService.t('svKernelBody')}</div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setMatrixKernelMissing(false)} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15 disabled:opacity-50">取消</button>
-              <button onClick={downloadMatrixKernel} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg bg-violet-500 hover:bg-violet-600 text-white disabled:opacity-50">{matrixKernelBusy ? '下载中…' : '下载内核'}</button>
+              <button onClick={() => setMatrixKernelMissing(false)} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15 disabled:opacity-50">{i18nService.t('svCancel')}</button>
+              <button onClick={downloadMatrixKernel} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg bg-violet-500 hover:bg-violet-600 text-white disabled:opacity-50">{matrixKernelBusy ? i18nService.t('svDownloading') : i18nService.t('svDownloadKernel')}</button>
             </div>
           </div>
         </div>
@@ -1900,12 +1890,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="flex items-start gap-3">
               <span className="text-xl leading-none">⚠️</span>
               <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
-                该平台已有同类型（{dupNotice.label}）任务，无需重复创建。可直接去编辑它。
+                {i18nService.t('svDupNotice').replace('{label}', dupNotice.label)}
               </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
-              <button type="button" onClick={() => setDupNotice(null)} className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">关闭</button>
-              <button type="button" onClick={() => { const p = dupNotice.platform; setDupNotice(null); onSwitchToManage?.(p as any); }} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600">去查看 / 编辑 →</button>
+              <button type="button" onClick={() => setDupNotice(null)} className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{i18nService.t('svClose')}</button>
+              <button type="button" onClick={() => { const p = dupNotice.platform; setDupNotice(null); onSwitchToManage?.(p as any); }} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600">{i18nService.t('svGoViewEdit')}</button>
             </div>
           </div>
         </div>
@@ -2134,43 +2124,43 @@ const LinkModeEditModal: React.FC<{
 
   const validate = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length < 1) return { ok: [], err: isZh ? '至少粘贴 1 个链接' : 'Paste at least 1 URL' };
+    if (lines.length < 1) return { ok: [], err: i18nService.t('svErrPasteAtLeast1') };
     // v4.28.x: 跟 ConfigWizard 创建流程对齐 —— 创建那边一直是 1-5,这里编辑 modal
     // 之前卡在 1-3,导致用户在编辑里加第 4 个 URL 直接被拒。统一为 1-5。
     // v6.x: 上限从 5 提到 20。用户反馈"一次想批 10-20 条爆款链路",5 个太紧。
-    if (lines.length > 20) return { ok: [], err: isZh ? '最多 20 个链接' : 'Max 20 URLs' };
+    if (lines.length > 20) return { ok: [], err: i18nService.t('svErrMax20') };
     for (const l of lines) {
       if (isVideoDownload) {
         // 按视频下载场景分平台校验:抖音(含短链 v.douyin.com / iesdouyin)、
         // TikTok(含 vt/vm.tiktok.com 短链)、小红书(含 xhslink 短链)。
         if (vdPlatform === 'douyin') {
           if (!/^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i.test(l)) {
-            return { ok: [], err: (isZh ? '不是抖音链接：' : 'Not a Douyin link: ') + l.slice(0, 80) };
+            return { ok: [], err: i18nService.t('svErrNotDouyinLink') + l.slice(0, 80) };
           }
         } else if (vdPlatform === 'tiktok') {
           if (!/^https?:\/\/([\w-]+\.)?tiktok\.com\//i.test(l)) {
-            return { ok: [], err: (isZh ? '不是 TikTok 链接：' : 'Not a TikTok link: ') + l.slice(0, 80) };
+            return { ok: [], err: i18nService.t('svErrNotTiktokLink') + l.slice(0, 80) };
           }
         } else if (vdPlatform === 'kuaishou') {
           if (!/^https?:\/\/([\w-]+\.)?(kuaishou|chenzhongtech)\.com\//i.test(l)) {
-            return { ok: [], err: (isZh ? '不是快手链接：' : 'Not a Kuaishou link: ') + l.slice(0, 80) };
+            return { ok: [], err: i18nService.t('svErrNotKuaishouLink') + l.slice(0, 80) };
           }
         } else if (vdPlatform === 'bilibili') {
           if (!/^https?:\/\/([\w-]+\.)?(bilibili\.com|b23\.tv)\//i.test(l)) {
-            return { ok: [], err: (isZh ? '不是哔哩哔哩链接：' : 'Not a Bilibili link: ') + l.slice(0, 80) };
+            return { ok: [], err: i18nService.t('svErrNotBilibiliLink') + l.slice(0, 80) };
           }
         } else {
           if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
-            return { ok: [], err: (isZh ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };
+            return { ok: [], err: i18nService.t('svErrNotXhsLink') + l.slice(0, 80) };
           }
         }
       } else if (acceptsTwitterUrl) {
         if (!/^https?:\/\/(www\.)?(twitter|x)\.com\/.+\/status\/\d+/i.test(l)) {
-          return { ok: [], err: (isZh ? '不是有效的推特推文链接：' : 'Not a valid X/Twitter status URL: ') + l.slice(0, 80) };
+          return { ok: [], err: i18nService.t('svErrNotValidTweetLink') + l.slice(0, 80) };
         }
       } else {
         if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
-          return { ok: [], err: (isZh ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };
+          return { ok: [], err: i18nService.t('svErrNotXhsLink') + l.slice(0, 80) };
         }
       }
     }
@@ -2194,7 +2184,7 @@ const LinkModeEditModal: React.FC<{
       await scenarioService.updateTask(task.id, patch);
       await onSaved();
     } catch (e) {
-      alert((isZh ? '保存失败：' : 'Save failed: ') + String(e).slice(0, 120));
+      alert(i18nService.t('svSaveFailed') + String(e).slice(0, 120));
     } finally {
       setSubmitting(false);
     }
@@ -2209,24 +2199,18 @@ const LinkModeEditModal: React.FC<{
       >
         <h3 className="text-lg font-bold dark:text-white mb-2">
           {isVideoDownload
-            ? '⬇️ ' + (isZh ? `${vdLabel}视频链接` : `${vdLabel} video links`)
-            : '🔗 ' + (isZh ? '编辑指定链接任务' : 'Edit link-mode task')}
+            ? '⬇️ ' + i18nService.t('svVideoLinksHeading').replace('{platform}', vdLabel)
+            : '🔗 ' + i18nService.t('svEditLinkTask')}
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           {isVideoDownload
-            ? (isZh
-                ? `粘贴 1~20 个${vdLabel}视频链接，每行一个，逐个解析并无水印下载到本地。`
-                : `Paste 1-20 ${vdLabel} video links, one per line. Each is resolved and downloaded watermark-free.`)
-            : isZh
-            ? (acceptsTwitterUrl
-                ? '粘贴 1~20 个推特原文链接，图文视频均可，每行一个，AI 进行深度改写后发布。'
-                : '粘贴 1~20 个小红书原文链接，每行一个，AI 进行深度改写后发布。')
-            : (acceptsTwitterUrl
-                ? 'Paste 1-20 tweet URLs (images & videos both supported), one per line. AI will deep-rewrite and publish.'
-                : 'Paste 1-20 XHS URLs, one per line. AI will deep-rewrite and publish.')}
+            ? i18nService.t('svDescVideoDownload').replace('{platform}', vdLabel)
+            : acceptsTwitterUrl
+            ? i18nService.t('svDescTweetRewrite')
+            : i18nService.t('svDescXhsRewrite')}
         </p>
         <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-          {isVideoDownload ? (isZh ? '视频链接' : 'Video links') : (isZh ? '原文链接' : 'Source URLs')}
+          {isVideoDownload ? i18nService.t('svVideoLinks') : i18nService.t('svSourceUrls')}
         </label>
         <textarea
           value={linksText}
@@ -2241,7 +2225,7 @@ const LinkModeEditModal: React.FC<{
         {isX && (
           <div className="mt-4">
             <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-              {isZh ? '🔵 推特账号类型' : '🔵 Twitter account type'}
+              {i18nService.t('svTwitterAccountType')}
             </label>
             <div
               className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
@@ -2259,18 +2243,13 @@ const LinkModeEditModal: React.FC<{
               />
               <div className="flex-1 text-sm">
                 <div className="font-medium dark:text-white">
-                  {isZh ? '我的推特账号是蓝V（已订阅 X Premium）' : 'My X account is verified (Blue / Premium)'}
+                  {i18nService.t('svIsBlueV')}
                 </div>
                 <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                  {isZh
-                    ? <>
-                        <strong className="text-blue-500">勾选</strong> = 蓝V 账号,AI 可短/中/长自由发挥(不受 140 字硬限)<br/>
-                        <strong className="text-gray-500">不勾</strong>(默认)= 普通账号,AI 强制 ≤ <strong>140 字符</strong>
+                  <>
+                        <strong className="text-blue-500">{i18nService.t('svBlueVCheckedLabel')}</strong>{i18nService.t('svBlueVCheckedDesc')}<br/>
+                        <strong className="text-gray-500">{i18nService.t('svBlueVUncheckedLabel')}</strong>{i18nService.t('svBlueVUncheckedDesc1')}<strong>{i18nService.t('svBlueVUncheckedDesc2')}</strong>
                       </>
-                    : <>
-                        <strong className="text-blue-500">Checked</strong>: Blue/Premium — AI may pick short/mid/long freely.<br/>
-                        <strong className="text-gray-500">Unchecked</strong>: non-Blue — AI forced ≤ <strong>140 chars</strong>.
-                      </>}
                 </div>
               </div>
             </div>
@@ -2279,17 +2258,17 @@ const LinkModeEditModal: React.FC<{
 
         {!isVideoDownload && (<>
         <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
-          {isZh ? '生成后的处理' : 'After generation'}
+          {i18nService.t('svAfterGeneration')}
         </label>
         <div className="space-y-2">
           <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-purple-500 bg-purple-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
             <input type="radio" name="link_edit_auto_upload" checked={autoUpload} onChange={() => setAutoUpload(true)} className="mt-0.5" disabled={submitting} />
             <div className="flex-1 text-xs leading-relaxed">
               <div className="font-semibold dark:text-white mb-0.5">
-                {isZh ? `📤 自动发布到${platformLabel}` : `📤 Auto-publish to ${platformLabel}`}
+                {i18nService.t('svAutoPublishTo').replace('{platform}', platformLabel)}
               </div>
               <div className="text-gray-500 dark:text-gray-400">
-                {isZh ? '全流程无人值守。⚠️ 单日 >10 篇有封号风险。' : 'Unattended. ⚠️ >10/day risks ban.'}
+                {i18nService.t('svAutoPublishDesc')}
               </div>
             </div>
           </label>
@@ -2297,10 +2276,10 @@ const LinkModeEditModal: React.FC<{
             <input type="radio" name="link_edit_auto_upload" checked={!autoUpload} onChange={() => setAutoUpload(false)} className="mt-0.5" disabled={submitting} />
             <div className="flex-1 text-xs leading-relaxed">
               <div className="font-semibold dark:text-white mb-0.5">
-                {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+                {i18nService.t('svGenerateOnly')}
               </div>
               <div className="text-gray-500 dark:text-gray-400">
-                {isZh ? '存盘后手动审核发布,封号风险最低。' : 'Review and post manually later.'}
+                {i18nService.t('svGenerateOnlyDesc')}
               </div>
             </div>
           </label>
@@ -2314,7 +2293,7 @@ const LinkModeEditModal: React.FC<{
             disabled={submitting}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
           >
-            {isZh ? '取消' : 'Cancel'}
+            {i18nService.t('svCancel')}
           </button>
           <button
             type="button"
@@ -2323,8 +2302,8 @@ const LinkModeEditModal: React.FC<{
             className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
           >
             {submitting
-              ? (isZh ? '保存中...' : 'Saving...')
-              : (isZh ? '💾 保存' : '💾 Save')}
+              ? i18nService.t('svSaving')
+              : i18nService.t('svSave')}
           </button>
         </div>
       </div>

@@ -55,15 +55,13 @@ const SEVERITY_COLOR: Record<string, string> = {
   medium: '#eab308',
   high: '#ef4444',
 };
-const SEVERITY_LABEL_ZH: Record<string, string> = { low: '低', medium: '中', high: '高' };
-const SEVERITY_LABEL_EN: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High' };
+const SEVERITY_LABELS = (): Record<string, string> => ({ low: i18nService.t('scSevLow'), medium: i18nService.t('scSevMedium'), high: i18nService.t('scSevHigh') });
 
 interface Props {
   onBack: () => void;
 }
 
 export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
-  const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
@@ -71,7 +69,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
   const [severityMin, setSeverityMin] = useState<'low' | 'medium' | 'high'>('low');
   const [categories, setCategories] = useState<CategoryMeta[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('');
-  const sevLabel = isZh ? SEVERITY_LABEL_ZH : SEVERITY_LABEL_EN;
+  const sevLabel = SEVERITY_LABELS();
 
   // Pull category list once for the filter chips
   useEffect(() => {
@@ -84,7 +82,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
   const handleCheck = async () => {
     if (loading) return;
     if (!text.trim()) {
-      setErr(isZh ? '请粘贴要检测的文本' : 'Paste text to check');
+      setErr(i18nService.t('scPasteTextToCheck'));
       return;
     }
     setErr(null);
@@ -161,10 +159,10 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
     return '#22c55e';
   };
   const riskLabel = (s: number): string => {
-    if (s >= 70) return isZh ? '高风险 · 强烈建议修改' : 'High risk · please rewrite';
-    if (s >= 40) return isZh ? '中风险 · 建议替换敏感词' : 'Medium risk · replace flagged words';
-    if (s >= 15) return isZh ? '低风险 · 个别词需注意' : 'Low risk · a few words to watch';
-    return isZh ? '安全 · 无明显风险' : 'Safe · no notable risks';
+    if (s >= 70) return i18nService.t('scRiskHigh');
+    if (s >= 40) return i18nService.t('scRiskMedium');
+    if (s >= 15) return i18nService.t('scRiskLow');
+    return i18nService.t('scRiskSafe');
   };
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -180,24 +178,22 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
           onClick={onBack}
           className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
         >
-          ← {isZh ? '返回' : 'Back'}
+          ← {i18nService.t('scBack')}
         </button>
         <h1 className="text-xl font-bold dark:text-white">
-          🚫 {isZh ? '小红书 · 敏感词检测' : 'XHS Sensitive Word Checker'}
+          🚫 {i18nService.t('scTitle')}
         </h1>
       </div>
 
       {/* Description */}
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">
-        {isZh
-          ? '基于 2026 版小红书敏感词库，检测笔记标题/正文中的违规、引流、限流词。'
-          : 'Detect ad-law violations, off-platform funnels and rate-limit triggers in your XHS draft. Library: 2026 edition.'}
+        {i18nService.t('scDescription')}
       </p>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          {isZh ? '最低等级' : 'Min severity'}:
+          {i18nService.t('scMinSeverity')}:
         </span>
         {(['low', 'medium', 'high'] as const).map(s => (
           <button
@@ -215,7 +211,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
         ))}
         <span className="w-px h-4 bg-gray-300 dark:bg-gray-700 mx-2" />
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          {isZh ? '分类' : 'Category'}:
+          {i18nService.t('scCategory')}:
         </span>
         <button
           type="button"
@@ -226,7 +222,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
               : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
-          {isZh ? '全部' : 'All'}
+          {i18nService.t('scAll')}
         </button>
         {categories.map(c => (
           <button
@@ -238,7 +234,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
                 ? 'bg-green-500/10 border-green-500/50 text-green-500'
                 : 'border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
             }`}
-            title={`${c.count} ${isZh ? '词' : 'words'}`}
+            title={`${c.count} ${i18nService.t('scWordsUnit')}`}
           >
             {c.label}
           </button>
@@ -252,9 +248,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
           value={text}
           maxLength={charLimit}
           onChange={(e) => setText(e.target.value)}
-          placeholder={isZh
-            ? '粘贴你的小红书笔记标题、正文、话题...\n\n示例：限时秒杀，全网最低！加微信领取福利'
-            : 'Paste your XHS title / body / hashtags here...'}
+          placeholder={i18nService.t('scPlaceholder')}
           rows={10}
           className="w-full px-4 py-3 text-sm bg-transparent text-gray-900 dark:text-white outline-none resize-y min-h-[180px] leading-relaxed"
         />
@@ -269,7 +263,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
               onClick={() => { setText(''); setResult(null); setErr(null); }}
               className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
             >
-              {isZh ? '清空' : 'Clear'}
+              {i18nService.t('scClear')}
             </button>
             <button
               type="button"
@@ -277,7 +271,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
               onClick={handleCheck}
               className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 active:scale-95 disabled:opacity-50"
             >
-              {loading ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔍 开始检测' : '🔍 Check')}
+              {loading ? i18nService.t('scChecking') : i18nService.t('scCheck')}
             </button>
           </div>
         </div>
@@ -315,9 +309,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
                   {riskLabel(result.risk_score)}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {isZh
-                    ? `命中 ${result.total_matches} 处 · 涉及 ${result.distinct_words} 个不同敏感词`
-                    : `${result.total_matches} hits · ${result.distinct_words} distinct words`}
+                  {i18nService.t('scHitsSummary').replace('{hits}', String(result.total_matches)).replace('{words}', String(result.distinct_words))}
                 </div>
               </div>
             </div>
@@ -327,7 +319,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
           {result.matches.length > 0 ? (
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
               <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                {isZh ? '原文标记' : 'Annotated Text'}
+                {i18nService.t('scAnnotatedText')}
               </div>
               <div className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap leading-relaxed break-words">
                 {highlighted}
@@ -335,7 +327,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
             </div>
           ) : (
             <div className="rounded-xl border border-green-500/30 bg-green-500/5 p-6 text-center text-sm text-green-500">
-              ✅ {isZh ? '未发现敏感词' : 'No sensitive words detected'}
+              ✅ {i18nService.t('scNoSensitiveWords')}
             </div>
           )}
 
@@ -343,16 +335,16 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
           {result.matches.length > 0 && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
               <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                {isZh ? '分类汇总' : 'Category Summary'}
+                {i18nService.t('scCategorySummary')}
               </div>
               <table className="w-full text-sm">
                 <thead className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/30">
                   <tr>
-                    <th className="text-left px-4 py-2 font-medium">{isZh ? '分类' : 'Category'}</th>
-                    <th className="text-right px-4 py-2 font-medium">{isZh ? '高' : 'High'}</th>
-                    <th className="text-right px-4 py-2 font-medium">{isZh ? '中' : 'Med'}</th>
-                    <th className="text-right px-4 py-2 font-medium">{isZh ? '低' : 'Low'}</th>
-                    <th className="text-right px-4 py-2 font-medium">{isZh ? '小计' : 'Total'}</th>
+                    <th className="text-left px-4 py-2 font-medium">{i18nService.t('scCategory')}</th>
+                    <th className="text-right px-4 py-2 font-medium">{i18nService.t('scColHigh')}</th>
+                    <th className="text-right px-4 py-2 font-medium">{i18nService.t('scColMed')}</th>
+                    <th className="text-right px-4 py-2 font-medium">{i18nService.t('scColLow')}</th>
+                    <th className="text-right px-4 py-2 font-medium">{i18nService.t('scColTotal')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -376,7 +368,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
           {result.matches.length > 0 && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
               <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                {isZh ? '命中详情' : 'Match Detail'}
+                {i18nService.t('scMatchDetail')}
               </div>
               <div className="max-h-96 overflow-y-auto">
                 {result.matches.map((m, i) => (
@@ -400,7 +392,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
                       {CATEGORY_LABELS_FALLBACK[m.category] || m.category}
                     </span>
                     <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
-                      {isZh ? '位置' : 'pos'} {m.start}
+                      {i18nService.t('scPosition')} {m.start}
                     </span>
                     {m.note && (
                       <span className="text-[11px] text-gray-400 dark:text-gray-500 italic max-w-[200px] truncate" title={m.note}>

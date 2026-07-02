@@ -34,7 +34,6 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
     return unsubscribe;
   }, []);
 
-  const isZh = i18nService.currentLanguage === 'zh';
   const compact = size === 'compact';
   const txt = compact ? 'text-[10px]' : 'text-xs';
 
@@ -63,10 +62,10 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
   const expired = hadSub && !memberActive;                 // 买过但已过期
   const isPaid = memberActive;                             // 金色 pill / 升级按钮判定
   // 展示档名:有订阅记录 → 用订阅档名(到期后仍显示原档「进阶版」);否则免费版。
-  const planName = authState.subPlanName || authState.planName || (isZh ? '免费版' : 'Free');
+  const planName = authState.subPlanName || authState.planName || i18nService.t('wbPlanFree');
   // 免费→「订阅会员」、付费未满级→「升级会员」、最高档(max)→灰色禁用。
   const isMaxTier = memberActive && authState.planCode === 'max';
-  const subLabel = !memberActive ? (isZh ? '订阅会员' : 'Subscribe') : (isZh ? '升级会员' : 'Upgrade');
+  const subLabel = !memberActive ? i18nService.t('wbSubscribe') : i18nService.t('wbUpgrade');
   // 到期日文案:有效中显示「M/D 到期」(≤3 天红字+红点);已过期显示「已过期」(红)。
   const daysLeft = memberActive ? Math.ceil((periodEndMs - Date.now()) / 86_400_000) : null;
   const expiringSoon = daysLeft != null && daysLeft >= 0 && daysLeft <= 3;
@@ -93,7 +92,7 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
         onClick={() => openWallet('subscription')}
         className="non-draggable relative inline-flex items-center gap-1 rounded-full font-bold leading-none whitespace-nowrap"
         style={pillStyle}
-        title={expired ? (isZh ? '会员已过期,点此续费' : 'Membership expired — renew') : memberActive ? (isZh ? `会员有效至 ${endLabel}${expiringSoon ? `(${daysLeft}天后到期)` : ''}` : `Active until ${endLabel}`) : (isZh ? '我的会员' : 'Membership')}
+        title={expired ? i18nService.t('wbExpiredTitle') : memberActive ? i18nService.t('wbActiveTitle').replace('{end}', endLabel).replace('{soon}', expiringSoon ? i18nService.t('wbActiveTitleSoon').replace('{n}', String(daysLeft)) : '') : i18nService.t('wbMembership')}
       >
         {(expiringSoon || expired) && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-1 ring-white" />}
         {(memberActive || expired) ? '👑' : '🪙'} {planName}
@@ -104,15 +103,15 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
           type="button"
           onClick={() => openWallet('subscription')}
           className={`non-draggable ${txt} whitespace-nowrap font-medium ${expired || expiringSoon ? 'text-red-500' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary'}`}
-          title={isZh ? '点此续费' : 'Renew'}
+          title={i18nService.t('wbRenew')}
         >
-          {expired ? (isZh ? '已过期' : 'Expired') : expiringSoon ? (isZh ? `${daysLeft}天后到期` : `${daysLeft}d left`) : (isZh ? `${endLabel} 到期` : `until ${endLabel}`)}
+          {expired ? i18nService.t('wbExpired') : expiringSoon ? i18nService.t('wbSoon').replace('{n}', String(daysLeft)) : i18nService.t('wbUntil').replace('{end}', endLabel)}
         </button>
       )}
 
       {/* 积分余额(可消费总额) */}
       <span className={`${txt} dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap`}>
-        {isZh ? '积分余额' : 'Credits'}{' '}
+        {i18nService.t('wbCredits')}{' '}
         <span className={`font-semibold ${low ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>
           {authState.tokenBalance.toLocaleString()}
         </span>
@@ -127,7 +126,7 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
         style={isMaxTier
           ? { padding: btnPad, fontSize: btnFs, background: 'rgba(255,255,255,0.08)', color: '#777' }
           : { padding: btnPad, fontSize: btnFs, background: 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#3a2400', boxShadow: '0 2px 8px rgba(245,158,11,0.35)' }}
-        title={isMaxTier ? (isZh ? '已是最高等级' : 'Top tier') : ''}
+        title={isMaxTier ? i18nService.t('wbTopTier') : ''}
       >
         {subLabel}
       </button>
@@ -140,7 +139,7 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
         className="non-draggable rounded font-bold whitespace-nowrap text-white transition-colors bg-green-500 hover:bg-green-600"
         style={{ padding: btnPad, fontSize: btnFs }}
       >
-        {isZh ? '购买积分' : 'Buy Credits'}
+        {i18nService.t('wbBuyCredits')}
       </button>
     </div>
   );

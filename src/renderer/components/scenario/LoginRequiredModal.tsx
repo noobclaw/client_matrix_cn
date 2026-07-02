@@ -478,20 +478,20 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
       <div className="flex flex-col gap-1.5">
         <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf', '_blank')}
           className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
-          {isZh ? '🌐 安装 Chrome 浏览器插件' : '🌐 Install Chrome Extension'}
+          {i18nService.t('lrInstallChrome')}
         </button>
         <button type="button" onClick={() => window.open('https://addons.mozilla.org/firefox/addon/noobclaw-browser-assistant/', '_blank')}
           className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors text-left">
-          {isZh ? '🦊 安装 Firefox 浏览器插件' : '🦊 Install Firefox Extension'}
+          {i18nService.t('lrInstallFirefox')}
         </button>
         <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd', '_blank')}
           className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-500 hover:bg-blue-500/10 transition-colors text-left">
-          {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
+          {i18nService.t('lrInstallEdge')}
         </button>
       </div>
       <button type="button" onClick={runCheck} disabled={checking}
         className="text-xs text-blue-500 hover:underline mt-1">
-        {checking ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔄 重新检测' : '🔄 Re-check')}
+        {checking ? i18nService.t('lrChecking') : i18nService.t('lrRecheck')}
       </button>
     </>
   );
@@ -504,7 +504,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
       <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
         <div className="px-6 pt-5 pb-2 text-center shrink-0">
           <div className="text-3xl mb-1">🔐</div>
-          <h3 className="text-lg font-bold dark:text-white">{isZh ? '运行前检查' : 'Pre-run Check'}</h3>
+          <h3 className="text-lg font-bold dark:text-white">{i18nService.t('lrTitle')}</h3>
         </div>
 
         <div className="px-6 py-2 space-y-2.5 overflow-y-auto flex-1">
@@ -516,15 +516,15 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
           }`}>
             <div className="text-xl shrink-0 mt-0.5">{ICON[extensionStatus]}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">{isZh ? '① 安装并连接浏览器插件' : '① Install & connect browser extension'}</div>
+              <div className="text-sm font-medium dark:text-white">{i18nService.t('lrStep1')}</div>
               {extensionStatus === 'fail' && (
                 <div className="mt-2 space-y-2">
-                  <div className="text-xs text-red-500">{isZh ? '插件未连接，请打开浏览器，如尚未安装，点击下方选项进行安装：' : 'Extension not connected. Open your browser; if not yet installed, click an option below to install:'}</div>
+                  <div className="text-xs text-red-500">{i18nService.t('lrExtNotConnected')}</div>
                   {installActionButtons}
                 </div>
               )}
               {extensionStatus === 'pass' && outdatedExts.length === 0 && !handshakePending && (
-                <div className="text-xs text-green-500 mt-1">{isZh ? '已连接' : 'Connected'}</div>
+                <div className="text-xs text-green-500 mt-1">{i18nService.t('lrConnected')}</div>
               )}
               {/* Handshake-in-progress: extension just connected (TCP open)
                   but its version-bearing `hello` message hasn't arrived yet
@@ -539,11 +539,11 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                 <div className="mt-1">
                   <div className="text-xs text-amber-500 flex items-center gap-1.5">
                     <span className="inline-block h-3 w-3 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-                    {isZh ? '正在握手，确认插件版本中...' : 'Handshaking, verifying extension version...'}
+                    {i18nService.t('lrHandshaking')}
                   </div>
                   <button type="button" onClick={runCheck} disabled={checking}
                     className="text-xs text-blue-500 hover:underline mt-1.5">
-                    {checking ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔄 重新检测' : '🔄 Re-check')}
+                    {checking ? i18nService.t('lrChecking') : i18nService.t('lrRecheck')}
                   </button>
                 </div>
               )}
@@ -556,8 +556,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                 <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
                   <div className="font-semibold mb-1">
                     ⚠️ {isZh
-                      ? `检测到旧版插件（${outdatedExts.map(o => o.version).join(', ')}）— 多浏览器并行任务可能不工作，建议立即更新到 v${MIN_EXTENSION_VERSION}+`
-                      : `Outdated extension detected (${outdatedExts.map(o => o.version).join(', ')}). Multi-browser tasks may not work — update to v${MIN_EXTENSION_VERSION}+`}
+                      ? i18nService.t('lrOutdatedExt').replace('{versions}', outdatedExts.map(o => o.version).join(', ')).replace('{min}', MIN_EXTENSION_VERSION)
+                      : i18nService.t('lrOutdatedExt').replace('{versions}', outdatedExts.map(o => o.version).join(', ')).replace('{min}', MIN_EXTENSION_VERSION)}
                   </div>
                   <div className="mt-2 space-y-2">
                     {installActionButtons}
@@ -590,25 +590,25 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                 <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium dark:text-white">
-                    {isZh ? `② 在浏览器中打开 ${platformLabel} 并登录` : `② Open ${platformLabel} in browser & login`}
+                    {i18nService.t('lrStep2Open').replace('{platform}', platformLabel)}
                   </div>
                   {realPass && (
-                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
+                    <div className="text-xs text-green-500 mt-1">{i18nService.t('lrOpened')}</div>
                   )}
                   {realFail && (
                     <div className="text-xs text-red-500 mt-1">
-                      {isZh ? `未检测到 ${platformLabel} 页面` : `${platformLabel} page not detected`}
+                      {i18nService.t('lrPageNotDetected').replace('{platform}', platformLabel)}
                     </div>
                   )}
                   {!realPass && extensionStatus !== 'pass' && (
                     <div className="text-xs text-gray-400 mt-1">
-                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                      {i18nService.t('lrAutoVerify')}
                     </div>
                   )}
                   {!realPass && (
                     <button type="button" onClick={handleOpenXhs} disabled={opening}
                       className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
-                      {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
+                      {opening ? '...' : i18nService.t('lrOpenBtn').replace('{platform}', platformLabel)}
                     </button>
                   )}
                 </div>
@@ -635,25 +635,25 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                 <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium dark:text-white">
-                    {isZh ? `② 打开 ${cLabel} 并登录` : `② Open ${cLabel} & login`}
+                    {i18nService.t('lrStep2OpenCreator').replace('{platform}', cLabel)}
                   </div>
                   {realPass && (
-                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开并已登录' : 'Open & logged in'}</div>
+                    <div className="text-xs text-green-500 mt-1">{i18nService.t('lrOpenLoggedIn')}</div>
                   )}
                   {realFail && (
                     <div className="text-xs text-red-500 mt-1">
-                      {isZh ? `未检测到 ${cLabel} 登录态(可能未打开,或停在登录页)` : `${cLabel} not logged in (tab missing or on login page)`}
+                      {i18nService.t('lrCreatorNotLoggedIn').replace('{platform}', cLabel)}
                     </div>
                   )}
                   {!realPass && extensionStatus !== 'pass' && (
                     <div className="text-xs text-gray-400 mt-1">
-                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                      {i18nService.t('lrAutoVerify')}
                     </div>
                   )}
                   {!realPass && (
                     <button type="button" onClick={handleOpenCreator} disabled={opening}
                       className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
-                      {opening ? '...' : (isZh ? `🌐 打开 ${cLabel}` : `🌐 Open ${cLabel}`)}
+                      {opening ? '...' : i18nService.t('lrOpenBtn').replace('{platform}', cLabel)}
                     </button>
                   )}
                 </div>
@@ -678,25 +678,25 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                 <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium dark:text-white">
-                    {isZh ? `② 同时打开 ${sLabel} 并登录(跨 tab 任务必需)` : `② Also open ${sLabel} & login (required for cross-tab task)`}
+                    {i18nService.t('lrStep2OpenSecondary').replace('{platform}', sLabel)}
                   </div>
                   {realPass && (
-                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
+                    <div className="text-xs text-green-500 mt-1">{i18nService.t('lrOpened')}</div>
                   )}
                   {realFail && (
                     <div className="text-xs text-red-500 mt-1">
-                      {isZh ? `未检测到 ${sLabel} 页面` : `${sLabel} page not detected`}
+                      {i18nService.t('lrPageNotDetected').replace('{platform}', sLabel)}
                     </div>
                   )}
                   {!realPass && extensionStatus !== 'pass' && (
                     <div className="text-xs text-gray-400 mt-1">
-                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                      {i18nService.t('lrAutoVerify')}
                     </div>
                   )}
                   {!realPass && (
                     <button type="button" onClick={handleOpenSecondary} disabled={opening}
                       className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
-                      {opening ? '...' : (isZh ? `🌐 打开 ${sLabel}` : `🌐 Open ${sLabel}`)}
+                      {opening ? '...' : i18nService.t('lrOpenBtn').replace('{platform}', sLabel)}
                     </button>
                   )}
                 </div>
@@ -708,12 +708,12 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
           <div className={`rounded-xl p-3 border ${
             allReady ? 'border-amber-500/30 bg-amber-500/5' : 'border-gray-200 dark:border-gray-700'
           }`}>
-            <div className="text-sm font-medium dark:text-white mb-2">{isZh ? '③ 使用须知' : '③ Usage Notes'}</div>
+            <div className="text-sm font-medium dark:text-white mb-2">{i18nService.t('lrStep3')}</div>
             <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1.5 leading-relaxed">
-              <li>🤖 {isZh ? `所有操作模拟你本人在 ${usageLabel} 上的行为` : `All actions simulate your own behavior on ${usageLabel}`}</li>
-              <li>🌐 {isZh ? <>运行期间请<strong>不要切换浏览器标签页</strong></> : <><strong>Do not switch browser tabs</strong> during a run</>}</li>
-              <li>🔐 {isZh ? <>请<strong>不要退出 {usageLabel} 登录</strong></> : <><strong>Do not log out</strong> of {usageLabel}</>}</li>
-              <li>⏰ {isZh ? '可以正常使用电脑，保持浏览器打开即可' : 'You can use your computer normally, just keep the browser open'}</li>
+              <li>🤖 {i18nService.t('lrNoteSimulate').replace('{platform}', usageLabel)}</li>
+              <li>🌐 {i18nService.t('lrNoteNoSwitch')}</li>
+              <li>🔐 {i18nService.t('lrNoteNoLogout').replace('{platform}', usageLabel)}</li>
+              <li>⏰ {i18nService.t('lrNoteKeepOpen')}</li>
               {(isX || isBinance || isTiktok || isYoutube) && (() => {
                 // 跨 tab 任务时两个站点合并成一句,免得连出两条 ⚠️ 警告占屏。
                 const sites = [
@@ -725,8 +725,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                 return (
                   <li className="text-amber-600 dark:text-amber-400">
                     ⚠️ {isZh
-                      ? <><strong>大陆用户</strong>请确保 VPN / 代理已开启,且 {sites} 都能正常访问</>
-                      : <><strong>Mainland China users</strong> must enable a VPN / proxy and verify {sites} is reachable</>}
+                      ? i18nService.t('lrNoteVpn').replace('{sites}', sites)
+                      : i18nService.t('lrNoteVpn').replace('{sites}', sites)}
                   </li>
                 );
               })()}
@@ -747,12 +747,12 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
             }`}
           >
             {mode === 'create'
-              ? (isZh ? '✅ 我已登录，下一步' : '✅ Logged in, Next')
-              : (isZh ? `✅ 我已登录 ${platformShort}，开始` : `✅ Logged in to ${platformShort}, Start`)}
+              ? i18nService.t('lrConfirmNext')
+              : i18nService.t('lrConfirmStart').replace('{platform}', platformShort)}
           </button>
           <button type="button" onClick={onCancel}
             className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-            {isZh ? '取消' : 'Cancel'}
+            {i18nService.t('lrCancel')}
           </button>
         </div>
       </div>

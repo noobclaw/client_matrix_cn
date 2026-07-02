@@ -42,16 +42,16 @@ interface RunRecord {
   output_dir?: string;
 }
 
-function formatDuration(ms: number, isZh: boolean): string {
+function formatDuration(ms: number, _isZh: boolean): string {
   if (ms < 1000) return ms + 'ms';
   const s = Math.round(ms / 1000);
-  if (s < 60) return s + (isZh ? '秒' : 's');
+  if (s < 60) return s + i18nService.t('rrUnitSec');
   const m = Math.floor(s / 60);
   const remS = s % 60;
-  if (m < 60) return `${m}${isZh ? '分' : 'm'}${remS > 0 ? `${remS}${isZh ? '秒' : 's'}` : ''}`;
+  if (m < 60) return `${m}${i18nService.t('rrUnitMin')}${remS > 0 ? `${remS}${i18nService.t('rrUnitSec')}` : ''}`;
   const h = Math.floor(m / 60);
   const remM = m % 60;
-  return `${h}${isZh ? '时' : 'h'}${remM > 0 ? `${remM}${isZh ? '分' : 'm'}` : ''}`;
+  return `${h}${i18nService.t('rrUnitHour')}${remM > 0 ? `${remM}${i18nService.t('rrUnitMin')}` : ''}`;
 }
 
 function fullTime(ts: number, isZh: boolean): string {
@@ -106,7 +106,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       } else {
         // Fallback: copy path to clipboard so user can navigate manually
         await navigator.clipboard.writeText(rec.output_dir);
-        alert((isZh ? '已复制路径到剪贴板：\n' : 'Path copied to clipboard:\n') + rec.output_dir);
+        alert(i18nService.t('rrPathCopied') + rec.output_dir);
       }
     } catch (e) {
       console.error('[RunRecordDetail] openOutputDir failed:', e);
@@ -117,9 +117,9 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     return (
       <div className="p-6 max-w-5xl mx-auto">
         <button type="button" onClick={onBack} className="mb-4 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white">
-          ← {isZh ? '返回' : 'Back'}
+          ← {i18nService.t('rrBack')}
         </button>
-        <div className="text-sm text-gray-400 py-6">{isZh ? '加载中...' : 'Loading...'}</div>
+        <div className="text-sm text-gray-400 py-6">{i18nService.t('rrLoading')}</div>
       </div>
     );
   }
@@ -128,27 +128,27 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     return (
       <div className="p-6 max-w-5xl mx-auto">
         <button type="button" onClick={onBack} className="mb-4 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white">
-          ← {isZh ? '返回' : 'Back'}
+          ← {i18nService.t('rrBack')}
         </button>
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">
-          {isZh ? '未找到该运行记录' : 'Run record not found'}
+          {i18nService.t('rrNotFound')}
         </div>
       </div>
     );
   }
 
   const sc = rec.scenario_snapshot;
-  const platform = sc.platform === 'x' ? (isZh ? '推特' : 'Twitter')
-    : sc.platform === 'xhs' ? (isZh ? '小红书' : 'Xiaohongshu')
-    : sc.platform === 'binance' ? (isZh ? '币安广场' : 'Binance Square')
+  const platform = sc.platform === 'x' ? i18nService.t('rrPlatTwitter')
+    : sc.platform === 'xhs' ? i18nService.t('rrPlatXhs')
+    : sc.platform === 'binance' ? i18nService.t('rrPlatBinance')
     : (sc.platform as any) === 'youtube' ? 'YouTube'
     : (sc.platform as any) === 'tiktok' ? 'TikTok'
-    : (sc.platform as any) === 'douyin' ? (isZh ? '抖音' : 'Douyin')
-    : (sc.platform as any) === 'kuaishou' ? (isZh ? '快手' : 'Kuaishou')
-    : (sc.platform as any) === 'bilibili' ? (isZh ? '哔哩哔哩' : 'Bilibili')
-    : (sc.platform as any) === 'shipinhao' ? (isZh ? '视频号' : 'WeChat Channels')
-    : (sc.platform as any) === 'toutiao' ? (isZh ? '头条号' : 'Toutiao')
-    : (sc.platform as any) === 'video' ? (isZh ? '视频搬运·二创' : 'Video Remix')
+    : (sc.platform as any) === 'douyin' ? i18nService.t('rrPlatDouyin')
+    : (sc.platform as any) === 'kuaishou' ? i18nService.t('rrPlatKuaishou')
+    : (sc.platform as any) === 'bilibili' ? i18nService.t('rrPlatBilibili')
+    : (sc.platform as any) === 'shipinhao' ? i18nService.t('rrPlatShipinhao')
+    : (sc.platform as any) === 'toutiao' ? i18nService.t('rrPlatToutiao')
+    : (sc.platform as any) === 'video' ? i18nService.t('rrPlatVideo')
     : (sc.platform || '');
   // Same TRACK_ICONS + type-badge logic as MyTasksPage / RunHistoryPage so
   // the detail page header matches the row the user clicked on. Inlined
@@ -185,62 +185,62 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     const taskUrls = (rec.task_snapshot && rec.task_snapshot.urls) || [];
     const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
       || (Array.isArray(taskUrls) && taskUrls.length > 0 && sc.platform === 'xhs');
-    if (sid === 'x_auto_engage')                  return { icon: '🐦', label: isZh ? '推特 · 互动涨粉' : 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-    if (sid === 'x_post_creator')                 return { icon: '📝', label: isZh ? '推特 · 自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: isZh ? '推特 · 指定链接仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-    if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-    if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-    if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (sid === 'binance_from_x_link')          return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (sid === 'youtube_auto_engage')          return { icon: '📺', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
-    if (sid === 'tiktok_auto_engage')           return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'douyin_auto_engage')           return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-    if (sid === 'douyin_reply_fans_comment')    return { icon: '💬', label: isZh ? '抖音 · 自动回复粉丝' : 'Douyin Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', label: isZh ? '小红书 · 自动回复粉丝' : 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-    if (sid === 'xhs_video_download')           return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-    if (sid === 'douyin_video_download')        return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if (sid === 'tiktok_video_download')        return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (sid === 'kuaishou_video_download')      return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-    if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'bilibili_auto_engage')         return { icon: '📺', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if (sid === 'bilibili_video_download')      return { icon: '⬇️', label: isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-    if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', label: isZh ? '哔哩哔哩 · 自动回复粉丝' : 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'shipinhao_image_text')         return { icon: '📝', label: isZh ? '视频号 · 图文创作' : 'WeChat Channels Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-    if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', label: isZh ? '视频号 · 自动回复粉丝' : 'WeChat Channels Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'toutiao_image_text')           return { icon: '📝', label: isZh ? '头条号 · 图文创作' : 'Toutiao Image-Text', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-    if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', label: isZh ? '头条号 · 自动回复粉丝' : 'Toutiao Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+    if (sid === 'x_auto_engage')                  return { icon: '🐦', label: i18nService.t('rrBadgeXEngage'), color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+    if (sid === 'x_post_creator')                 return { icon: '📝', label: i18nService.t('rrBadgeXPost'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: i18nService.t('rrBadgeXLinkRewrite'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: i18nService.t('rrBadgeBinanceEngage'), color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+    if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: i18nService.t('rrBadgeBinancePost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: i18nService.t('rrBadgeBinanceRepost'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'binance_from_x_link')          return { icon: '🔗', label: i18nService.t('rrBadgeBinanceFromXLink'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'youtube_auto_engage')          return { icon: '📺', label: i18nService.t('rrBadgeYoutubeEngage'), color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
+    if (sid === 'tiktok_auto_engage')           return { icon: '🎵', label: i18nService.t('rrBadgeTiktokEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'douyin_auto_engage')           return { icon: '🎵', label: i18nService.t('rrBadgeDouyinEngage'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'douyin_reply_fans_comment')    return { icon: '💬', label: i18nService.t('rrBadgeDouyinReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', label: i18nService.t('rrBadgeXhsReplyFans'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'xhs_video_download')           return { icon: '⬇️', label: i18nService.t('rrBadgeXhsVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'douyin_video_download')        return { icon: '⬇️', label: i18nService.t('rrBadgeDouyinVideoDownload'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'tiktok_video_download')        return { icon: '⬇️', label: i18nService.t('rrBadgeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', label: i18nService.t('rrBadgeKuaishouEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'kuaishou_video_download')      return { icon: '⬇️', label: i18nService.t('rrBadgeKuaishouVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', label: i18nService.t('rrBadgeKuaishouReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'bilibili_auto_engage')         return { icon: '📺', label: i18nService.t('rrBadgeBilibiliEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (sid === 'bilibili_video_download')      return { icon: '⬇️', label: i18nService.t('rrBadgeBilibiliVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', label: i18nService.t('rrBadgeBilibiliReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'shipinhao_image_text')         return { icon: '📝', label: i18nService.t('rrBadgeShipinhaoImageText'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', label: i18nService.t('rrBadgeShipinhaoReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'toutiao_image_text')           return { icon: '📝', label: i18nService.t('rrBadgeToutiaoImageText'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', label: i18nService.t('rrBadgeToutiaoReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (isXhsLinkMode)             return { icon: '🔗', label: i18nService.t('rrBadgeXhsLinkRewrite'), color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // Platform-guarded fallback so Binance / YouTube / TikTok / Douyin auto_reply
     // don't get mis-labeled as 小红书.
     if (wf === 'auto_reply') {
-      if (sc.platform === 'binance') return { icon: '💬', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-      if ((sc.platform as any) === 'youtube') return { icon: '💬', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-      if ((sc.platform as any) === 'tiktok')  return { icon: '💬', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-      if ((sc.platform as any) === 'douyin')  return { icon: '💬', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-      if ((sc.platform as any) === 'kuaishou') return { icon: '💬', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-      if ((sc.platform as any) === 'bilibili') return { icon: '💬', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-      return { icon: '💬', label: isZh ? '小红书 · 互动涨粉' : 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (sc.platform === 'binance') return { icon: '💬', label: i18nService.t('rrBadgeBinanceEngage'), color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+      if ((sc.platform as any) === 'youtube') return { icon: '💬', label: i18nService.t('rrBadgeYoutubeEngage'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+      if ((sc.platform as any) === 'tiktok')  return { icon: '💬', label: i18nService.t('rrBadgeTiktokEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      if ((sc.platform as any) === 'douyin')  return { icon: '💬', label: i18nService.t('rrBadgeDouyinEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      if ((sc.platform as any) === 'kuaishou') return { icon: '💬', label: i18nService.t('rrBadgeKuaishouEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+      if ((sc.platform as any) === 'bilibili') return { icon: '💬', label: i18nService.t('rrBadgeBilibiliEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      return { icon: '💬', label: i18nService.t('rrBadgeXhsEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
-    if (sc.platform === 'binance') return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-    if (sc.platform === 'x')       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if ((sc.platform as any) === 'youtube') return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-    if ((sc.platform as any) === 'tiktok')  return { icon: '🎵', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if ((sc.platform as any) === 'douyin')  return { icon: '🎵', label: isZh ? '抖音创作' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if ((sc.platform as any) === 'kuaishou') return { icon: '⚡', label: isZh ? '快手任务' : 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if ((sc.platform as any) === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩任务' : 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if ((sc.platform as any) === 'shipinhao') return { icon: '📱', label: isZh ? '视频号任务' : 'WeChat Channels Task', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-    if ((sc.platform as any) === 'toutiao') return { icon: '📰', label: isZh ? '头条号任务' : 'Toutiao Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-    return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+    if (sc.platform === 'binance') return { icon: '🔶', label: i18nService.t('rrBadgeBinanceSquarePost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (sc.platform === 'x')       return { icon: '🐦', label: i18nService.t('rrBadgeXTask'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if ((sc.platform as any) === 'youtube') return { icon: '📺', label: i18nService.t('rrBadgeYoutubeTask'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if ((sc.platform as any) === 'tiktok')  return { icon: '🎵', label: i18nService.t('rrBadgeTiktokTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if ((sc.platform as any) === 'douyin')  return { icon: '🎵', label: i18nService.t('rrBadgeDouyinTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if ((sc.platform as any) === 'kuaishou') return { icon: '⚡', label: i18nService.t('rrBadgeKuaishouTask'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if ((sc.platform as any) === 'bilibili') return { icon: '📺', label: i18nService.t('rrBadgeBilibiliTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if ((sc.platform as any) === 'shipinhao') return { icon: '📱', label: i18nService.t('rrBadgeShipinhaoTask'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+    if ((sc.platform as any) === 'toutiao') return { icon: '📰', label: i18nService.t('rrBadgeToutiaoTask'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    return { icon: '🔥', label: i18nService.t('rrBadgeXhsBatchViral'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 
   const statusPill = (() => {
     switch (rec.status) {
-      case 'done':    return { icon: '✅', label: isZh ? '成功' : 'Success', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-      case 'partial': return { icon: '⚠️', label: isZh ? '部分成功' : 'Partial', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-      case 'error':   return { icon: '❌', label: isZh ? '失败' : 'Failed',  color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-      case 'stopped': return { icon: '⏹️', label: isZh ? '已停止' : 'Stopped', color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
-      case 'running': return { icon: '⏳', label: isZh ? '运行中' : 'Running', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+      case 'done':    return { icon: '✅', label: i18nService.t('rrStatusSuccess'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+      case 'partial': return { icon: '⚠️', label: i18nService.t('rrStatusPartial'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+      case 'error':   return { icon: '❌', label: i18nService.t('rrStatusFailed'),  color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+      case 'stopped': return { icon: '⏹️', label: i18nService.t('rrStatusStopped'), color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
+      case 'running': return { icon: '⏳', label: i18nService.t('rrStatusRunning'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
       default:        return { icon: '❓', label: rec.status, color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
     }
   })();
@@ -256,14 +256,12 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <button type="button" onClick={onBack} className="mb-4 text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white inline-flex items-center gap-1">
-        ← {isZh ? '返回运行记录' : 'Back to history'}
+        ← {i18nService.t('rrBackToHistory')}
       </button>
 
       {/* Read-only banner */}
       <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-2 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
-        🔒 {isZh
-          ? '这是历史运行记录的只读快照。要重新运行 / 编辑 / 删除任务，请去对应的任务详情页。'
-          : 'Read-only snapshot of a historical run. To re-run / edit / delete the task, go to its task detail page.'}
+        🔒 {i18nService.t('rrReadOnlyBanner')}
       </div>
 
       {/* Header badges */}
@@ -283,19 +281,19 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       {/* IDs row — both task id and this record's id, in mono font, so
           users can copy/paste them to disambiguate runs in support chat. */}
       <div className="flex items-center gap-3 mb-3 text-[11px] text-gray-500 dark:text-gray-500 font-mono">
-        <span>{isZh ? '任务id:' : 'task:'} #{rec.task_id.slice(0, 8)}</span>
+        <span>{i18nService.t('rrTaskIdLabel')} #{rec.task_id.slice(0, 8)}</span>
         <span>·</span>
-        <span>{isZh ? '记录id:' : 'record:'} #{shortId(rec.id)}</span>
+        <span>{i18nService.t('rrRecordIdLabel')} #{shortId(rec.id)}</span>
       </div>
 
       {/* Stats — 5 columns on wide screens to accommodate the cost card.
           耗时 → 运行成本 → 日志条目 order per user spec: 运行成本 sits
           immediately after 耗时 as a first-class stat. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-        <Stat label={isZh ? '开始' : 'Started'} value={fullTime(rec.started_at, isZh)} />
-        <Stat label={isZh ? '结束' : 'Finished'} value={rec.finished_at ? fullTime(rec.finished_at, isZh) : (isZh ? '运行中' : 'Running')} />
+        <Stat label={i18nService.t('rrStatStarted')} value={fullTime(rec.started_at, isZh)} />
+        <Stat label={i18nService.t('rrStatFinished')} value={rec.finished_at ? fullTime(rec.finished_at, isZh) : i18nService.t('rrStatusRunning')} />
         <Stat
-          label={isZh ? '耗时' : 'Duration'}
+          label={i18nService.t('rrStatDuration')}
           value={rec.finished_at ? formatDuration(rec.finished_at - rec.started_at, isZh) : '-'}
         />
         {/* 本次完成 — per-action breakdown for this specific run. Mirrors
@@ -306,8 +304,8 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
           const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
           const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
           const labels = isZh
-            ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
-            : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
+            ? { like: i18nService.t('rrActLike'), follow: i18nService.t('rrActFollow'), comment: i18nService.t('rrActComment'), reply: i18nService.t('rrActReply'), subscribe: i18nService.t('rrActSubscribe'), post: i18nService.t('rrActPost'), download: i18nService.t('rrActDownload') }
+            : { like: i18nService.t('rrActLike'), follow: i18nService.t('rrActFollow'), comment: i18nService.t('rrActComment'), reply: i18nService.t('rrActReply'), subscribe: i18nService.t('rrActSubscribe'), post: i18nService.t('rrActPost'), download: i18nService.t('rrActDownload') };
           let display: React.ReactNode = '-';
           if (ac && Object.keys(ac).length > 0) {
             // 'note'(回复粉丝场景的文章进度内部计数)只在「本次运行进度」实时卡里展示;
@@ -335,7 +333,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
               );
             }
           }
-          return <Stat label={isZh ? '本次完成' : 'Actions'} value={display} />;
+          return <Stat label={i18nService.t('rrStatActions')} value={display} />;
         })()}
         {/* v2.4.37: 运行成本 卡 — always visible. 0-token runs just show
             "💎 0 / ≈ $0.0000" (user preference: prefer literal 0 over
@@ -345,12 +343,12 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
           const cost = Number((rec.result as any)?.cost_usd) || 0;
           return (
             <Stat
-              label={isZh ? '运行成本' : 'AI cost'}
+              label={i18nService.t('rrStatAiCost')}
               value={<span>💎 {compactNum(tokens)}<br/><span className="text-[11px]">{HIDE_WEB3 ? `≈ ￥${cnyFromUsd(cost)}` : `≈ $${cost.toFixed(4)}`}</span></span>}
             />
           );
         })()}
-        <Stat label={isZh ? '日志条目' : 'Log entries'} value={rec.step_logs.length} />
+        <Stat label={i18nService.t('rrStatLogEntries')} value={rec.step_logs.length} />
       </div>
 
       {/* Result + output dir */}
@@ -360,38 +358,38 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
               消息都进 error 字段挂红"错误:"前缀,跟 status='done' 自相矛盾。 */}
           {(rec as any).summary && rec.status !== 'error' && (
             <div className="text-green-500">
-              <strong>{isZh ? '摘要: ' : 'Summary: '}</strong>{(rec as any).summary}
+              <strong>{i18nService.t('rrLabelSummary')}</strong>{(rec as any).summary}
             </div>
           )}
           {rec.error && rec.status === 'error' && (
             <div className="text-red-500">
-              <strong>{isZh ? '错误: ' : 'Error: '}</strong>{rec.error}
+              <strong>{i18nService.t('rrLabelError')}</strong>{rec.error}
             </div>
           )}
           {rec.error && rec.status === 'stopped' && (
             <div className="text-amber-500">
-              <strong>{isZh ? '已停止: ' : 'Stopped: '}</strong>{rec.error}
+              <strong>{i18nService.t('rrLabelStopped')}</strong>{rec.error}
             </div>
           )}
           {rec.result && (
             <div className="flex flex-wrap gap-3 text-xs">
               {typeof rec.result.collected_count === 'number' && (
                 <span className="text-gray-600 dark:text-gray-300">
-                  {isZh ? '采集' : 'Collected'}: <strong>{rec.result.collected_count}</strong>
+                  {i18nService.t('rrResultCollected')}: <strong>{rec.result.collected_count}</strong>
                 </span>
               )}
               {typeof rec.result.draft_count === 'number' && (
                 <span className="text-gray-600 dark:text-gray-300">
-                  {isZh ? '产出草稿' : 'Drafts'}: <strong>{rec.result.draft_count}</strong>
+                  {i18nService.t('rrResultDrafts')}: <strong>{rec.result.draft_count}</strong>
                 </span>
               )}
               {typeof rec.result.posted === 'number' && (
                 <span className="text-gray-600 dark:text-gray-300">
-                  {isZh ? '已发布' : 'Posted'}: <strong>{rec.result.posted}</strong>
+                  {i18nService.t('rrResultPosted')}: <strong>{rec.result.posted}</strong>
                 </span>
               )}
               {typeof (rec.result as any).tokens_used === 'number' && (rec.result as any).tokens_used > 0 && (
-                <span className="text-gray-600 dark:text-gray-300" title={isZh ? 'tokens × $/M ≈ USD' : ''}>
+                <span className="text-gray-600 dark:text-gray-300" title={i18nService.t('rrTokensTooltip')}>
                   💎 Tokens: <strong>{compactNum((rec.result as any).tokens_used)}</strong>
                   {' '}· <strong>{HIDE_WEB3 ? `≈ ￥${cnyFromUsd((rec.result as any).cost_usd || 0)}` : `≈ $${((rec.result as any).cost_usd || 0).toFixed(4)}`}</strong></span>
               )}
@@ -399,7 +397,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
           )}
           {rec.output_dir && (
             <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 pt-1 flex-wrap">
-              <span>{isZh ? '输出目录:' : 'Output:'}</span>
+              <span>{i18nService.t('rrOutputLabel')}</span>
               {/* 点路径文字也能打开(保留旧交互) */}
               <button
                 type="button"
@@ -415,7 +413,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
                 onClick={openOutputDir}
                 className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
               >
-                📂 {isZh ? '打开' : 'Open'}
+                📂 {i18nService.t('rrOpen')}
               </button>
             </div>
           )}
@@ -426,7 +424,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
                 onClick={() => onOpenTask(rec.task_id)}
                 className="text-xs text-blue-500 hover:underline"
               >
-                → {isZh ? '查看任务详情（编辑 / 重新运行）' : 'Open task detail (edit / re-run)'}
+                → {i18nService.t('rrOpenTaskDetail')}
               </button>
             </div>
           )}
@@ -436,11 +434,11 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       {/* Step-by-step log timeline */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
         <h3 className="text-sm font-bold dark:text-white mb-3">
-          {isZh ? '完整运行明细' : 'Full Run Log'}
+          {i18nService.t('rrFullRunLog')}
         </h3>
         {stepNumbers.length === 0 ? (
           <div className="text-xs text-gray-400 py-4 text-center">
-            {isZh ? '暂无日志' : 'No logs yet'}
+            {i18nService.t('rrNoLogs')}
           </div>
         ) : (
           <div className="space-y-4">
@@ -451,7 +449,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
               return (
                 <div key={stepNum}>
                   <div className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
-                    {stepIcon} {isZh ? '步骤' : 'Step'} {stepNum}
+                    {stepIcon} {i18nService.t('rrStep')} {stepNum}
                   </div>
                   <div className="space-y-1 pl-4 border-l-2 border-gray-200 dark:border-gray-700">
                     {logs.map((log, i) => (

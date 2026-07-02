@@ -163,13 +163,9 @@ export const NotificationCenter: React.FC = () => {
           <div className="relative w-[480px] max-w-[90vw] rounded-2xl bg-gradient-to-b dark:from-claude-darkSurface dark:to-claude-darkBg from-white to-claude-bg border-2 border-primary shadow-2xl p-8 text-center">
             <div className="text-6xl mb-3">🎉</div>
             <h2 className="text-xl font-bold dark:text-claude-darkText text-claude-text mb-4">
-              {isZh
-                ? criticalUnread.length === 1
-                  ? '恭喜！你的 USDT 返佣到账了'
-                  : `恭喜！你有 ${criticalUnread.length} 笔 USDT 返佣到账`
-                : criticalUnread.length === 1
-                ? 'Congrats! Your USDT rebate has arrived'
-                : `Congrats! You have ${criticalUnread.length} USDT rebates arrived`}
+              {criticalUnread.length === 1
+                ? i18nService.t('nc_congrats_single')
+                : i18nService.t('nc_congrats_multi').replace('{n}', String(criticalUnread.length))}
             </h2>
             <div className="my-6 p-6 rounded-xl bg-primary/10 border-2 border-primary/30">
               <div className="text-4xl font-bold text-primary tabular-nums">
@@ -177,16 +173,12 @@ export const NotificationCenter: React.FC = () => {
               </div>
               {criticalUnread.length > 1 && (
                 <div className="text-xs mt-2 dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                  {isZh
-                    ? `(合并 ${criticalUnread.length} 笔到账)`
-                    : `(merged from ${criticalUnread.length} payouts)`}
+                  {i18nService.t('nc_merged_count').replace('{n}', String(criticalUnread.length))}
                 </div>
               )}
             </div>
             <p className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary mb-6">
-              {isZh
-                ? '已链上确认，钱已转到你绑定的 BSC 钱包'
-                : 'Confirmed on-chain. Funds sent to your bound BSC wallet.'}
+              {i18nService.t('nc_confirmed_onchain')}
             </p>
             {/* CTA: open the most recent tx in bscscan */}
             {criticalUnread[0]?.metadata?.bscscan_url && (
@@ -199,14 +191,14 @@ export const NotificationCenter: React.FC = () => {
                 }}
                 className="text-xs text-primary hover:underline mb-4 block w-full"
               >
-                {isZh ? '查看链上交易 ↗' : 'View on BscScan ↗'}
+                {i18nService.t('nc_view_bscscan')}
               </button>
             )}
             <button
               onClick={dismissCriticalModal}
               className="w-full py-3 px-6 bg-primary hover:bg-primary-hover text-black rounded-lg font-medium transition-all"
             >
-              {isZh ? '我知道了' : "I know"}
+              {i18nService.t('nc_i_know')}
             </button>
           </div>
         </div>
@@ -226,24 +218,24 @@ export const NotificationCenter: React.FC = () => {
                   <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">
                     + ${parseFloat(n.metadata?.amount_usdt || '0').toFixed(2)} USDT{' '}
                     <span className="text-xs font-normal dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                      {isZh ? '到账' : 'arrived'}
+                      {i18nService.t('nc_arrived')}
                     </span>
                   </div>
                   <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5 truncate">
-                    {isZh ? '已转到你绑定的 BSC 钱包' : 'Sent to your BSC wallet'}
+                    {i18nService.t('nc_sent_wallet')}
                   </div>
                   <div className="flex items-center gap-3 mt-2">
                     <button
                       onClick={() => handleBannerCta(n)}
                       className="text-xs text-primary hover:underline font-medium"
                     >
-                      {isZh ? '查看交易 →' : 'View tx →'}
+                      {i18nService.t('nc_view_tx')}
                     </button>
                     <button
                       onClick={() => handleBannerClose(n.id)}
                       className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text"
                     >
-                      {isZh ? '关闭' : 'Close'}
+                      {i18nService.t('nc_close')}
                     </button>
                   </div>
                 </div>

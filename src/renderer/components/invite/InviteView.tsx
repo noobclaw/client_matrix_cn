@@ -655,10 +655,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               </div>
               {/* 卡框内右侧:收到返佣(CNY)+ 提现(用户要求放在钱包框的右边) */}
               <div className="shrink-0 self-stretch flex flex-col justify-center text-right border-l dark:border-claude-darkBorder border-claude-border pl-3">
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.currentLanguage === 'zh' ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</div>
+                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.t('ivRebateCnyLabel')}</div>
                 <div className="text-lg font-bold text-primary tabular-nums leading-tight">¥{animCny.toFixed(2)}</div>
                 <button type="button" onClick={() => setShowCnyWithdraw(true)} className="text-xs text-primary hover:underline flex items-center gap-0.5 justify-end mt-0.5">
-                  {i18nService.currentLanguage === 'zh' ? '提现' : 'Withdraw'}
+                  {i18nService.t('ivWithdraw')}
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
               </div>
@@ -785,34 +785,30 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
                   <div className="flex-1">
                     <div className="text-sm dark:text-claude-darkText text-claude-text">
-                      {i18nService.currentLanguage === 'zh' ? '好友每次充值，触发双重奖励：' : 'Each friend top-up triggers dual rewards:'}
+                      {i18nService.t('ivDualRewardsTitle')}
                     </div>
                     {/* v1.x: USDT 真金返佣放上面 — 现金返佣比代币空投更直接,作为主
                         奖励先展示;website uc/ir 卡片同序。 */}
                     <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
                       <div className="text-xs font-medium text-primary mb-1">
-                        💰 USDT {i18nService.currentLanguage === 'zh' ? '真金返佣' : 'real-cash rebate'}
+                        💰 USDT {i18nService.t('ivUsdtRealCash')}
                       </div>
                       <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
                         {/* Partner-aware rate: if the logged-in wallet is a partner,
                             substitute their personal rate_pct for the default 10%. */}
                         {(() => {
                           const rate = profile?.partner?.is_partner ? profile.partner.rate_pct : 10;
-                          return i18nService.currentLanguage === 'zh'
-                            ? `好友每充值 $1，充值金额的 ${rate}% 作为返佣奖励，按 6 层邀请链路进行返佣。佣金 5 分钟内以 BNB Chain 上的 USDT 形式实时自动发放到您钱包。`
-                            : `For every $1 your friend tops up, ${rate}% becomes rebate reward, distributed across your 6-level invite chain. Auto-paid in real-time (within 5 min) as USDT on BNB Chain, straight to your wallet.`;
+                          return i18nService.t('ivUsdtRebateDesc').replace('{rate}', String(rate));
                         })()}
                       </div>
                     </div>
                     {/* NoobCoin airdrop */}
                     <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
                       <div className="text-xs font-medium text-primary mb-1">
-                        🪂 $NoobCoin {i18nService.currentLanguage === 'zh' ? '空投' : 'airdrop'}
+                        🪂 $NoobCoin {i18nService.t('ivNoobAirdropLabel')}
                       </div>
                       <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
-                        {i18nService.currentLanguage === 'zh'
-                          ? `好友每充值 $1，获得 ${purchaseMin}~${purchaseMax} 随机数量的 $NoobCoin。按 6 层邀请链路进行空投，您额外获得 50%+ 同等数量代币。`
-                          : `Friend gets ${purchaseMin}-${purchaseMax} random $NoobCoin per $1 topped up. Airdropped across your 6-level invite chain — you earn 50%+ of the same amount.`}
+                        {i18nService.t('ivNoobAirdropDesc').replace('{min}', String(purchaseMin)).replace('{max}', String(purchaseMax))}
                       </div>
                     </div>
                   </div>
@@ -928,7 +924,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
                 }`}
               >
-                {i18nService.currentLanguage === 'zh' ? 'CNY 返佣' : 'CNY Rebate'}
+                {i18nService.t('ivCnyRebateSub')}
               </button>
               {/* NoobCoin(链上代币奖励)子 tab — 国内版隐藏(HIDE_WEB3) */}
               {!HIDE_WEB3 && (
@@ -965,7 +961,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 </div>
               ) : usdtEarnings.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                  <p className="text-xs">{i18nService.currentLanguage === 'zh' ? '还没有返佣记录' : 'No rebate records yet'}</p>
+                  <p className="text-xs">{i18nService.t('ivNoRebateRecords')}</p>
                 </div>
               ) : (
                 <div>
@@ -1000,7 +996,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                           title={row.tx_hash}
                         >
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500 hover:underline">
-                            ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'} ↗
+                            ✓ {i18nService.t('ivStatusSent')} ↗
                           </span>
                           <span className="font-mono text-[9px] dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors">
                             {maskTxHash(row.tx_hash)}
@@ -1008,11 +1004,11 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                         </button>
                       ) : sent ? (
                         <span className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500">
-                          ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'}
+                          ✓ {i18nService.t('ivStatusSent')}
                         </span>
                       ) : (
                         <span className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-yellow-500/10 text-yellow-500">
-                          ⏳ {i18nService.currentLanguage === 'zh' ? '待发' : 'Pending'}
+                          ⏳ {i18nService.t('ivStatusPending')}
                         </span>
                       );
                       return (
@@ -1055,21 +1051,21 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   onClick={() => setShowCnyWithdraw(true)}
                   className="w-full mb-2 py-1.5 rounded-lg text-xs font-semibold bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20 transition-colors"
                 >
-                  💴 {i18nService.currentLanguage === 'zh' ? '去提现 CNY →' : 'Withdraw CNY →'}
+                  💴 {i18nService.t('ivWithdrawCny')}
                 </button>
                 {cnyLoading ? (
                   <div className="flex items-center justify-center py-12 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">Loading...</div>
                 ) : cnyEarnings.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    <p className="text-xs">{i18nService.currentLanguage === 'zh' ? '还没有 CNY 返佣记录' : 'No CNY rebate records yet'}</p>
+                    <p className="text-xs">{i18nService.t('ivNoCnyRebateRecords')}</p>
                   </div>
                 ) : (
                   <div>
                     <div className="grid grid-cols-4 gap-1 px-2 py-1.5 text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary border-b dark:border-claude-darkBorder border-claude-border mb-1">
-                      <span>{i18nService.currentLanguage === 'zh' ? '金额' : 'Amount'}</span>
-                      <span>{i18nService.currentLanguage === 'zh' ? '来源' : 'From'}</span>
-                      <span>{i18nService.currentLanguage === 'zh' ? '状态' : 'Status'}</span>
-                      <span>{i18nService.currentLanguage === 'zh' ? '时间' : 'Time'}</span>
+                      <span>{i18nService.t('ivColAmount')}</span>
+                      <span>{i18nService.t('ivColFrom')}</span>
+                      <span>{i18nService.t('ivColStatus')}</span>
+                      <span>{i18nService.t('ivColTime')}</span>
                     </div>
                     <div className="space-y-1">
                       {cnyEarnings.map((row) => {
@@ -1090,7 +1086,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                               )}
                             </span>
                             <span className={`inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium ${sent ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
-                              {sent ? (i18nService.currentLanguage === 'zh' ? '✓ 已入账' : '✓ Credited') : (i18nService.currentLanguage === 'zh' ? '⏳ 待提现' : '⏳ Pending')}
+                              {sent ? i18nService.t('ivCnyCredited') : i18nService.t('ivCnyPending')}
                             </span>
                             <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary truncate text-[10px]">
                               {formatDate(row.earned_at)}
@@ -1151,7 +1147,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                         鼠标悬停看具体钱包。 */}
                     <div className="grid grid-cols-4 gap-1 px-2 py-1.5 text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary border-b dark:border-claude-darkBorder border-claude-border mb-1">
                       <span>{i18nService.t('inviteRewardColAmount')}</span>
-                      <span>{i18nService.currentLanguage === 'zh' ? '来源' : 'Source'}</span>
+                      <span>{i18nService.t('ivColSource')}</span>
                       <span>{i18nService.t('inviteRewardColContributor')}</span>
                       <span>{i18nService.t('inviteRewardColTime')}</span>
                     </div>
@@ -1161,19 +1157,18 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                         //   referral_bonus  → 🔗 邀请奖励 L{level}(下级贡献的)
                         //   purchase_bonus  → 💵 充值奖励 (自己充值触发的)
                         //   lucky_bag       → 🎁 福袋 (聊天随机)
-                        const isZh = i18nService.currentLanguage === 'zh';
-                        let badgeIcon = '🪂', badgeText = isZh ? '空投' : 'Airdrop', badgeColor = 'bg-gray-500/10 text-gray-400';
+                        let badgeIcon = '🪂', badgeText = i18nService.t('ivBadgeAirdrop'), badgeColor = 'bg-gray-500/10 text-gray-400';
                         if (item.reason === 'referral_bonus') {
                           badgeIcon = '🔗';
-                          badgeText = isZh ? `邀请奖励${item.level ? ' L'+item.level : ''}` : `Invite${item.level ? ' L'+item.level : ''}`;
+                          badgeText = i18nService.t('ivBadgeInvite').replace('{level}', item.level ? ' L'+item.level : '');
                           badgeColor = item.level === 1 ? 'bg-primary/10 text-primary' : 'bg-blue-500/10 text-blue-400';
                         } else if (item.reason === 'purchase_bonus') {
                           badgeIcon = '💵';
-                          badgeText = isZh ? '充值奖励' : 'Top-up';
+                          badgeText = i18nService.t('ivBadgeTopup');
                           badgeColor = 'bg-green-500/10 text-green-400';
                         } else if (item.reason === 'lucky_bag') {
                           badgeIcon = '🎁';
-                          badgeText = isZh ? '福袋' : 'Lucky Bag';
+                          badgeText = i18nService.t('ivBadgeLuckyBag');
                           badgeColor = 'bg-yellow-500/10 text-yellow-400';
                         }
                         return (

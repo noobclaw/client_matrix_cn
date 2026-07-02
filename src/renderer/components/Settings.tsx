@@ -1589,7 +1589,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
     // useNoobClawServer 默认 true,渲染分支与 LoginWall/Cowork 的旧入口保留但侧栏不再可达。
     { key: 'email',          label: i18nService.t('emailTab'),       icon: <span className="text-base">&#x1F4E7;</span> },
     { key: 'coworkMemory',   label: i18nService.t('coworkMemoryTitle'), icon: <span className="text-base">&#x1F9E0;</span> },
-    { key: 'advanced',       label: language === 'zh' ? '高级' : 'Advanced', icon: <span className="text-base">&#x1F527;</span> },
+    { key: 'advanced',       label: i18nService.t('stAdvancedTab'), icon: <span className="text-base">&#x1F527;</span> },
     { key: 'about',          label: i18nService.t('about'),          icon: <span className="text-base">&#x2139;&#xFE0F;</span> },
   ], [language]);
 
@@ -2065,9 +2065,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
             {/* NoobClawAI service toggle */}
             <div className="flex items-center justify-between mb-4 pb-4 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
               <h4 className="text-sm font-medium dark:text-claude-darkText text-claude-text">
-                {language === 'zh'
-                  ? (useNoobClawServer ? '使用NoobClawAI服务（无需配置API Key）' : '使用各API提供商自定义 API Key（需您手动配置）')
-                  : (useNoobClawServer ? 'Use NoobClawAI Service (no API Key needed)' : 'Use Custom API Keys (manual configuration required)')}
+                {useNoobClawServer ? i18nService.t('stUseNoobClawServer') : i18nService.t('stUseCustomApiKey')}
               </h4>
               <button
                 type="button"
@@ -2204,7 +2202,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
                       onClick={(e) => { e.preventDefault(); window.electron.shell.openExternal(providerApiPlatformUrls[activeProvider]); }}
                       className="text-xs font-medium text-claude-accent hover:underline cursor-pointer"
                     >
-                      {language === 'zh' ? '没有？点击获得' : "Don't have one? Get it"}
+                      {i18nService.t('stGetApiKeyLink')}
                     </a>
                   </div>
                   <div className="relative">
@@ -2491,7 +2489,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
                   <button type="button" onClick={(e) => { e.stopPropagation(); void handleCopyContactEmail(); }} className="dark:text-claude-darkTextSecondary text-claude-textSecondary bg-transparent border-none p-0 cursor-pointer hover:text-claude-accent transition-colors">
                     {ABOUT_CONTACT_EMAIL}
                   </button>
-                  {emailCopied && <span className="text-[10px] text-emerald-500">{language === 'zh' ? '已复制' : 'Copied'}</span>}
+                  {emailCopied && <span className="text-[10px] text-emerald-500">{i18nService.t('stCopied')}</span>}
                 </div>
               </div>
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-claude-border dark:border-claude-darkBorder">

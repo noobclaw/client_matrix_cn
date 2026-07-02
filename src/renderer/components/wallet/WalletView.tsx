@@ -318,9 +318,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       const credits = preview.credits ?? 0;
       // 订阅码:确认弹窗显示「开通 进阶版·年付」而非积分数。其它(充值码)走原文案。
       const isSubCode = preview.product_type === 'subscription';
-      const periodLabel: Record<string, string> = { month: '月付', quarter: '季付', half: '半年', year: '年付' };
+      const periodLabel: Record<string, string> = { month: i18nService.t('wvPeriodMonth'), quarter: i18nService.t('wvPeriodQuarter'), half: i18nService.t('wvPeriodHalf'), year: i18nService.t('wvPeriodYear') };
       const confirmMessage = isSubCode
-        ? `确认开通会员【${preview.plan_name || '会员'} · ${periodLabel[preview.plan_period || ''] || ''}】?(卡面价值 ¥${faceValue})`
+        ? i18nService.t('wvSubConfirmMsg', { plan: preview.plan_name || i18nService.t('wvMembership'), period: periodLabel[preview.plan_period || ''] || '', rmb: String(faceValue) })
         : i18nService.t('walletRedeemConfirmMsg', {
             rmb: String(faceValue),
             credits: Number(credits).toLocaleString(),
@@ -342,7 +342,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             setRedeemCodeInput('');
             setRedeemMsg({
               text: d.product_type === 'subscription'
-                ? `✅ 会员已开通（${periodLabel[d.plan_period || ''] || ''}），本月算力已发放`
+                ? i18nService.t('wvSubActivated', { period: periodLabel[d.plan_period || ''] || '' })
                 : i18nService.t('walletRedeemSuccess', {
                     credits: Number(d.credits ?? 0).toLocaleString(),
                     rmb: String(d.face_value_rmb ?? 0),
@@ -460,7 +460,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     } else if (result?.code === 'PENDING_LIMIT') {
       setError(i18nService.t('walletPendingLimitError'));
     } else if (result?.code === 'TRON_DISABLED') {
-      setError('TRON deposit channel is not configured');
+      setError(i18nService.t('wvTronDisabled'));
     } else {
       setError(result?.error || i18nService.t('walletCreateOrderFailed'));
     }
@@ -487,7 +487,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       return null;
     }
     if (result?.code === 'PENDING_LIMIT') return i18nService.t('walletPendingLimitError');
-    if (result?.code === 'TRON_DISABLED') return 'USDT(TRON)通道未配置，请改用 BNB 或 CNY 兑换码';
+    if (result?.code === 'TRON_DISABLED') return i18nService.t('wvTronDisabledSub');
     return result?.error || i18nService.t('walletCreateOrderFailed');
   };
 
@@ -779,7 +779,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 // 订阅订单:展示「档位 · 时长」(plan_name 后端 join 下发、plan_period 本地映射标签),
                 // 并隐藏无意义的积分数(订阅订单 tokens_purchased 恒为 0)。总价仍走上面的金额显示(BNB/USDT/¥)。
                 const isSub = order.product_type === 'subscription';
-                const subPeriodLabel: Record<string, string> = { month: '月付', quarter: '季付', half: '半年', year: '年付' };
+                const subPeriodLabel: Record<string, string> = { month: i18nService.t('wvPeriodMonth'), quarter: i18nService.t('wvPeriodQuarter'), half: i18nService.t('wvPeriodHalf'), year: i18nService.t('wvPeriodYear') };
                 const subLabel = isSub
                   ? `${order.plan_name || order.plan_code || '会员'}${order.plan_period ? ' · ' + (subPeriodLabel[order.plan_period] || order.plan_period) : ''}`
                   : '';
@@ -904,21 +904,21 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           <div className="rounded-2xl p-4 dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
             <div className="flex items-center flex-wrap gap-x-3 gap-y-2">
               <div>
-                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">剩余积分</p>
+                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.t('wvCreditsRemaining')}</p>
                 <p className="text-2xl font-extrabold text-primary leading-none">{formatTokens(authState.tokenBalance)}</p>
               </div>
               <span className="text-lg dark:text-claude-darkTextSecondary text-claude-textSecondary">=</span>
               <div>
-                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">订阅积分</p>
+                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.t('wvCreditsSub')}</p>
                 <p className="text-lg font-bold dark:text-claude-darkText text-claude-text leading-none">{formatTokens(authState.subCredits)}</p>
               </div>
               <span className="text-lg dark:text-claude-darkTextSecondary text-claude-textSecondary">+</span>
               <div>
-                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">充值积分</p>
+                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.t('wvCreditsPaid')}</p>
                 <p className="text-lg font-bold dark:text-claude-darkText text-claude-text leading-none">{formatTokens(authState.paidBalance)}</p>
               </div>
             </div>
-            <p className="mt-2 text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary">订阅积分按月发放、到期清零;充值积分永久有效。</p>
+            <p className="mt-2 text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('wvCreditsBucketNote')}</p>
           </div>
 
           {/* Stats Grid */}
@@ -951,7 +951,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
           {/* Tabs:全部 / 消耗 / 获得 */}
           <div className="flex gap-1 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-            {([['all', '全部'], ['spend', '消耗'], ['earn', '获得']] as Array<['all' | 'spend' | 'earn', string]>).map(([k, label]) => (
+            {([['all', i18nService.t('wvKindAll')], ['spend', i18nService.t('wvKindSpend')], ['earn', i18nService.t('wvKindEarn')]] as Array<['all' | 'spend' | 'earn', string]>).map(([k, label]) => (
               <button key={k} onClick={() => switchKind(k)}
                 className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${creditKind === k ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
                 {label}
@@ -973,7 +973,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 <div key={idx} className="flex items-center justify-between p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-xs font-medium dark:text-claude-darkText text-claude-text truncate">{r.model || '积分变动'}</p>
+                      <p className="text-xs font-medium dark:text-claude-darkText text-claude-text truncate">{r.model || i18nService.t('wvCreditChange')}</p>
                       {r.bucketLabel && <span className="px-1 py-0.5 rounded text-[9px] font-semibold shrink-0" style={{ background: '#a78bfa22', color: '#a78bfa' }}>{r.bucketLabel}</span>}
                     </div>
                     {/* 消耗行才显示输入/输出 breakdown;获得/清零行无 token 拆分 */}
@@ -1477,7 +1477,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     const pe = authState.subPeriodEnd ? new Date(authState.subPeriodEnd).getTime() : 0;
                     const active = pe > Date.now();
                     const exp = !!authState.subStatus && !active;
-                    const nm = authState.subPlanName || authState.planName || '免费版';
+                    const nm = authState.subPlanName || authState.planName || i18nService.t('wvFreePlan');
                     const d = pe ? new Date(pe) : null;
                     const lbl = d ? `${d.getMonth() + 1}/${d.getDate()}` : '';
                     const days = active ? Math.ceil((pe - Date.now()) / 86_400_000) : 0;
@@ -1490,10 +1490,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                         style={active
                           ? { background: 'linear-gradient(135deg,#fde68a,#f59e0b)', color: '#3a2400', boxShadow: '0 0 8px rgba(245,158,11,0.4)' }
                           : { background: 'rgba(255,255,255,0.06)', color: '#9aa0aa', border: '1px solid rgba(255,255,255,0.14)' }}
-                        title={exp ? '会员已过期,点此续费' : active ? `会员有效至 ${lbl}` : '我的会员'}
+                        title={exp ? i18nService.t('wvMemberExpiredRenew') : active ? i18nService.t('wvMemberValidUntil', { date: lbl }) : i18nService.t('wvMyMembership')}
                       >
                         {(active || exp) ? '👑 ' : ''}{nm}
-                        {active ? <span className={soon ? 'text-red-600' : ''}>· {soon ? `${days}天后到期` : `${lbl}到期`}</span> : exp ? <span className="text-red-600">· 已过期</span> : null}
+                        {active ? <span className={soon ? 'text-red-600' : ''}>· {soon ? i18nService.t('wvExpiresInDays', { days: String(days) }) : i18nService.t('wvExpiresOn', { date: lbl })}</span> : exp ? <span className="text-red-600">· {i18nService.t('wvExpired')}</span> : null}
                       </button>
                     );
                   })()}
@@ -1601,7 +1601,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             )}
             {/* CNY Rebate - 收到返佣(¥),带提现入口(v6.x CNY 返佣) */}
             <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
-              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{isZh ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</p>
+              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('wvRebateCny')}</p>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-bold text-primary">
                   ¥{parseFloat(usdtRebateSummary?.cny_total_earned || '0').toFixed(2)}
@@ -1611,7 +1611,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   onClick={() => setShowCnyWithdraw(true)}
                   className="text-xs text-primary hover:underline flex items-center gap-0.5"
                 >
-                  {isZh ? '提现' : 'Withdraw'}
+                  {i18nService.t('wvWithdraw')}
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
               </div>
@@ -1635,8 +1635,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         {/* 顶部 tab:会员订阅 / 购买积分。仅 select 步骤显示;支付/成功时隐藏让支付屏干净。 */}
         {step === 'select' && (
         <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          <button onClick={() => setTopTab('subscription')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'subscription' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>👑 会员订阅</button>
-          <button onClick={() => setTopTab('topup')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'topup' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>💎 购买积分</button>
+          <button onClick={() => setTopTab('subscription')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'subscription' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabSubscription')}</button>
+          <button onClick={() => setTopTab('topup')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'topup' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabTopup')}</button>
         </div>
         )}
 
@@ -1645,7 +1645,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         <div>
           {/* 标题行:对齐「购买积分」那行(左标题 + 右「购买记录」入口,走同一套订单历史子页) */}
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">订阅会员</h3>
+            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('wvSubscribeMembership')}</h3>
             <button
               onClick={() => { setSubPage('orderHistory'); setStatusFilter(''); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(''); }}
               className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors flex items-center gap-1"
@@ -1661,7 +1661,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         {step === 'select' && topTab === 'topup' && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">购买积分</h3>
+            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('wvBuyCredits')}</h3>
             <button
               onClick={() => { setSubPage('orderHistory'); setStatusFilter(''); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(''); }}
               className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors flex items-center gap-1"
@@ -1805,7 +1805,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               )}
             </>
           )}
-          <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">单独购买的积分永久有效、不受影响。</p>
+          <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('wvPaidCreditsNote')}</p>
         </div>
         )}
 

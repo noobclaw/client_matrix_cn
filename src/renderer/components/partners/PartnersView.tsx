@@ -43,10 +43,10 @@ const PartnersView: React.FC<PartnersViewProps> = ({
       {/* Tab bar */}
       <div className="flex items-center gap-1 px-6 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border">
         <TabButton active={tab === 'activities'} onClick={() => setTab('activities')}>
-          🎉 {isZh ? '活动' : 'Activities'}
+          🎉 {i18nService.t('pvTabActivities')}
         </TabButton>
         <TabButton active={tab === 'partners'} onClick={() => setTab('partners')}>
-          🤝 {isZh ? '合作' : 'Partners'}
+          🤝 {i18nService.t('pvTabPartners')}
         </TabButton>
       </div>
       {/* Tab content */}
@@ -141,12 +141,12 @@ const ActivitiesTab: React.FC<{
       <ActivityCard
         isZh={isZh}
         icon="📅"
-        titleZh="每日签到"
-        titleEn="Daily Check-in"
-        descZh="每天来点一下，立即领取随机奖励"
-        descEn="Check in daily for a random reward"
-        ctaZh="🎁 立即签到"
-        ctaEn="🎁 Check in"
+        titleZh={i18nService.t('pvCheckinTitle')}
+        titleEn={i18nService.t('pvCheckinTitle')}
+        descZh={i18nService.t('pvCheckinDesc')}
+        descEn={i18nService.t('pvCheckinDesc')}
+        ctaZh={i18nService.t('pvCheckinCta')}
+        ctaEn={i18nService.t('pvCheckinCta')}
         claimed={isClaimed('checkin')}
         enabled={isEnabled('checkin')}
         exhausted={exhausted}
@@ -162,12 +162,12 @@ const ActivitiesTab: React.FC<{
       <ActivityCard
         isZh={isZh}
         icon="✨"
-        titleZh="使用一次涨粉任务"
-        titleEn="Run a follower-growth task once"
-        descZh="点击进入涨粉任意创建一个任务并跑一次，领取奖励"
-        descEn="Open Follower Growth, create any task and run it once to earn your reward"
-        ctaZh="✨ 去创建任务"
-        ctaEn="✨ Create a task"
+        titleZh={i18nService.t('pvXhsTitle')}
+        titleEn={i18nService.t('pvXhsTitle')}
+        descZh={i18nService.t('pvXhsDesc')}
+        descEn={i18nService.t('pvXhsDesc')}
+        ctaZh={i18nService.t('pvXhsCta')}
+        ctaEn={i18nService.t('pvXhsCta')}
         claimed={isClaimed('xhs_rewrite')}
         enabled={isEnabled('xhs_rewrite')}
         exhausted={exhausted}
@@ -180,12 +180,12 @@ const ActivitiesTab: React.FC<{
       <ActivityCard
         isZh={isZh}
         icon="⚔️"
-        titleZh="玩一次 OG 对战"
-        titleEn="Play OG Brawl Once"
-        descZh="点击玩一局 OG 对战，领取奖励"
-        descEn="Play a round of OG Brawl to earn your reward"
-        ctaZh="⚔️ 去开战"
-        ctaEn="⚔️ Play now"
+        titleZh={i18nService.t('pvBrawlTitle')}
+        titleEn={i18nService.t('pvBrawlTitle')}
+        descZh={i18nService.t('pvBrawlDesc')}
+        descEn={i18nService.t('pvBrawlDesc')}
+        ctaZh={i18nService.t('pvBrawlCta')}
+        ctaEn={i18nService.t('pvBrawlCta')}
         claimed={isClaimed('og_brawl')}
         enabled={isEnabled('og_brawl')}
         exhausted={exhausted}
@@ -204,12 +204,12 @@ const ActivitiesTab: React.FC<{
       <ActivityCard
         isZh={isZh}
         icon="🧠"
-        titleZh="完成一次人格测试"
-        titleEn="Complete a Personality Test"
-        descZh="点击完成一次人格测试，领取奖励"
-        descEn="Complete a personality test to earn your reward"
-        ctaZh="🧠 去测试"
-        ctaEn="🧠 Take test"
+        titleZh={i18nService.t('pvPersonaTitle')}
+        titleEn={i18nService.t('pvPersonaTitle')}
+        descZh={i18nService.t('pvPersonaDesc')}
+        descEn={i18nService.t('pvPersonaDesc')}
+        ctaZh={i18nService.t('pvPersonaCta')}
+        ctaEn={i18nService.t('pvPersonaCta')}
         claimed={isClaimed('personality_test')}
         enabled={isEnabled('personality_test')}
         exhausted={exhausted}
@@ -224,12 +224,12 @@ const ActivitiesTab: React.FC<{
           <span className="text-3xl">🎁</span>
           <div>
             <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text">
-              {isZh ? '邀请返佣' : 'Invite & Rebate'}
+              {i18nService.t('pvInviteTitle')}
             </h3>
             <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
               {isZh
-                ? '分享你的邀请链接，好友注册后双方都能获得 $NoobCoin 奖励'
-                : 'Share your invite link — both you and your friends earn $NoobCoin rewards'}
+                ? i18nService.t('pvInviteDesc')
+                : i18nService.t('pvInviteDesc')}
             </p>
           </div>
         </div>
@@ -238,7 +238,7 @@ const ActivitiesTab: React.FC<{
           onClick={() => onShowInvite?.()}
           className="w-full py-3 rounded-xl text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors"
         >
-          {isZh ? '🎁 去邀请 →' : '🎁 Invite Friends →'}
+          {i18nService.t('pvInviteCta')}
         </button>
       </div>
 
@@ -307,20 +307,20 @@ const ActivityCard: React.FC<ActivityCardProps> = ({
       {!enabled ? (
         <div className="text-center py-3">
           <button disabled className="w-full py-3 rounded-xl text-sm font-semibold bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed">
-            🚧 {isZh ? '活动已暂停，敬请期待' : 'Activity paused — stay tuned'}
+            🚧 {i18nService.t('pvActivityPaused')}
           </button>
         </div>
       ) : claimed ? (
         <div className="text-center py-3">
           <button disabled className="w-full py-3 rounded-xl text-sm font-semibold bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed">
-            ✓ {isZh ? '今日已完成' : 'Completed today'}
+            ✓ {i18nService.t('pvCompletedToday')}
           </button>
         </div>
       ) : exhausted ? (
         <div className="text-center py-3">
           <div className="text-2xl mb-1">😢</div>
           <div className="text-sm font-medium dark:text-amber-400 text-amber-600">
-            {isZh ? '今日奖池已发完，您来晚了' : "Today's pool is empty — come back tomorrow"}
+            {i18nService.t('pvPoolEmpty')}
           </div>
         </div>
       ) : (
@@ -333,10 +333,10 @@ const ActivityCard: React.FC<ActivityCardProps> = ({
           {submitting ? (
             <span className="flex items-center justify-center gap-2">
               <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-              {isZh ? '处理中...' : 'Processing...'}
+              {i18nService.t('pvProcessing')}
             </span>
           ) : !isAuthenticated ? (
-            isZh ? '请先登录' : 'Please log in first'
+            i18nService.t('pvPleaseLogin')
           ) : (
             isZh ? ctaZh : ctaEn
           )}
@@ -349,16 +349,16 @@ const ActivityCard: React.FC<ActivityCardProps> = ({
 // ── Cool Reward Popup ─────────────────────────────────────────────────
 
 const ACTIVITY_LABELS_ZH: Record<string, { title: string; emoji: string }> = {
-  checkin: { title: '签到成功', emoji: '📅' },
-  xhs_rewrite: { title: '小红书任务完成', emoji: '📝' },
-  og_brawl: { title: 'OG 对战开始', emoji: '⚔️' },
-  personality_test: { title: '人格测试启动', emoji: '🧠' },
+  checkin: { title: i18nService.t('pvPopupCheckin'), emoji: '📅' },
+  xhs_rewrite: { title: i18nService.t('pvPopupXhs'), emoji: '📝' },
+  og_brawl: { title: i18nService.t('pvPopupBrawl'), emoji: '⚔️' },
+  personality_test: { title: i18nService.t('pvPopupPersona'), emoji: '🧠' },
 };
 const ACTIVITY_LABELS_EN: Record<string, { title: string; emoji: string }> = {
-  checkin: { title: 'Checked In', emoji: '📅' },
-  xhs_rewrite: { title: 'XHS Task Claimed', emoji: '📝' },
-  og_brawl: { title: 'Brawl Unlocked', emoji: '⚔️' },
-  personality_test: { title: 'Test Started', emoji: '🧠' },
+  checkin: { title: i18nService.t('pvPopupCheckin'), emoji: '📅' },
+  xhs_rewrite: { title: i18nService.t('pvPopupXhs'), emoji: '📝' },
+  og_brawl: { title: i18nService.t('pvPopupBrawl'), emoji: '⚔️' },
+  personality_test: { title: i18nService.t('pvPopupPersona'), emoji: '🧠' },
 };
 
 const RewardPopup: React.FC<{
@@ -376,7 +376,7 @@ const RewardPopup: React.FC<{
       <div className="relative max-w-sm w-[92vw] rounded-3xl p-8 text-center shadow-2xl animate-[popIn_0.35s_cubic-bezier(.2,1.4,.4,1)] bg-gradient-to-br from-amber-400 via-pink-500 to-purple-600">
         <div className="text-7xl mb-2 drop-shadow-[0_4px_12px_rgba(0,0,0,0.3)]">{info.emoji}</div>
         <div className="text-2xl font-bold text-white mb-1 drop-shadow">{info.title}</div>
-        <div className="text-sm text-white/80 mb-5">{isZh ? '恭喜获得今日奖励 🎊' : 'Enjoy your daily rewards 🎊'}</div>
+        <div className="text-sm text-white/80 mb-5">{i18nService.t('pvPopupSubtitle')}</div>
         <div className="space-y-2 mb-6">
           {/* $NoobCoin 奖励 — 国内版隐藏(HIDE_WEB3) */}
           {!HIDE_WEB3 && reward.noob > 0 && (
@@ -387,13 +387,13 @@ const RewardPopup: React.FC<{
           )}
           {reward.points > 0 && (
             <div className="rounded-xl bg-white/20 backdrop-blur px-4 py-3 text-white text-left flex items-center justify-between">
-              <span className="text-sm">⭐ {isZh ? '积分' : 'Credits'}</span>
+              <span className="text-sm">⭐ {i18nService.t('pvCredits')}</span>
               <span className="text-xl font-bold">+{formatNum(reward.points)}</span>
             </div>
           )}
           {reward.noob === 0 && reward.points === 0 && (
             <div className="rounded-xl bg-white/20 backdrop-blur px-4 py-3 text-white text-sm">
-              {isZh ? '奖池余额不足，下次再来！' : 'Pool is empty — try again tomorrow!'}
+              {i18nService.t('pvPopupPoolEmpty')}
             </div>
           )}
         </div>
@@ -402,7 +402,7 @@ const RewardPopup: React.FC<{
           onClick={onClose}
           className="w-full py-3 rounded-xl text-sm font-semibold bg-white text-gray-900 hover:bg-white/90 transition-colors"
         >
-          {isZh ? '太棒了 🎉' : 'Awesome 🎉'}
+          {i18nService.t('pvAwesome')}
         </button>
       </div>
       <style>{`
@@ -419,7 +419,7 @@ const RewardPopup: React.FC<{
 
 // ── Partners tab ──────────────────────────────────────────────────────
 
-const PartnersTab: React.FC<{ isZh: boolean }> = ({ isZh }) => {
+const PartnersTab: React.FC<{ isZh: boolean }> = () => {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -441,11 +441,11 @@ const PartnersTab: React.FC<{ isZh: boolean }> = ({ isZh }) => {
   return (
     <div className="p-6">
       <h2 className="text-xl font-bold dark:text-claude-darkText text-claude-text mb-6">
-        {isZh ? '合作伙伴' : 'Partners'}
+        {i18nService.t('pvPartnersHeading')}
       </h2>
       {partners.length === 0 ? (
         <div className="text-sm dark:text-claude-darkTextSecondary text-center py-12">
-          {isZh ? '暂无合作伙伴' : 'No partners yet'}
+          {i18nService.t('pvNoPartners')}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

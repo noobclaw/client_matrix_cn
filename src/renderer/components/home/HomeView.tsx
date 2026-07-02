@@ -43,7 +43,6 @@ const HomeView: React.FC<HomeViewProps> = ({
   const isMac = window.electron.platform === 'darwin';
   const [authState, setAuthState] = useState(noobClawAuth.getState());
   useEffect(() => noobClawAuth.subscribe(setAuthState), []);
-  const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
   const openExternal = (url: string) => { try { window.electron?.shell?.openExternal?.(url); } catch { /* noop */ } };
 
@@ -119,7 +118,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             {/* 标题样式照搬官网 index.html hero:NoobClaw 绿色霓虹 + 第二行粉紫蓝渐变 */}
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
               <span style={{ color: '#00ff88', textShadow: '0 0 20px rgba(0,255,136,0.5), 0 0 40px rgba(0,255,136,0.2)' }}>NoobClaw</span>
-              <span className="dark:text-white text-gray-900"> - {isZh ? '矩阵自动涨粉引擎' : 'Matrix Auto-Growth Engine'}</span>
+              <span className="dark:text-white text-gray-900"> - {i18nService.t('hvHeroTitle')}</span>
             </h1>
             <div
               className="text-2xl sm:text-3xl font-extrabold tracking-tight"
@@ -131,26 +130,24 @@ const HomeView: React.FC<HomeViewProps> = ({
                 filter: 'drop-shadow(0 0 12px rgba(139,92,246,0.35))',
               }}
             >
-              {isZh ? 'AI 驱动 · 全平台覆盖' : 'AI-Driven · All Platforms'}
+              {i18nService.t('hvHeroSubtitle')}
             </div>
             <p className="text-sm leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary max-w-xl mx-auto">
-              {isZh
-                ? '多平台图文 / 视频创作、互动、涨粉、跨平台搬运,全部交给 NoobClaw。'
-                : 'Multi-platform image & video creation, engagement, follower growth and cross-platform reposting — all handled by NoobClaw.'}
+              {i18nService.t('hvHeroDesc')}
             </p>
             {/* 平台标签 */}
             <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
               {[
-                ['🐦', isZh ? '推特' : 'X'],
-                ['📕', isZh ? '小红书' : 'RED'],
-                ['🎬', isZh ? '抖音' : 'Douyin'],
-                ['🎦', isZh ? '快手' : 'Kuaishou'],
-                ['📺', isZh ? 'B站' : 'Bilibili'],
-                ['📹', isZh ? '视频号' : 'Channels'],
-                ['📰', isZh ? '头条' : 'Toutiao'],
+                ['🐦', i18nService.t('hvPlatformX')],
+                ['📕', i18nService.t('hvPlatformRed')],
+                ['🎬', i18nService.t('hvPlatformDouyin')],
+                ['🎦', i18nService.t('hvPlatformKuaishou')],
+                ['📺', i18nService.t('hvPlatformBilibili')],
+                ['📹', i18nService.t('hvPlatformChannels')],
+                ['📰', i18nService.t('hvPlatformToutiao')],
                 ['🎵', 'TikTok'],
                 ['▶️', 'YouTube'],
-                ['🔶', isZh ? '币安广场' : 'Binance'],
+                ['🔶', i18nService.t('hvPlatformBinance')],
               ].map(([icon, label]) => (
                 <span
                   key={label}
@@ -167,10 +164,10 @@ const HomeView: React.FC<HomeViewProps> = ({
             <div className="rounded-2xl border dark:border-claude-accent/30 border-claude-accent/20 dark:bg-claude-accent/10 bg-claude-accent/5 px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="text-center sm:text-left">
                 <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">
-                  {isZh ? '连接钱包登录,开启自动涨粉' : 'Connect wallet to start auto-growth'}
+                  {i18nService.t('hvLoginTitle')}
                 </div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
-                  {isZh ? '登录后即可关联账号、创建定期涨粉任务' : 'Log in to link accounts and create scheduled growth tasks'}
+                  {i18nService.t('hvLoginDesc')}
                 </div>
               </div>
               <button
@@ -187,14 +184,14 @@ const HomeView: React.FC<HomeViewProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">
-                📖 {isZh ? '三步开始涨粉' : 'Three steps to start'}
+                📖 {i18nService.t('hvStepsTitle')}
               </h2>
               <button
                 type="button"
                 onClick={() => openExternal(TUTORIAL_URL)}
                 className="text-xs font-medium text-claude-accent hover:underline inline-flex items-center gap-1"
               >
-                {isZh ? '查看完整教程' : 'Full tutorial'}
+                {i18nService.t('hvFullTutorial')}
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </button>
             </div>
@@ -203,26 +200,26 @@ const HomeView: React.FC<HomeViewProps> = ({
               <StepCard
                 index={1}
                 icon="👥"
-                title={isZh ? '关联矩阵账号' : 'Link accounts'}
-                desc={isZh ? '登录并添加你的抖音 / 小红书 / 推特等多平台账号到矩阵账号池。' : 'Add your Douyin / RED / X accounts to the matrix pool.'}
-                cta={isZh ? '去关联账号' : 'Link now'}
+                title={i18nService.t('hvStep1Title')}
+                desc={i18nService.t('hvStep1Desc')}
+                cta={i18nService.t('hvStep1Cta')}
                 onClick={onShowMatrix}
                 badge={matrixExpiredCount > 0 ? matrixExpiredCount : undefined}
               />
               <StepCard
                 index={2}
                 icon="✨"
-                title={isZh ? '创建矩阵任务并设为定期' : 'Create a scheduled task'}
-                desc={isZh ? '选择创作 / 互动 / 搬运玩法,勾选账号,设置每日或定时自动运行。' : 'Pick a playbook, select accounts, set it to run daily/automatically.'}
-                cta={isZh ? '去创建任务' : 'Create task'}
+                title={i18nService.t('hvStep2Title')}
+                desc={i18nService.t('hvStep2Desc')}
+                cta={i18nService.t('hvStep2Cta')}
                 onClick={onShowMatrixTaskNew}
               />
               <StepCard
                 index={3}
                 icon="📈"
-                title={isZh ? '查看涨粉情况' : 'Check your growth'}
-                desc={isZh ? '任务到点自动跑,在「我的矩阵涨粉任务」里查看每个账号的涨粉与运行情况。' : 'Tasks run on schedule — check each account\'s growth and status in My Matrix Tasks.'}
-                cta={isZh ? '查看运行情况' : 'View status'}
+                title={i18nService.t('hvStep3Title')}
+                desc={i18nService.t('hvStep3Desc')}
+                cta={i18nService.t('hvStep3Cta')}
                 onClick={onShowMatrixTasks}
               />
             </div>

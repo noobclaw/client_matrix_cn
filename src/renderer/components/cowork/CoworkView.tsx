@@ -439,7 +439,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
             type="button"
             onClick={() => window.electron?.shell?.openExternal('https://noobclaw.com/cn/')}
             className="h-7 px-2 inline-flex items-center gap-1 rounded-md text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
-            title="Official Website"
+            title={i18nService.t('cvOfficialWebsite')}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5a17.92 17.92 0 01-8.716-2.247m0 0A9 9 0 013 12c0-1.605.42-3.113 1.157-4.418" /></svg>
             {i18nService.t('coworkWebsite')}
@@ -510,16 +510,16 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                   : '👑'}
               </span>
               <span className="text-xs font-semibold tracking-wide" style={{ color: 'var(--invite-partner-color)' }}>
-                {i18nService.currentLanguage === 'zh' ? '欢迎尊贵的合伙人' : 'Welcome Partner'}
+                {i18nService.t('cvWelcomePartner')}
               </span>
               <span className="text-[10px] opacity-70 dark:text-claude-darkTextSecondary text-claude-textSecondary">·</span>
               <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                {i18nService.t('partnerRebateRate') || '您的返佣比例'}
+                {i18nService.t('partnerRebateRate') || i18nService.t('cvRebateRateLabel')}
                 <span className="ml-1 font-bold tabular-nums" style={{ color: 'var(--invite-partner-color)' }}>
                   {Math.round(partnerInfo.rate_pct)}%
                 </span>
                 <span className="ml-1 opacity-70">
-                  {i18nService.currentLanguage === 'zh' ? '(按好友充值金额返佣)' : '(of friend\'s deposit)'}
+                  {i18nService.t('cvRebateByDeposit')}
                 </span>
               </span>
               <span className="text-xs opacity-60 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--invite-partner-color)' }}>→</span>

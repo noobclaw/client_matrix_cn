@@ -140,16 +140,16 @@ interface Props {
   onClearFilter?: () => void;
 }
 
-function formatDuration(ms: number, isZh: boolean): string {
+function formatDuration(ms: number, _isZh: boolean): string {
   if (ms < 1000) return ms + 'ms';
   const s = Math.round(ms / 1000);
-  if (s < 60) return s + (isZh ? '秒' : 's');
+  if (s < 60) return s + i18nService.t('rhxUnitSec');
   const m = Math.floor(s / 60);
   const remS = s % 60;
-  if (m < 60) return `${m}${isZh ? '分' : 'm'}${remS > 0 ? `${remS}${isZh ? '秒' : 's'}` : ''}`;
+  if (m < 60) return `${m}${i18nService.t('rhxUnitMin')}${remS > 0 ? `${remS}${i18nService.t('rhxUnitSec')}` : ''}`;
   const h = Math.floor(m / 60);
   const remM = m % 60;
-  return `${h}${isZh ? '时' : 'h'}${remM > 0 ? `${remM}${isZh ? '分' : 'm'}` : ''}`;
+  return `${h}${i18nService.t('rhxUnitHour')}${remM > 0 ? `${remM}${i18nService.t('rhxUnitMin')}` : ''}`;
 }
 
 function formatTime(ts: number, isZh: boolean): string {
@@ -403,7 +403,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                     if (keys.length === 0) return null;
                     const isRunning = rec.status === 'running';
                     return (
-                      <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 flex-wrap" title={isZh ? (isRunning ? '本次运行已完成 / 计划目标' : '本次完成的动作') : (isRunning ? 'Done / planned this run' : 'Actions completed this run')}>
+                      <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 flex-wrap" title={isRunning ? i18nService.t('rhxProgressTip') : i18nService.t('rhxActionsDoneTip')}>
                         <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
                           {isRunning ? i18nService.t('rhCurrentProgress') : i18nService.t('rhActionsDone')}:
                         </span>

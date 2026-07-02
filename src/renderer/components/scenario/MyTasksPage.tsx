@@ -555,11 +555,11 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       {isRunning ? (
                         <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                          {isZh ? '运行中' : 'Running'}
+                          {i18nService.t('mtxRunning')}
                         </span>
                       ) : interval === 'once' || isAnyLinkRewrite ? (
                         <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
-                          ✋ {isZh ? '手动运行' : 'Manual'}
+                          ✋ {i18nService.t('mtxManual')}
                         </span>
                       ) : (
                         // v4.31.43: 取代"定时运行"/"待命"二态显示 —— scheduler
@@ -588,9 +588,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       Token tag,源平台搬运是搜索词,其余为普通关键词。空则不显示。 */}
                   {platformId !== 'x' && !isImageTextTask && !isAnyLinkRewrite
                     && Array.isArray(task.keywords) && task.keywords.length > 0 && (() => {
-                    const kwLabel = isBinanceSourceViral ? (isZh ? '搜索词' : 'Search')
+                    const kwLabel = isBinanceSourceViral ? i18nService.t('mtxKwSearch')
                       : /^binance/.test(sid) ? 'Token'
-                      : (isZh ? '关键词' : 'Keywords');
+                      : i18nService.t('mtxKwKeywords');
                     return (
                       <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
                         🏷️ {kwLabel}: {task.keywords.slice(0, 6).join(' · ')}
@@ -603,20 +603,20 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       「本次搬运」媒体类型 + Token 标签(cashtags 空则走内置主流币)。 */}
                   {(() => {
                     const mf = (task as any).media_filter;
-                    const mfLabel = mf === 'image_only' ? (isZh ? '🖼 仅图文' : '🖼 Images only')
-                      : mf === 'video_only' ? (isZh ? '🎥 仅视频' : '🎥 Videos only')
-                      : (isZh ? '🖼🎥 全部' : '🖼🎥 All');
+                    const mfLabel = mf === 'image_only' ? i18nService.t('mtxMfImageOnly')
+                      : mf === 'video_only' ? i18nService.t('mtxMfVideoOnly')
+                      : i18nService.t('mtxMfAll');
                     if (sid === 'binance_from_x_repost') {
-                      return <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">🎞 {isZh ? '搬运类型' : 'Media'}: {mfLabel}</div>;
+                      return <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">🎞 {i18nService.t('mtxMediaType')}: {mfLabel}</div>;
                     }
                     if (isBinanceSourceViral) {
                       const cashtags = (task as any).cashtags as string[] | undefined;
                       const tokenStr = cashtags && cashtags.length > 0
                         ? cashtags.map((c) => '$' + c).join(' · ')
-                        : (isZh ? '内置主流币' : 'built-in majors');
+                        : i18nService.t('mtxBuiltinMajors');
                       return (
                         <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 space-y-0.5">
-                          <div className="truncate">🎞 {isZh ? '本次搬运' : 'Repost'}: {mfLabel}</div>
+                          <div className="truncate">🎞 {i18nService.t('mtxRepostThis')}: {mfLabel}</div>
                           <div className="truncate">🪙 Token: {tokenStr}</div>
                         </div>
                       );
@@ -634,7 +634,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1 space-y-0.5">
                         {visible.map((s, i) => (
                           <div key={i} className="truncate">
-                            <span className="text-gray-400">{isZh ? '参考文案 ' : 'Reference '}{['①','②','③'][i] || (i + 1)}:</span>{' '}
+                            <span className="text-gray-400">{i18nService.t('mtxRefCopy')}{['①','②','③'][i] || (i + 1)}:</span>{' '}
                             <span>{s.trim().slice(0, 70)}{s.trim().length > 70 ? '...' : ''}</span>
                           </div>
                         ))}
@@ -649,8 +649,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     {isAnyLinkRewrite ? (
                       <>
                         <div>
-                          {isZh ? '链接' : 'URLs'}: {taskUrls.length}
-                          {isZh ? ' 条' : ''}
+                          {i18nService.t('mtxUrls')}: {taskUrls.length}
+                          {i18nService.t('mtxUrlsUnit')}
                         </div>
                         {taskUrls.slice(0, 2).map((u, i) => (
                           <div key={i} className="truncate text-[11px] text-gray-400">{i + 1}. {u}</div>
@@ -658,7 +658,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       </>
                     ) : (
                       <div>
-                        {isZh ? '频次: ' : 'Frequency: '}
+                        {i18nService.t('mtxFrequency')}
                         {(() => {
                           // v2.4.60: 频次显示按场景类型展示真实用户配置,不再写死 "1 条/次"
                           const sid = task.scenario_id;
@@ -673,7 +673,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               ? `${fMin}-${fMax}` : `0-${task.daily_count || 3}`;
                             const rStr = (typeof rMin === 'number' && typeof rMax === 'number')
                               ? `${rMin}-${rMax}` : `${task.daily_count || 1}`;
-                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
+                            return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxFollow')} ${fStr} · ${i18nService.t('mtxReply')} ${rStr}`;
                           }
                           // post_creator(Binance/X)+ binance_from_x_repost + v6.x 3 个新源:daily_post_min/max
                           // v6.x: 跟 TaskDetailPage(line ~1130/1135/1140)同步用"每次 N 条"前缀
@@ -686,46 +686,40 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               || sid === 'binance_from_tiktok_viral') {
                             const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
                               ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
-                            return isZh
-                              ? `⏰ ${scheduleLabel(task)} · 每次 ${pStr} 条`
-                              : `⏰ ${scheduleLabel(task)} · ${pStr}/run`;
+                            return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxPerRunCount').replace('{n}', pStr)}`;
                           }
                           // 回复粉丝评论:每次处理"最近 N 篇笔记/作品"的全部未回复评论(N =
                           //   max_notes/works_per_run,默认 30),不是"N 条/次"。
                           if (sid === 'xhs_reply_fans_comment') {
-                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '最近 30 篇笔记/次' : 'latest 30 notes/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxLatest30Notes')}`;
                           }
                           if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment' || sid === 'toutiao_reply_fans_comment') {
-                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '最近 30 个作品/次' : 'latest 30 videos/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxLatest30Videos')}`;
                           }
                           if (sid === 'toutiao_reply_fans_comment') {
-                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '最近 30 篇/次' : 'latest 30 posts/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxLatest30Posts')}`;
                           }
                           // XHS auto_reply:用 daily_count_min/max
                           if ((task as any).scenario_id?.includes('auto_reply') ||
                               (typeof cMin === 'number' && typeof cMax === 'number')) {
                             const cStr = (typeof cMin === 'number' && typeof cMax === 'number')
                               ? `${cMin}-${cMax}` : String(task.daily_count || 1);
-                            return `⏰ ${scheduleLabel(task)} · ${cStr} ${isZh ? '篇/次' : 'articles/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${cStr} ${i18nService.t('mtxArticlesRun')}`;
                           }
                           // 币安广场自动发帖 / 批量搬运:每号每轮 1 条,共 N 条/轮(N=账号数)。
                           if (sid === 'binance_post' || sid === 'binance_repost') {
                             const accN = Array.isArray(t.account_ids) ? t.account_ids.length : 1;
-                            return isZh
-                              ? `⏰ ${scheduleLabel(task)} · 每号 1 条(共 ${accN} 条/轮)`
-                              : `⏰ ${scheduleLabel(task)} · 1/account (${accN}/run)`;
+                            return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxPerAccountRound').replace('{n}', String(accN))}`;
                           }
                           // 兜底:旧 daily_count 单值
-                          return `⏰ ${scheduleLabel(task)} · ${task.daily_count || 1} ${isZh ? '条/次' : '/run'}`;
+                          return `⏰ ${scheduleLabel(task)} · ${task.daily_count || 1} ${i18nService.t('mtxCountRun')}`;
                         })()}
                       </div>
                     )}
                     {/* 矩阵任务:展示这条任务跑几个账号(各账号自带赛道/人设/关键词) */}
                     {Array.isArray((task as any).account_ids) && (task as any).account_ids.length > 0 && (
                       <div>
-                        {isZh
-                          ? `👥 账号: ${(task as any).account_ids.length} 个`
-                          : `👥 Accounts: ${(task as any).account_ids.length}`}
+                        {i18nService.t('mtxAccounts').replace('{n}', String((task as any).account_ids.length))}
                       </div>
                     )}
                     {/* 配置摘要小标签(来源/形态/关键词/语言/配图/发布等),让卡片信息更丰富 */}
@@ -740,7 +734,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       ) : null;
                     })()}
                     <div className="text-[11px] text-gray-400">
-                      {isZh ? '创建于 ' : 'Created '}
+                      {i18nService.t('mtxCreatedAt')}
                       {new Date(task.created_at || 0).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
                     </div>
                   </div>
@@ -755,9 +749,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     const info = taskActionInfo[task.id];
                     const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = isZh
-                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
-                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
+                    const labels = { like: i18nService.t('mtxActLike'), follow: i18nService.t('mtxActFollow'), comment: i18nService.t('mtxActComment'), reply: i18nService.t('mtxActReply'), subscribe: i18nService.t('mtxActSubscribe'), post: i18nService.t('mtxActPost'), download: i18nService.t('mtxActDownload') };
                     // For idle tasks that have never produced action counts
                     // (brand-new tasks, or post-creator scenarios where the
                     // backend hasn't backfilled `cumulative_action_counts`
@@ -821,11 +813,11 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       const running = effectiveInfo.mode === 'running';
                       const commentDone = running ? (d.comment?.done ?? 0) : (d.comment ?? 0);
                       const articleWord = sid === 'xhs_reply_fans_comment'
-                        ? (isZh ? '笔记' : 'notes')
-                        : (isZh ? '作品' : 'videos');
+                        ? i18nService.t('mtxWordNotes')
+                        : i18nService.t('mtxWordVideos');
                       const rfLabel = running
-                        ? (isZh ? '本次运行进度' : 'Current Run Progress')
-                        : (isZh ? '累计完成' : 'Total done');
+                        ? i18nService.t('mtxProgressCurrent')
+                        : i18nService.t('mtxProgressTotal');
                       return (
                         <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
                           <span className={`text-[10px] ${running ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
@@ -833,7 +825,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           </span>
                           <span className="font-mono">
                             💬 <strong className={running ? 'text-green-600 dark:text-green-400' : ''}>{commentDone > 0 ? commentDone : '-'}</strong>{' '}
-                            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans">{isZh ? '评论' : 'comments'}</span>
+                            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans">{i18nService.t('mtxCommentsWord')}</span>
                           </span>
                           {running && (() => {
                             const noteDone = d.note?.done ?? 0;
@@ -880,8 +872,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     // for the same data. Was "本次目标" / "Run target"
                     // pre-rename.
                     const labelPrefix = effectiveInfo.mode === 'running'
-                      ? (isZh ? '本次运行进度' : 'Current Run Progress')
-                      : (isZh ? '累计完成' : 'Total done');
+                      ? i18nService.t('mtxProgressCurrent')
+                      : i18nService.t('mtxProgressTotal');
                     return (
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
                         <span className={`text-[10px] ${effectiveInfo.mode === 'running' ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>

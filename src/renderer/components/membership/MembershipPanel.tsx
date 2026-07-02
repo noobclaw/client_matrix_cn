@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';import { i18nService } from '../../services/i18n';
+
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import { readCachedPlanConfig, writeCachedPlanConfig } from '../../services/paymentInfoCache';
@@ -31,12 +32,12 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON'; size?: number }> = ({ chain, 
 };
 
 const PERIODS: Array<{ key: Period; label: string }> = [
-  { key: 'month', label: '月付' },
-  { key: 'quarter', label: '季付' },
-  { key: 'half', label: '半年' },
-  { key: 'year', label: '年付' },
+  { key: 'month', label: i18nService.t('mpPeriodMonth') },
+  { key: 'quarter', label: i18nService.t('mpPeriodQuarter') },
+  { key: 'half', label: i18nService.t('mpPeriodHalf') },
+  { key: 'year', label: i18nService.t('mpPeriodYear') },
 ];
-const PERIOD_LABEL: Record<string, string> = { month: '月', quarter: '季', half: '半年', year: '年' };
+const PERIOD_LABEL: Record<string, string> = { month: i18nService.t('mpUnitMonth'), quarter: i18nService.t('mpUnitQuarter'), half: i18nService.t('mpUnitHalf'), year: i18nService.t('mpUnitYear') };
 const PERIOD_MONTHS: Record<Period, number> = { month: 1, quarter: 3, half: 6, year: 12 };
 const RECOMMENDED = 'pro';
 // 档位主题色:免费灰 / 基础蓝银 / 进阶金 / 旗舰紫。
@@ -44,8 +45,8 @@ const TIER_COLOR: Record<string, string> = { free: '#9aa0aa', basic: '#60a5fa', 
 
 function fmtCredits(n: number): string {
   n = Number(n) || 0;
-  if (n >= 1e8) return (Math.round(n / 1e7) / 10) + '亿';
-  if (n >= 1e4) return Math.round(n / 1e4) + '万';
+  if (n >= 1e8) return (Math.round(n / 1e7) / 10) + i18nService.t('mpUnitYi');
+  if (n >= 1e4) return Math.round(n / 1e4) + i18nService.t('mpUnitWan');
   return String(n);
 }
 
@@ -100,27 +101,27 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
 
   const submitRedeem = async () => {
     const code = redeemInput.trim();
-    if (!code) { setRedeemMsg({ text: '请输入兑换码', color: '#ef4444' }); return; }
+    if (!code) { setRedeemMsg({ text: i18nService.t('mpRedeemEmpty'), color: '#ef4444' }); return; }
     setRedeemBusy(true); setRedeemMsg({ text: '', color: '' });
     try {
       const d = await noobClawApi.redeemCode(code);
-      if (!d || !d.ok) { setRedeemMsg({ text: (d && d.message) || '兑换失败', color: '#ef4444' }); return; }
+      if (!d || !d.ok) { setRedeemMsg({ text: (d && d.message) || i18nService.t('mpRedeemFail'), color: '#ef4444' }); return; }
       setRedeemInput('');
       setRedeemMsg({
         text: d.product_type === 'subscription'
-          ? `✅ 会员已开通(${PERIOD_LABEL[d.plan_period || ''] || ''}),本月算力已发放`
-          : `✅ 已到账 ${Number(d.credits ?? 0).toLocaleString()} 算力`,
+          ? i18nService.t('mpRedeemSubOk').replace('{period}', PERIOD_LABEL[d.plan_period || ''] || '')
+          : i18nService.t('mpRedeemCreditsOk').replace('{n}', Number(d.credits ?? 0).toLocaleString()),
         color: '#22c55e',
       });
       await noobClawAuth.refreshBalance(); await load();
     } finally { setRedeemBusy(false); }
   };
 
-  if (loading) return <div className="text-center text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary py-12">加载中…</div>;
-  if (!cfg) return <div className="text-center text-sm text-red-400 py-12">会员套餐加载失败,请稍后重试(后端需部署)</div>;
+  if (loading) return <div className="text-center text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary py-12">{i18nService.t('mpLoading')}</div>;
+  if (!cfg) return <div className="text-center text-sm text-red-400 py-12">{i18nService.t('mpLoadFail')}</div>;
 
   // ── 选择视图 ──
-  const planName = (p: any) => p?.name_zh || p?.name_en || '';
+  const planName = (p: any) => ((i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? (p?.name_zh || p?.name_en) : (p?.name_en || p?.name_zh)) || '';
   const sorted = [...plans].sort((a, b) => a.sort_order - b.sort_order); // free 在前
 
   return (
@@ -130,7 +131,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
         {/* 支付方式选择器 —— 国内版(HIDE_WEB3)只有 CNY 兑换码一种,整行隐藏(method 已锁定 RMB) */}
         {!HIDE_WEB3 && (
         <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          {([['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC'], ['RMB', 'CNY(兑换码)']] as Array<[PayMethod, string]>).map(([m, label]) => (
+          {([['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC'], ['RMB', i18nService.t('mpPayCny')]] as Array<[PayMethod, string]>).map(([m, label]) => (
             <button key={m} onClick={() => { setMethod(m); setError(''); }} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
               {(m === 'TRON' || m === 'BSC') && <ChainLogo chain={m} size={16} />}
               {label}
@@ -154,7 +155,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
           const isCur = plan.code === curCode;
           const isCurActive = subActive && isCur;          // 当前档(订阅有效)→ 续费
           const isLower = subActive && plan.sort_order < curOrder; // 低于当前档 → 不可降级(置灰)
-          const cta = isCurActive ? '续费' : (subActive ? '升级' : '订阅');
+          const cta = isCurActive ? i18nService.t('mpCtaRenew') : (subActive ? i18nService.t('mpCtaUpgrade') : i18nService.t('mpCtaSubscribe'));
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
           const tier = TIER_COLOR[plan.code] || '#9aa0aa';
@@ -170,12 +171,12 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
           return (
             <div key={plan.code} className={`relative rounded-2xl p-4 flex flex-col dark:bg-claude-darkSurface bg-claude-surface ${isLower ? 'opacity-50' : ''}`}
               style={{ border: `${isRec ? 2 : 1}px solid`, borderColor: isRec ? tier : (isCur ? tier + '88' : 'rgba(255,255,255,0.08)'), boxShadow: isRec ? `0 0 26px -10px ${tier}` : undefined }}>
-              {isRec && <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-black whitespace-nowrap" style={{ background: tier }}>最受欢迎</span>}
+              {isRec && <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-black whitespace-nowrap" style={{ background: tier }}>{i18nService.t('mpMostPopular')}</span>}
               {/* 档位名 + 档位色点 + 限时折扣 */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: tier }} />
                 <span className="text-base font-semibold dark:text-claude-darkText text-claude-text">{planName(plan)}</span>
-                {hasDiscount && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#ef444422', color: '#f87171' }}>限时{off}折</span>}
+                {hasDiscount && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#ef444422', color: '#f87171' }}>{i18nService.t('mpDiscountBadge').replace('{off}', String(off))}</span>}
               </div>
               {/* 价格:最终价大字 + 原价划掉 + /周期 */}
               <div className="mt-3 flex items-end gap-1.5 flex-wrap">
@@ -184,14 +185,14 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
                 {!isFree && <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">/{PERIOD_LABEL[period]}</span>}
               </div>
               <ul className="mt-3 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary flex-1">
-                <li>· {isFree ? '注册礼 100万 积分' : `每月 ${fmtCredits(plan.monthly_credits)} 积分`}</li>
-                <li>· 最大 {plan.max_accounts_per_platform} 矩阵号/平台</li>
-                <li>· {isFree ? '仅基础能力' : '全部能力可用'}</li>
+                <li>· {isFree ? i18nService.t('mpFeatSignupGift') : i18nService.t('mpFeatMonthlyCredits').replace('{n}', fmtCredits(plan.monthly_credits))}</li>
+                <li>· {i18nService.t('mpFeatMaxAccounts').replace('{n}', String(plan.max_accounts_per_platform))}</li>
+                <li>· {isFree ? i18nService.t('mpFeatBasicOnly') : i18nService.t('mpFeatAllAbilities')}</li>
               </ul>
               {isLower ? (
-                <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }} title="会员只能升级,不能降级;到期回免费版后可重新选择">低于当前会员</button>
+                <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }} title={i18nService.t('mpNoDowngradeTip')}>{i18nService.t('mpBelowCurrent')}</button>
               ) : isFree ? (
-                <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{!subActive ? '当前方案' : '免费'}</button>
+                <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{!subActive ? i18nService.t('mpCurrentPlan') : i18nService.t('mpFree')}</button>
               ) : method === 'RMB' ? (
                 // CNY:同样显示「订阅」按钮,点击新开浏览器到店铺购买卡密(回来在下方输入兑换码开通)。
                 //   店铺地址必须后端下发,没拿到前禁用(避免跳死链)。
@@ -208,19 +209,19 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
       {method === 'RMB' && (
         <div className="mt-4 p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
           <div className="flex items-center justify-between gap-2 mb-1">
-            <div className="text-sm font-medium dark:text-claude-darkText text-claude-text">会员兑换码</div>
-            <button disabled={!shopUrl} onClick={openShop} className="px-3 py-1 rounded-lg text-xs font-semibold bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-40">订阅</button>
+            <div className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('mpRedeemTitle')}</div>
+            <button disabled={!shopUrl} onClick={openShop} className="px-3 py-1 rounded-lg text-xs font-semibold bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-40">{i18nService.t('mpCtaSubscribe')}</button>
           </div>
-          <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">在店铺购买会员码后,在此输入兑换即可开通对应档位与周期。</div>
+          <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">{i18nService.t('mpRedeemHint')}</div>
           <div className="flex gap-2">
-            <input value={redeemInput} onChange={e => setRedeemInput(e.target.value)} placeholder="输入会员订阅兑换码" className="flex-1 px-3 py-2 rounded-lg dark:bg-claude-darkBg bg-claude-bg border dark:border-claude-darkBorder border-claude-border text-sm dark:text-claude-darkText text-claude-text focus:border-primary outline-none" />
-            <button disabled={redeemBusy} onClick={submitRedeem} className="px-5 py-2 rounded-lg bg-primary text-black text-sm font-semibold disabled:opacity-50">{redeemBusy ? '兑换中…' : '兑换'}</button>
+            <input value={redeemInput} onChange={e => setRedeemInput(e.target.value)} placeholder={i18nService.t('mpRedeemPlaceholder')} className="flex-1 px-3 py-2 rounded-lg dark:bg-claude-darkBg bg-claude-bg border dark:border-claude-darkBorder border-claude-border text-sm dark:text-claude-darkText text-claude-text focus:border-primary outline-none" />
+            <button disabled={redeemBusy} onClick={submitRedeem} className="px-5 py-2 rounded-lg bg-primary text-black text-sm font-semibold disabled:opacity-50">{redeemBusy ? i18nService.t('mpRedeeming') : i18nService.t('mpRedeem')}</button>
           </div>
           {redeemMsg.text && <div className="mt-2 text-xs" style={{ color: redeemMsg.color }}>{redeemMsg.text}</div>}
         </div>
       )}
 
-      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">订阅赠送的算力按月发放、到期清零。</p>
+      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')}</p>
     </div>
   );
 };

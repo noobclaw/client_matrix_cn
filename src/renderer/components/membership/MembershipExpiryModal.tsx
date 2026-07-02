@@ -17,7 +17,6 @@ import { MATRIX_EDITION } from '../../matrixEdition';
 
 export const MembershipExpiryModal: React.FC = () => {
   const [info, setInfo] = useState<{ suspendedCount: number } | null>(null);
-  const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
   useEffect(() => {
     if (!MATRIX_EDITION) return;
@@ -65,12 +64,10 @@ export const MembershipExpiryModal: React.FC = () => {
       >
         <div className="text-3xl mb-3">👑</div>
         <h2 className="text-lg font-bold dark:text-claude-darkText text-claude-text mb-2">
-          {isZh ? '会员已到期' : 'Membership expired'}
+          {i18nService.t('meTitle')}
         </h2>
         <p className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed mb-5">
-          {isZh
-            ? <>超出免费额度的 <span className="font-bold text-amber-500">{info.suspendedCount}</span> 个账号已暂停,任务现在只在保留的账号上运行。<br />账号与任务配置均已保留,<span className="font-semibold dark:text-claude-darkText text-claude-text">续费即可立即恢复全部</span>。</>
-            : <>{info.suspendedCount} account(s) beyond the free limit are paused; tasks now run only on the kept accounts. Your accounts and task configs are preserved — renew to restore everything instantly.</>}
+          <>{i18nService.t('meBodyBefore')}<span className="font-bold text-amber-500">{info.suspendedCount}</span>{i18nService.t('meBodyMid')}<span className="font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('meBodyEmph')}</span>{i18nService.t('meBodyAfter')}</>
         </p>
         <div className="flex gap-2">
           <button
@@ -78,13 +75,13 @@ export const MembershipExpiryModal: React.FC = () => {
             className="flex-1 py-2.5 rounded-xl text-sm font-bold text-black"
             style={{ background: 'linear-gradient(135deg,#fbbf24,#f59e0b)', boxShadow: '0 2px 8px rgba(245,158,11,0.35)' }}
           >
-            {isZh ? '去续费' : 'Renew'}
+            {i18nService.t('meRenew')}
           </button>
           <button
             onClick={close}
             className="px-5 py-2.5 rounded-xl text-sm font-semibold dark:bg-claude-darkBg bg-claude-surface dark:text-claude-darkTextSecondary text-claude-textSecondary border dark:border-claude-darkBorder border-claude-border"
           >
-            {isZh ? '稍后' : 'Later'}
+            {i18nService.t('meLater')}
           </button>
         </div>
       </div>
