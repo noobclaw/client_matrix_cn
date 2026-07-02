@@ -457,41 +457,41 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // Twitter: 推特 · 互动涨粉 / 推特 · 自动发推 / 指定链接仿写
               // XHS:     小红书 · 爆款批量仿写 / 小红书 · 指定链接爆款仿写 / 小红书 · 互动涨粉
               const typeLabel = (() => {
-                if (sid === 'x_auto_engage')                  return { icon: '🐦', zh: '推特 · 互动涨粉', en: 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-                if (sid === 'x_post')                         return { icon: '🐦', zh: '推特 · 自动发推', en: 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if (sid === 'binance_post')                   return { icon: '📊', zh: '币安广场 · 自动发帖', en: 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-                if (sid === 'binance_repost')                 return { icon: '♻️', zh: '币安广场 · 批量搬运', en: 'Binance Square Batch Repost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-                if (sid === 'x_post_creator')                 return { icon: '📝', zh: '推特 · 自动发推', en: 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if (sid === 'x_link_rewrite')                 return { icon: '✍️', zh: '推特 · 指定链接仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-                if (sid === 'binance_square_auto_engage')     return { icon: '🤝', zh: '币安广场 · 互动涨粉', en: 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-                if (sid === 'binance_square_post_creator')    return { icon: '🔶', zh: '币安广场 · 自动发帖', en: 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-                if (sid === 'binance_from_x_repost')          return { icon: '🔁', zh: '币安广场 · 推特批量搬运', en: 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if (sid === 'x_auto_engage')                  return { icon: '🐦', k: 'scnXEngage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+                if (sid === 'x_post')                         return { icon: '🐦', k: 'scnXPost', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'binance_post')                   return { icon: '📊', k: 'scnBnPost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                if (sid === 'binance_repost')                 return { icon: '♻️', k: 'scnBnRepost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                if (sid === 'x_post_creator')                 return { icon: '📝', k: 'scnXPost', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'x_link_rewrite')                 return { icon: '✍️', k: 'scnXRewrite', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+                if (sid === 'binance_square_auto_engage')     return { icon: '🤝', k: 'scnBnEngage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+                if (sid === 'binance_square_post_creator')    return { icon: '🔶', k: 'scnBnPost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                if (sid === 'binance_from_x_repost')          return { icon: '🔁', k: 'scnBnRepostX', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 // v6.x: 3 个新搬运源 — 跟 binance_from_x_repost 同 family,各自独立 label
-                if (sid === 'binance_from_xhs_viral')         return { icon: '📕', zh: '币安广场 · 小红书批量搬运', en: 'Binance · Repost from Xiaohongshu', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
-                if (sid === 'binance_from_douyin_viral')      return { icon: '🎵', zh: '币安广场 · 抖音批量搬运', en: 'Binance · Repost from Douyin', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', zh: '币安广场 · TikTok 批量搬运', en: 'Binance · Repost from TikTok', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'binance_from_x_link')          return { icon: '🔗', zh: '币安广场 · 推特链接仿写', en: 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-                if (sid === 'youtube_auto_engage')          return { icon: '📺', zh: 'YouTube · 互动涨粉', en: 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
-                if (sid === 'tiktok_auto_engage')           return { icon: '🎵', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'douyin_auto_engage')           return { icon: '🎵', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-                if (sid === 'douyin_image_text')            return { icon: '📝', zh: '抖音 · 图文创作', en: 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-                if (sid === 'douyin_reply_fans_comment')    return { icon: '💬', zh: '抖音 · 自动回复粉丝', en: 'Douyin Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'xhs_image_text')               return { icon: '📝', zh: '小红书 · 图文创作', en: 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
-                if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', zh: '小红书 · 自动回复粉丝', en: 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-                if (sid === 'xhs_video_download')           return { icon: '⬇️', zh: '小红书 · 视频无水印下载', en: 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-                if (sid === 'douyin_video_download')        return { icon: '⬇️', zh: '抖音 · 视频无水印下载', en: 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if (sid === 'tiktok_video_download')        return { icon: '⬇️', zh: 'TikTok · 视频无水印下载', en: 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', zh: '快手 · 互动涨粉', en: 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-                if (sid === 'kuaishou_video_download')      return { icon: '⬇️', zh: '快手 · 视频无水印下载', en: 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-                if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', zh: '快手 · 自动回复粉丝', en: 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'bilibili_auto_engage')         return { icon: '📺', zh: '哔哩哔哩 · 互动涨粉', en: 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                if (sid === 'bilibili_video_download')      return { icon: '⬇️', zh: '哔哩哔哩 · 视频无水印下载', en: 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-                if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', zh: '哔哩哔哩 · 自动回复粉丝', en: 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'shipinhao_image_text')          return { icon: '📝', zh: '视频号 · 图文创作', en: 'WeChat Channels Image-Text', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-                if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', zh: '视频号 · 自动回复粉丝', en: 'WeChat Channels Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'toutiao_image_text')            return { icon: '📝', zh: '头条号 · 图文创作', en: 'Toutiao Image-Text', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-                if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', zh: '头条号 · 自动回复粉丝', en: 'Toutiao Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (isXhsLinkMode)                            return { icon: '🔗', zh: '小红书 · 指定链接爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+                if (sid === 'binance_from_xhs_viral')         return { icon: '📕', k: 'scnBnRepostXhs', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+                if (sid === 'binance_from_douyin_viral')      return { icon: '🎵', k: 'scnBnRepostDy', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', k: 'scnBnRepostTt', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'binance_from_x_link')          return { icon: '🔗', k: 'scnBnFromXLink', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if (sid === 'youtube_auto_engage')          return { icon: '📺', k: 'scnYtEngage', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
+                if (sid === 'tiktok_auto_engage')           return { icon: '🎵', k: 'scnTtEngage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'douyin_auto_engage')           return { icon: '🎵', k: 'scnDyEngage', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+                if (sid === 'douyin_image_text')            return { icon: '📝', k: 'scnDyImageText', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+                if (sid === 'douyin_reply_fans_comment')    return { icon: '💬', k: 'scnDyReplyFans', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'xhs_image_text')               return { icon: '📝', k: 'scnXhsImageText', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+                if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', k: 'scnXhsReplyFans', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+                if (sid === 'xhs_video_download')           return { icon: '⬇️', k: 'scnXhsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'douyin_video_download')        return { icon: '⬇️', k: 'scnDyDownload', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'tiktok_video_download')        return { icon: '⬇️', k: 'scnTtDownload', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', k: 'scnKsEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if (sid === 'kuaishou_video_download')      return { icon: '⬇️', k: 'scnKsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', k: 'scnKsReplyFans', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'bilibili_auto_engage')         return { icon: '📺', k: 'scnBiliEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'bilibili_video_download')      return { icon: '⬇️', k: 'scnBiliDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', k: 'scnBiliReplyFans', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'shipinhao_image_text')          return { icon: '📝', k: 'scnShipinhaoImageText', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', k: 'scnShipinhaoReplyFans', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'toutiao_image_text')            return { icon: '📝', k: 'scnToutiaoImageText', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', k: 'scnToutiaoReplyFans', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (isXhsLinkMode)                            return { icon: '🔗', k: 'scnXhsLinkRewrite', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
                 // workflow_type fallbacks — MUST check platform BEFORE labeling,
                 // otherwise Binance / YouTube / TikTok / Douyin scenarios with
                 // workflow_type='auto_reply' fall into the XHS branch and get
@@ -499,24 +499,24 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 // first guard fixes it.
                 const plat = scenario?.platform;
                 if ((scenario?.workflow_type as any) === 'auto_reply') {
-                  if (plat === 'binance') return { icon: '💬', zh: '币安广场 · 互动涨粉', en: 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-                  if ((plat as any) === 'youtube') return { icon: '💬', zh: 'YouTube · 互动涨粉', en: 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-                  if ((plat as any) === 'tiktok')  return { icon: '💬', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                  if ((plat as any) === 'douyin')  return { icon: '💬', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                  if ((plat as any) === 'kuaishou') return { icon: '💬', zh: '快手 · 互动涨粉', en: 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-                  if ((plat as any) === 'bilibili') return { icon: '💬', zh: '哔哩哔哩 · 互动涨粉', en: 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                  return { icon: '💬', zh: '小红书 · 互动涨粉', en: 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                  if (plat === 'binance') return { icon: '💬', k: 'scnBnEngage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+                  if ((plat as any) === 'youtube') return { icon: '💬', k: 'scnYtEngage', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                  if ((plat as any) === 'tiktok')  return { icon: '💬', k: 'scnTtEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                  if ((plat as any) === 'douyin')  return { icon: '💬', k: 'scnDyEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                  if ((plat as any) === 'kuaishou') return { icon: '💬', k: 'scnKsEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                  if ((plat as any) === 'bilibili') return { icon: '💬', k: 'scnBiliEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                  return { icon: '💬', k: 'scnXhsEngage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 }
-                if (plat === 'binance') return { icon: '🔶', zh: '币安广场发帖', en: 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-                if (plat === 'x')       return { icon: '🐦', zh: '推特任务', en: 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if ((plat as any) === 'youtube') return { icon: '📺', zh: 'YouTube 任务', en: 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-                if ((plat as any) === 'tiktok')  return { icon: '🎵', zh: 'TikTok 任务', en: 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                if ((plat as any) === 'douyin')  return { icon: '🎵', zh: '抖音创作', en: 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                if ((plat as any) === 'kuaishou') return { icon: '⚡', zh: '快手任务', en: 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-                if ((plat as any) === 'bilibili') return { icon: '📺', zh: '哔哩哔哩任务', en: 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                if ((plat as any) === 'shipinhao') return { icon: '📱', zh: '视频号任务', en: 'WeChat Channels Task', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-                if ((plat as any) === 'toutiao')  return { icon: '📰', zh: '头条号任务', en: 'Toutiao Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-                return { icon: '🔥', zh: '小红书 · 爆款批量仿写', en: 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                if (plat === 'binance') return { icon: '🔶', k: 'scnBnPostShort', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                if (plat === 'x')       return { icon: '🐦', k: 'scnXTask', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if ((plat as any) === 'youtube') return { icon: '📺', k: 'scnYtTask', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                if ((plat as any) === 'tiktok')  return { icon: '🎵', k: 'scnTtTask', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if ((plat as any) === 'douyin')  return { icon: '🎵', k: 'scnDyTask', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if ((plat as any) === 'kuaishou') return { icon: '⚡', k: 'scnKsTask', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if ((plat as any) === 'bilibili') return { icon: '📺', k: 'scnBiliTask', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if ((plat as any) === 'shipinhao') return { icon: '📱', k: 'scnShipinhaoTask', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                if ((plat as any) === 'toutiao')  return { icon: '📰', k: 'scnToutiaoTask', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                return { icon: '🔥', k: 'scnXhsViral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name
               const track = TRACK_ICONS[task.track];
@@ -549,7 +549,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         {platMeta.icon} {platMeta.label}
                       </span>
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
-                        {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
+                        {typeLabel.icon} {i18nService.t(typeLabel.k)}
                       </span>
                       {!isAnyLinkRewrite && !isImageTextTask && (
                         <>
