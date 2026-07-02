@@ -13,6 +13,16 @@ const LIKE_HARDCAP = 500;
 const FOLLOW_HARDCAP = 100;
 const COMMENT_HARDCAP = 100;
 
+// 引流(评论时按概率把引流文案融进 AI 评论)。与 MatrixReplyFansWizard 同一套口径。
+const FUNNEL_PHRASE_MAX = 200;
+const FUNNEL_PROB_MIN = 1;
+const FUNNEL_PROB_MAX = 100;
+const FUNNEL_PROB_DEFAULT = 50;
+// 评论引流仅对「评论走 comment_composer 单串出口」的平台生效(客户端 makeAiCall 在此出口融入)。
+// 抖音/快手/B站/TikTok/YouTube 属此列;小红书/X 评论走 __raw__ 批量/英文回复、币安广场剧本自带
+// 禁「引流」词过滤 —— 这三家此处不暴露引流,避免用户配了却不生效的误导(后续按需各自后端接入)。
+const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube']);
+
 type WizardStep = 1 | 2 | 3;
 
 export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
@@ -26,7 +36,7 @@ interface Props {
   accountsLoading?: boolean;               // 账号异步加载中(弹窗先开、账号后填);加载中显「加载中」而非「无账号」
   initialTask?: any | null;                // 编辑时传入矩阵任务
   onCancel: () => void;
-  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any }) => Promise<void> | void;
+  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel: { funnel_phrase: string; funnel_probability: number } }) => Promise<void> | void;
 }
 
 const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
@@ -56,14 +66,25 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const setCmtMin = (v: number) => { const n = Math.max(0, Math.min(COMMENT_HARDCAP, v)); setCmtMinRaw(n); setCmtMaxRaw((p) => (p < n ? n : p)); };
   const setCmtMax = (v: number) => { const n = Math.max(0, Math.min(COMMENT_HARDCAP, v)); setCmtMaxRaw(n); setCmtMinRaw((p) => (p > n ? n : p)); };
 
+  // ── 引流语 + 概率(评论时才用;编辑老任务时回填,老任务没配则空) ──
+  const [funnelPhrase, setFunnelPhrase] = useState<string>(String(initialTask?.funnel?.funnel_phrase || ''));
+  const hasFunnel = funnelPhrase.trim().length > 0;
+  const [funnelProb, setFunnelProb] = useState<number>(
+    typeof initialTask?.funnel?.funnel_probability === 'number'
+      ? Math.max(FUNNEL_PROB_MIN, Math.min(FUNNEL_PROB_MAX, initialTask.funnel.funnel_probability))
+      : FUNNEL_PROB_DEFAULT
+  );
+
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
   const allTermsAccepted = termsAccepted.every(Boolean);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const funnelSupported = FUNNEL_SUPPORTED_PLATFORMS.has(platform || '');
+  const showFunnel = cmtMax > 0 && funnelSupported;
   const totalMaxActions = likeMax + folMax + cmtMax;
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, funnelPhrase, funnelProb, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selected.size >= 1, reason: isZh ? '请至少勾选一个已登录账号' : 'Select at least one account' },
@@ -82,6 +103,8 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         concurrency: selected.size,   // 选几个号就同时开几个窗(runner 内部有安全上限兜底)
         frequency: runInterval,
         quota: { daily_like_min: likeMin, daily_like_max: likeMax, daily_follow_min: folMin, daily_follow_max: folMax, daily_comment_min: cmtMin, daily_comment_max: cmtMax },
+        // 引流:评论时按概率把引流文案融进 AI 评论。留空/平台不支持 → funnel_probability=0 → 视作未配,纯 AI 评论。
+        funnel: (funnelSupported && hasFunnel) ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb } : { funnel_phrase: '', funnel_probability: 0 },
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败' : 'Save failed'));
@@ -165,6 +188,44 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             <RangeSlider label="每次运行点赞数量" min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} hardCap={LIKE_HARDCAP} hint={`每次随机点赞 ${likeMin}-${likeMax} 个视频 (0-${LIKE_HARDCAP},越大风险越高)`} disabled={saving} />
             <RangeSlider label="每次运行关注数量" min={folMin} max={folMax} setMin={setFolMin} setMax={setFolMax} hardCap={FOLLOW_HARDCAP} hint={`每次随机关注 ${folMin}-${folMax} 个作者 (0-${FOLLOW_HARDCAP},关注是风控最严的动作,建议保守)`} disabled={saving} />
             <RangeSlider label="每次运行评论数量" min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax} hardCap={COMMENT_HARDCAP} hint={`每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按视频上下文+该号人设自动写)`} disabled={saving} />
+
+            {/* 引流(评论 max>0 且平台支持时显示):评论时 AI 按概率把引流文案自然融进评论。留空=纯 AI 评论,老任务不受影响。 */}
+            {showFunnel && (
+              <div className="rounded-xl border border-fuchsia-500/25 bg-fuchsia-500/5 px-4 py-3 space-y-3">
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                    🎣 评论引流语（选填）<span className="text-xs text-gray-400 font-normal ml-1">· 留空则评论不带引流,纯 AI 内容</span>
+                  </label>
+                  <textarea
+                    value={funnelPhrase}
+                    onChange={(e) => setFunnelPhrase(e.target.value.slice(0, FUNNEL_PHRASE_MAX))}
+                    placeholder={'比如：完整教程在我主页置顶视频，需要的可以去看\n或：同款清单私信我发你'}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[64px]"
+                    disabled={saving}
+                  />
+                  <div className="text-[11px] text-gray-400 mt-1">{funnelPhrase.trim().length} / {FUNNEL_PHRASE_MAX} 字</div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                    🎲 引流出现概率: {hasFunnel ? funnelProb : 0}%
+                    <span className="text-xs text-gray-400 font-normal ml-1">
+                      {hasFunnel ? '· AI 会按概率把引流语自然融进评论(不是每条都带)' : '· 引流语未填,概率失效'}
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    min={FUNNEL_PROB_MIN}
+                    max={FUNNEL_PROB_MAX}
+                    value={funnelProb}
+                    onChange={(e) => setFunnelProb(parseInt(e.target.value, 10))}
+                    disabled={saving || !hasFunnel}
+                    className="w-full accent-fuchsia-500 disabled:opacity-40"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
               <div className="font-semibold">⚠️ 安全提示</div>
               <ul className="list-disc list-inside space-y-0.5">
@@ -193,6 +254,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
               <SummaryRow label="点赞数" value={`${likeMin}-${likeMax} / 次`} />
               <SummaryRow label="关注数" value={`${folMin}-${folMax} / 次`} />
               <SummaryRow label="评论数" value={`${cmtMin}-${cmtMax} / 次`} />
+              {showFunnel && <SummaryRow label="评论引流" value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : '（未填,纯 AI 评论）'} />}
               <SummaryRow label="同时开窗" value={`${selected.size} 个号一起跑`} />
               <SummaryRow label="运行频率" value={intervalLabel} />
             </div>

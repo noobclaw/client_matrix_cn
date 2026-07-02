@@ -557,9 +557,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
   // ── 任务 ──
   // 向导(MatrixTaskWizard)保存:成功回 tasks 屏;失败抛出让向导显示红字。
-  const saveTaskFromWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any }) => {
+  const saveTaskFromWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel?: { funnel_phrase: string; funnel_probability: number } }) => {
     if (!requireLogin()) throw new Error('请先登录 NoobClaw 账号');
-    const r = await M()?.saveTask({ id: taskEditId || undefined, platform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    // funnel:互动评论引流(选填)。留空 → funnel_probability=0 → 视作未配,评论纯 AI 内容(向后兼容)。
+    const r = await M()?.saveTask({ id: taskEditId || undefined, platform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, funnel: input.funnel, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(互动)任务,直接编辑它即可', task_not_found: '任务不存在' } as any)[r?.error] || r?.error || '保存失败');
     await reloadTasks(); setNotice('任务已保存');
     setShowTaskEditModal(false); setTaskEditId(null);

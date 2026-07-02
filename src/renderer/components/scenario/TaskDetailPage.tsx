@@ -1131,6 +1131,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       </div>
                     );
                   })()}
+                  {/* 互动任务的「评论引流」(填了才显示):评论时 AI 按概率把引流语融进评论。 */}
+                  {isMatrix && !isReplyFan && /_auto_engage$/.test(String(task.scenario_id || '')) && (() => {
+                    const funnel = String((task as any).funnel_phrase || '').trim();
+                    if (!funnel) return null;
+                    const prob = typeof (task as any).funnel_probability === 'number' ? (task as any).funnel_probability : 0;
+                    return (
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        🎣 {isZh ? '评论引流' : 'Comment funnel'}: {funnel.slice(0, 40)}{funnel.length > 40 ? '…' : ''} · {prob}%
+                      </div>
+                    );
+                  })()}
                   {/* v4.28.x: 链接仿写场景(XHS link mode / x_link_rewrite / binance_from_x_link)
                       隐藏「赛道/人设: 🔗 ...」整行 —— 上面已经有 type badge 标明任务类型,
                       这一行的 link-mode label 跟 badge 完全重复,#ID 也已在标题区显示;

@@ -156,6 +156,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   //   track='reply_fan_comment',并带上引流语/概率 —— TaskDetailPage 靠这两个判定 isReplyFan
   //   并展示引流配置(funnel_phrase/funnel_probability);否则会被当互动任务、引流配置丢失。
   const isReply = t?.type === 'reply_fan';
+  const isEngage = t?.type === 'engage';
   const isDownload = t?.type === 'video_download';
   const isImageText = t?.type === 'image_text';
   const isViral = t?.type === 'viral_rewrite';
@@ -198,9 +199,10 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
     daily_follow_min: q.daily_follow_min, daily_follow_max: q.daily_follow_max,
     daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
-    // 仅回复粉丝任务带引流尾巴配置(供详情页展示 + 编辑回填)。
-    funnel_phrase: isReply ? (fn.funnel_phrase || '') : undefined,
-    funnel_probability: isReply ? (typeof fn.funnel_probability === 'number' ? fn.funnel_probability : 0) : undefined,
+    // 回复粉丝 + 互动(评论引流)都带引流尾巴配置(供详情页展示 + 编辑回填)。
+    // 互动任务的引流用于「评论时按概率把引流语融进 AI 评论」(见 engageRunner.makeAiCall)。
+    funnel_phrase: (isReply || isEngage) ? (fn.funnel_phrase || '') : undefined,
+    funnel_probability: (isReply || isEngage) ? (typeof fn.funnel_probability === 'number' ? fn.funnel_probability : 0) : undefined,
     account_ids: t.accountIds || [],
     created_at: t.createdAt || 0,
     updated_at: t.createdAt || 0,
@@ -341,6 +343,12 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       daily_like_min: input.daily_like_min, daily_like_max: input.daily_like_max,
       daily_follow_min: input.daily_follow_min, daily_follow_max: input.daily_follow_max,
       daily_comment_min: input.daily_comment_min, daily_comment_max: input.daily_comment_max,
+    },
+    // 互动评论引流:透传引流配置,否则经 updateTask 兜底(如 MyTasksPage 改启用)会把 funnel 丢掉。
+    // 老任务 / 未填 → funnel_phrase 为 undefined → 存 {'',0} 视作未配,评论纯 AI(向后兼容)。
+    funnel: {
+      funnel_phrase: input.funnel_phrase || '',
+      funnel_probability: typeof input.funnel_probability === 'number' ? input.funnel_probability : 0,
     },
     concurrency: accountIds.length,
     frequency: input.run_interval || 'daily_random',

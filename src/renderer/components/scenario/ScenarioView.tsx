@@ -310,6 +310,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         daily_follow_min: task.daily_follow_min, daily_follow_max: task.daily_follow_max,
         daily_comment_min: task.daily_comment_min, daily_comment_max: task.daily_comment_max,
       },
+      // 评论引流回填(老任务无此字段 → 空 → 向导显示未填)。
+      funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },
       frequency: task.run_interval,
     });
     setMatrixWizardPlatform(plat);
@@ -321,11 +323,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     } catch { setMatrixAccounts([]); }
     finally { setMatrixAccountsLoading(false); }
   };
-  const saveMatrixTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any }) => {
+  const saveMatrixTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel?: { funnel_phrase: string; funnel_probability: number } }) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
     // 带 id = 更新现有任务(saveTask 是整体 upsert);无 id = 新建。
-    const r = await m?.saveTask?.({ id: matrixWizardTask?.id, platform: matrixWizardPlatform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    // funnel:互动评论引流(选填),留空 → funnel_probability=0 → 评论纯 AI(向后兼容)。
+    const r = await m?.saveTask?.({ id: matrixWizardTask?.id, platform: matrixWizardPlatform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, funnel: input.funnel, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixWizardPlatform; setMatrixWizardPlatform(null); setMatrixWizardTask(null); setDupNotice({ platform: dp as string, label: '互动' }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');

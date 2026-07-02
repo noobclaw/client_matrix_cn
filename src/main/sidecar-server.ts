@@ -378,7 +378,10 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
           platform: task.platform, taskId: task.id, accountIds: runIds, quota: task.quota, concurrency: task.concurrency, kernelPath, signal: abort.signal,
           taskType: task.type as any,
           scenarioId: isReplyFan ? `${task.platform}_reply_fans_comment` : isVideoDownload ? `${task.platform}_video_download` : undefined,
-          funnel: isReplyFan ? task.funnel : undefined,
+          // 引流尾巴配置:reply_fan(回复粉丝)+ engage(互动评论)都带上。
+          // engage 由客户端 makeAiCall 对 comment_composer 输出按概率融入;reply_fan 走后端剧本。
+          // 老任务没配 funnel → undefined → 两条路径都视作未填,行为不变(向后兼容)。
+          funnel: task.funnel,
           urls: isVideoDownload ? task.urls : undefined,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         });

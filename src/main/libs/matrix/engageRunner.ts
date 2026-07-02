@@ -122,20 +122,43 @@ function engageHistoryFor(accountId: string) {
 // ── 简化版 aiCall(写评论/衍生关键词):POST /api/ai/chat/completions ──
 // onCost:写评论等 AI 调用也是真扣积分(_noobclaw.billableTokens/costUsd),回传给上层累进「本次消耗」,
 //        否则评论的 token 费看不见 → 消耗算少了。
-function makeAiCall(pack: any, authToken: string | undefined, report: (m: string) => void, onCost?: (credits: number, usd: number) => void, signal?: AbortSignal) {
-  return async (promptNameOrRaw: string, promptOrInput: any, rawInput?: string, opts?: any) => {
-    const prompt = promptNameOrRaw === '__raw__' ? String(promptOrInput) : String(pack?.prompts?.[promptNameOrRaw] || '');
-    const userMessage = promptNameOrRaw === '__raw__'
-      ? String(rawInput || '')
-      : (typeof promptOrInput === 'string' ? promptOrInput : JSON.stringify(promptOrInput));
+// 引流融入 prompt —— 把 AI 写好的评论正文和用户填的引流文案二次融合成一句人话。
+// 与后端 *_reply_fans_comment/prompts/funnel_polish.txt 同思路,但这里是「互动评论」
+// 语境(不是回复粉丝),所以措辞按评论调。放客户端是因为互动剧本(comment_composer)
+// 走客户端 makeAiCall,这样 5 个平台(抖音/快手/B站/TikTok/YouTube)零后端改动统一生效。
+const FUNNEL_WEAVE_PROMPT = [
+  '你的任务:把一段「评论正文」和一句「引流文案」自然融合成一条评论。',
+  '',
+  '# 输入',
+  '- 评论正文(必须保留核心意思):{{reply_body}}',
+  '- 引流文案原文(必须保留核心信息:关键词/行动指令,但可换说法):{{funnel_phrase}}',
+  '',
+  '# 要求',
+  '1. 保留评论正文对内容的回应核心',
+  '2. 保留引流文案的核心信息(关键词、行动指令),可换说法让它衔接自然',
+  '3. 用一个自然过渡把两者连成一句人话,别让人觉得是「评论 + 广告尾巴」',
+  '4. 总长 10~80 字,引流部分不超过总长 60%',
+  '5. 跟评论正文同样的语气',
+  '6. 不出现敏感词(最 / 第一 / 100% / 秒杀 / 独家)',
+  '7. 不添加链接 / 电话 / 邮箱 / 微信号 —— 引流文案里有就保留,没有别加',
+  '8. 不要 @ 用户名,不要「以下是改写」之类的元话术',
+  '',
+  '# 输出',
+  '只输出最终融合后的整句评论,不要任何前缀 / 后缀 / 引号 / 解释。',
+  '',
+  '# 差异签名: {{nonce}}',
+].join('\n');
+
+function makeAiCall(pack: any, authToken: string | undefined, report: (m: string) => void, onCost?: (credits: number, usd: number) => void, signal?: AbortSignal, funnel?: { phrase?: string; prob?: number }) {
+  // 单次 chat 调用(系统提示 + 用户消息 → content 文本)。主评论与引流融入复用它。
+  const doChat = async (systemPrompt: string, userMessage: string, wantJson: boolean, model?: string): Promise<string> => {
     if (!authToken) throw new Error('AI_NOT_CONFIGURED');
     const body: any = {
-      model: (opts && opts.model) || 'noobclawai-chat',
-      messages: [{ role: 'system', content: prompt }, { role: 'user', content: userMessage }],
+      model: model || 'noobclawai-chat',
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
       stream: false, max_tokens: 8000,
     };
-    const wantJson = opts?.expectJson !== false;
-    if (wantJson && (/json/i.test(prompt) || /json/i.test(userMessage))) body.response_format = { type: 'json_object' };
+    if (wantJson && (/json/i.test(systemPrompt) || /json/i.test(userMessage))) body.response_format = { type: 'json_object' };
     else if (!wantJson) body.response_format = { type: 'text' };
     const res = await fetch(`${baseUrl()}/api/ai/chat/completions`, {
       method: 'POST',
@@ -150,8 +173,53 @@ function makeAiCall(pack: any, authToken: string | undefined, report: (m: string
       const aiUsd = Number(data?._noobclaw?.costUsd) || 0;
       if ((aiCredits > 0 || aiUsd > 0) && onCost) onCost(aiCredits, aiUsd);
     } catch { /* ignore */ }
-    const content = data?.choices?.[0]?.message?.content ?? '';
-    if (opts?.expectJson === false) return content;
+    return data?.choices?.[0]?.message?.content ?? '';
+  };
+
+  // 引流融入:仅对「互动评论」(comment_composer,返回纯文本串)且任务填了引流语时,
+  // 按概率再调一次 AI 把引流文案融进评论。未填引流语 / 未命中概率 / 融入失败 → 原样返回。
+  // 兼容:老任务没有 funnel 字段 → funnel?.phrase 为空 → 整条逻辑跳过,行为完全不变。
+  const maybeWeaveFunnel = async (baseComment: string): Promise<string> => {
+    const base = String(baseComment || '').trim();
+    const phrase = String(funnel?.phrase || '').trim();
+    if (!base || !phrase) return baseComment;
+    const prob = typeof funnel?.prob === 'number' ? funnel.prob : 0;
+    if (prob <= 0) return baseComment;
+    const dice = Math.floor(Math.random() * 100) + 1; // 1-100
+    if (dice > prob) return baseComment; // 未命中概率 → 纯评论
+    const nonce = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+    const sys = FUNNEL_WEAVE_PROMPT
+      .split('{{reply_body}}').join(base)
+      .split('{{funnel_phrase}}').join(phrase)
+      .split('{{nonce}}').join(nonce);
+    try {
+      const raw = await doChat(sys, JSON.stringify({ task: 'weave_funnel', comment: base, funnel: phrase }), false);
+      let polished = String(raw || '').trim()
+        .replace(/^```[a-z]*\n?/i, '').replace(/```\s*$/i, '')
+        .replace(/^["'“”]+|["'“”]+$/g, '')
+        .trim();
+      // 达标校验:非空、够长、不比原评论短太多(防 AI 只吐引流语丢了评论正文)。不达标 → 保留原评论。
+      if (polished && polished.length >= 8 && polished.length >= base.length * 0.4) {
+        try { report('   🎯 已按 ' + prob + '% 概率把引流语融入评论'); } catch { /* ignore */ }
+        return polished;
+      }
+    } catch { /* 融入失败 → 纯评论 */ }
+    return baseComment;
+  };
+
+  return async (promptNameOrRaw: string, promptOrInput: any, rawInput?: string, opts?: any) => {
+    const prompt = promptNameOrRaw === '__raw__' ? String(promptOrInput) : String(pack?.prompts?.[promptNameOrRaw] || '');
+    const userMessage = promptNameOrRaw === '__raw__'
+      ? String(rawInput || '')
+      : (typeof promptOrInput === 'string' ? promptOrInput : JSON.stringify(promptOrInput));
+    const wantJson = opts?.expectJson !== false;
+    const content = await doChat(prompt, userMessage, wantJson, opts && opts.model);
+    if (opts?.expectJson === false) {
+      // 互动评论(comment_composer)是纯文本评论出口 → 在这里按概率融入引流语。
+      // 其它 expectJson:false 的调用(关键词衍生等)不叫 comment_composer,不受影响。
+      if (promptNameOrRaw === 'comment_composer') return await maybeWeaveFunnel(content);
+      return content;
+    }
     try { return JSON.parse(content); } catch { return content; }
   };
 }
@@ -261,7 +329,13 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     const aiCall = makeAiCall(pack, authToken, log, (credits: number, usd: number) => {
       chargedCredits += credits; chargedUsd += usd;
       try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
-    }, opts.signal); // 传 abort signal:点停止时这次 AI 调用立即中断
+    }, opts.signal, {
+      // 引流融入:互动评论(comment_composer)按此概率把引流文案融进评论。
+      // task.funnel_phrase/probability 已由上面从 opts.funnel 填好;engage 与 reply_fan 都带,
+      // 但只有 comment_composer 出口(互动评论)会用到,reply_fan 走后端 fan_reply_body,互不影响。
+      phrase: task.funnel_phrase || '',
+      prob: typeof task.funnel_probability === 'number' ? task.funnel_probability : 0,
+    }); // 传 abort signal:点停止时这次 AI 调用立即中断
     const browserFn: any = (command: string, params?: any, timeout?: number) => matrixCmd(accountId, command, params, timeout);
     // task-tab 对象:orchestrator 在 _activeTab 上调 browser/navigate/scroll/id。
     // 内核单页,全部路由到本账号的 CDP(之前只返回 {id} 导致 _activeTab.navigate is not a function)。
