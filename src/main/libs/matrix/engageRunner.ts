@@ -68,7 +68,7 @@ export interface EngageTaskOptions {
   // (单账号,粘贴多个链接逐个下载,不需关键词、无配额)。缺省 'engage' 兼容旧调用。
   taskType?: 'engage' | 'reply_fan' | 'video_download';
   scenarioId?: string;             // 显式指定后端剧本 id(reply_fan→*_reply_fans_comment / video_download→*_video_download);缺省按平台推
-  funnel?: { funnel_phrase?: string; funnel_probability?: number }; // 仅 reply_fan:引流尾巴配置
+  funnel?: { funnel_phrase?: string; funnel_probability?: number }; // 引流尾巴配置:reply_fan 走后端剧本;engage 由 makeAiCall 对 comment_composer 融入
   urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
   concurrency?: number;
   jitterMinMs?: number; jitterMaxMs?: number;
