@@ -57,69 +57,69 @@ const TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
   study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
 };
 
-function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; label: string; color: string } {
+function typeLabelForRecord(rec: RunRecord): { icon: string; label: string; color: string } {
   const sid = rec.scenario_snapshot.id;
   const wf = rec.scenario_snapshot.workflow_type;
   const taskUrls = (rec.task_snapshot && rec.task_snapshot.urls) || [];
   const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
     || (Array.isArray(taskUrls) && taskUrls.length > 0 && rec.scenario_snapshot.platform === 'xhs');
-  if (sid === 'x_auto_engage')               return { icon: '🐦', label: isZh ? '推特 · 互动涨粉' : 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-  if (sid === 'x_post_creator')              return { icon: '📝', label: isZh ? '推特 · 自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-  if (sid === 'x_link_rewrite')              return { icon: '✍️', label: isZh ? '推特 · 指定链接仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-  if (sid === 'binance_square_auto_engage')  return { icon: '🤝', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-  if (sid === 'binance_square_post_creator') return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-  if (sid === 'binance_from_x_repost')       return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+  if (sid === 'x_auto_engage')               return { icon: '🐦', label: i18nService.t('scnXEngage'), color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+  if (sid === 'x_post_creator')              return { icon: '📝', label: i18nService.t('scnXPost'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+  if (sid === 'x_link_rewrite')              return { icon: '✍️', label: i18nService.t('scnXRewrite'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+  if (sid === 'binance_square_auto_engage')  return { icon: '🤝', label: i18nService.t('scnBnEngage'), color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+  if (sid === 'binance_square_post_creator') return { icon: '🔶', label: i18nService.t('scnBnPost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+  if (sid === 'binance_from_x_repost')       return { icon: '🔁', label: i18nService.t('scnBnRepostX'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
   // v6.x: 3 个新搬运源 — 跟 MyTasksPage label 对齐
-  if (sid === 'binance_from_xhs_viral')      return { icon: '📕', label: isZh ? '币安广场 · 小红书批量搬运' : 'Binance · Repost from Xiaohongshu', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
-  if (sid === 'binance_from_douyin_viral')   return { icon: '🎵', label: isZh ? '币安广场 · 抖音批量搬运' : 'Binance · Repost from Douyin', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-  if (sid === 'binance_from_tiktok_viral')   return { icon: '🎬', label: isZh ? '币安广场 · TikTok 批量搬运' : 'Binance · Repost from TikTok', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (sid === 'binance_from_x_link')       return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+  if (sid === 'binance_from_xhs_viral')      return { icon: '📕', label: i18nService.t('scnBnRepostXhs'), color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+  if (sid === 'binance_from_douyin_viral')   return { icon: '🎵', label: i18nService.t('scnBnRepostDy'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+  if (sid === 'binance_from_tiktok_viral')   return { icon: '🎬', label: i18nService.t('scnBnRepostTt'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'binance_from_x_link')       return { icon: '🔗', label: i18nService.t('scnBnFromXLink'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
   // Douyin / YouTube / TikTok — explicit sid matches BEFORE the workflow_type
   // fallback below, otherwise their workflow_type='auto_reply' / 'viral_production'
   // would short-circuit into the XHS-default branches and they'd render with
   // "小红书" labels even though the records are actually for Douyin/YT/TT.
   // Colors mirror MyTasksPage (which had the same bug fixed earlier) so badges
   // look identical across the task list and the run history list.
-  if (sid === 'youtube_auto_engage')         return { icon: '📺', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
-  if (sid === 'tiktok_auto_engage')          return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (sid === 'douyin_auto_engage')          return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-  if (sid === 'douyin_image_text')           return { icon: '📝', label: isZh ? '抖音 · 图文创作' : 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-  if (sid === 'douyin_reply_fans_comment')   return { icon: '💬', label: isZh ? '抖音 · 自动回复粉丝' : 'Douyin Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (sid === 'xhs_reply_fans_comment')      return { icon: '💌', label: isZh ? '小红书 · 自动回复粉丝' : 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-  if (sid === 'xhs_video_download')          return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-  if (sid === 'douyin_video_download')       return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-  if (sid === 'tiktok_video_download')       return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (sid === 'kuaishou_auto_engage')        return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-  if (sid === 'kuaishou_video_download')     return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-  if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (sid === 'bilibili_auto_engage')        return { icon: '📺', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-  if (sid === 'bilibili_video_download')     return { icon: '⬇️', label: isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-  if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', label: isZh ? '哔哩哔哩 · 自动回复粉丝' : 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (sid === 'shipinhao_image_text')         return { icon: '📝', label: isZh ? '视频号 · 图文创作' : 'WeChat Channels Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-  if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', label: isZh ? '视频号 · 自动回复粉丝' : 'WeChat Channels Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (sid === 'toutiao_image_text')           return { icon: '📝', label: isZh ? '头条号 · 图文创作' : 'Toutiao Image-Text', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-  if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', label: isZh ? '头条号 · 自动回复粉丝' : 'Toutiao Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+  if (sid === 'youtube_auto_engage')         return { icon: '📺', label: i18nService.t('scnYtEngage'), color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
+  if (sid === 'tiktok_auto_engage')          return { icon: '🎵', label: i18nService.t('scnTtEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'douyin_auto_engage')          return { icon: '🎵', label: i18nService.t('scnDyEngage'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+  if (sid === 'douyin_image_text')           return { icon: '📝', label: i18nService.t('scnDyImageText'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+  if (sid === 'douyin_reply_fans_comment')   return { icon: '💬', label: i18nService.t('scnDyReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'xhs_reply_fans_comment')      return { icon: '💌', label: i18nService.t('scnXhsReplyFans'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+  if (sid === 'xhs_video_download')          return { icon: '⬇️', label: i18nService.t('scnXhsDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+  if (sid === 'douyin_video_download')       return { icon: '⬇️', label: i18nService.t('scnDyDownload'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+  if (sid === 'tiktok_video_download')       return { icon: '⬇️', label: i18nService.t('scnTtDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'kuaishou_auto_engage')        return { icon: '⚡', label: i18nService.t('scnKsEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+  if (sid === 'kuaishou_video_download')     return { icon: '⬇️', label: i18nService.t('scnKsDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+  if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', label: i18nService.t('scnKsReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'bilibili_auto_engage')        return { icon: '📺', label: i18nService.t('scnBiliEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+  if (sid === 'bilibili_video_download')     return { icon: '⬇️', label: i18nService.t('scnBiliDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+  if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', label: i18nService.t('scnBiliReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'shipinhao_image_text')         return { icon: '📝', label: i18nService.t('scnShipinhaoImageText'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+  if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', label: i18nService.t('scnShipinhaoReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'toutiao_image_text')           return { icon: '📝', label: i18nService.t('scnToutiaoImageText'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+  if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', label: i18nService.t('scnToutiaoReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (isXhsLinkMode)             return { icon: '🔗', label: i18nService.t('scnXhsLinkRewrite'), color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
   // workflow_type fallback — check platform first so Binance auto_reply
   // doesn't get mis-labeled as XHS auto_reply. (Douyin/YT/TT are now
   // covered by the explicit sid matches above and won't fall through here.)
   const plat = rec.scenario_snapshot.platform;
   if (wf === 'auto_reply') {
-    if (plat === 'binance') return { icon: '💬', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-    return { icon: '💬', label: isZh ? '小红书 · 互动涨粉' : 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (plat === 'binance') return { icon: '💬', label: i18nService.t('scnBnEngage'), color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+    return { icon: '💬', label: i18nService.t('scnXhsEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   }
-  if (plat === 'binance') return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-  if (plat === 'x')       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+  if (plat === 'binance') return { icon: '🔶', label: i18nService.t('scnBnPostShort'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+  if (plat === 'x')       return { icon: '🐦', label: i18nService.t('scnXTask'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   // Platform-aware final fallback — old code defaulted everything unknown
   // to "小红书 · 爆款批量仿写" which mislabeled e.g. future Douyin variants.
-  if (plat === 'douyin')  return { icon: '🎵', label: isZh ? '抖音任务' : 'Douyin Task', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
-  if (plat === 'kuaishou') return { icon: '⚡', label: isZh ? '快手任务' : 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-  if (plat === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩任务' : 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-  if ((plat as any) === 'shipinhao') return { icon: '📱', label: isZh ? '视频号任务' : 'WeChat Channels Task', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-  if ((plat as any) === 'toutiao') return { icon: '📰', label: isZh ? '头条号任务' : 'Toutiao Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-  if (plat === 'youtube') return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-  if (plat === 'tiktok')  return { icon: '🎬', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-  return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+  if (plat === 'douyin')  return { icon: '🎵', label: i18nService.t('scnDyTask'), color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+  if (plat === 'kuaishou') return { icon: '⚡', label: i18nService.t('scnKsTask'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+  if (plat === 'bilibili') return { icon: '📺', label: i18nService.t('scnBiliTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+  if ((plat as any) === 'shipinhao') return { icon: '📱', label: i18nService.t('scnShipinhaoTask'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+  if ((plat as any) === 'toutiao') return { icon: '📰', label: i18nService.t('scnToutiaoTask'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+  if (plat === 'youtube') return { icon: '📺', label: i18nService.t('scnYtTask'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+  if (plat === 'tiktok')  return { icon: '🎬', label: i18nService.t('scnTtTask'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  return { icon: '🔥', label: i18nService.t('scnXhsViral'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
 }
 
 interface Props {
@@ -291,7 +291,7 @@ export const RunHistoryPage: React.FC<Props> = ({
               const sc = rec.scenario_snapshot;
               const trackId = (rec.task_snapshot && rec.task_snapshot.track) || '';
               const trackInfo = TRACK_ICONS[trackId];
-              const typeBadge = typeLabelForRecord(rec, isZh);
+              const typeBadge = typeLabelForRecord(rec);
               // Display name: prefer track (matches MyTasksPage), fall back to
               // generic scenario name, then to id.
               const displayName = trackInfo
