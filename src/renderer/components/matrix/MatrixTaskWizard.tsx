@@ -184,7 +184,6 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
 
         {step === 2 && (
           <>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">每次运行,下面三项动作分别按"随机区间 [min, max]"决定做几次。设为 0/0 则该动作不执行。每个账号各自跑。</div>
             <RangeSlider label="每次运行点赞数量" min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} hardCap={LIKE_HARDCAP} hint={`每次随机点赞 ${likeMin}-${likeMax} 个视频 (0-${LIKE_HARDCAP},越大风险越高)`} disabled={saving} />
             <RangeSlider label="每次运行关注数量" min={folMin} max={folMax} setMin={setFolMin} setMax={setFolMax} hardCap={FOLLOW_HARDCAP} hint={`每次随机关注 ${folMin}-${folMax} 个作者 (0-${FOLLOW_HARDCAP},关注是风控最严的动作,建议保守)`} disabled={saving} />
             <RangeSlider label="每次运行评论数量" min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax} hardCap={COMMENT_HARDCAP} hint={`每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按视频上下文+该号人设自动写)`} disabled={saving} />
