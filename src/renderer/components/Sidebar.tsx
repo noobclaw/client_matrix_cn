@@ -253,10 +253,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* 矩阵号导航:我的矩阵号 / 新建涨粉任务 / 我的涨粉任务 / 运行记录(矩阵 edition 整个 app 就这一组,不再加组头) */}
           <div className="space-y-1">
             {([
-              ['matrix', '👥 我的矩阵账号', onShowMatrix],
-              ['matrixTaskNew', '✨ 新建矩阵涨粉任务', onShowMatrixTaskNew],
-              ['matrixTasks', '📋 我的矩阵涨粉任务', onShowMatrixTasks],
-              ['matrixRuns', '📊 矩阵涨粉运行记录', onShowMatrixRuns],
+              ['matrix', '👥 ' + i18nService.t('matrixMyAccounts'), onShowMatrix],
+              ['matrixTaskNew', '✨ ' + i18nService.t('matrixNewFanTask'), onShowMatrixTaskNew],
+              ['matrixTasks', '📋 ' + i18nService.t('matrixMyFanTasks'), onShowMatrixTasks],
+              ['matrixRuns', '📊 ' + i18nService.t('matrixRunHistory'), onShowMatrixRuns],
             ] as const).map(([key, label, handler]) => (
               <button
                 key={key}

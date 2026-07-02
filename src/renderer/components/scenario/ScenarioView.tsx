@@ -1619,10 +1619,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 不再停在「新建涨粉任务 / 涨粉运行记录」。 */}
             {matrixMode
               ? (inDetailView
-                  ? '🧬 我的矩阵涨粉任务'
+                  ? '🧬 ' + i18nService.t('matrixMyFanTasks')
                   : mode === 'runs'
-                    ? '🧬 矩阵涨粉运行记录'
-                    : '🧬 我的矩阵涨粉任务')
+                    ? '🧬 ' + i18nService.t('matrixRunHistory')
+                    : '🧬 ' + i18nService.t('matrixMyFanTasks'))
               : inDetailView
                 ? i18nService.t('myFanTasks')
                 : mode === 'create'
