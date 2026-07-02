@@ -1477,7 +1477,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     const pe = authState.subPeriodEnd ? new Date(authState.subPeriodEnd).getTime() : 0;
                     const active = pe > Date.now();
                     const exp = !!authState.subStatus && !active;
-                    const nm = authState.subPlanName || authState.planName || i18nService.t('wvFreePlan');
+                    const nm = (() => { const K: Record<string,string> = { free:'planTierFree', basic:'planTierBasic', pro:'planTierPro', max:'planTierMax', '免费版':'planTierFree', '基础版':'planTierBasic', '进阶版':'planTierPro', '旗舰版':'planTierMax' }; const raw = authState.subPlanName || authState.planName || ''; return K[raw] ? i18nService.t(K[raw]) : (raw || i18nService.t('wvFreePlan')); })();
                     const d = pe ? new Date(pe) : null;
                     const lbl = d ? `${d.getMonth() + 1}/${d.getDate()}` : '';
                     const days = active ? Math.ceil((pe - Date.now()) / 86_400_000) : 0;

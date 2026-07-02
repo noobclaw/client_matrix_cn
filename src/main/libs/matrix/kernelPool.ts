@@ -269,6 +269,7 @@ function buildKernelArgs(opts: LaunchKernelOptions, debugPort: number, bridgePor
   } catch { /* 扩展非关键,失败不挡启动 */ }
 
   if (opts.headless) args.push('--headless=new');
+  else args.push('--window-size=1180,820'); // 启动即按目标尺寸开,消除åå¤§åç¼©çè·³å¨
   // 启动 URL 作为最后一个位置参数:内核在首个可见窗口直接打开它(扫码登录页),
   // 不再依赖启动后再 navigate(那条路有 target 竞态,会把页开到后台 tab)。
   if (opts.startUrl) args.push(opts.startUrl);

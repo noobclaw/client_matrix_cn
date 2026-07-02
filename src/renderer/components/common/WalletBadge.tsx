@@ -62,7 +62,7 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
   const expired = hadSub && !memberActive;                 // 买过但已过期
   const isPaid = memberActive;                             // 金色 pill / 升级按钮判定
   // 展示档名:有订阅记录 → 用订阅档名(到期后仍显示原档「进阶版」);否则免费版。
-  const planName = authState.subPlanName || authState.planName || i18nService.t('wbPlanFree');
+  const planName = (() => { const K: Record<string,string> = { free:'planTierFree', basic:'planTierBasic', pro:'planTierPro', max:'planTierMax', '免费版':'planTierFree', '基础版':'planTierBasic', '进阶版':'planTierPro', '旗舰版':'planTierMax' }; const raw = authState.subPlanName || authState.planName || ''; return K[raw] ? i18nService.t(K[raw]) : (raw || i18nService.t('wbPlanFree')); })();
   // 免费→「订阅会员」、付费未满级→「升级会员」、最高档(max)→灰色禁用。
   const isMaxTier = memberActive && authState.planCode === 'max';
   const subLabel = !memberActive ? i18nService.t('wbSubscribe') : i18nService.t('wbUpgrade');
