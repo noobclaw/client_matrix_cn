@@ -53,19 +53,18 @@ const TRACK_NAMES: Record<string, string> = {
   crafts: '🎨 手工 · DIY',
 };
 
-function formatRelative(ts: number | null | undefined, isZh: boolean): string {
-  if (!ts) return isZh ? '尚未运行' : 'Not run yet';
+function formatRelative(ts: number | null | undefined): string {
+  if (!ts) return i18nService.t('tdNotRunYet');
   const diff = Date.now() - ts;
   const mins = Math.round(Math.abs(diff) / 60_000);
-  if (mins < 1) return isZh ? '刚刚' : 'Just now';
-  if (mins < 60) return isZh ? `${mins} 分钟前` : `${mins} min ago`;
+  if (mins < 1) return i18nService.t('tdJustNow');
+  if (mins < 60) return i18nService.t('tdMinAgo').replace('{n}', String(mins));
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return isZh ? `${hrs} 小时前` : `${hrs} hr ago`;
-  return isZh ? `${Math.round(hrs / 24)} 天前` : `${Math.round(hrs / 24)} d ago`;
+  if (hrs < 24) return i18nService.t('tdHrAgo').replace('{n}', String(hrs));
+  return i18nService.t('tdDayAgo').replace('{n}', String(Math.round(hrs / 24)));
 }
 
-const STEP_LABELS_ZH = ['步骤一', '步骤二', '步骤三', '步骤四'];
-const STEP_LABELS_EN = ['Step 1', 'Step 2', 'Step 3', 'Step 4'];
+const STEP_LABELS_ZH = [i18nService.t('tdStep1'), i18nService.t('tdStep2'), i18nService.t('tdStep3'), i18nService.t('tdStep4')];
 
 // CSS for typing blink animation
 const typingStyle = document.createElement('style');
@@ -165,7 +164,7 @@ function renderLogMessage(message: string) {
     // 去掉文件名 = 所在目录(保留原始分隔符:Windows \ / macOS·Linux /)
     const sep = filePath.includes('\\') ? '\\' : '/';
     const dirPath = filePath.slice(0, filePath.lastIndexOf(sep)) || filePath;
-    const openDirLabel = i18nService.currentLanguage === 'zh' ? '打开目录' : 'Open folder';
+    const openDirLabel = i18nService.t('tdOpenDir');
     return (
       <>
         {before}{arrow}
@@ -192,285 +191,56 @@ function renderLogMessage(message: string) {
   }
   return message;
 }
-const STEP_NAMES_ZH = [
-  '采集爆款文章。请勿切换浏览器标签页。',
-  'AI 改写标题和内容，保存到本地',
-  'AI 生成图片，保存到本地',
-  '上传到小红书草稿箱。请勿切换浏览器标签页。',
-];
-const STEP_NAMES_EN = [
-  'Scrape trending articles. Do not switch browser tabs.',
-  'AI rewrites titles & content, saved locally',
-  'AI generates images, saved locally',
-  'Upload to Xiaohongshu drafts. Do not switch browser tabs.',
-];
+const STEP_NAMES_ZH = [i18nService.t('tdSnXhs0'), i18nService.t('tdSnXhs1'), i18nService.t('tdSnXhs2'), i18nService.t('tdSnXhs3')];
 // XHS Auto-reply: 3 steps. Step 2 contains the entire per-article loop
 // v2.4.89: 所有步骤标题用**用户视角**的大白话,不再暴露内部实现细节
 // (selector / retry / model name / CSP / React state 这些全藏起来)
-const STEP_NAMES_AUTOREPLY_ZH = [
-  '挑选要回复的文章',
-  '逐篇生成评论并发布',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_AUTOREPLY_EN = [
-  'Pick articles to reply to',
-  'Generate and post comments per article',
-  'Save this run report to disk',
-];
+const STEP_NAMES_AUTOREPLY_ZH = [i18nService.t('tdSnAutoreply0'), i18nService.t('tdSnAutoreply1'), i18nService.t('tdSnAutoreply2')];
 // XHS 回复粉丝评论 4 步 — 跟 orchestrator.js 里的 stepLog 阶段对齐:
 //   STEP 1: 抓创作者中心笔记列表
 //   STEP 2: 探测当前登录用户 uid (去重判定用)
 //   STEP 3: 逐篇笔记进详情页 + AI 生成回复 + 发送
 //   STEP 4: 汇总报告
-const STEP_NAMES_XHS_REPLY_FANS_ZH = [
-  '进入创作者中心，读取你的笔记列表',
-  '打开笔记，自动回复粉丝评论',
-  '保存本次报告',
-];
-const STEP_NAMES_XHS_REPLY_FANS_EN = [
-  'Enter Creator Center, read your notes list',
-  'Open notes and auto-reply fan comments',
-  'Save run report',
-];
-const STEP_NAMES_DOUYIN_REPLY_FANS_ZH = [
-  '进入抖音创作者中心评论管理，选择作品',
-  '逐条回复粉丝评论（只回粉丝，绝不评论作品本身）',
-  '保存本次报告',
-];
-const STEP_NAMES_DOUYIN_REPLY_FANS_EN = [
-  'Enter Douyin Comment Management, pick a work',
-  'Reply fan comments (fans only, never the video itself)',
-  'Save run report',
-];
-const STEP_NAMES_X_AUTO_ENGAGE_ZH = [
-  '准备本次动作清单',
-  '逐个执行关注 / 回复 / 点赞',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_X_AUTO_ENGAGE_EN = [
-  'Plan this run',
-  'Execute follow / reply / like one by one',
-  'Save this run report to disk',
-];
-const STEP_NAMES_X_POST_CREATOR_ZH = [
-  '准备素材',
-  '生成推文并发布',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_X_POST_CREATOR_EN = [
-  'Prepare material',
-  'Generate and post the tweet',
-  'Save this run report to disk',
-];
+const STEP_NAMES_XHS_REPLY_FANS_ZH = [i18nService.t('tdSnXhsReplyFans0'), i18nService.t('tdSnXhsReplyFans1'), i18nService.t('tdSnXhsReplyFans2')];
+const STEP_NAMES_DOUYIN_REPLY_FANS_ZH = [i18nService.t('tdSnDouyinReplyFans0'), i18nService.t('tdSnDouyinReplyFans1'), i18nService.t('tdSnDouyinReplyFans2')];
+const STEP_NAMES_X_AUTO_ENGAGE_ZH = [i18nService.t('tdSnXEngage0'), i18nService.t('tdSnXEngage1'), i18nService.t('tdSnXEngage2')];
+const STEP_NAMES_X_POST_CREATOR_ZH = [i18nService.t('tdSnXPost0'), i18nService.t('tdSnXPost1'), i18nService.t('tdSnXPost2')];
 // v5.x+: 4 步,跟 binance_from_x_link 同款"按条端到端"结构 — 每条 URL 独立
 // 走完读源/仿写/发推三步,UI 进度条逐步推进。报告步落到第 4 步。
-const STEP_NAMES_X_LINK_REWRITE_ZH = [
-  '打开链接读取原推',
-  'AI 改写 + 准备配图/视频',
-  '发布到推特',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_X_LINK_REWRITE_EN = [
-  'Open URL & read source tweet',
-  'AI rewrite + prep images/video',
-  'Post to X',
-  'Save this run report to disk',
-];
-const STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH = [
-  '准备本次动作清单',
-  '逐个执行关注 / 回复 / 点赞',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_BINANCE_AUTO_ENGAGE_EN = [
-  'Plan this run',
-  'Execute follow / reply / like one by one',
-  'Save this run report to disk',
-];
-const STEP_NAMES_BINANCE_POST_CREATOR_ZH = [
-  '选题(token + 方向)',
-  'AI 生成内容',
-  '打开发帖框 + 写入内容',
-  '发布',
-];
-const STEP_NAMES_BINANCE_POST_CREATOR_EN = [
-  'Pick topic (token + angle)',
-  'AI generates the post',
-  'Open composer and write',
-  'Publish',
-];
-const STEP_NAMES_BINANCE_FROM_X_REPOST_ZH = [
-  '校验双平台 + 从推特挑爆款',
-  'AI 改写 + 下载原图/视频',
-  '写入币安编辑器 + 上传原图/视频',
-  '发布到币安广场',
-];
-const STEP_NAMES_BINANCE_FROM_X_REPOST_EN = [
-  'Verify both tabs + pick viral tweet',
-  'AI rewrite + download images/video',
-  'Write to Binance + upload images/video',
-  'Publish to Binance Square',
-];
+const STEP_NAMES_X_LINK_REWRITE_ZH = [i18nService.t('tdSnXLink0'), i18nService.t('tdSnXLink1'), i18nService.t('tdSnXLink2'), i18nService.t('tdSnXLink3')];
+const STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH = [i18nService.t('tdSnBnEngage0'), i18nService.t('tdSnBnEngage1'), i18nService.t('tdSnBnEngage2')];
+const STEP_NAMES_BINANCE_POST_CREATOR_ZH = [i18nService.t('tdSnBnPost0'), i18nService.t('tdSnBnPost1'), i18nService.t('tdSnBnPost2'), i18nService.t('tdSnBnPost3')];
+const STEP_NAMES_BINANCE_FROM_X_REPOST_ZH = [i18nService.t('tdSnBnFromX0'), i18nService.t('tdSnBnFromX1'), i18nService.t('tdSnBnFromX2'), i18nService.t('tdSnBnFromX3')];
 // v6.x: 3 个 source-viral 搬运 — 流程跟 X repost 完全一致,只换"推特"→源平台
-const STEP_NAMES_BINANCE_FROM_XHS_VIRAL_ZH = [
-  '校验双平台 + 从小红书挑爆款',
-  'AI 改写 + 下载原图/视频',
-  '写入币安编辑器 + 上传原图/视频',
-  '发布到币安广场',
-];
-const STEP_NAMES_BINANCE_FROM_XHS_VIRAL_EN = [
-  'Verify both tabs + pick viral post from Xiaohongshu',
-  'AI rewrite + download images/video',
-  'Write to Binance + upload images/video',
-  'Publish to Binance Square',
-];
-const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_ZH = [
-  '校验双平台 + 从抖音挑爆款',
-  'AI 改写 + 下载原图/视频',
-  '写入币安编辑器 + 上传原图/视频',
-  '发布到币安广场',
-];
-const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_EN = [
-  'Verify both tabs + pick viral post from Douyin',
-  'AI rewrite + download images/video',
-  'Write to Binance + upload images/video',
-  'Publish to Binance Square',
-];
-const STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_ZH = [
-  '校验双平台 + 从 TikTok 挑爆款',
-  'AI 改写 + 下载原图/视频',
-  '写入币安编辑器 + 上传原图/视频',
-  '发布到币安广场',
-];
-const STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_EN = [
-  'Verify both tabs + pick viral post from TikTok',
-  'AI rewrite + download images/video',
-  'Write to Binance + upload images/video',
-  'Publish to Binance Square',
-];
-const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH = [
-  '打开 YouTube 首页 → 搜索关键词 → 采集候选视频',
-  '逐个进视频执行点赞 / 订阅 / 评论',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_EN = [
-  'Open YouTube home → search keyword → collect candidate videos',
-  'Open each video, execute like / subscribe / comment',
-  'Save this run report to disk',
-];
-const STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH = [
-  '打开 TikTok 首页 → 搜索关键词 → 采集候选视频',
-  '逐个进视频执行点赞 / 关注 / 评论',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN = [
-  'Open TikTok home → search keyword → collect candidate videos',
-  'Open each video, execute like / follow / comment',
-  'Save this run report to disk',
-];
-const STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH = [
-  '打开抖音首页 → 搜索关键词 → 采集候选视频',
-  '逐个进视频执行点赞 / 关注 / 评论',
-  '保存本次报告到本地',
-];
-const STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN = [
-  'Open Douyin home → search keyword → collect candidate videos',
-  'Open each video, execute like / follow / comment',
-  'Save this run report to disk',
-];
-const STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH = [
-  'AI根据参考文案创作文章。请勿切换浏览器标签页。',
-  'AI 改写为抖音图文笔记，保存到本地',
-  'AI 生成封面图 + 内容图',
-  '上传到抖音创作者中心并发布。请勿切换浏览器标签页。',
-];
-const STEP_NAMES_DOUYIN_IMAGE_TEXT_EN = [
-  'AI composes article from reference text. Do not switch browser tabs.',
-  'AI rewrite saved locally as Douyin image-text note',
-  'AI generates cover + content images',
-  'Upload to Douyin creator center & publish. Do not switch browser tabs.',
-];
+const STEP_NAMES_BINANCE_FROM_XHS_VIRAL_ZH = [i18nService.t('tdSnBnFromXhs0'), i18nService.t('tdSnBnFromXhs1'), i18nService.t('tdSnBnFromXhs2'), i18nService.t('tdSnBnFromXhs3')];
+const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_ZH = [i18nService.t('tdSnBnFromDy0'), i18nService.t('tdSnBnFromDy1'), i18nService.t('tdSnBnFromDy2'), i18nService.t('tdSnBnFromDy3')];
+const STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_ZH = [i18nService.t('tdSnBnFromTt0'), i18nService.t('tdSnBnFromTt1'), i18nService.t('tdSnBnFromTt2'), i18nService.t('tdSnBnFromTt3')];
+const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH = [i18nService.t('tdSnYtEngage0'), i18nService.t('tdSnYtEngage1'), i18nService.t('tdSnYtEngage2')];
+const STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH = [i18nService.t('tdSnTtEngage0'), i18nService.t('tdSnTtEngage1'), i18nService.t('tdSnTtEngage2')];
+const STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH = [i18nService.t('tdSnDyEngage0'), i18nService.t('tdSnDyEngage1'), i18nService.t('tdSnDyEngage2')];
+const STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH = [i18nService.t('tdSnDyImg0'), i18nService.t('tdSnDyImg1'), i18nService.t('tdSnDyImg2'), i18nService.t('tdSnDyImg3')];
 // 视频号图文 = 4 步,镜像抖音结构但落地视频号助手(channels.weixin.qq.com),
 // 平台名独立、绝不串台「抖音/小红书」字样。
-const STEP_NAMES_SHIPINHAO_IMAGE_TEXT_ZH = [
-  'AI 根据灵感段创作视频号图文。请勿切换浏览器标签页。',
-  'AI 改写为视频号图文，保存到本地',
-  'AI 生成内容图，保存到本地',
-  '发表到视频号助手（存草稿 / 发布）。请勿切换浏览器标签页。',
-];
-const STEP_NAMES_SHIPINHAO_IMAGE_TEXT_EN = [
-  'AI composes WeChat Channels image-text from inspiration. Do not switch browser tabs.',
-  'AI rewrite saved locally as WeChat Channels image-text',
-  'AI generates content images, saved locally',
-  'Publish to WeChat Channels assistant (draft / publish). Do not switch browser tabs.',
-];
+const STEP_NAMES_SHIPINHAO_IMAGE_TEXT_ZH = [i18nService.t('tdSnShpImg0'), i18nService.t('tdSnShpImg1'), i18nService.t('tdSnShpImg2'), i18nService.t('tdSnShpImg3')];
 // 头条号「微头条」= 4 步(v1.1.0 起接了 AI 生图 + 上传):创作→改写→生图→发布 → mp.toutiao.com。
-const STEP_NAMES_TOUTIAO_IMAGE_TEXT_ZH = [
-  'AI 根据灵感段创作微头条。请勿切换浏览器标签页。',
-  'AI 改写为微头条正文，保存到本地',
-  'AI 生成内容图，保存到本地',
-  '发布到头条号（微头条，上传图 + 正文，存草稿 / 发布）。请勿切换浏览器标签页。',
-];
-const STEP_NAMES_TOUTIAO_IMAGE_TEXT_EN = [
-  'AI composes a Toutiao weitoutiao post from inspiration. Do not switch browser tabs.',
-  'AI rewrite saved locally as Toutiao weitoutiao body',
-  'AI generates content images, saved locally',
-  'Publish to Toutiao (weitoutiao: upload images + body, draft / publish). Do not switch browser tabs.',
-];
-const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
-  '校验双平台 + 打开链接读取原推',
-  'AI 改写为币安风格 + 下载原图/视频',
-  '切到币安 · 写入正文 + 上传原图/视频',
-  '发布到币安广场',
-];
-const STEP_NAMES_BINANCE_FROM_X_LINK_EN = [
-  'Verify both tabs + open URL & read source tweet',
-  'AI rewrite into Binance style + download images/video',
-  'Switch to Binance · write content + upload images/video',
-  'Publish to Binance Square',
-];
+const STEP_NAMES_TOUTIAO_IMAGE_TEXT_ZH = [i18nService.t('tdSnTtoImg0'), i18nService.t('tdSnTtoImg1'), i18nService.t('tdSnTtoImg2'), i18nService.t('tdSnTtoImg3')];
+const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [i18nService.t('tdSnBnFromXLink0'), i18nService.t('tdSnBnFromXLink1'), i18nService.t('tdSnBnFromXLink2'), i18nService.t('tdSnBnFromXLink3')];
 // 视频无水印下载(小红书 / 抖音)—— 2 步,跟 orchestrator 的 stepStart(1/2) 对齐:
 //   STEP 1: 打开主站 + 校验登录
 //   STEP 2: 逐个链接解析 + 下载无水印视频到本地
-const STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH = [
-  '打开小红书并校验登录',
-  '逐个解析并下载无水印视频到本地',
-];
-const STEP_NAMES_XHS_VIDEO_DOWNLOAD_EN = [
-  'Open Xiaohongshu & verify login',
-  'Resolve & download watermark-free videos locally, one by one',
-];
-const STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH = [
-  '打开抖音并校验登录',
-  '逐个解析并下载无水印视频到本地',
-];
-const STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_EN = [
-  'Open Douyin & verify login',
-  'Resolve & download watermark-free videos locally, one by one',
-];
-const STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH = [
-  '打开 TikTok 并校验登录',
-  '逐个解析并下载无水印视频到本地',
-];
-const STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_EN = [
-  'Open TikTok & verify login',
-  'Resolve & download watermark-free videos locally, one by one',
-];
+const STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH = [i18nService.t('tdSnXhsVd0'), i18nService.t('tdSnXhsVd1')];
+const STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH = [i18nService.t('tdSnDyVd0'), i18nService.t('tdSnDyVd1')];
+const STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH = [i18nService.t('tdSnTtVd0'), i18nService.t('tdSnTtVd1')];
 
 // 快手 / 哔哩哔哩 与抖音流程同构,仅平台名 / 动作集不同。早期为省事直接复用抖音的步骤名
 // 常量,把「抖音」字样串台到快手/B站的任务详情页(用户实拍)。改用工厂按各自平台名生成纯
 // 展示步骤名(scenario.id 仍各自独立)。
-const engageStepNames = (isZh: boolean, homeZh: string, homeEn: string, actsZh: string, actsEn: string): string[] =>
-  isZh
-    ? [`打开${homeZh}首页 → 搜索关键词 → 采集候选视频`, `逐个进视频执行${actsZh}`, '保存本次报告到本地']
-    : [`Open ${homeEn} home → search keyword → collect candidate videos`, `Open each video, execute ${actsEn}`, 'Save this run report to disk'];
-const replyStepNames = (isZh: boolean, centerZh: string, centerEn: string): string[] =>
-  isZh
-    ? [`进入${centerZh}评论管理，选择作品`, '逐条回复粉丝评论（只回粉丝，绝不评论作品本身）', '保存本次报告']
-    : [`Enter ${centerEn} comment management, pick a work`, 'Reply fan comments (fans only, never the video itself)', 'Save run report'];
-const videoDownloadStepNames = (isZh: boolean, nameZh: string, nameEn: string): string[] =>
-  isZh
-    ? [`打开${nameZh}并校验登录`, '逐个解析并下载无水印视频到本地']
-    : [`Open ${nameEn} & verify login`, 'Resolve & download watermark-free videos locally, one by one'];
+const engageStepNames = (home: string, acts: string): string[] =>
+  [i18nService.t('tdSnEngageFactory0').replace('{home}', home), i18nService.t('tdSnEngageFactory1').replace('{acts}', acts), i18nService.t('tdSnEngageFactory2')];
+const replyStepNames = (center: string): string[] =>
+  [i18nService.t('tdSnReplyFactory0').replace('{center}', center), i18nService.t('tdSnReplyFactory1'), i18nService.t('tdSnReplyFactory2')];
+const videoDownloadStepNames = (name: string): string[] =>
+  [i18nService.t('tdSnVdFactory0').replace('{name}', name), i18nService.t('tdSnVdFactory1')];
 
 interface Props {
   task: Task;
@@ -485,7 +255,6 @@ interface Props {
 }
 
 export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged, onOpenHistory }) => {
-  const isZh = i18nService.currentLanguage === 'zh';
   // 链接模式是一次性手动运行，没有"下次运行"的概念
   const isLinkModeForStats = task.track === 'link_mode'
     || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
@@ -518,63 +287,63 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const platformLabelForTask = isXTask
     ? 'Twitter'
     : isBinanceTask
-      ? (isZh ? '币安广场' : 'Binance Square')
+      ? i18nService.t('tdBinanceSquare')
       : (scenario?.platform as any) === 'youtube'
         ? 'YouTube'
         : (scenario?.platform as any) === 'tiktok'
           ? 'TikTok'
           : (scenario?.platform as any) === 'douyin'
-            ? (isZh ? '抖音' : 'Douyin')
+            ? i18nService.t('tdDouyin')
             : (scenario?.platform as any) === 'kuaishou'
-              ? (isZh ? '快手' : 'Kuaishou')
+              ? i18nService.t('tdKuaishou')
               : (scenario?.platform as any) === 'bilibili'
-                ? (isZh ? '哔哩哔哩' : 'Bilibili')
+                ? i18nService.t('tdBilibili')
                 : (scenario?.platform as any) === 'shipinhao'
-                  ? (isZh ? '视频号' : 'WeChat Channels')
+                  ? i18nService.t('tdShipinhao')
                   : (scenario?.platform as any) === 'toutiao'
-                    ? (isZh ? '头条号' : 'Toutiao')
+                    ? i18nService.t('tdToutiao')
                     : (scenario?.platform as any) === 'video'
-                      ? (isZh ? '视频搬运·二创' : 'Video Remix')
-                      : (isZh ? '小红书' : 'Xiaohongshu');
-  const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
+                      ? i18nService.t('tdVideoRemix')
+                      : i18nService.t('tdXiaohongshu');
+  const STEP_LABELS = STEP_LABELS_ZH;
   // Pick step names by scenario id first (Twitter has 3 distinct flavors),
   // then fall back to the legacy isAutoReply branch for XHS.
   const STEP_NAMES = (() => {
     const sid = scenario?.id;
-    if (sid === 'x_auto_engage') return isZh ? STEP_NAMES_X_AUTO_ENGAGE_ZH : STEP_NAMES_X_AUTO_ENGAGE_EN;
-    if (sid === 'x_post_creator') return isZh ? STEP_NAMES_X_POST_CREATOR_ZH : STEP_NAMES_X_POST_CREATOR_EN;
-    if (sid === 'x_link_rewrite') return isZh ? STEP_NAMES_X_LINK_REWRITE_ZH : STEP_NAMES_X_LINK_REWRITE_EN;
-    if (sid === 'binance_square_auto_engage') return isZh ? STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH : STEP_NAMES_BINANCE_AUTO_ENGAGE_EN;
-    if (sid === 'binance_square_post_creator') return isZh ? STEP_NAMES_BINANCE_POST_CREATOR_ZH : STEP_NAMES_BINANCE_POST_CREATOR_EN;
-    if (sid === 'binance_from_x_repost') return isZh ? STEP_NAMES_BINANCE_FROM_X_REPOST_ZH : STEP_NAMES_BINANCE_FROM_X_REPOST_EN;
-    if (sid === 'binance_from_x_link') return isZh ? STEP_NAMES_BINANCE_FROM_X_LINK_ZH : STEP_NAMES_BINANCE_FROM_X_LINK_EN;
-    if (sid === 'binance_from_xhs_viral') return isZh ? STEP_NAMES_BINANCE_FROM_XHS_VIRAL_ZH : STEP_NAMES_BINANCE_FROM_XHS_VIRAL_EN;
-    if (sid === 'binance_from_douyin_viral') return isZh ? STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_ZH : STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_EN;
-    if (sid === 'binance_from_tiktok_viral') return isZh ? STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_ZH : STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_EN;
-    if (sid === 'youtube_auto_engage') return isZh ? STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH : STEP_NAMES_YOUTUBE_AUTO_ENGAGE_EN;
-    if (sid === 'tiktok_auto_engage') return isZh ? STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH : STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN;
-    if (sid === 'douyin_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
-    if (sid === 'douyin_image_text') return isZh ? STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH : STEP_NAMES_DOUYIN_IMAGE_TEXT_EN;
-    if (sid === 'shipinhao_image_text') return isZh ? STEP_NAMES_SHIPINHAO_IMAGE_TEXT_ZH : STEP_NAMES_SHIPINHAO_IMAGE_TEXT_EN;
-    if (sid === 'toutiao_image_text') return isZh ? STEP_NAMES_TOUTIAO_IMAGE_TEXT_ZH : STEP_NAMES_TOUTIAO_IMAGE_TEXT_EN;
-    if (sid === 'xhs_reply_fans_comment') return isZh ? STEP_NAMES_XHS_REPLY_FANS_ZH : STEP_NAMES_XHS_REPLY_FANS_EN;
-    if (sid === 'douyin_reply_fans_comment') return isZh ? STEP_NAMES_DOUYIN_REPLY_FANS_ZH : STEP_NAMES_DOUYIN_REPLY_FANS_EN;
-    if (sid === 'xhs_video_download') return isZh ? STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH : STEP_NAMES_XHS_VIDEO_DOWNLOAD_EN;
-    if (sid === 'douyin_video_download') return isZh ? STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH : STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_EN;
-    if (sid === 'tiktok_video_download') return isZh ? STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH : STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_EN;
+    if (sid === 'x_auto_engage') return STEP_NAMES_X_AUTO_ENGAGE_ZH;
+    if (sid === 'x_post_creator') return STEP_NAMES_X_POST_CREATOR_ZH;
+    if (sid === 'x_link_rewrite') return STEP_NAMES_X_LINK_REWRITE_ZH;
+    if (sid === 'binance_square_auto_engage') return STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH;
+    if (sid === 'binance_square_post_creator') return STEP_NAMES_BINANCE_POST_CREATOR_ZH;
+    if (sid === 'binance_from_x_repost') return STEP_NAMES_BINANCE_FROM_X_REPOST_ZH;
+    if (sid === 'binance_from_x_link') return STEP_NAMES_BINANCE_FROM_X_LINK_ZH;
+    if (sid === 'binance_from_xhs_viral') return STEP_NAMES_BINANCE_FROM_XHS_VIRAL_ZH;
+    if (sid === 'binance_from_douyin_viral') return STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_ZH;
+    if (sid === 'binance_from_tiktok_viral') return STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_ZH;
+    if (sid === 'youtube_auto_engage') return STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH;
+    if (sid === 'tiktok_auto_engage') return STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH;
+    if (sid === 'douyin_auto_engage') return STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH;
+    if (sid === 'douyin_image_text') return STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH;
+    if (sid === 'shipinhao_image_text') return STEP_NAMES_SHIPINHAO_IMAGE_TEXT_ZH;
+    if (sid === 'toutiao_image_text') return STEP_NAMES_TOUTIAO_IMAGE_TEXT_ZH;
+    if (sid === 'xhs_reply_fans_comment') return STEP_NAMES_XHS_REPLY_FANS_ZH;
+    if (sid === 'douyin_reply_fans_comment') return STEP_NAMES_DOUYIN_REPLY_FANS_ZH;
+    if (sid === 'xhs_video_download') return STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH;
+    if (sid === 'douyin_video_download') return STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH;
+    if (sid === 'tiktok_video_download') return STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH;
     // 快手 / 哔哩哔哩 流程镜像抖音,但步骤名按各自平台名生成(纯展示,scenario.id 独立),
     // 不再复用抖音常量,避免「抖音」字样串台到别的平台页。
-    if (sid === 'kuaishou_auto_engage') return engageStepNames(isZh, '快手', 'Kuaishou', '点赞 / 关注 / 评论', 'like / follow / comment');
-    if (sid === 'bilibili_auto_engage') return engageStepNames(isZh, '哔哩哔哩', 'Bilibili', '点赞 / 投币 / 关注 / 评论', 'like / coin / follow / comment');
-    if (sid === 'kuaishou_reply_fans_comment') return replyStepNames(isZh, '快手创作者中心', 'Kuaishou Creator Center');
-    if (sid === 'bilibili_reply_fans_comment') return replyStepNames(isZh, '哔哩哔哩创作中心', 'Bilibili Creator Center');
-    if (sid === 'shipinhao_reply_fans_comment') return replyStepNames(isZh, '视频号助手', 'WeChat Channels Assistant');
-    if (sid === 'toutiao_reply_fans_comment') return replyStepNames(isZh, '头条号创作者中心', 'Toutiao Creator Center');
-    if (sid === 'kuaishou_video_download') return videoDownloadStepNames(isZh, '快手', 'Kuaishou');
-    if (sid === 'bilibili_video_download') return videoDownloadStepNames(isZh, '哔哩哔哩', 'Bilibili');
+    if (sid === 'kuaishou_auto_engage') return engageStepNames(i18nService.t('tdKuaishou'), i18nService.t('tdActsLikeFollowComment'));
+    if (sid === 'bilibili_auto_engage') return engageStepNames(i18nService.t('tdBilibili'), i18nService.t('tdActsLikeCoinFollowComment'));
+    if (sid === 'kuaishou_reply_fans_comment') return replyStepNames(i18nService.t('tdKuaishouCreatorCenter'));
+    if (sid === 'bilibili_reply_fans_comment') return replyStepNames(i18nService.t('tdBilibiliCreatorCenter'));
+    if (sid === 'shipinhao_reply_fans_comment') return replyStepNames(i18nService.t('tdShipinhaoAssistant'));
+    if (sid === 'toutiao_reply_fans_comment') return replyStepNames(i18nService.t('tdToutiaoCreatorCenter'));
+    if (sid === 'kuaishou_video_download') return videoDownloadStepNames(i18nService.t('tdKuaishou'));
+    if (sid === 'bilibili_video_download') return videoDownloadStepNames(i18nService.t('tdBilibili'));
     return isAutoReplyTask
-      ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
-      : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
+      ? STEP_NAMES_AUTOREPLY_ZH
+      : STEP_NAMES_ZH;
   })();
   // ── Core state ──
   const [running, setRunning] = useState(false);
@@ -743,7 +512,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             // Count results from step logs
             const step3Logs = prog.steps[2]?.logs || [];
             const draftLog = step3Logs.find((l: any) => l.message?.includes('已保存'));
-            showToast('ok', draftLog?.message || '运行完成');
+            showToast('ok', draftLog?.message || i18nService.t('tdRunComplete'));
             void refreshData();
             void onChanged();
           } else if (prog.status === 'error') {
@@ -752,7 +521,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             const err = prog.error || '';
             if (err === 'user_stopped') {
               // User explicitly hit stop — confirm it worked.
-              showToast('ok', '已停止运行');
+              showToast('ok', i18nService.t('tdStopped'));
             } else {
               const lang = i18nService.currentLanguage === 'zh' ? 'zh' : 'en';
               showToast('err', `${lang === 'zh' ? '运行失败' : 'Run failed'}: ${friendlyRunError(err, lang, { platform: platformLabelForTask })}`);
@@ -818,16 +587,16 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         return otherPlatform === myPlatform;
       });
       if (samePlatformBusy) {
-        const platformLabel = myPlatform === 'x' ? '推特'
-          : myPlatform === 'xhs' ? '小红书'
-          : myPlatform === 'binance' ? '币安广场'
+        const platformLabel = myPlatform === 'x' ? i18nService.t('tdTwitter')
+          : myPlatform === 'xhs' ? i18nService.t('tdXiaohongshu')
+          : myPlatform === 'binance' ? i18nService.t('tdBinanceSquare')
           : myPlatform === 'youtube' ? 'YouTube'
           : myPlatform === 'tiktok' ? 'TikTok'
-          : myPlatform === 'douyin' ? '抖音'
-          : '该平台';
+          : myPlatform === 'douyin' ? i18nService.t('tdDouyin')
+          : i18nService.t('tdThisPlatform');
         // Close the just-opened modal — the user can't proceed anyway.
         setLoginModalOpen(false);
-        showToast('warn', `${platformLabel}已有任务在运行，同平台同时只能跑一个。请先停掉另一个，或运行其它平台的任务。`);
+        showToast('warn', i18nService.t('tdSamePlatformBusy').replace('{platform}', platformLabel));
       }
     } catch {}
   };
@@ -858,12 +627,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         const r = outcome.reason || '';
         if (r.startsWith('resource_busy:') && Array.isArray(outcome.busy_platforms) && outcome.busy_platforms.length) {
           const plats = outcome.busy_platforms.join(' + ');
-          const holder = outcome.busy_task_name || '其他任务';
-          showToast('warn', `该任务需要 ${plats} 都空闲。当前 "${holder}" 正在运行,请先停掉它再启动此任务。`);
+          const holder = outcome.busy_task_name || i18nService.t('tdOtherTask');
+          showToast('warn', i18nService.t('tdResourceBusyMsg').replace('{plats}', plats).replace('{holder}', holder));
         } else if (r === 'concurrency_limit_reached') {
-          showToast('warn', '同时运行的任务已达上限,请先停掉一个再启动新任务。');
+          showToast('warn', i18nService.t('tdConcurrencyLimit'));
         } else {
-          showToast('warn', `已跳过: ${r || '未知原因'}`);
+          showToast('warn', i18nService.t('tdSkipped').replace('{reason}', r || i18nService.t('tdUnknownReason')));
         }
         setRunning(false);
       } else {
@@ -877,7 +646,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         setRunning(false);
       }
     }).catch(() => {
-      if (mountedRef.current) { showToast('err', '运行异常'); setRunning(false); }
+      if (mountedRef.current) { showToast('err', i18nService.t('tdRunError')); setRunning(false); }
     });
   };
 
@@ -888,9 +657,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       // Pass task.id so we abort THIS task only — without it we'd kill
       // any other concurrent task (e.g. XHS) at the same time.
       await scenarioService.requestAbort(task.id);
-      showToast('warn', '正在停止，请稍候...');
+      showToast('warn', i18nService.t('tdStopping'));
     } catch {
-      showToast('err', '停止请求失败');
+      showToast('err', i18nService.t('tdStopFailed'));
       setStopping(false);
     }
   };
@@ -901,7 +670,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     try {
       const ids: string[] = await scenarioService.getRunningTaskIds().catch(() => [] as string[]);
       if (ids.includes(task.id)) {
-        showToast('warn', '该任务正在运行中，请先停止再删除');
+        showToast('warn', i18nService.t('tdRunningStopFirst'));
         return;
       }
     } catch {}
@@ -923,17 +692,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   // Reuse the same badge palette as MyTasksPage / XWorkflowsPage so the
   // task detail page visually matches what the user clicked from the list.
   const platformBadge = (() => {
-    if (scenario?.platform === 'x') return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
-    if (scenario?.platform === 'xhs') return { icon: '📕', label: isZh ? '小红书' : 'XHS' };
-    if (scenario?.platform === 'binance') return { icon: '🔶', label: isZh ? '币安广场' : 'Binance Square' };
+    if (scenario?.platform === 'x') return { icon: '🐦', label: i18nService.t('tdTwitter') };
+    if (scenario?.platform === 'xhs') return { icon: '📕', label: i18nService.t('tdXHS') };
+    if (scenario?.platform === 'binance') return { icon: '🔶', label: i18nService.t('tdBinanceSquare') };
     if ((scenario?.platform as any) === 'youtube') return { icon: '📺', label: 'YouTube' };
     if ((scenario?.platform as any) === 'tiktok') return { icon: '🎵', label: 'TikTok' };
-    if ((scenario?.platform as any) === 'douyin') return { icon: '🎵', label: isZh ? '抖音' : 'Douyin' };
-    if ((scenario?.platform as any) === 'kuaishou') return { icon: '⚡', label: isZh ? '快手' : 'Kuaishou' };
-    if ((scenario?.platform as any) === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩' : 'Bilibili' };
-    if ((scenario?.platform as any) === 'shipinhao') return { icon: '📱', label: isZh ? '视频号' : 'WeChat Channels' };
-    if ((scenario?.platform as any) === 'toutiao') return { icon: '📰', label: isZh ? '头条号' : 'Toutiao' };
-    if ((scenario?.platform as any) === 'video') return { icon: '🎬', label: isZh ? '视频搬运·二创' : 'Video Remix' };
+    if ((scenario?.platform as any) === 'douyin') return { icon: '🎵', label: i18nService.t('tdDouyin') };
+    if ((scenario?.platform as any) === 'kuaishou') return { icon: '⚡', label: i18nService.t('tdKuaishou') };
+    if ((scenario?.platform as any) === 'bilibili') return { icon: '📺', label: i18nService.t('tdBilibili') };
+    if ((scenario?.platform as any) === 'shipinhao') return { icon: '📱', label: i18nService.t('tdShipinhao') };
+    if ((scenario?.platform as any) === 'toutiao') return { icon: '📰', label: i18nService.t('tdToutiao') };
+    if ((scenario?.platform as any) === 'video') return { icon: '🎬', label: i18nService.t('tdVideoRemix') };
     return { icon: '🤖', label: scenario?.platform || '' };
   })();
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
@@ -949,60 +718,60 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const isToutiaoTask = (scenario?.platform as any) === 'toutiao' || task.scenario_id?.startsWith('toutiao_');
   const typeBadge = (() => {
     const sid = task.scenario_id;
-    if (sid === 'x_auto_engage')                  return { icon: '🐦', label: isZh ? '推特 · 互动涨粉' : 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-    if (sid === 'x_post_creator')                 return { icon: '📝', label: isZh ? '推特 · 自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: isZh ? '推特 · 指定链接仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-    if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-    if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-    if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (sid === 'binance_from_x_link')          return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (sid === 'binance_from_xhs_viral')         return { icon: '📕', label: isZh ? '币安广场 · 小红书批量搬运' : 'Binance · Repost from Xiaohongshu (Batch)', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
-    if (sid === 'binance_from_douyin_viral')      return { icon: '🎵', label: isZh ? '币安广场 · 抖音批量搬运' : 'Binance · Repost from Douyin (Batch)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-    if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', label: isZh ? '币安广场 · TikTok 批量搬运' : 'Binance · Repost from TikTok (Batch)', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'youtube_auto_engage')            return { icon: '📺', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
-    if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-    if (sid === 'douyin_image_text')              return { icon: '📝', label: isZh ? '抖音 · 图文创作' : 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-    if (sid === 'douyin_reply_fans_comment')      return { icon: '💬', label: isZh ? '抖音 · 自动回复粉丝' : 'Douyin Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'xhs_image_text')                 return { icon: '📝', label: isZh ? '小红书 · 图文创作' : 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
-    if (sid === 'xhs_reply_fans_comment')         return { icon: '💌', label: isZh ? '小红书 · 自动回复粉丝' : 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-    if (sid === 'xhs_video_download')             return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-    if (sid === 'douyin_video_download')          return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-    if (sid === 'kuaishou_reply_fans_comment')    return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'bilibili_auto_engage')           return { icon: '📺', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if (sid === 'bilibili_video_download')        return { icon: '⬇️', label: isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
-    if (sid === 'bilibili_reply_fans_comment')    return { icon: '💬', label: isZh ? '哔哩哔哩 · 自动回复粉丝' : 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'shipinhao_image_text')           return { icon: '📝', label: isZh ? '视频号 · 图文创作' : 'WeChat Channels Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-    if (sid === 'shipinhao_reply_fans_comment')   return { icon: '💬', label: isZh ? '视频号 · 自动回复粉丝' : 'WeChat Channels Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'toutiao_image_text')             return { icon: '📝', label: isZh ? '头条号 · 图文创作' : 'Toutiao Image-Text', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-    if (sid === 'toutiao_reply_fans_comment')     return { icon: '💬', label: isZh ? '头条号 · 自动回复粉丝' : 'Toutiao Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask && !isKuaishouTask && !isBilibiliTask && !isShipinhaoTask && !isToutiaoTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+    if (sid === 'x_auto_engage')                  return { icon: '🐦', label: i18nService.t('tdTypeXAutoEngage'), color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+    if (sid === 'x_post_creator')                 return { icon: '📝', label: i18nService.t('tdTypeXPostCreator'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: i18nService.t('tdTypeXLinkRewrite'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: i18nService.t('tdTypeBinanceAutoEngage'), color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+    if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: i18nService.t('tdTypeBinancePostCreator'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: i18nService.t('tdTypeBinanceFromXRepost'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'binance_from_x_link')          return { icon: '🔗', label: i18nService.t('tdTypeBinanceFromXLink'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'binance_from_xhs_viral')         return { icon: '📕', label: i18nService.t('tdTypeBinanceFromXhsViral'), color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+    if (sid === 'binance_from_douyin_viral')      return { icon: '🎵', label: i18nService.t('tdTypeBinanceFromDouyinViral'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', label: i18nService.t('tdTypeBinanceFromTiktokViral'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'youtube_auto_engage')            return { icon: '📺', label: i18nService.t('tdTypeYoutubeAutoEngage'), color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
+    if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: i18nService.t('tdTypeTiktokAutoEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: i18nService.t('tdTypeDouyinAutoEngage'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'douyin_image_text')              return { icon: '📝', label: i18nService.t('tdTypeDouyinImageText'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'douyin_reply_fans_comment')      return { icon: '💬', label: i18nService.t('tdTypeDouyinReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'xhs_image_text')                 return { icon: '📝', label: i18nService.t('tdTypeXhsImageText'), color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+    if (sid === 'xhs_reply_fans_comment')         return { icon: '💌', label: i18nService.t('tdTypeXhsReplyFans'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'xhs_video_download')             return { icon: '⬇️', label: i18nService.t('tdTypeXhsVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'douyin_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeDouyinVideoDownload'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: i18nService.t('tdTypeKuaishouAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: i18nService.t('tdTypeKuaishouVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'kuaishou_reply_fans_comment')    return { icon: '💬', label: i18nService.t('tdTypeKuaishouReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'bilibili_auto_engage')           return { icon: '📺', label: i18nService.t('tdTypeBilibiliAutoEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (sid === 'bilibili_video_download')        return { icon: '⬇️', label: i18nService.t('tdTypeBilibiliVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'bilibili_reply_fans_comment')    return { icon: '💬', label: i18nService.t('tdTypeBilibiliReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'shipinhao_image_text')           return { icon: '📝', label: i18nService.t('tdTypeShipinhaoImageText'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'shipinhao_reply_fans_comment')   return { icon: '💬', label: i18nService.t('tdTypeShipinhaoReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'toutiao_image_text')             return { icon: '📝', label: i18nService.t('tdTypeToutiaoImageText'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (sid === 'toutiao_reply_fans_comment')     return { icon: '💬', label: i18nService.t('tdTypeToutiaoReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask && !isKuaishouTask && !isBilibiliTask && !isShipinhaoTask && !isToutiaoTask) return { icon: '🔗', label: i18nService.t('tdTypeXhsLinkRewrite'), color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // workflow_type fallback — guard by platform so Binance / YouTube / TikTok
     // / Douyin auto_reply don't get mis-labeled as XHS auto_reply.
     if ((scenario?.workflow_type as any) === 'auto_reply') {
-      if (isBinanceTask) return { icon: '💬', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-      if (isYoutubeTask) return { icon: '💬', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-      if (isTiktokTask)  return { icon: '💬', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-      if (isDouyinTask)  return { icon: '💬', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-      if (isKuaishouTask) return { icon: '💬', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-      if (isBilibiliTask) return { icon: '💬', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-      return { icon: '💬', label: isZh ? '小红书 · 互动涨粉' : 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (isBinanceTask) return { icon: '💬', label: i18nService.t('tdTypeBinanceAutoEngage'), color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+      if (isYoutubeTask) return { icon: '💬', label: i18nService.t('tdTypeYoutubeAutoEngage'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+      if (isTiktokTask)  return { icon: '💬', label: i18nService.t('tdTypeTiktokAutoEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      if (isDouyinTask)  return { icon: '💬', label: i18nService.t('tdTypeDouyinAutoEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      if (isKuaishouTask) return { icon: '💬', label: i18nService.t('tdTypeKuaishouAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+      if (isBilibiliTask) return { icon: '💬', label: i18nService.t('tdTypeBilibiliAutoEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      return { icon: '💬', label: i18nService.t('tdTypeXhsAutoEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
-    if (sid === 'binance_post')   return { icon: '📊', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-    if (sid === 'binance_repost') return { icon: '♻️', label: isZh ? '币安广场 · 批量搬运' : 'Binance Square Batch Repost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-    if (isBinanceTask) return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-    if (isXTask)       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if (isYoutubeTask) return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-    if (isTiktokTask)  return { icon: '🎵', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if (isDouyinTask)  return { icon: '🎵', label: isZh ? '抖音创作' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if (isKuaishouTask) return { icon: '⚡', label: isZh ? '快手任务' : 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (isBilibiliTask) return { icon: '📺', label: isZh ? '哔哩哔哩任务' : 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if (isShipinhaoTask) return { icon: '📱', label: isZh ? '视频号任务' : 'WeChat Channels Task', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-    if (isToutiaoTask) return { icon: '📰', label: isZh ? '头条号任务' : 'Toutiao Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-    return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+    if (sid === 'binance_post')   return { icon: '📊', label: i18nService.t('tdTypeBinancePostCreator'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (sid === 'binance_repost') return { icon: '♻️', label: i18nService.t('tdTypeBinanceBatchRepost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (isBinanceTask) return { icon: '🔶', label: i18nService.t('tdTypeBinancePost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (isXTask)       return { icon: '🐦', label: i18nService.t('tdTypeXTask'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (isYoutubeTask) return { icon: '📺', label: i18nService.t('tdTypeYoutubeTask'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (isTiktokTask)  return { icon: '🎵', label: i18nService.t('tdTypeTiktokTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (isDouyinTask)  return { icon: '🎵', label: i18nService.t('tdTypeDouyinTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (isKuaishouTask) return { icon: '⚡', label: i18nService.t('tdTypeKuaishouTask'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (isBilibiliTask) return { icon: '📺', label: i18nService.t('tdTypeBilibiliTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (isShipinhaoTask) return { icon: '📱', label: i18nService.t('tdTypeShipinhaoTask'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+    if (isToutiaoTask) return { icon: '📰', label: i18nService.t('tdTypeToutiaoTask'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    return { icon: '🔥', label: i18nService.t('tdTypeXhsBatchViral'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 
   return (
@@ -1013,7 +782,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       </ErrorBoundary>
       <button type="button" onClick={onBack}
         className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-        ← {isZh ? '返回' : 'Back'}
+        ← {i18nService.t('tdBack')}
       </button>
 
       {/* Header: platform + scenario type badges so the page identifies
@@ -1082,9 +851,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 || task.scenario_id === 'binance_from_tiktok_viral';
               const mediaFilterVal = (task as any).media_filter || 'all';
               const mediaFilterLabel = ((): string => {
-                if (mediaFilterVal === 'image_only') return isZh ? '🖼 仅图文' : '🖼 Image only';
-                if (mediaFilterVal === 'video_only') return isZh ? '🎥 仅视频' : '🎥 Video only';
-                return isZh ? '🖼🎥 全部(图文 + 视频)' : '🖼🎥 All (image + video)';
+                if (mediaFilterVal === 'image_only') return i18nService.t('tdMediaFilterImage');
+                if (mediaFilterVal === 'video_only') return i18nService.t('tdMediaFilterVideo');
+                return i18nService.t('tdMediaFilterAll');
               })();
               return (
                 <>
@@ -1099,8 +868,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     return (
                       <div>
                         <div className="flex items-center gap-3 mb-1.5">
-                          <span className="text-gray-400">{isZh ? '账号:' : 'Accounts:'}</span>
-                          <span className="dark:text-white font-medium">{isZh ? `${matrixAccountIds.length} 个 · 各用自己的赛道/人设/关键词` : `${matrixAccountIds.length} accounts · each uses its own track/persona/keywords`}</span>
+                          <span className="text-gray-400">{i18nService.t('tdAccountsLabel')}</span>
+                          <span className="dark:text-white font-medium">{i18nService.t('tdAccountsSummary').replace('{n}', String(matrixAccountIds.length))}</span>
                           <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                         </div>
                         {accs.length > 0 ? (
@@ -1115,18 +884,18 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                                   <span className="shrink-0">{EM[a.platform] || '•'}</span>
                                   <span className="font-medium dark:text-gray-200 truncate min-w-0">{a.nickname || a.displayName}</span>
                                   {a.displayId && <span className="text-gray-500 dark:text-gray-400 truncate shrink-0">· {idLabel(a.platform)}:{a.displayId}</span>}
-                                  <span className="ml-auto shrink-0 text-gray-500 dark:text-gray-400">🎯 {a.group ? a.group : <span className="text-amber-500">赛道未设</span>}</span>
+                                  <span className="ml-auto shrink-0 text-gray-500 dark:text-gray-400">🎯 {a.group ? a.group : <span className="text-amber-500">{i18nService.t('tdTrackNotSet')}</span>}</span>
                                 </div>
                                 <div className="text-gray-500 dark:text-gray-400 truncate" title={a.keywords && a.keywords.length ? a.keywords.join(' · ') : undefined}>
                                   🏷️ {a.keywords && a.keywords.length
                                     ? a.keywords.slice(0, 4).join(' · ') + (a.keywords.length > 4 ? ' …' : '')
-                                    : <span className="text-amber-500">未配关键词(互动需要)</span>}
+                                    : <span className="text-amber-500">{i18nService.t('tdNoKeywords')}</span>}
                                 </div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="text-[11px] text-gray-400 py-1">{isZh ? '账号详情加载中…(如长期不出,去「我的矩阵账号」确认账号仍在)' : 'Loading account details…'}</div>
+                          <div className="text-[11px] text-gray-400 py-1">{i18nService.t('tdAccountsLoading')}</div>
                         )}
                       </div>
                     );
@@ -1138,7 +907,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     const prob = typeof (task as any).funnel_probability === 'number' ? (task as any).funnel_probability : 0;
                     return (
                       <div className="text-xs text-gray-500 dark:text-gray-400">
-                        🎣 {isZh ? '评论引流' : 'Comment funnel'}: {funnel.slice(0, 40)}{funnel.length > 40 ? '…' : ''} · {prob}%
+                        🎣 {i18nService.t('tdCommentFunnel')}: {funnel.slice(0, 40)}{funnel.length > 40 ? '…' : ''} · {prob}%
                       </div>
                     );
                   })()}
@@ -1151,7 +920,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {!isMatrix && !isLinkMode && !isImageTextTask && !isBinanceSourceViral && !isReplyFan && (
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400">
-                        {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
+                        {(isXTask || /^binance/.test(task.scenario_id)) ? i18nService.t('tdPersonaLabel') : i18nService.t('tdTrackLabel')}
                       </span>
                       <span className="dark:text-white font-medium">{trackName}</span>
                       <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
@@ -1160,7 +929,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {/* v6.x: 源平台 viral 搬运 — task id + 媒体类型展示在头部 */}
                   {isBinanceSourceViral && (
                     <div className="flex items-center gap-3">
-                      <span className="text-gray-400">{isZh ? '本次搬运:' : 'Repost mode:'}</span>
+                      <span className="text-gray-400">{i18nService.t('tdRepostModeLabel')}</span>
                       <span className="dark:text-white font-medium">{mediaFilterLabel}</span>
                       <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                     </div>
@@ -1176,7 +945,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       Link 模式 + 图文创作 + 源平台 viral 搬运 没人设概念跳过。 */}
                   {!isLinkMode && !isImageTextTask && !isBinanceSourceViral && (task.persona || '').trim() && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap pl-1">
-                      <span className="text-gray-500 font-medium">{isZh ? '人设:' : 'Persona:'}</span>{' '}
+                      <span className="text-gray-500 font-medium">{i18nService.t('tdPersonaLabel')}</span>{' '}
                       {(task.persona || '').trim()}
                     </div>
                   )}
@@ -1184,7 +953,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     <div className="space-y-1.5 pl-1">
                       {sourceSegments.map((s, i) => (
                         <div key={i} className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-                          <span className="text-gray-500">{isZh ? '参考文案 ' : 'Reference '}{['①','②','③'][i] || (i+1)}:</span>{' '}
+                          <span className="text-gray-500">{i18nService.t('tdReferenceLabel')}{['①','②','③'][i] || (i+1)}:</span>{' '}
                           <span className="whitespace-pre-wrap">{s}</span>
                         </div>
                       ))}
@@ -1196,36 +965,36 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {isImageTextTask && (
                     <div className="space-y-1 pl-1 pt-1 border-t border-gray-200 dark:border-gray-800 mt-1.5">
                       <div className="text-xs text-gray-600 dark:text-gray-300">
-                        <span className="text-gray-500">{isZh ? '配图模式:' : 'Image source:'}</span>{' '}
+                        <span className="text-gray-500">{i18nService.t('tdImageSourceLabel')}</span>{' '}
                         {useRealPhotos
-                          ? (isZh ? '📷 网络图' : '📷 Web images')
-                          : (isZh ? '🎨 AI 生成图片' : '🎨 AI-generated images')}
+                          ? i18nService.t('tdImageWeb')
+                          : i18nService.t('tdImageAi')}
                       </div>
                       {typeof realPhotoCount === 'number' && (
                         <div className="text-xs text-gray-600 dark:text-gray-300">
-                          <span className="text-gray-500">{isZh ? '每篇配图:' : 'Images per post:'}</span>{' '}
-                          {realPhotoCount} {isZh ? '张' : (realPhotoCount === 1 ? 'image' : 'images')}
+                          <span className="text-gray-500">{i18nService.t('tdImagesPerPostLabel')}</span>{' '}
+                          {realPhotoCount} {i18nService.t(realPhotoCount === 1 ? 'tdImageUnitOne' : 'tdImageUnit')}
                         </div>
                       )}
                       {useRealPhotos && realPhotoKeywords && (
                         <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-                          <span className="text-gray-500">{isZh ? '抓图关键词:' : 'Photo keywords:'}</span>{' '}
+                          <span className="text-gray-500">{i18nService.t('tdPhotoKeywordsLabel')}</span>{' '}
                           <span className="whitespace-pre-wrap">{realPhotoKeywords}</span>
                         </div>
                       )}
                       {!useRealPhotos && (
                         <div className="text-xs text-gray-600 dark:text-gray-300">
-                          <span className="text-gray-500">{isZh ? 'AI 风格:' : 'AI style:'}</span>{' '}
+                          <span className="text-gray-500">{i18nService.t('tdAiStyleLabel')}</span>{' '}
                           {aiImageStyle
-                            ? `${aiImageStyle.icon} ${isZh ? aiImageStyle.zh : aiImageStyle.en}`
-                            : (aiImageStyleId || (isZh ? '默认' : 'Default'))}
+                            ? `${aiImageStyle.icon} ${i18nService.currentLanguage === 'zh' ? aiImageStyle.zh : aiImageStyle.en}`
+                            : (aiImageStyleId || i18nService.t('tdDefault'))}
                         </div>
                       )}
                     </div>
                   )}
                   {isLinkMode ? (
                     <>
-                      <div>{isZh ? '原文链接' : 'Source URLs'}: {taskUrls.length} {isZh ? '个' : ''}</div>
+                      <div>{i18nService.t('tdSourceUrls')}: {taskUrls.length} {i18nService.t('tdCountUnit')}</div>
                       {taskUrls.map((u, i) => (
                         <div key={i} className="flex items-start gap-2 pl-4 text-[11px]">
                           <span className="text-gray-500 shrink-0 pt-0.5">{i + 1}.</span>
@@ -1236,19 +1005,19 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             onClick={async () => {
                               try {
                                 await navigator.clipboard.writeText(u);
-                                showToast('ok', isZh ? '已复制链接' : 'Link copied');
+                                showToast('ok', i18nService.t('tdLinkCopied'));
                               } catch {
-                                showToast('err', isZh ? '复制失败' : 'Copy failed');
+                                showToast('err', i18nService.t('tdCopyFailed'));
                               }
                             }}
                             className="shrink-0 px-2 py-0.5 text-[10px] rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-500 hover:border-purple-500/50 transition-colors"
-                            title={isZh ? '复制链接' : 'Copy URL'}
+                            title={i18nService.t('tdCopyUrlTitle')}
                           >
-                            📋 {isZh ? '复制' : 'Copy'}
+                            📋 {i18nService.t('tdCopy')}
                           </button>
                         </div>
                       ))}
-                      <div>{isZh ? '运行模式' : 'Mode'}: ✋ {isZh ? '一次性手动运行' : 'Manual one-shot'}</div>
+                      <div>{i18nService.t('tdRunMode')}: ✋ {i18nService.t('tdManualOneShot')}</div>
                     </>
                   ) : (
                     <>
@@ -1267,10 +1036,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         return (
                           <>
                             <div>
-                              {isZh ? '🎣 核心引流语' : '🎣 Funnel phrase'}: {funnel || (isZh ? '(未填,回复不带引流尾巴)' : '(empty — no funnel tail)')}
+                              {i18nService.t('tdFunnelPhrase')}: {funnel || i18nService.t('tdFunnelPhraseEmpty')}
                             </div>
                             <div>
-                              {isZh ? '🎲 引流尾巴出现概率' : '🎲 Funnel tail probability'}: {funnel ? `${prob}%` : (isZh ? '— (引流语未填,概率失效)' : '— (disabled, funnel empty)')}
+                              {i18nService.t('tdFunnelProbability')}: {funnel ? `${prob}%` : i18nService.t('tdFunnelProbabilityDisabled')}
                             </div>
                           </>
                         );
@@ -1282,10 +1051,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                                             || sid === 'binance_from_tiktok_viral';
                         // Label 决定:source-viral → "搜索关键词" / 其他 binance → "Token tag" / 默认 → "关键词"
                         const kwLabel = isSourceViral
-                          ? (isZh ? '搜索关键词' : 'Search keywords')
+                          ? i18nService.t('tdSearchKeywords')
                           : /^binance/.test(sid)
-                            ? (isZh ? 'Token tag' : 'Token tag')
-                            : (isZh ? '关键词' : 'Keywords');
+                            ? i18nService.t('tdTokenTag')
+                            : i18nService.t('tdKeywords');
                         // source-viral 额外展示 task.cashtags(币安发帖前缀池,可选)
                         const cashtags = isSourceViral
                           ? ((task as any).cashtags as string[] | undefined)
@@ -1297,10 +1066,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             </div>
                             {isSourceViral && (
                               <div>
-                                {isZh ? 'Token 标签' : 'Token tags'}:{' '}
+                                {i18nService.t('tdTokenTags')}:{' '}
                                 {cashtags && cashtags.length > 0
                                   ? cashtags.map(c => '$' + c).join(' · ')
-                                  : (isZh ? '(走内置 BTC/ETH/SOL 等 30+ 主流币)' : '(built-in 30+ majors)')}
+                                  : i18nService.t('tdBuiltinMajors')}
                               </div>
                             )}
                           </>
@@ -1309,36 +1078,26 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       {/* v4.31.27: binance_from_x_repost 显示媒体类型 */}
                       {task.scenario_id === 'binance_from_x_repost' && (() => {
                         const mf = (task as any).media_filter;
-                        const lab = mf === 'image_only' ? (isZh ? '仅图文' : 'Images only')
-                          : mf === 'video_only' ? (isZh ? '仅视频(严格)' : 'Videos only (strict)')
-                          : (isZh ? '全部(图文 + 视频)' : 'All (images + videos)');
-                        return <div>{isZh ? '搬运类型' : 'Media filter'}: 🎞 {lab}</div>;
+                        const lab = mf === 'image_only' ? i18nService.t('tdMediaImageOnly')
+                          : mf === 'video_only' ? i18nService.t('tdMediaVideoOnlyStrict')
+                          : i18nService.t('tdMediaAll');
+                        return <div>{i18nService.t('tdMediaFilterLabel')}: 🎞 {lab}</div>;
                       })()}
-                      <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(() => {
+                      <div>{i18nService.t('tdScheduleLabel')}: ⏰ {(() => {
                         // v6.x: 详情页频次显示加上随机时间信息 — 短间隔展示 jitter 范围,
                         //   daily_random 展示 schedule_window。跟 wizard step3 那行 hint 对齐,
                         //   用户跑起任务后还能看到自己设置的"反检测节奏"。
                         const schedWin = (task as any).schedule_window || '09:00-23:00';
-                        const intervalMap: Record<string, string> = isZh
-                          ? {
-                              '30min': '每30分钟(+1-10 分钟随机延迟)',
-                              '1h': '每小时(+1-10 分钟随机延迟)',
-                              '3h': '每3小时(+1-45 分钟随机延迟)',
-                              '6h': '每6小时(+1-45 分钟随机延迟)',
-                              'daily': '每天 ' + (task.daily_time || '08:00'),
-                              'daily_random': '每日随机时间一次(' + schedWin + ' 间)',
-                              'once': '不重复（手动触发）',
-                            }
-                          : {
-                              '30min': 'Every 30min (+1-10min jitter)',
-                              '1h': 'Hourly (+1-10min jitter)',
-                              '3h': 'Every 3h (+1-45min jitter)',
-                              '6h': 'Every 6h (+1-45min jitter)',
-                              'daily': 'Daily ' + (task.daily_time || '08:00'),
-                              'daily_random': 'Once daily (random within ' + schedWin + ')',
-                              'once': 'Once (manual)',
-                            };
-                        const intervalLabel = intervalMap[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00');
+                        const intervalMap: Record<string, string> = {
+                          '30min': i18nService.t('tdInt30min'),
+                          '1h': i18nService.t('tdInt1h'),
+                          '3h': i18nService.t('tdInt3h'),
+                          '6h': i18nService.t('tdInt6h'),
+                          'daily': i18nService.t('tdIntDaily') + (task.daily_time || '08:00'),
+                          'daily_random': i18nService.t('tdIntDailyRandom').replace('{win}', schedWin),
+                          'once': i18nService.t('tdIntOnce'),
+                        };
+                        const intervalLabel = intervalMap[(task as any).run_interval || 'daily'] || i18nService.t('tdIntDaily') + (task.daily_time || '08:00');
                         // v2.4.60: 频次显示真实用户配置(min/max),不再写死 daily_count
                         const sid = task.scenario_id;
                         const t = task as any;
@@ -1355,8 +1114,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           // v2.4.83: 点赞 — 仅 binance auto_engage 有,如果 task 上有就显示
                           const lStr = (typeof lMin === 'number' && typeof lMax === 'number')
                             ? `${lMin}-${lMax}` : null;
-                          var summary = `${intervalLabel} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
-                          if (lStr) summary += ` · ${isZh ? '点赞' : 'Like'} ${lStr}`;
+                          var summary = `${intervalLabel} · ${i18nService.t('tdFollow')} ${fStr} · ${i18nService.t('tdReply')} ${rStr}`;
+                          if (lStr) summary += ` · ${i18nService.t('tdLike')} ${lStr}`;
                           return summary;
                         }
                         // youtube/tiktok/douyin 互动: 跟 X auto_engage 同款 — 各动作 min-max 区间
@@ -1372,11 +1131,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           const cmStr = fmtRange(cmMin, cmMax, 1);
                           if (sid === 'youtube_auto_engage') {
                             const sStr = fmtRange(sMin, sMax, 1);
-                            return `${intervalLabel} · ${isZh ? '点赞' : 'Like'} ${lStr} · ${isZh ? '订阅' : 'Subscribe'} ${sStr} · ${isZh ? '评论' : 'Comment'} ${cmStr}`;
+                            return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}`;
                           }
                           // tiktok / douyin 用 follow
                           const fStr2 = fmtRange(fMin, fMax, 1);
-                          return `${intervalLabel} · ${isZh ? '点赞' : 'Like'} ${lStr} · ${isZh ? '关注' : 'Follow'} ${fStr2} · ${isZh ? '评论' : 'Comment'} ${cmStr}`;
+                          return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdFollow')} ${fStr2} · ${i18nService.t('tdComment')} ${cmStr}`;
                         }
                         // v4.31.27: binance_from_x_repost 也走 daily_post_min/max(批量搬运同样按"每次 N 条")
                         // v4.31.30: 频次摘要文案对齐 wizard step3 — 之前只有数字+"条/次",
@@ -1395,60 +1154,47 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             ? (pMin === pMax ? String(pMin) : `${pMin}-${pMax}`)
                             : String(task.daily_count || 1);
                           if (sid === 'x_post_creator') {
-                            return isZh
-                              ? `${intervalLabel} · 每次 ${pStr} 条推文（仿写 30% / 原创 30% / 引用 40% 随机）`
-                              : `${intervalLabel} · ${pStr} tweets/run (30% rewrite / 30% original / 40% quote)`;
+                            return i18nService.t('tdSummaryXPost').replace('{interval}', intervalLabel).replace('{n}', pStr);
                           }
                           if (sid === 'binance_from_x_repost') {
-                            return isZh
-                              ? `${intervalLabel} · 每次 ${pStr} 条 · 推特爆款搬运到币安广场（原图/视频 + AI 改写）`
-                              : `${intervalLabel} · ${pStr} repost(s)/run · X → Binance Square (original media + AI rewrite)`;
+                            return i18nService.t('tdSummaryBnFromXRepost').replace('{interval}', intervalLabel).replace('{n}', pStr);
                           }
                           if (isSrcViral) {
-                            const srcLabel = sid === 'binance_from_xhs_viral' ? '小红书'
-                                          : sid === 'binance_from_douyin_viral' ? '抖音'
+                            const srcLabel = sid === 'binance_from_xhs_viral' ? i18nService.t('tdXiaohongshu')
+                                          : sid === 'binance_from_douyin_viral' ? i18nService.t('tdDouyin')
                                           : 'TikTok';
-                            const srcLabelEn = sid === 'binance_from_xhs_viral' ? 'Xiaohongshu'
-                                            : sid === 'binance_from_douyin_viral' ? 'Douyin'
-                                            : 'TikTok';
-                            return isZh
-                              ? `${intervalLabel} · 每次 ${pStr} 条 · ${srcLabel}爆款搬运到币安广场（原图/视频 + AI 改写）`
-                              : `${intervalLabel} · ${pStr} repost(s)/run · ${srcLabelEn} → Binance Square (original media + AI rewrite)`;
+                            return i18nService.t('tdSummaryBnFromViral').replace('{interval}', intervalLabel).replace('{n}', pStr).replace('{src}', srcLabel);
                           }
                           // binance_square_post_creator
-                          return isZh
-                            ? `${intervalLabel} · 每次 ${pStr} 条币安广场短评（100-300 字 + cashtag）`
-                            : `${intervalLabel} · ${pStr} Binance Square notes/run (100-300 chars + cashtag)`;
+                          return i18nService.t('tdSummaryBnPost').replace('{interval}', intervalLabel).replace('{n}', pStr);
                         }
                         // 回复粉丝评论:每次处理"最近 N 篇笔记/作品"的全部未回复评论
                         //   (N = max_notes/works_per_run,默认 30),不是"N 条/次"。
                         if (sid === 'xhs_reply_fans_comment') {
-                          return isZh ? `${intervalLabel} · 最近 30 篇笔记/次` : `${intervalLabel} · latest 30 notes/run`;
+                          return i18nService.t('tdSummaryReplyNotes').replace('{interval}', intervalLabel);
                         }
                         if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment' || sid === 'toutiao_reply_fans_comment') {
-                          return isZh ? `${intervalLabel} · 最近 30 个作品/次` : `${intervalLabel} · latest 30 videos/run`;
+                          return i18nService.t('tdSummaryReplyVideos').replace('{interval}', intervalLabel);
                         }
                         if (typeof cMin === 'number' && typeof cMax === 'number') {
-                          return `${intervalLabel} · ${cMin}-${cMax} ${isZh ? '篇/次' : 'articles/run'}`;
+                          return `${intervalLabel} · ${cMin}-${cMax} ${i18nService.t('tdArticlesRun')}`;
                         }
-                        return `${intervalLabel} · ${task.daily_count || 1} ${isZh ? '条/次' : '/run'}`;
+                        return `${intervalLabel} · ${task.daily_count || 1} ${i18nService.t('tdPerRun')}`;
                       })()}</div>
                     </>
                   )}
                 </>
               );
             })()}
-            <div>{isZh ? '创建时间' : 'Created'}: {new Date(task.created_at).toLocaleString()}</div>
+            <div>{i18nService.t('tdCreatedLabel')}: {new Date(task.created_at).toLocaleString()}</div>
             {/* Output folder link — for auto_reply this contains the run-report
                 Markdown; for viral_production this contains the rewrite drafts
                 + images. Either way it's the place to look for what was produced. */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span>{isZh ? '输出目录:' : 'Output:'}</span>
+              <span>{i18nService.t('tdOutputLabel')}</span>
               {/* 点文字也能打开(保留旧交互) */}
               <button type="button" onClick={openTaskDir} className="text-blue-500 hover:underline text-[11px]">
-                {isZh
-                  ? (isAutoReplyTask ? '📂 打开报告文件夹' : '📂 打开输出文件夹')
-                  : '📂 Open folder'}
+                {isAutoReplyTask ? i18nService.t('tdOpenReportFolder') : i18nService.t('tdOpenOutputFolder')}
               </button>
               {/* 醒目按钮:跟视频任务一致,让用户一眼能点 */}
               <button
@@ -1456,7 +1202,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 onClick={openTaskDir}
                 className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
               >
-                📂 {isZh ? '打开' : 'Open'}
+                📂 {i18nService.t('tdOpen')}
               </button>
             </div>
             {/* v1.x: 删了截短 persona preview — 跟上面完整 persona 块 (line ~814) 重复了 */}
@@ -1466,7 +1212,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               <>
                 <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  {stopping ? (isZh ? '正在停止...' : 'Stopping...') : (isZh ? '运行中' : 'Running')}
+                  {stopping ? i18nService.t('tdStoppingDots') : i18nService.t('tdRunning')}
                 </span>
                 <button type="button" onClick={handleStop}
                   disabled={stopping}
@@ -1478,9 +1224,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {stopping ? (
                     <span className="flex items-center gap-1.5">
                       <span className="h-3 w-3 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
-                      {isZh ? '停止中' : 'Stopping'}
+                      {i18nService.t('tdStoppingWord')}
                     </span>
-                  ) : (isZh ? '停止' : 'Stop')}
+                  ) : i18nService.t('tdStop')}
                 </button>
               </>
             ) : (
@@ -1490,30 +1236,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     const interval = (task as any).run_interval || 'daily';
                     // v2.4.62: 'once'(手动触发)就别说"自动运行"和"下次运行" — 没意义
                     if (interval === 'once' || isLinkModeForStats) {
-                      return isZh ? '✋ 手动触发' : '✋ Manual trigger';
+                      return i18nService.t('tdManualTrigger');
                     }
                     // v4.25.4: 不再依赖 task.active 判定 "待命" —— 现在所有
                     // enabled 任务都会自动跑(active 仅 UI 高亮用)。直接显示
                     // schedule label。
-                    const map: Record<string, string> = isZh
-                      ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' }
-                      : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' };
-                    return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 自动运行' : ' Scheduled');
+                    const map: Record<string, string> = { '30min': i18nService.t('tdIntShort30min'), '1h': i18nService.t('tdIntShort1h'), '3h': i18nService.t('tdIntShort3h'), '6h': i18nService.t('tdIntShort6h'), 'daily': i18nService.t('tdIntDaily') + (task.daily_time || '08:00'), 'daily_random': i18nService.t('tdIntShortDailyRandom') };
+                    return (map[interval] || i18nService.t('tdDaily')) + i18nService.t('tdScheduledSuffix');
                   })()}
                 </span>
                 <button type="button" onClick={handleRunNow}
                   className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
-                  {isZh ? '直接运行' : 'Run Now'}
+                  {i18nService.t('tdRunNow')}
                 </button>
                 <button type="button" onClick={onEdit}
                   className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                  {isZh ? '编辑' : 'Edit'}
+                  {i18nService.t('tdEdit')}
                 </button>
                 <button type="button" onClick={handleDelete}
                   className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
                     confirmingDelete ? 'border-red-500 bg-red-500 text-white' : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'
                   }`}>
-                  {confirmingDelete ? (isZh ? '确定删除？' : 'Confirm?') : (isZh ? '删除' : 'Delete')}
+                  {confirmingDelete ? i18nService.t('tdConfirmDelete') : i18nService.t('tdDelete')}
                 </button>
               </>
             )}
@@ -1527,11 +1271,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           <div className="flex items-start gap-3">
             <span className="text-xl shrink-0 animate-pulse">⚠️</span>
             <div className="flex-1 text-sm text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
-              {isZh ? (
-                <>运行中<strong>请勿缩小/最小化/关闭浏览器或退出账号</strong>,以免干扰运行。如需使用浏览器,请<strong>新开一个独立窗口</strong>(切勿在原窗口新开标签页)。</>
-              ) : (
-                <>While running, <strong>do NOT resize/minimize/close the browser or log out</strong> — it'll interrupt the task. If you need to browse, <strong>open a separate browser window</strong> (not a new tab in the same window).</>
-              )}
+              <>{i18nService.t('tdRunningWarn1')}<strong>{i18nService.t('tdRunningWarn2')}</strong>{i18nService.t('tdRunningWarn3')}<strong>{i18nService.t('tdRunningWarn4')}</strong>{i18nService.t('tdRunningWarn5')}</>
             </div>
           </div>
         </div>
@@ -1563,15 +1303,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
                 <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
                   <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  {isZh ? '本次运行进度' : 'Current Run Progress'}
+                  {i18nService.t('tdCurrentRunProgress')}
                 </div>
                 <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
                   {(() => {
                     const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = isZh
-                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
-                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
+                    const labels = { like: i18nService.t('tdLblLike'), follow: i18nService.t('tdLblFollow'), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
                     // v6.x: 回复粉丝评论(xhs/douyin)= 「已回复评论数」+「文章进度 当前/总」,
                     //   不是「N/target 评论」。评论纯累计(无 target),文章扫描后才知道总数
@@ -1581,14 +1319,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       const noteDone = (ap as any).note?.done ?? 0;
                       const noteTarget = (ap as any).note?.target ?? 0;
                       const articleWord = scenario?.id === 'xhs_reply_fans_comment'
-                        ? (isZh ? '笔记' : 'notes')
-                        : (isZh ? '作品' : 'videos');
+                        ? i18nService.t('tdNotesWord')
+                        : i18nService.t('tdVideosWord');
                       const articleStr = noteTarget > 0 ? `${noteDone}/${noteTarget}` : '-';
                       return (
                         <>
                           <span className="font-mono text-gray-700 dark:text-gray-200">
                             💬 <strong className="text-green-600 dark:text-green-400">{commentDone > 0 ? commentDone : '-'}</strong>{' '}
-                            <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{isZh ? '回复' : 'replies'}</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{i18nService.t('tdRepliesWord')}</span>
                           </span>
                           <span className="font-mono text-gray-700 dark:text-gray-200">
                             📄 <strong className="text-green-600 dark:text-green-400">{articleStr}</strong>{' '}
@@ -1628,7 +1366,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
               <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
                 <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                {isZh ? '本次消耗' : 'Current Run Cost'}
+                {i18nService.t('tdCurrentRunCost')}
               </div>
               <div className="flex items-baseline gap-2 text-sm font-mono text-gray-700 dark:text-gray-200">
                 <span>💎</span>
@@ -1658,42 +1396,42 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         {/* 累计完成 — action_counts summed across all recorded runs, formatted
             by scenario family (engage shows 👍/➕/💬, post-creator shows 📤). */}
         <StatCard
-          label={isZh ? '累计完成' : 'Total Done'}
-          value={formatActionBreakdown(stats?.cumulative_action_counts || {}, scenario, isZh)}
+          label={i18nService.t('tdTotalDone')}
+          value={formatActionBreakdown(stats?.cumulative_action_counts || {}, scenario)}
           small
         />
         {/* 累计消耗 — credits + USD. token_price_per_million is baked into the
             per-run cost_usd by scenarioManager, so we just sum here. */}
         <StatCard
-          label={isZh ? '累计消耗' : 'Total Cost'}
-          value={formatCreditsCost(stats?.cumulative_tokens_used || 0, stats?.cumulative_cost_usd || 0, isZh)}
+          label={i18nService.t('tdTotalCost')}
+          value={formatCreditsCost(stats?.cumulative_tokens_used || 0, stats?.cumulative_cost_usd || 0)}
           small
         />
         {/* 上次完成 — same shape as 累计完成 but only the most recent run. */}
         <StatCard
-          label={isZh ? '上次完成' : 'Last Done'}
-          value={formatActionBreakdown(stats?.last_run_action_counts || {}, scenario, isZh)}
+          label={i18nService.t('tdLastDone')}
+          value={formatActionBreakdown(stats?.last_run_action_counts || {}, scenario)}
           small
         />
         {/* 上次消耗 — credits + USD for the most recent run. */}
         <StatCard
-          label={isZh ? '上次消耗' : 'Last Cost'}
-          value={formatCreditsCost(stats?.last_run_tokens_used || 0, stats?.last_run_cost_usd || 0, isZh)}
+          label={i18nService.t('tdLastCost')}
+          value={formatCreditsCost(stats?.last_run_tokens_used || 0, stats?.last_run_cost_usd || 0)}
           small
         />
         <StatCard
-          label={isZh ? '上次运行' : 'Last Run'}
-          value={formatRelative(stats?.last_run_at || null, isZh)}
+          label={i18nService.t('tdLastRun')}
+          value={formatRelative(stats?.last_run_at || null)}
           small
           // Click on the "上次运行" stat → jump to Run History filtered
           // to THIS task. Lets users review every previous run without
           // hunting through the global history page.
           onClick={onOpenHistory}
-          actionLabel={isZh ? '查看历史运行记录 →' : 'View run history →'}
+          actionLabel={i18nService.t('tdViewRunHistory')}
         />
         {!isLinkModeForStats && (task as any).run_interval !== 'once' && (
           <StatCard
-            label={isZh ? '下次运行' : 'Next Run'}
+            label={i18nService.t('tdNextRun')}
             value={(() => {
               // v4.25.4: 不再因 active=false 显示 "待命" —— scheduler 现在
               // 会跑所有 enabled 任务,active 仅 UI 高亮。
@@ -1708,9 +1446,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 const diff = planned - Date.now();
                 const mins = Math.round(diff / 60000);
                 let rel: string;
-                if (mins < 60) rel = mins + (isZh ? ' 分钟后' : 'm');
-                else if (mins < 24 * 60) rel = Math.round(mins / 60) + (isZh ? ' 小时后' : 'h');
-                else rel = Math.round(mins / (60 * 24)) + (isZh ? ' 天后' : 'd');
+                if (mins < 60) rel = mins + i18nService.t('tdRelMin');
+                else if (mins < 24 * 60) rel = Math.round(mins / 60) + i18nService.t('tdRelHr');
+                else rel = Math.round(mins / (60 * 24)) + i18nService.t('tdRelDay');
                 // Absolute time formatting:
                 //   today    "今天 11:23"
                 //   tomorrow "明天 11:23"
@@ -1722,23 +1460,23 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
                 const hh = String(d.getHours()).padStart(2, '0');
                 const mm = String(d.getMinutes()).padStart(2, '0');
-                const datePart = sameDay(d, now)      ? (isZh ? '今天' : 'today')
-                              : sameDay(d, tomorrow)  ? (isZh ? '明天' : 'tmrw')
+                const datePart = sameDay(d, now)      ? i18nService.t('tdToday')
+                              : sameDay(d, tomorrow)  ? i18nService.t('tdTomorrow')
                               : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
                 return `${rel} · ${datePart} ${hh}:${mm}`;
               }
               // Fallback: old heuristic for tasks without next_planned_run_at yet
               const interval = (task as any).run_interval || 'daily';
               const lastRun = stats?.last_run_at;
-              if (!lastRun) return isZh ? '即将（计算中）' : 'Soon (calc)';
+              if (!lastRun) return i18nService.t('tdSoonCalc');
               const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '3h': 3*60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000, 'daily_random': 24*60*60*1000 };
               const ms = intervals[interval] || 24*60*60*1000;
               const next = lastRun + ms;
-              if (next <= Date.now()) return isZh ? '即将' : 'Soon';
+              if (next <= Date.now()) return i18nService.t('tdSoon');
               const diff = next - Date.now();
               const mins = Math.round(diff / 60000);
-              if (mins < 60) return mins + (isZh ? ' 分钟后' : ' min');
-              return Math.round(mins / 60) + (isZh ? ' 小时后' : ' hr');
+              if (mins < 60) return mins + i18nService.t('tdRelMinSpace');
+              return Math.round(mins / 60) + i18nService.t('tdRelHrSpace');
             })()}
             small
           />
@@ -1774,8 +1512,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask;
         const isXhsViral = scenario?.platform === 'xhs';
         const autoUploadLabel = isXhsViral
-          ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload to drafts')
-          : (isZh ? `🚀 自动发布到${platformLabelForTask}` : `🚀 Auto-post to ${platformLabelForTask}`);
+          ? i18nService.t('tdAutoUploadDrafts')
+          : i18nService.t('tdAutoPost').replace('{platform}', platformLabelForTask);
         // 矩阵号:各账号独立日志在 progress.accounts[].logs(步骤视图 progress.steps 对矩阵任务基本是空的)。
         // 在「当前运行明细」上方放一排账号 tab,点 tab 切换显示该账号的运行明细;默认选第一个账号。
         const matrixAccts = progress?.accounts || [];
@@ -1793,30 +1531,30 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         return (
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
-              <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
+              <h2 className="text-base font-bold dark:text-white">{i18nService.t('tdCurrentRunDetails')}</h2>
               {isVideoDownloadTask ? (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-500 border-blue-500/30">
-                  {isZh ? '⬇️ 自动下载到本地' : '⬇️ Auto-download to local'}
+                  {i18nService.t('tdAutoDownloadBadge')}
                 </span>
               ) : showUploadBadge ? (
                 <span className={`text-xs px-2.5 py-1 rounded-full border ${autoUploadMode ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-blue-500/10 text-blue-500 border-blue-500/30'}`}>
                   {autoUploadMode
                     ? autoUploadLabel
-                    : (isZh ? '📁 仅生成保存本地' : '📁 Generate only')}
+                    : i18nService.t('tdGenerateOnlyBadge')}
                 </span>
               ) : (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-cyan-500/10 text-cyan-500 border-cyan-500/30">
                   {isXTask
-                    ? (isZh ? `🐦 直接发布到 ${platformLabelForTask}` : `🐦 Posts directly to ${platformLabelForTask}`)
-                    : (isZh ? `💬 直接发布到 ${platformLabelForTask}` : `💬 Posts directly to ${platformLabelForTask}`)}
+                    ? i18nService.t('tdPostsDirectlyX').replace('{platform}', platformLabelForTask)
+                    : i18nService.t('tdPostsDirectly').replace('{platform}', platformLabelForTask)}
                 </span>
               )}
             </div>
             {/* 矩阵号:本次有账号登录过期 → 提示 + 跳「我的矩阵账号」去重扫(复用全局事件,App 切到 matrix 页)。 */}
             {loginExpired && (
               <div className="mb-4 flex items-center flex-wrap gap-2 text-xs px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
-                <span className="text-red-500 font-medium">⚠️ 本次有账号登录过期,需重新扫码登录</span>
-                <button onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: {} }))} className="ml-auto px-2.5 py-1 rounded-lg bg-violet-500 hover:bg-violet-600 text-white">去我的矩阵账号处理 →</button>
+                <span className="text-red-500 font-medium">{i18nService.t('tdLoginExpiredWarn')}</span>
+                <button onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: {} }))} className="ml-auto px-2.5 py-1 rounded-lg bg-violet-500 hover:bg-violet-600 text-white">{i18nService.t('tdGoMatrixAccounts')}</button>
               </div>
             )}
             {/* 矩阵号:账号 tab —— 点一个号切换显示它独立的运行明细(各号配额 + 完成数也在 tab 上)。 */}
@@ -1843,19 +1581,19 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         <span className="truncate">{title}</span>
                         {d.displayId && <span className="text-gray-400 font-normal shrink-0">· {PLID[d.platform] || '账号'}:{d.displayId}</span>}
                       </div>
-                      {note && <div className="mt-0.5 text-[10px] text-gray-400 truncate">备注 {note}</div>}
+                      {note && <div className="mt-0.5 text-[10px] text-gray-400 truncate">{i18nService.t('tdNoteLabel')} {note}</div>}
                       <div className="mt-1 font-mono text-gray-600 dark:text-gray-300">
                         {/* 按任务类型显示对应指标 —— 只有互动涨粉才有赞/关注/评论;回复粉丝=回复数;
                             视频下载/图文创作不是互动,不显示点赞/关注/评论 emoji(显示类型标签,进度看下方日志)。 */}
                         {(() => {
                           const sid = String(scenario?.id || '');
-                          if (/_reply_fans_comment$/.test(sid)) return <>💬 {ap.comment?.done ?? 0} {isZh ? '回复' : 'replies'}</>;
-                          if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {isZh ? '视频下载' : 'Video download'}</span>;
-                          if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {isZh ? '图文创作' : 'Image-text'}</span>;
-                          if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {isZh ? '爆款仿写' : 'Viral rewrite'}</span>;
-                          if (sid === 'x_post') return <span className="text-gray-400 font-sans">🐦 {isZh ? '发推' : 'Tweet'}</span>;
-                          if (sid === 'binance_post') return <span className="text-gray-400 font-sans">📊 {isZh ? '发帖' : 'Post'}</span>;
-                          if (sid === 'binance_repost') return <span className="text-gray-400 font-sans">♻️ {isZh ? '搬运' : 'Repost'}</span>;
+                          if (/_reply_fans_comment$/.test(sid)) return <>💬 {ap.comment?.done ?? 0} {i18nService.t('tdRepliesWord')}</>;
+                          if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {i18nService.t('tdVideoDownloadWord')}</span>;
+                          if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {i18nService.t('tdImageTextWord')}</span>;
+                          if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {i18nService.t('tdViralRewriteWord')}</span>;
+                          if (sid === 'x_post') return <span className="text-gray-400 font-sans">🐦 {i18nService.t('tdTweetWord')}</span>;
+                          if (sid === 'binance_post') return <span className="text-gray-400 font-sans">📊 {i18nService.t('tdPostWord')}</span>;
+                          if (sid === 'binance_repost') return <span className="text-gray-400 font-sans">♻️ {i18nService.t('tdRepostWord')}</span>;
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
                       </div>
@@ -1898,7 +1636,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           //     已经把正文写进了页面编辑器,用户手动点"发文"即可,不需要"打开文件夹" UI
           const isManualUploadStep = isXhsViral && stepNum === 4 && !autoUploadMode;
           const displayName = isManualUploadStep
-            ? (isZh ? '请在本地手动上传到小红书草稿箱' : 'Manually upload from local folder')
+            ? i18nService.t('tdManualUploadStep')
             : name;
           return (
             <div key={idx}>
@@ -1916,13 +1654,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               }`}>
                 {isManualUploadStep ? (
                   <div className="p-4 text-xs dark:text-gray-300 space-y-2">
-                    <p>{isZh ? '已生成的标题、正文、配图都保存在本地。打开下方文件夹，自己挑选文章并手动上传到小红书草稿箱（每篇 ≤3 篇/天可降低封号风险）。' : 'Generated titles, bodies and images are saved locally. Open the folder below and manually upload to XHS drafts (≤3/day to reduce ban risk).'}</p>
+                    <p>{i18nService.t('tdManualUploadHint')}</p>
                     <button
                       type="button"
                       onClick={openTaskDir}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
                     >
-                      📂 {isZh ? '打开本地文件夹' : 'Open folder'}
+                      📂 {i18nService.t('tdOpenLocalFolder')}
                     </button>
                   </div>
                 ) : logs.length > 0 ? (
@@ -1933,8 +1671,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       // v2.4.67: 任务正在跑但这一步还没拿到 log 事件 — 区分
                       // step 1 (尚未启动 / 正在初始化) 和 step >1 (等前一步)
                       stepNum === 1
-                        ? (isZh ? '⏳ 正在启动…(后端流式日志稍候)' : '⏳ Starting…')
-                        : (isZh ? '等待前一步' : 'Waiting for previous step')
+                        ? i18nService.t('tdStarting')
+                        : i18nService.t('tdWaitingPrevStep')
                     ) : stepNum === 1 ? (() => {
                       const interval = (task as any).run_interval || 'daily';
                       // Calculate next run time
@@ -1945,19 +1683,19 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       if (lastRun) {
                         const next = lastRun + ms;
                         if (next <= Date.now()) {
-                          nextRunStr = isZh ? '即将运行' : 'Running soon';
+                          nextRunStr = i18nService.t('tdRunningSoon');
                         } else {
                           const diff = next - Date.now();
                           const mins = Math.round(diff / 60000);
                           nextRunStr = mins < 60
-                            ? (isZh ? mins + ' 分钟后运行' : 'Run in ' + mins + ' min')
-                            : (isZh ? Math.round(mins/60) + ' 小时后运行' : 'Run in ' + Math.round(mins/60) + 'h');
+                            ? i18nService.t('tdRunInMin').replace('{n}', String(mins))
+                            : i18nService.t('tdRunInHr').replace('{n}', String(Math.round(mins/60)));
                         }
                       } else {
-                        nextRunStr = isZh ? '点击"直接运行"开始' : 'Click "Run Now" to start';
+                        nextRunStr = i18nService.t('tdClickRunNow');
                       }
                       return nextRunStr;
-                    })() : (isZh ? '等待前一步' : 'Waiting for previous step')}
+                    })() : i18nService.t('tdWaitingPrevStep')}
                   </div>
                 )}
               </div>
@@ -2062,7 +1800,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 function formatActionBreakdown(
   counts: Record<string, number> | undefined,
   scenario: any,
-  isZh: boolean,
 ): string {
   // v5.x+: when counts is missing/empty, derive engage- or post-family
   // placeholder keys from the scenario id so brand-new engage tasks
@@ -2079,41 +1816,41 @@ function formatActionBreakdown(
       ? (typeof counts.comment === 'number' ? counts.comment
          : typeof counts.reply === 'number' ? counts.reply : 0)
       : 0;
-    return `💬 ${replies} ${isZh ? '回复' : 'replies'}`;
+    return `💬 ${replies} ${i18nService.t('tdRepliesWord')}`;
   }
   // 图文创作(*_image_text):只产生「发帖数」,累计/上次完成显示 📤 N 发帖,绝不显示赞/关注/评论
   //   —— action_counts 恒含 {like:0,follow:0,comment:0},不早返回会落到下面的互动 breakdown 误显。
   if (/_image_text$/.test(sid)) {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
-    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+    return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
   // 爆款批量仿写(*_viral_production_career):内容创作任务,产出=发布篇数,显示 📤 N 发帖,
   //   绝不显示赞/关注/评论(它不是互动涨粉)。同 image_text,action_counts 恒含 {like:0,...} 不早返回会误显。
   if (/_viral_production_career$/.test(sid)) {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
-    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+    return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
   // 自动发推(矩阵版 x_post):只产生「发帖数」,累计/上次完成显示 📤 N 发帖,绝不显示赞/关注/评论。
   //   sidecar 存运行记录时 totals 恒以 {like:0,follow:0,comment:0} 打底再补 post(sidecar-server.ts),
   //   不早返回就会落到下面的互动 breakdown 把那三个 0 画成「👍0 ➕0 💬0」。
   if (sid === 'x_post') {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
-    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+    return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
   // 币安广场自动发帖(矩阵版 binance_post):同 x_post,只产生「发帖数」,显示 📤 N 发帖,绝不显示赞/关注/评论。
   if (sid === 'binance_post') {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
-    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+    return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
   // 币安广场批量搬运(矩阵版 binance_repost):同上,只产生「发帖数」。
   if (sid === 'binance_repost') {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
-    return `📤 ${posts} ${isZh ? '发帖' : 'posts'}`;
+    return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
   // 视频无水印下载(*_video_download):只产生「下载条数」,显示 ⬇️ N 下载,不显示互动。
   if (/_video_download$/.test(sid)) {
     const dls = counts && typeof counts.download === 'number' ? counts.download : 0;
-    return `⬇️ ${dls} ${isZh ? '下载' : 'downloads'}`;
+    return `⬇️ ${dls} ${i18nService.t('tdDownloadsWord')}`;
   }
   if (!counts || Object.keys(counts).length === 0) {
     const isPostScenario = (
@@ -2189,9 +1926,7 @@ function formatActionBreakdown(
       return ia - ib;
     });
   if (keys.length === 0) return '-';
-  const labels = isZh
-    ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
-    : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
+  const labels = { like: i18nService.t('tdLblLike'), follow: i18nService.t('tdLblFollow'), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
   return keys.map(k => {
     const icon = ICONS[k] || '·';
     const label = (labels as any)[k] || k;
@@ -2215,7 +1950,7 @@ function compactNumber(n: number): string {
  * Format credits + USD cost for the 累计消耗 / 上次消耗 cards.
  * v1.x: compact K/M/B units (per user feedback — '9,939' too noisy).
  */
-function formatCreditsCost(credits: number, costUsd: number, _isZh: boolean): string {
+function formatCreditsCost(credits: number, costUsd: number): string {
   if (!credits || credits <= 0) return '-';
   const c = Math.round(credits);
   if (HIDE_WEB3) return `💎 ${compactNumber(c)} ≈ ￥${cnyFromUsd(Number(costUsd) || 0)}`;

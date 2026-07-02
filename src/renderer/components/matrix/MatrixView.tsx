@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';import { i18nService } from '../../services/i18n';
+
 import { shortId } from '../../utils/shortId';
 import MatrixTaskWizard from './MatrixTaskWizard';
 import MatrixReplyFansWizard from './MatrixReplyFansWizard';
@@ -58,12 +59,12 @@ const loginUrlFor = (platform: string, loginScope?: string): string => {
 };
 // 快手两类账号子 tab。
 const KS_SCOPES: { key: 'main' | 'creator'; label: string }[] = [
-  { key: 'creator', label: '创作者中心' },
-  { key: 'main', label: '主站' },
+  { key: 'creator', label: i18nService.t('mvKsCreator') },
+  { key: 'main', label: i18nService.t('mvKsMain') },
 ];
 const STATUS_DOT: Record<AccountStatus, string> = { idle: 'bg-green-500', running: 'bg-blue-500', login_required: 'bg-amber-500', limited: 'bg-gray-400', banned: 'bg-red-500' };
-const STATUS_LABEL: Record<AccountStatus, string> = { idle: '已连接', running: '运行中', login_required: '尚未连接', limited: '限流冷却', banned: '已封' };
-const FREQ_LABEL: Record<string, string> = { once: '不重复(手动)', '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', daily_random: '每日随机一次' };
+const STATUS_LABEL: Record<AccountStatus, string> = { idle: i18nService.t('mvStIdle'), running: i18nService.t('mvStRunning'), login_required: i18nService.t('mvStNotConnected'), limited: i18nService.t('mvStLimited'), banned: i18nService.t('mvStBanned') };
+const FREQ_LABEL: Record<string, string> = { once: i18nService.t('mvFreqOnce'), '30min': i18nService.t('mvFreq30min'), '1h': i18nService.t('mvFreq1h'), '3h': i18nService.t('mvFreq3h'), '6h': i18nService.t('mvFreq6h'), daily_random: i18nService.t('mvFreqDailyRandom') };
 
 // 赛道预设(下拉可选):选了自动填关键词 + 人设建议(用户仍可在下面微调)。
 // 赛道预设库【服务端下发,内置兜底】。配账号时选赛道→自动带出人设+关键词(可改),任务跟号走。
@@ -318,7 +319,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       else if (p?.type === 'item') setItems((prev) => ({ ...prev, [p.accountId]: { accountId: p.accountId, state: p.state, reason: p.reason, counts: p.counts } }));
       else if (p?.type === 'log') setLogs((prev) => [`[${p.accountId}] ${p.msg}`, ...prev].slice(0, 200));
       else if (p?.type === 'done') { setRunning(false); setRunningTaskId(null); setDoneReport(p.report); reload(); reloadTasks(); reloadRuns(); }
-      else if (p?.type === 'error') { setRunning(false); setRunningTaskId(null); setLogs((prev) => [`任务错误: ${p.error}`, ...prev]); reloadTasks(); }
+      else if (p?.type === 'error') { setRunning(false); setRunningTaskId(null); setLogs((prev) => [i18nService.t('mvTaskError').replace('{err}', String(p.error)), ...prev]); reloadTasks(); }
     });
     return () => { if (typeof off === 'function') off(); };
   }, [reload, reloadTasks, reloadRuns]);
@@ -369,7 +370,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const v = version || selectedVersion || kernel.configuredVersion || '';
     // 不强制开弹窗:从下拉点「下载」就只在下拉里显示进度;从「未就绪」拦截弹窗点下载时
     // 弹窗本来就开着,进度显示在弹窗。避免下拉 + 弹窗两处重复显示同一条进度。
-    setKernelBusy(true); setKernelPct(0); setKernelMsg('准备下载…');
+    setKernelBusy(true); setKernelPct(0); setKernelMsg(i18nService.t('mvPreparingDownload'));
     await M()?.ensureKernel({ version: v });
   };
 
@@ -409,14 +410,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     // 达套餐上限:弹窗(带「去升级会员」按钮直达会员订阅)而非一次性 toast,引导用户升级。
     if (platformTotal >= maxAccountsPerPlatform) {
       setConfirmDlg({
-        title: `${PLATFORM_LABEL[platform]}账号已达套餐上限`,
-        body: `当前套餐每个平台最多可连接 ${maxAccountsPerPlatform} 个账号。升级会员可提升上限,或先移除部分账号再连接。`,
-        okText: '去升级会员',
+        title: i18nService.t('mvPlanLimitTitle').replace('{platform}', PLATFORM_LABEL[platform]),
+        body: i18nService.t('mvPlanLimitBody').replace('{n}', String(maxAccountsPerPlatform)),
+        okText: i18nService.t('mvGoUpgrade'),
         onYes: () => { setConfirmDlg(null); openWallet('subscription'); },
       });
       return;
     }
-    setEditId(null); setNewName(`账号${platformAccounts.length + 1}-`); setNewScope(ksScope);
+    setEditId(null); setNewName(i18nService.t('mvNewAccountName').replace('{n}', String(platformAccounts.length + 1))); setNewScope(ksScope);
     // 默认选中一个赛道并带出人设 + 关键词(可再改)。x/tiktok/youtube 带英文词。
     const def = trackPresets.find((t) => t.name === DEFAULT_TRACK) || trackPresets[0];
     if (def) { setNewGroup(def.name); setNewPersona(def.persona); setNewKeywords(trackKeywords(def, platform).join(' ')); }
@@ -434,11 +435,11 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const openEdit = (a: MatrixAccount) => { if (!requireLogin()) return; setEditId(a.id); setNewName(a.displayName); setNewGroup(a.group || ''); setNewPersona(a.persona || ''); setNewKeywords((a.keywords || []).join(' ')); setNewScope((a.loginScope as 'main' | 'creator') || 'main'); setTrackOpen(false); setNotice(''); setShowAdd(true); };
   const confirmAdd = async (thenLogin: boolean) => {
     if (!requireLogin()) return;
-    const m = M(); if (!m) { setNotice('matrix 接口未就绪'); return; }
+    const m = M(); if (!m) { setNotice(i18nService.t('mvMatrixNotReady')); return; }
     const keywords = parseKeywords(newKeywords); const group = newGroup.trim() || undefined; const persona = newPersona.trim();
-    if (!persona) { setNotice('请填写人设(自动评论时按这个口吻写)'); return; } // 人设必填
-    if (editId) { await m.updateAccountMeta({ id: editId, displayName: newName.trim() || undefined, group, persona, keywords }); setShowAdd(false); await reload(); setNotice('已更新'); return; }
-    const name = newName.trim(); if (!name) { setNotice('请填账号备注名'); return; }
+    if (!persona) { setNotice(i18nService.t('mvPersonaRequired')); return; } // 人设必填
+    if (editId) { await m.updateAccountMeta({ id: editId, displayName: newName.trim() || undefined, group, persona, keywords }); setShowAdd(false); await reload(); setNotice(i18nService.t('mvUpdated')); return; }
+    const name = newName.trim(); if (!name) { setNotice(i18nService.t('mvFillAccountName')); return; }
     // 建号 +(可选)绑代理,抽成闭包:代理校验通过/跳过后才真正执行。
     const doCreate = async (proxyOut: any | null): Promise<void> => {
       const r = await m.createAccount({ platform, displayName: name, group, persona, keywords, loginScope: platform === 'kuaishou' ? newScope : undefined });
@@ -446,13 +447,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         try { await m.setAccountProxy({ id: r.account.id, proxy: proxyOut }); } catch { /* 代理存失败不挡建号 */ }
       }
       setShowAdd(false); setProxyMsg(null);
-      if (r?.ok) { await reload(); setNotice(`已建号:${name}`); if (thenLogin && r.account) promptScanLogin(r.account.id, platform, name, platform === 'kuaishou' ? newScope : undefined); }
-      else setNotice('创建失败:' + (r?.error || 'IPC 未响应'));
+      if (r?.ok) { await reload(); setNotice(i18nService.t('mvAccountCreated').replace('{name}', name)); if (thenLogin && r.account) promptScanLogin(r.account.id, platform, name, platform === 'kuaishou' ? newScope : undefined); }
+      else setNotice(i18nService.t('mvCreateFailed') + (r?.error || i18nService.t('mvIpcNoResponse')));
     };
     // 第 2 步配了代理 → 先校验(撞IP/连通),有问题给「仍然保存」;没配代理(走本机)直接建。
     const host = proxyForm.host.trim(); const port = Number(proxyForm.port);
     if (host) {
-      if (!Number.isInteger(port) || port <= 0) { setProxyMsg({ kind: 'err', text: '请填写正确的代理 host 和 port' }); return; }
+      if (!Number.isInteger(port) || port <= 0) { setProxyMsg({ kind: 'err', text: i18nService.t('mvProxyHostPortErr') }); return; }
       const proxy = { protocol: proxyForm.protocol, host, port, username: proxyForm.username.trim() || undefined, password: proxyForm.password.trim() || undefined, geo: proxyForm.geo.trim() || undefined };
       await guardProxyThen(proxy, undefined, platform, platform === 'kuaishou' ? newScope : undefined, (p) => doCreate(p));
       return;
@@ -462,16 +463,16 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 扫码登录二次确认:点「好的,我已知晓」才真正打开指纹浏览器导航到平台登录页(避免「一点就开浏览器」的突兀)。
   const promptScanLogin = (accountId: string, plat: string, displayName: string, loginScope?: string) => {
     if (!requireLogin()) return;
-    const platName = PLATFORM_LABEL[plat] || '该平台';
-    const scopeName = plat === 'kuaishou' ? (loginScope === 'creator' ? '创作者中心(cp.kuaishou.com)' : '主站(www.kuaishou.com)') : '';
+    const platName = PLATFORM_LABEL[plat] || i18nService.t('mvThisPlatform');
+    const scopeName = plat === 'kuaishou' ? (loginScope === 'creator' ? i18nService.t('mvKsCreatorFull') : i18nService.t('mvKsMainFull')) : '';
     setConfirmDlg({
-      title: `扫码连接${platName}${scopeName ? ' · ' + scopeName : ''}`,
-      body: `即将打开指纹浏览器访问${platName}${scopeName ? scopeName : ''},需要您在弹出的浏览器里扫码登录。扫码成功后状态会自动变「已连接」。`,
-      okText: '打开浏览器登录',
+      title: i18nService.t('mvScanConnectTitle').replace('{platform}', platName).replace('{scope}', scopeName ? ' · ' + scopeName : ''),
+      body: i18nService.t('mvScanConnectBody').replace('{platform}', platName).replace('{scope}', scopeName ? scopeName : ''),
+      okText: i18nService.t('mvOpenBrowserLogin'),
       onYes: async () => {
         setConfirmDlg(null);
         if (!requireKernel()) return;
-        setNotice(`正在为「${displayName}」打开指纹浏览器,扫码连接后状态自动刷新`);
+        setNotice(i18nService.t('mvOpeningBrowserFor').replace('{name}', displayName));
         await M()?.openLogin({ accountId, kernelPath, loginUrl: loginUrlFor(plat, loginScope) });
       },
     });
@@ -480,25 +481,25 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const refreshIdentity = async (a: MatrixAccount) => {
     if (!requireLogin()) return;
     if (!requireKernel()) return;
-    setNotice(`正在读取「${a.displayName}」的账号信息…(会短暂弹出浏览器)`);
+    setNotice(i18nService.t('mvReadingIdentity').replace('{name}', a.displayName));
     const r = await M()?.refreshIdentity?.({ accountId: a.id, homeUrl: loginUrlFor(a.platform, a.loginScope), kernelPath });
-    if (r?.ok) { await reload(); setNotice(r.loggedIn ? `已读取:${r.nickname || a.displayName}${r.displayId ? ' · ' + r.displayId : ''}` : `「${a.displayName}」未检测到登录,请扫码连接`); }
-    else setNotice('读取失败:' + (r?.error || '未知'));
+    if (r?.ok) { await reload(); setNotice(r.loggedIn ? i18nService.t('mvIdentityRead').replace('{name}', r.nickname || a.displayName).replace('{id}', r.displayId ? ' · ' + r.displayId : '') : i18nService.t('mvNoLoginDetected').replace('{name}', a.displayName)); }
+    else setNotice(i18nService.t('mvReadFailed') + (r?.error || i18nService.t('mvUnknown')));
   };
   // 断开连接:清登录 cookie + 身份,但保留赛道/关键词/人设/代理/指纹配置,可随时重新扫码连接。
   // 用应用内确认弹窗(不能用 window.confirm —— Tauri dialog 插件被 ACL 拦)。
   const disconnectAccount = (a: MatrixAccount) => {
     if (!requireLogin()) return;
     setConfirmDlg({
-      title: '断开连接',
-      body: `断开「${a.nickname || a.displayName}」的连接?会登出该账号(清 cookie),但保留赛道 / 关键词 / 代理等配置,可随时重新扫码连接。`,
-      okText: '断开连接',
+      title: i18nService.t('mvDisconnect'),
+      body: i18nService.t('mvDisconnectBody').replace('{name}', a.nickname || a.displayName),
+      okText: i18nService.t('mvDisconnect'),
       onYes: async () => {
         setConfirmDlg(null);
-        setNotice(`正在断开「${a.displayName}」…`);
+        setNotice(i18nService.t('mvDisconnecting').replace('{name}', a.displayName));
         const r = await M()?.disconnectAccount?.({ accountId: a.id, kernelPath });
-        if (r?.ok) { await reload(); setNotice(`已断开「${a.displayName}」,需重新扫码连接`); }
-        else setNotice('断开失败:' + (r?.error || '未知'));
+        if (r?.ok) { await reload(); setNotice(i18nService.t('mvDisconnected').replace('{name}', a.displayName)); }
+        else setNotice(i18nService.t('mvDisconnectFailed') + (r?.error || i18nService.t('mvUnknown')));
       },
     });
   };
@@ -506,15 +507,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const deleteAccount = (a: MatrixAccount) => {
     if (!requireLogin()) return;
     setConfirmDlg({
-      title: '移除账号',
+      title: i18nService.t('mvRemoveAccount'),
       danger: true,
-      body: `从列表中移除「${a.nickname || a.displayName}」?你可以下次通过连接账号再次添加。`,
-      okText: '移除',
+      body: i18nService.t('mvRemoveAccountBody').replace('{name}', a.nickname || a.displayName),
+      okText: i18nService.t('mvRemove'),
       onYes: async () => {
         setConfirmDlg(null);
         await M()?.removeAccount?.({ id: a.id });
         await reload();
-        setNotice(`已移除「${a.displayName}」`);
+        setNotice(i18nService.t('mvRemoved').replace('{name}', a.displayName));
       },
     });
   };
@@ -523,25 +524,25 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 从表单组装 proxy;host/port 不合法 → 设错误状态行,返回 null。
   const buildProxyFromForm = (): any | null => {
     const host = proxyForm.host.trim(); const port = Number(proxyForm.port);
-    if (!host || !Number.isInteger(port) || port <= 0) { setProxyMsg({ kind: 'err', text: '请填写正确的代理 host 和 port' }); return null; }
+    if (!host || !Number.isInteger(port) || port <= 0) { setProxyMsg({ kind: 'err', text: i18nService.t('mvProxyHostPortErr') }); return null; }
     return { protocol: proxyForm.protocol, host, port, username: proxyForm.username.trim() || undefined, password: proxyForm.password.trim() || undefined, geo: proxyForm.geo.trim() || undefined };
   };
 
   // 配代理通用校验:① 连通性(probeProxy)② 同平台撞 IP。有问题 → 状态行 + 暂存「仍然保存」动作;通过 → 直接 save(带 health=ok)。
   const guardProxyThen = async (proxy: any, accountId: string | undefined, plat: string, scope: string | undefined, save: (proxyOut: any) => Promise<void>): Promise<void> => {
-    setProxyBusy(true); setProxyMsg({ kind: 'checking', text: '⏳ 正在校验代理连通性…' }); setPendingProxySave(null);
+    setProxyBusy(true); setProxyMsg({ kind: 'checking', text: i18nService.t('mvProxyChecking') }); setPendingProxySave(null);
     let r: any = null;
     try { r = await M()?.validateProxy({ accountId, platform: plat, loginScope: scope, proxy }); } catch { r = null; }
     setProxyBusy(false);
     const issues: string[] = [];
-    if (r?.duplicateName) issues.push(`⚠️ 该代理IP已被本平台「${r.duplicateName}」使用,多号同 IP 有风控风险`);
-    if (!r?.reachable) issues.push(`❌ 代理IP无法连接(${r?.error || '超时/不通'}),请检查协议/host/端口/账密,或代理是否可用`);
+    if (r?.duplicateName) issues.push(i18nService.t('mvProxyDuplicate').replace('{name}', r.duplicateName));
+    if (!r?.reachable) issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
     if (issues.length) {
       setProxyMsg({ kind: 'warn', text: issues.join('\n') });
       setPendingProxySave(() => async () => { setPendingProxySave(null); setProxyMsg(null); await save(proxy); }); // 跳过校验保存(不带 health,待下次探测)
       return;
     }
-    setProxyMsg({ kind: 'ok', text: '✅ 代理IP正常工作,即将保存…' });
+    setProxyMsg({ kind: 'ok', text: i18nService.t('mvProxyOkSaving') });
     await new Promise((r) => setTimeout(r, 1500)); // 让用户看清「正常工作」再保存关窗(原来一闪而过看不清)
     await save({ ...proxy, health: 'ok' });
   };
@@ -551,46 +552,46 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const acc = accounts.find((x) => x.id === proxyFor);
     await guardProxyThen(proxy, proxyFor || undefined, acc?.platform || '', acc?.loginScope, async (p) => {
       await M()?.setAccountProxy({ id: proxyFor, proxy: p });
-      setProxyFor(null); setProxyMsg(null); await reload(); setNotice(`✅ 代理IP ${p.host} 正常工作,已绑定`);
+      setProxyFor(null); setProxyMsg(null); await reload(); setNotice(i18nService.t('mvProxyBound').replace('{host}', p.host));
     });
   };
 
   // ── 任务 ──
   // 向导(MatrixTaskWizard)保存:成功回 tasks 屏;失败抛出让向导显示红字。
   const saveTaskFromWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel?: { funnel_phrase: string; funnel_probability: number } }) => {
-    if (!requireLogin()) throw new Error('请先登录 NoobClaw 账号');
+    if (!requireLogin()) throw new Error(i18nService.t('mvLoginFirst'));
     // funnel:互动评论引流(选填)。留空 → funnel_probability=0 → 视作未配,评论纯 AI 内容(向后兼容)。
     const r = await M()?.saveTask({ id: taskEditId || undefined, platform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, funnel: input.funnel, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
-    if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(互动)任务,直接编辑它即可', task_not_found: '任务不存在' } as any)[r?.error] || r?.error || '保存失败');
-    await reloadTasks(); setNotice('任务已保存');
+    if (!r?.ok) throw new Error(({ platform_task_limit: i18nService.t('mvTaskLimit'), duplicate_type: i18nService.t('mvDuplicateEngage'), task_not_found: i18nService.t('mvTaskNotFound') } as any)[r?.error] || r?.error || i18nService.t('mvSaveFailed'));
+    await reloadTasks(); setNotice(i18nService.t('mvTaskSaved'));
     setShowTaskEditModal(false); setTaskEditId(null);
     onNavigate?.('tasks');
   };
   // 「自动回复粉丝」向导保存:type='reply_fan' + funnel(无配额)。与 engage 同平台可并存(不同 type)。
   const saveTaskFromReplyWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number } }) => {
-    if (!requireLogin()) throw new Error('请先登录 NoobClaw 账号');
+    if (!requireLogin()) throw new Error(i18nService.t('mvLoginFirst'));
     const r = await M()?.saveTask({ id: replyEditId || undefined, platform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
-    if (!r?.ok) throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', duplicate_type: '该平台已有同类型(回复粉丝)任务,直接编辑它即可', task_not_found: '任务不存在' } as any)[r?.error] || r?.error || '保存失败');
-    await reloadTasks(); setNotice('任务已保存');
+    if (!r?.ok) throw new Error(({ platform_task_limit: i18nService.t('mvTaskLimit'), duplicate_type: i18nService.t('mvDuplicateReply'), task_not_found: i18nService.t('mvTaskNotFound') } as any)[r?.error] || r?.error || i18nService.t('mvSaveFailed'));
+    await reloadTasks(); setNotice(i18nService.t('mvTaskSaved'));
     setShowReplyEditModal(false); setReplyEditId(null);
     onNavigate?.('tasks');
   };
   const runTaskNow = async (t: MatrixTask) => {
     if (!requireLogin()) return;
     if (!requireKernel()) return;
-    if (running) { setNotice('已有任务在跑,同时只能跑一个'); return; }
+    if (running) { setNotice(i18nService.t('mvAnotherTaskRunning')); return; }
     setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setSelectedTaskId(t.id);
     const r = await M()?.runTaskById({ taskId: t.id, kernelPath });
-    if (!r?.ok) { setRunning(false); setNotice('启动失败:' + (r?.error === 'another_task_running' ? '已有任务在跑' : r?.error || '未知')); }
+    if (!r?.ok) { setRunning(false); setNotice(i18nService.t('mvStartFailed') + (r?.error === 'another_task_running' ? i18nService.t('mvHasTaskRunning') : r?.error || i18nService.t('mvUnknown'))); }
   };
-  const stopTask = async () => { setNotice('已请求停止,正在关闭窗口…'); await M()?.stopTask?.(); };
+  const stopTask = async () => { setNotice(i18nService.t('mvStopRequested')); await M()?.stopTask?.(); };
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
 
   // ── 复用片段 ──
   // 进度卡里每号的计数:engage 显示 赞/关/评;reply_fan 只有回复数(走 counts.comment 通道)。
   const renderProgress = (isReply?: boolean) => (
     <div className="mt-4">
-      {doneReport && <div className="mb-3 text-sm p-3 rounded-lg bg-black/5 dark:bg-white/10">完成:成功 {doneReport.success} · 失败 {doneReport.failed} · 跳过 {doneReport.skipped}</div>}
+      {doneReport && <div className="mb-3 text-sm p-3 rounded-lg bg-black/5 dark:bg-white/10">{i18nService.t('mvDoneSummary').replace('{s}', String(doneReport.success)).replace('{f}', String(doneReport.failed)).replace('{k}', String(doneReport.skipped))}</div>}
       <div className="grid grid-cols-2 gap-2 mb-3">
         {Object.values(items).map((it) => {
           const acc = accounts.find((a) => a.id === it.accountId);
@@ -598,7 +599,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
           return (
             <div key={it.accountId} className="flex items-center gap-2 text-sm p-2 rounded border dark:border-white/10 border-black/10">
               <span className={color}>●</span><span className="flex-1 truncate">{acc?.displayName || it.accountId}</span>
-              {it.counts && <span className="text-xs opacity-60">{isReply ? `回复${it.counts.comment}` : `赞${it.counts.like}/关${it.counts.follow}/评${it.counts.comment}`}</span>}
+              {it.counts && <span className="text-xs opacity-60">{isReply ? i18nService.t('mvReplyCount').replace('{n}', String(it.counts.comment)) : i18nService.t('mvEngageCounts').replace('{l}', String(it.counts.like)).replace('{f}', String(it.counts.follow)).replace('{c}', String(it.counts.comment))}</span>}
               <span className="text-xs opacity-60">{it.state}{it.reason ? `:${it.reason}` : ''}</span>
             </div>
           );
@@ -622,12 +623,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
   const selectedIsReply = selectedTask?.type === 'reply_fan';
-  const SCREEN_TITLE: Record<string, string> = { accounts: '我的矩阵账号', newTask: '新建矩阵涨粉任务', tasks: '我的矩阵涨粉任务', runs: '矩阵涨粉运行记录' };
+  const SCREEN_TITLE: Record<string, string> = { accounts: i18nService.t('mvScreenAccounts'), newTask: i18nService.t('mvScreenNewTask'), tasks: i18nService.t('mvScreenTasks'), runs: i18nService.t('mvScreenRuns') };
 
   return (
     <div className="h-full flex flex-col dark:text-claude-darkText text-claude-text">
       <div className="flex items-center gap-2 px-5 py-3 border-b dark:border-white/10 border-black/10 flex-wrap">
-        <h1 className="text-lg font-medium mr-3">{SCREEN_TITLE[screen] || '矩阵号'}</h1>
+        <h1 className="text-lg font-medium mr-3">{SCREEN_TITLE[screen] || i18nService.t('mvMatrix')}</h1>
         {/* 钱包(BSC/地址/积分/充值)—— 与新建页一致 */}
         <WalletBadge />
         <div className="ml-auto flex items-center gap-2">
@@ -636,7 +637,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
           <div className="relative">
             <button type="button" onClick={() => setKernelMenuOpen((o) => !o)}
               className={`inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border ${kernelReady ? 'bg-green-500/15 text-green-500 border-green-500/30' : 'bg-amber-500/15 text-amber-500 border-amber-500/30'}`}>
-              🧬 指纹浏览器 {selectedVersion ? `v${selectedVersion}` : ''} {kernelReady ? '✓' : '⚠ 未就绪'}
+              🧬 {i18nService.t('mvFingerprintBrowser')} {selectedVersion ? `v${selectedVersion}` : ''} {kernelReady ? '✓' : i18nService.t('mvNotReady')}
               <span className="opacity-60">▾</span>
             </button>
             {kernelMenuOpen && (
@@ -644,7 +645,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 {/* 点击空白关闭 */}
                 <div className="fixed inset-0 z-40" onClick={() => setKernelMenuOpen(false)} />
                 <div className="absolute right-0 mt-1 z-50 w-64 rounded-xl py-1 shadow-xl dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
-                  <div className="px-3 py-1.5 text-[11px] opacity-50">选择内核版本</div>
+                  <div className="px-3 py-1.5 text-[11px] opacity-50">{i18nService.t('mvSelectKernelVersion')}</div>
                   {(kernel.available && kernel.available.length) ? kernel.available.map((a) => {
                     const isSel = a.version === selectedVersion;
                     return (
@@ -653,17 +654,17 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           className={`flex-1 min-w-0 text-left flex items-center gap-1.5 ${a.installed ? 'cursor-pointer' : 'cursor-default opacity-70'}`}>
                           <span className="text-xs font-medium truncate">{a.label || `v${a.version}`}</span>
                           {a.sizeMb ? <span className="text-[10px] opacity-40 shrink-0">{a.sizeMb}MB</span> : null}
-                          {a.recommended && <span className="text-[10px] px-1 rounded bg-violet-500/20 text-violet-500 shrink-0">推荐</span>}
-                          {isSel && a.installed && <span className="text-[10px] text-green-500 shrink-0">使用中</span>}
+                          {a.recommended && <span className="text-[10px] px-1 rounded bg-violet-500/20 text-violet-500 shrink-0">{i18nService.t('mvRecommended')}</span>}
+                          {isSel && a.installed && <span className="text-[10px] text-green-500 shrink-0">{i18nService.t('mvInUse')}</span>}
                         </button>
                         {a.installed
                           ? <span className="text-green-500 text-sm shrink-0">✓</span>
                           : <button type="button" disabled={kernelBusy} onClick={() => downloadKernel(a.version)}
-                              className="shrink-0 text-[11px] px-2 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{kernelBusy ? '下载中…' : '下载'}</button>}
+                              className="shrink-0 text-[11px] px-2 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{kernelBusy ? i18nService.t('mvDownloading') : i18nService.t('mvDownload')}</button>}
                       </div>
                     );
                   }) : (
-                    <div className="px-3 py-3 text-xs opacity-60">{kernel.installed ? '已安装本地版本' : '正在获取版本列表…'}</div>
+                    <div className="px-3 py-3 text-xs opacity-60">{kernel.installed ? i18nService.t('mvLocalVersionInstalled') : i18nService.t('mvFetchingVersions')}</div>
                   )}
                   {kernelBusy && (
                     <div className="px-3 pt-1.5 pb-1 border-t dark:border-white/10 border-black/10">
@@ -691,14 +692,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <div className="flex items-center gap-2.5">
-                <h2 className="text-lg font-bold dark:text-white">🧬 我的矩阵账号</h2>
+                <h2 className="text-lg font-bold dark:text-white">🧬 {i18nService.t('mvMyMatrixAccounts')}</h2>
                 {/* 涨粉教程(从顶栏挪到标题后,贴着账号页) */}
-                <button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 涨粉教程</button>
+                <button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 {i18nService.t('mvGrowthTutorial')}</button>
               </div>
               <div className="flex items-center gap-2.5">
                 {/* 当前平台账号数 / 上限(上限服务端可调) */}
                 <span className="text-xs text-gray-400 dark:text-gray-500">{accounts.filter((a) => a.platform === platform).length}/{maxAccountsPerPlatform}</span>
-                <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">+ 连接{PLATFORM_LABEL[platform]}账号</button>
+                <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">{i18nService.t('mvConnectAccount').replace('{platform}', PLATFORM_LABEL[platform])}</button>
               </div>
             </div>
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
@@ -719,7 +720,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             {/* 快手:创作者中心(发布)/ 主站(涨粉)两类账号分开管理(两端登录互不覆盖)。 */}
             {platform === 'kuaishou' && (
               <div className="flex items-center gap-2 mb-4 -mt-1">
-                <span className="text-xs text-gray-400">快手分两类:</span>
+                <span className="text-xs text-gray-400">{i18nService.t('mvKsTwoTypes')}</span>
                 {KS_SCOPES.map((s) => (
                   <button key={s.key} onClick={() => setKsScope(s.key)} className={`px-3 py-1 rounded-lg text-xs border transition-colors ${ksScope === s.key ? 'border-orange-500 bg-orange-500/10 text-orange-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-orange-500/50'}`}>{s.label}</button>
                 ))}
@@ -728,8 +729,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             {platformAccounts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
                 <div className="text-4xl mb-2">📭</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">该平台还没有账号</div>
-                <button onClick={openAdd} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">+ 连接{PLATFORM_LABEL[platform]}账号</button>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">{i18nService.t('mvNoAccountsYet')}</div>
+                <button onClick={openAdd} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">{i18nService.t('mvConnectAccount').replace('{platform}', PLATFORM_LABEL[platform])}</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -744,7 +745,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     : a.status === 'running' ? 'bg-blue-500'
                     : a.status === 'banned' ? 'bg-red-500'
                     : 'bg-gray-400';
-                  const stLabel = expired ? '登录过期' : STATUS_LABEL[a.status];
+                  const stLabel = expired ? i18nService.t('mvStExpired') : STATUS_LABEL[a.status];
                   const stDot = expired ? 'bg-red-500' : STATUS_DOT[a.status];
                   const isSuspended = suspendedIds.has(a.id);
                   return (
@@ -752,7 +753,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     {/* 左上角状态实心角标(更显眼:已连接绿底白字 / 尚未连接黄底白字) */}
                     <span className={`absolute -top-px -left-px px-2.5 py-0.5 text-[11px] font-semibold text-white rounded-tl-xl rounded-br-lg ${stSolid}`}>{stLabel}</span>
                     {/* 右上角移除 ✕ */}
-                    <button onClick={() => deleteAccount(a)} title="移除该账号(彻底删除配置与 profile)" className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-red-500/90 transition-colors text-sm leading-none">✕</button>
+                    <button onClick={() => deleteAccount(a)} title={i18nService.t('mvRemoveAccountTitle')} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-red-500/90 transition-colors text-sm leading-none">✕</button>
                     <div className="flex items-center gap-2.5 min-w-0 pr-6 mt-3">
                       {/* 头像 + 状态点角标 */}
                       <div className="relative shrink-0">
@@ -766,48 +767,48 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-semibold dark:text-white truncate">{a.nickname || a.displayName}</span>
-                          {isSuspended && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-400/20 text-gray-500 dark:text-gray-400" title="会员到期/降级后超出当前可用号数,任务会自动跳过该号;续费或升级会员即可恢复,数据不会丢失。">⏸️ 超出会员额度·已暂停</span>}
-                          <span className={`shrink-0 max-w-[16rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? (a.proxy.health === 'ok' ? 'text-green-600 dark:text-green-400 bg-green-500/15' : a.proxy.health === 'dead' ? 'text-red-600 dark:text-red-400 bg-red-500/15' : 'text-blue-600 dark:text-blue-400 bg-blue-500/15') : (idx === 0 ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15')}`}>代理IP:{a.proxy ? ((a.proxy.geo || a.proxy.host) + (a.proxy.health === 'dead' ? ' ·不通' : '')) : (a.egressIp ? `本机 ${a.egressIp}` : (idx === 0 ? '本地IP(默认)' : '尚未配置'))}</span>
+                          {isSuspended && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-400/20 text-gray-500 dark:text-gray-400" title={i18nService.t('mvSuspendedTitle')}>⏸️ {i18nService.t('mvSuspended')}</span>}
+                          <span className={`shrink-0 max-w-[16rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? (a.proxy.health === 'ok' ? 'text-green-600 dark:text-green-400 bg-green-500/15' : a.proxy.health === 'dead' ? 'text-red-600 dark:text-red-400 bg-red-500/15' : 'text-blue-600 dark:text-blue-400 bg-blue-500/15') : (idx === 0 ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15')}`}>{i18nService.t('mvProxyIpLabel')}{a.proxy ? ((a.proxy.geo || a.proxy.host) + (a.proxy.health === 'dead' ? i18nService.t('mvProxyDead') : '')) : (a.egressIp ? i18nService.t('mvLocalEgress').replace('{ip}', a.egressIp) : (idx === 0 ? i18nService.t('mvLocalIpDefault') : i18nService.t('mvNotConfigured')))}</span>
                         </div>
                         <div className="text-[11px] space-y-0.5" title={a.boundUid ? `uid: ${a.boundUid}` : undefined}>
                           {a.status === 'login_required'
                             ? (expired
                                 ? (<>
                                     {a.displayId && <div className="text-gray-600 dark:text-gray-300 truncate">{platformIdLabel(a.platform)}:{a.displayId}</div>}
-                                    <div className="text-gray-500 dark:text-gray-400 truncate">备注:{a.displayName}</div>
-                                    <div className="text-red-500 truncate">⚠️ 登录过期,请点下方「扫码连接」重新登录</div>
+                                    <div className="text-gray-500 dark:text-gray-400 truncate">{i18nService.t('mvRemarkLabel')}{a.displayName}</div>
+                                    <div className="text-red-500 truncate">{i18nService.t('mvLoginExpiredTip')}</div>
                                   </>)
-                                : <div className="text-amber-500 truncate">请点击下方扫码连接进行连接</div>)
+                                : <div className="text-amber-500 truncate">{i18nService.t('mvClickScanBelow')}</div>)
                             : (<>
                                 {a.displayId && <div className="text-gray-600 dark:text-gray-300 truncate">{platformIdLabel(a.platform)}:{a.displayId}</div>}
                                 {/* 已连接但还没读到平台号/昵称(老建的号或读取失败)→ 明确提示去刷新,别让用户以为该功能没有 */}
-                                {!a.displayId && !a.nickname && <div className="text-amber-500/90 truncate">ℹ️ 账号信息未读取,点「刷新信息」获取{platformIdLabel(a.platform)}/昵称/头像</div>}
-                                <div className="text-gray-500 dark:text-gray-400 truncate">备注:{a.displayName}</div>
+                                {!a.displayId && !a.nickname && <div className="text-amber-500/90 truncate">{i18nService.t('mvIdentityNotRead').replace('{idLabel}', platformIdLabel(a.platform))}</div>}
+                                <div className="text-gray-500 dark:text-gray-400 truncate">{i18nService.t('mvRemarkLabel')}{a.displayName}</div>
                               </>)}
                         </div>
                       </div>
                     </div>
                     {/* 赛道 / 人设 / 关键词,分三行 */}
                     <div className="text-xs space-y-0.5">
-                      <div className="text-gray-500 dark:text-gray-400 truncate">🎯 赛道:{a.group ? <span className="text-gray-700 dark:text-gray-300">{a.group}</span> : <span className="text-amber-500">未设</span>}</div>
-                      <div className="text-gray-500 dark:text-gray-400 truncate">🎭 人设:{a.persona ? <span className="text-gray-700 dark:text-gray-300">{a.persona}</span> : <span className="text-amber-500">未设</span>}</div>
-                      <div className="text-gray-500 dark:text-gray-400 truncate">🏷️ 关键词:{a.keywords && a.keywords.length ? <span className="text-gray-700 dark:text-gray-300">{a.keywords.join(' · ')}</span> : <span className="text-amber-500">未配(互动需要)</span>}</div>
+                      <div className="text-gray-500 dark:text-gray-400 truncate">🎯 {i18nService.t('mvTrackLabel')}{a.group ? <span className="text-gray-700 dark:text-gray-300">{a.group}</span> : <span className="text-amber-500">{i18nService.t('mvNotSet')}</span>}</div>
+                      <div className="text-gray-500 dark:text-gray-400 truncate">🎭 {i18nService.t('mvPersonaLabel')}{a.persona ? <span className="text-gray-700 dark:text-gray-300">{a.persona}</span> : <span className="text-amber-500">{i18nService.t('mvNotSet')}</span>}</div>
+                      <div className="text-gray-500 dark:text-gray-400 truncate">🏷️ {i18nService.t('mvKeywordsLabel')}{a.keywords && a.keywords.length ? <span className="text-gray-700 dark:text-gray-300">{a.keywords.join(' · ')}</span> : <span className="text-amber-500">{i18nService.t('mvNotConfiguredEngage')}</span>}</div>
                     </div>
                     {/* 右侧可点击按钮:全色按钮 */}
                     <div className="flex items-center gap-2 flex-wrap pt-1 mt-auto">
                       {/* 未连接:配置IP/编辑/扫码连接 统一紫色;已连接:配置IP/编辑/刷新信息 统一绿色。 */}
-                      <button onClick={() => openProxy(a)} className={`text-xs px-2.5 py-1 rounded-lg text-white ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>配置IP</button>
-                      <button onClick={() => openEdit(a)} className={`text-xs px-2.5 py-1 rounded-lg text-white ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>编辑</button>
+                      <button onClick={() => openProxy(a)} className={`text-xs px-2.5 py-1 rounded-lg text-white ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{i18nService.t('mvConfigIp')}</button>
+                      <button onClick={() => openEdit(a)} className={`text-xs px-2.5 py-1 rounded-lg text-white ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{i18nService.t('mvEdit')}</button>
                       {a.status === 'login_required'
                         ? (<>
                             {/* 尚未连接:只给「扫码连接」。它本身会开窗轮询登录态——若已在浏览器手动登录/扫码轮询超时,
                                 点它会立刻检测到并翻成已连接(不必真重扫),所以无需单独的「刷新信息」(那是给已连接的号刷身份用的)。 */}
-                            <button onClick={() => promptScanLogin(a.id, a.platform, a.displayName, a.loginScope)} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">扫码连接</button>
+                            <button onClick={() => promptScanLogin(a.id, a.platform, a.displayName, a.loginScope)} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{i18nService.t('mvScanConnect')}</button>
                           </>)
                         : (<>
                             {/* 已连接:读真实身份 / 断开(清登录,保留配置) */}
-                            <button onClick={() => refreshIdentity(a)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">刷新信息</button>
-                            <button onClick={() => disconnectAccount(a)} className="text-xs px-2.5 py-1 rounded-lg bg-orange-500 text-white hover:bg-orange-600">断开连接</button>
+                            <button onClick={() => refreshIdentity(a)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">{i18nService.t('mvRefreshInfo')}</button>
+                            <button onClick={() => disconnectAccount(a)} className="text-xs px-2.5 py-1 rounded-lg bg-orange-500 text-white hover:bg-orange-600">{i18nService.t('mvDisconnect')}</button>
                           </>)}
                     </div>
                   </div>
@@ -832,33 +833,33 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   <div className="relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
                     <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
                     <div className="relative flex flex-col flex-1">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-500 mb-2"><span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />互动涨粉</div>
-                      <h3 className="text-base font-bold dark:text-white mb-1.5">🎶 抖音 · 互动涨粉(矩阵)</h3>
-                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">同时控制多个账号,每个号在自己的指纹浏览器里、按【自己的赛道关键词】搜抖音视频,按你配的随机区间做点赞 / 关注 / 评论。评论由 AI 按视频文案 + 该号人设自动生成,行为间隔随机模拟真人。赛道/关键词/人设在「我的矩阵账号」给每个号设。</p>
-                      <button onClick={() => { if (!requireLogin()) return; if (!requireKernel()) return; setShowNewWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 shadow-lg shadow-violet-500/25">🎶 开始互动 →</button>
+                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-500 mb-2"><span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />{i18nService.t('mvEngageGrowth')}</div>
+                      <h3 className="text-base font-bold dark:text-white mb-1.5">🎶 {i18nService.t('mvDouyinEngageCard')}</h3>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">{i18nService.t('mvDouyinEngageDesc')}</p>
+                      <button onClick={() => { if (!requireLogin()) return; if (!requireKernel()) return; setShowNewWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 shadow-lg shadow-violet-500/25">🎶 {i18nService.t('mvStartEngage')}</button>
                     </div>
                   </div>
                   {/* 自动回复粉丝(矩阵多账号) */}
                   <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-transparent p-5 overflow-hidden flex flex-col">
                     <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
                     <div className="relative flex flex-col flex-1">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2"><span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />粉丝维护</div>
-                      <h3 className="text-base font-bold dark:text-white mb-1.5">💌 抖音 · 自动回复粉丝(矩阵)</h3>
-                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">同时让多个账号在各自指纹浏览器的<strong>抖音创作者中心评论管理</strong>里,逐条回复自己作品下的粉丝评论。AI 按评论内容 + 该号人设写回应,可选按概率自然带上引流尾巴。已回复过的、自己留的评论自动跳过,只回粉丝、绝不评论作品本身。</p>
-                      <button onClick={() => { if (!requireLogin()) return; if (!requireKernel()) return; setShowNewReplyWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25">💌 开始回复 →</button>
+                      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2"><span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />{i18nService.t('mvFanMaintenance')}</div>
+                      <h3 className="text-base font-bold dark:text-white mb-1.5">💌 {i18nService.t('mvDouyinReplyCard')}</h3>
+                      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">{i18nService.t('mvDouyinReplyDesc')}</p>
+                      <button onClick={() => { if (!requireLogin()) return; if (!requireKernel()) return; setShowNewReplyWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25">💌 {i18nService.t('mvStartReply')}</button>
                     </div>
                   </div>
                 </section>
                 <section className="mb-6">
                   <div className="flex flex-wrap gap-2 justify-center">
-                    {[['🛡️', '完全模拟人类行为不封号'], ['🚀', '多号并发 · 涨粉快'], ['💰', '成本超低'], ['🤖', '全智能控制']].map(([icon, t]) => (
+                    {[['🛡️', i18nService.t('mvBadgeHuman')], ['🚀', i18nService.t('mvBadgeConcurrent')], ['💰', i18nService.t('mvBadgeLowCost')], ['🤖', i18nService.t('mvBadgeSmart')]].map(([icon, t]) => (
                       <span key={t} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-violet-500/20 bg-violet-500/5 text-gray-700 dark:text-gray-300">{icon} {t}</span>
                     ))}
                   </div>
                 </section>
               </>
             ) : (
-              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500 dark:text-gray-400">{PLATFORM_LABEL[platform]} 互动后续接入,目前先做抖音。</div>
+              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500 dark:text-gray-400">{i18nService.t('mvPlatformComingSoon').replace('{platform}', PLATFORM_LABEL[platform])}</div>
             )}
             {showNewWizard && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
@@ -891,19 +892,19 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {screen === 'tasks' && !selectedTask && (
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-              <h2 className="text-lg font-bold dark:text-white">📋 我的{PLATFORM_LABEL[platform]}涨粉任务</h2>
+              <h2 className="text-lg font-bold dark:text-white">📋 {i18nService.t('mvMyGrowthTasks').replace('{platform}', PLATFORM_LABEL[platform])}</h2>
               <div className="flex items-center gap-2">
                 <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="text-sm px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-white">
                   {VISIBLE_PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>)}
                 </select>
-                <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">🎶 新建任务</button>
+                <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">🎶 {i18nService.t('mvNewTask')}</button>
               </div>
             </div>
             {platformTasks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
                 <div className="text-4xl mb-2">📭</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">还没有{PLATFORM_LABEL[platform]}涨粉任务</div>
-                <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">🎶 新建{PLATFORM_LABEL[platform]}互动任务</button>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">{i18nService.t('mvNoGrowthTasks').replace('{platform}', PLATFORM_LABEL[platform])}</div>
+                <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">🎶 {i18nService.t('mvNewEngageTask').replace('{platform}', PLATFORM_LABEL[platform])}</button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -917,32 +918,32 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {PLATFORM_LABEL[t.platform]}</span>
                           {isReply
-                            ? <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 回复粉丝</span>
-                            : <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 互动涨粉</span>}
+                            ? <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 {i18nService.t('mvReplyFans')}</span>
+                            : <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 {i18nService.t('mvEngageGrowth')}</span>}
                           <span className="font-medium dark:text-white truncate">{t.name}</span>
                           <span className="text-[10px] text-gray-500 font-mono shrink-0">#{shortId(t.id)}</span>
                         </div>
                         <div className="shrink-0">
                           {isRunning ? (
-                            <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />运行中</span>
+                            <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />{i18nService.t('mvStRunning')}</span>
                           ) : t.frequency === 'once' ? (
-                            <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">✋ 手动运行</span>
+                            <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">✋ {i18nService.t('mvManualRun')}</span>
                           ) : t.enabled ? (
                             <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">⏰ {fmtTime(t.nextPlannedRunAt)}</span>
                           ) : (
-                            <span className="text-xs px-2 py-1 rounded bg-gray-500/10 text-gray-500 border border-gray-500/30">⏸ 已停用</span>
+                            <span className="text-xs px-2 py-1 rounded bg-gray-500/10 text-gray-500 border border-gray-500/30">⏸ {i18nService.t('mvDisabled')}</span>
                           )}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">👥 账号 {t.accountIds.length} 个 · {isReply ? '各自回复作品下的粉丝评论' : '各用自己的赛道关键词'}</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">👥 {i18nService.t('mvAccountCountLabel').replace('{n}', String(t.accountIds.length))} · {isReply ? i18nService.t('mvReplyOwnFans') : i18nService.t('mvUseOwnKeywords')}</div>
                       {isReply
-                        ? <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 🎣 {t.funnel?.funnel_phrase ? `引流尾巴 ${t.funnel.funnel_probability || 0}%` : '纯 AI 回复'}</div>
-                        : <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 👍 {t.quota.daily_like_min}-{t.quota.daily_like_max} · ➕ {t.quota.daily_follow_min}-{t.quota.daily_follow_max} · 💬 {t.quota.daily_comment_min}-{t.quota.daily_comment_max} / 次</div>}
-                      <div className="text-[11px] text-gray-400 mt-1">{t.lastRunAt ? `上次运行 ${fmtTime(t.lastRunAt)}` : '尚未运行'}</div>
+                        ? <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 🎣 {t.funnel?.funnel_phrase ? i18nService.t('mvFunnelTail').replace('{n}', String(t.funnel.funnel_probability || 0)) : i18nService.t('mvPureAiReply')}</div>
+                        : <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 👍 {t.quota.daily_like_min}-{t.quota.daily_like_max} · ➕ {t.quota.daily_follow_min}-{t.quota.daily_follow_max} · 💬 {t.quota.daily_comment_min}-{t.quota.daily_comment_max} / {i18nService.t('mvPerRun')}</div>}
+                      <div className="text-[11px] text-gray-400 mt-1">{t.lastRunAt ? i18nService.t('mvLastRun').replace('{time}', fmtTime(t.lastRunAt)) : i18nService.t('mvNotRunYet')}</div>
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         {isRunning
-                          ? <span onClick={(e) => { e.stopPropagation(); stopTask(); }} className="text-xs px-3 py-1 rounded-lg font-semibold bg-red-500 text-white hover:bg-red-600">⏹ 停止</span>
-                          : <span onClick={(e) => { e.stopPropagation(); runTaskNow(t); }} className={`text-xs px-3 py-1 rounded-lg font-semibold ${running ? 'bg-gray-300 text-gray-500 dark:bg-gray-700' : 'bg-violet-500 text-white hover:bg-violet-600'}`}>🎯 运行</span>}
+                          ? <span onClick={(e) => { e.stopPropagation(); stopTask(); }} className="text-xs px-3 py-1 rounded-lg font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</span>
+                          : <span onClick={(e) => { e.stopPropagation(); runTaskNow(t); }} className={`text-xs px-3 py-1 rounded-lg font-semibold ${running ? 'bg-gray-300 text-gray-500 dark:bg-gray-700' : 'bg-violet-500 text-white hover:bg-violet-600'}`}>🎯 {i18nService.t('mvRun')}</span>}
                       </div>
                     </button>
                   );
@@ -954,30 +955,30 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {/* 任务详情 —— 对齐老客户端 TaskDetailPage(摘要卡 + 运行中 glow + 运行历史) */}
         {screen === 'tasks' && selectedTask && (
           <div className="max-w-3xl mx-auto">
-            <button onClick={() => setSelectedTaskId(null)} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 mb-3">← 返回任务列表</button>
+            <button onClick={() => setSelectedTaskId(null)} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 mb-3">{i18nService.t('mvBackToTaskList')}</button>
             <div className="flex items-center gap-2 mb-4 flex-wrap">
               <h2 className="text-lg font-bold dark:text-white">{selectedTask.name}</h2>
               {selectedIsReply
-                ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 回复粉丝</span>
-                : <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 互动涨粉</span>}
+                ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 {i18nService.t('mvReplyFans')}</span>
+                : <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 {i18nService.t('mvEngageGrowth')}</span>}
               <div className="ml-auto flex gap-2">
                 {runningTaskId === selectedTask.id
-                  ? <button onClick={stopTask} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600">⏹ 停止</button>
-                  : <button onClick={() => runTaskNow(selectedTask)} disabled={running} className={`px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 ${selectedIsReply ? 'bg-fuchsia-500 hover:bg-fuchsia-600' : 'bg-violet-500 hover:bg-violet-600'}`}>{running ? '运行中…' : '🎯 直接运行'}</button>}
-                <button onClick={() => { if (!requireLogin()) return; if (selectedIsReply) { setReplyEditId(selectedTask.id); setShowReplyEditModal(true); } else { setTaskEditId(selectedTask.id); setShowTaskEditModal(true); } }} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">编辑</button>
-                <button onClick={() => deleteTask(selectedTask)} className="px-3 py-2 rounded-lg text-sm font-medium border border-red-500/40 text-red-500 hover:bg-red-500/5">删除</button>
+                  ? <button onClick={stopTask} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</button>
+                  : <button onClick={() => runTaskNow(selectedTask)} disabled={running} className={`px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 ${selectedIsReply ? 'bg-fuchsia-500 hover:bg-fuchsia-600' : 'bg-violet-500 hover:bg-violet-600'}`}>{running ? i18nService.t('mvRunningEllipsis') : i18nService.t('mvRunNow')}</button>}
+                <button onClick={() => { if (!requireLogin()) return; if (selectedIsReply) { setReplyEditId(selectedTask.id); setShowReplyEditModal(true); } else { setTaskEditId(selectedTask.id); setShowTaskEditModal(true); } }} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{i18nService.t('mvEdit')}</button>
+                <button onClick={() => deleteTask(selectedTask)} className="px-3 py-2 rounded-lg text-sm font-medium border border-red-500/40 text-red-500 hover:bg-red-500/5">{i18nService.t('mvDelete')}</button>
               </div>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5 mb-4">
-              <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
-              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">频率</span><span className="text-gray-800 dark:text-gray-200">{FREQ_LABEL[selectedTask.frequency] || selectedTask.frequency}{selectedTask.frequency !== 'once' && selectedTask.enabled ? ` · 下次 ${fmtTime(selectedTask.nextPlannedRunAt)}` : ''}</span></div>
+              <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('mvTaskSummary')}</div>
+              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvFrequency')}</span><span className="text-gray-800 dark:text-gray-200">{FREQ_LABEL[selectedTask.frequency] || selectedTask.frequency}{selectedTask.frequency !== 'once' && selectedTask.enabled ? i18nService.t('mvNextRunSuffix').replace('{time}', fmtTime(selectedTask.nextPlannedRunAt)) : ''}</span></div>
               {selectedIsReply
                 ? <>
-                    <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">引流语</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.funnel?.funnel_phrase ? `"${selectedTask.funnel.funnel_phrase.slice(0, 40)}${selectedTask.funnel.funnel_phrase.length > 40 ? '...' : ''}" · ${selectedTask.funnel.funnel_probability || 0}%` : '（未填,纯 AI 回复）'}</span></div>
-                    <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">回复范围</span><span className="text-gray-800 dark:text-gray-200">逐条回复全部粉丝评论（最近 30 个作品）· 同时开窗 {selectedTask.concurrency || 3}</span></div>
+                    <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvFunnelPhrase')}</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.funnel?.funnel_phrase ? `"${selectedTask.funnel.funnel_phrase.slice(0, 40)}${selectedTask.funnel.funnel_phrase.length > 40 ? '...' : ''}" · ${selectedTask.funnel.funnel_probability || 0}%` : i18nService.t('mvFunnelEmpty')}</span></div>
+                    <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvReplyScope')}</span><span className="text-gray-800 dark:text-gray-200">{i18nService.t('mvReplyScopeVal').replace('{n}', String(selectedTask.concurrency || 3))}</span></div>
                   </>
-                : <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">配额/次</span><span className="text-gray-800 dark:text-gray-200">👍 {selectedTask.quota.daily_like_min}-{selectedTask.quota.daily_like_max} · ➕ {selectedTask.quota.daily_follow_min}-{selectedTask.quota.daily_follow_max} · 💬 {selectedTask.quota.daily_comment_min}-{selectedTask.quota.daily_comment_max} · 同时开窗 {selectedTask.concurrency || 3}</span></div>}
-              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">账号({selectedTask.accountIds.length})</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.accountIds.map((id) => accounts.find((a) => a.id === id)?.displayName || id).join('、')}</span></div>
+                : <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvQuotaPerRun')}</span><span className="text-gray-800 dark:text-gray-200">👍 {selectedTask.quota.daily_like_min}-{selectedTask.quota.daily_like_max} · ➕ {selectedTask.quota.daily_follow_min}-{selectedTask.quota.daily_follow_max} · 💬 {selectedTask.quota.daily_comment_min}-{selectedTask.quota.daily_comment_max} · {i18nService.t('mvConcurrencyLabel').replace('{n}', String(selectedTask.concurrency || 3))}</span></div>}
+              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvAccountsLabel').replace('{n}', String(selectedTask.accountIds.length))}</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.accountIds.map((id) => accounts.find((a) => a.id === id)?.displayName || id).join('、')}</span></div>
             </div>
             {(() => {
               const tr = runs.filter((r) => r.taskId === selectedTask.id);
@@ -985,31 +986,31 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               const last = tr[0];
               return (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-                  {stat('累计完成', selectedIsReply ? `💬 回复 ${cum.comment} 条` : `👍 ${cum.like} · ➕ ${cum.follow} · 💬 ${cum.comment}`)}
-                  {stat('累计运行', `${tr.length} 次`)}
-                  {stat('上次完成', last ? (selectedIsReply ? `💬 回复 ${last.totals.comment} 条` : `👍 ${last.totals.like} · ➕ ${last.totals.follow} · 💬 ${last.totals.comment}`) : '—')}
-                  {stat('上次结果', last ? `成功 ${last.success} · 失败 ${last.failed}` : '—')}
-                  {stat('上次运行', last ? fmtTime(last.startedAt) : '尚未运行', () => onNavigate?.('runs'), '查看运行记录 →')}
-                  {selectedTask.frequency !== 'once' ? stat('下次运行', selectedTask.enabled ? fmtTime(selectedTask.nextPlannedRunAt) : '已停用') : stat('运行方式', '手动触发')}
+                  {stat(i18nService.t('mvStatCumDone'), selectedIsReply ? i18nService.t('mvStatReplyCount').replace('{n}', String(cum.comment)) : `👍 ${cum.like} · ➕ ${cum.follow} · 💬 ${cum.comment}`)}
+                  {stat(i18nService.t('mvStatCumRuns'), i18nService.t('mvTimesCount').replace('{n}', String(tr.length)))}
+                  {stat(i18nService.t('mvStatLastDone'), last ? (selectedIsReply ? i18nService.t('mvStatReplyCount').replace('{n}', String(last.totals.comment)) : `👍 ${last.totals.like} · ➕ ${last.totals.follow} · 💬 ${last.totals.comment}`) : '—')}
+                  {stat(i18nService.t('mvStatLastResult'), last ? i18nService.t('mvSuccessFailShort').replace('{s}', String(last.success)).replace('{f}', String(last.failed)) : '—')}
+                  {stat(i18nService.t('mvStatLastRun'), last ? fmtTime(last.startedAt) : i18nService.t('mvNotRunYet'), () => onNavigate?.('runs'), i18nService.t('mvViewRunHistory'))}
+                  {selectedTask.frequency !== 'once' ? stat(i18nService.t('mvStatNextRun'), selectedTask.enabled ? fmtTime(selectedTask.nextPlannedRunAt) : i18nService.t('mvDisabled')) : stat(i18nService.t('mvStatRunMode'), i18nService.t('mvManualTrigger'))}
                 </div>
               );
             })()}
             {(running || Object.keys(items).length > 0) && (
               <div className="rounded-xl border border-green-500/50 bg-green-500/5 p-4 mb-4 noobclaw-running-glow">
-                <div className="text-sm font-semibold text-green-600 dark:text-green-400 mb-1">本次运行进度</div>
+                <div className="text-sm font-semibold text-green-600 dark:text-green-400 mb-1">{i18nService.t('mvThisRunProgress')}</div>
                 {renderProgress(selectedIsReply)}
               </div>
             )}
-            <h3 className="text-sm font-bold dark:text-white mb-2">🕑 运行历史</h3>
+            <h3 className="text-sm font-bold dark:text-white mb-2">🕑 {i18nService.t('mvRunHistory')}</h3>
             <div className="space-y-2">
               {runs.filter((r) => r.taskId === selectedTask.id).slice(0, 20).map((r) => (
                 <div key={r.id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-xs flex items-center gap-3">
                   <span className="text-gray-500">{fmtTime(r.startedAt)}</span>
-                  <span className="text-green-500">成功 {r.success}</span><span className="text-red-500">失败 {r.failed}</span><span className="text-amber-500">跳过 {r.skipped}</span>
-                  <span className="ml-auto text-gray-600 dark:text-gray-300">{selectedIsReply ? `💬 回复 ${r.totals.comment} 条` : `👍${r.totals.like} ➕${r.totals.follow} 💬${r.totals.comment}`}</span>
+                  <span className="text-green-500">{i18nService.t('mvSuccessN').replace('{n}', String(r.success))}</span><span className="text-red-500">{i18nService.t('mvFailedN').replace('{n}', String(r.failed))}</span><span className="text-amber-500">{i18nService.t('mvSkippedN').replace('{n}', String(r.skipped))}</span>
+                  <span className="ml-auto text-gray-600 dark:text-gray-300">{selectedIsReply ? i18nService.t('mvStatReplyCount').replace('{n}', String(r.totals.comment)) : `👍${r.totals.like} ➕${r.totals.follow} 💬${r.totals.comment}`}</span>
                 </div>
               ))}
-              {runs.filter((r) => r.taskId === selectedTask.id).length === 0 && <div className="text-xs text-gray-400">还没有运行记录。</div>}
+              {runs.filter((r) => r.taskId === selectedTask.id).length === 0 && <div className="text-xs text-gray-400">{i18nService.t('mvNoRunRecords')}</div>}
             </div>
           </div>
         )}
@@ -1018,13 +1019,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {screen === 'runs' && (
           <div className="max-w-4xl mx-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold dark:text-white">🕑 矩阵涨粉运行记录</h2>
-              <button onClick={reloadRuns} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">刷新</button>
+              <h2 className="text-lg font-bold dark:text-white">🕑 {i18nService.t('mvScreenRuns')}</h2>
+              <button onClick={reloadRuns} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{i18nService.t('mvRefresh')}</button>
             </div>
             {runs.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
                 <div className="text-4xl mb-2">📭</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400">还没有运行记录。去「我的矩阵涨粉任务」跑一个任务。</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">{i18nService.t('mvNoRunRecordsHint')}</div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1035,13 +1036,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   <div key={r.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {PLATFORM_LABEL[r.platform] || r.platform}</span>
-                      {runIsReply && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 回复粉丝</span>}
+                      {runIsReply && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 {i18nService.t('mvReplyFans')}</span>}
                       <span className="font-medium dark:text-white">{r.taskName}</span>
                       <span className="text-xs text-gray-500">{fmtTime(r.startedAt)}</span>
-                      <span className="ml-auto text-xs"><span className="text-green-500">成功 {r.success}</span> · <span className="text-red-500">失败 {r.failed}</span> · <span className="text-amber-500">跳过 {r.skipped}</span></span>
+                      <span className="ml-auto text-xs"><span className="text-green-500">{i18nService.t('mvSuccessN').replace('{n}', String(r.success))}</span> · <span className="text-red-500">{i18nService.t('mvFailedN').replace('{n}', String(r.failed))}</span> · <span className="text-amber-500">{i18nService.t('mvSkippedN').replace('{n}', String(r.skipped))}</span></span>
                     </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">{runIsReply ? `合计 💬 回复 ${r.totals.comment} 条` : `合计 👍 ${r.totals.like} · ➕ ${r.totals.follow} · 💬 ${r.totals.comment}`}</div>
-                    <div className="text-[11px] text-gray-400 truncate">{r.items.map((it) => `${it.displayName || it.accountId}(${it.state === 'success' ? '成功' : it.state === 'skipped' ? '跳过' : '失败'})`).join('、')}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">{runIsReply ? i18nService.t('mvTotalReply').replace('{n}', String(r.totals.comment)) : i18nService.t('mvTotalEngage').replace('{l}', String(r.totals.like)).replace('{f}', String(r.totals.follow)).replace('{c}', String(r.totals.comment))}</div>
+                    <div className="text-[11px] text-gray-400 truncate">{r.items.map((it) => `${it.displayName || it.accountId}(${it.state === 'success' ? i18nService.t('mvSuccess') : it.state === 'skipped' ? i18nService.t('mvSkipped') : i18nService.t('mvFailed')})`).join('、')}</div>
                   </div>
                   );
                 })}
@@ -1058,8 +1059,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             <div className="text-lg font-semibold mb-3 dark:text-white">{confirmDlg.title}</div>
             <div className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">{confirmDlg.body}</div>
             <div className="flex justify-end gap-2.5">
-              <button onClick={() => setConfirmDlg(null)} className="px-4 py-2 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
-              <button onClick={() => confirmDlg.onYes()} className={`px-4 py-2 text-sm rounded-lg text-white ${confirmDlg.danger ? 'bg-red-500 hover:bg-red-600' : 'bg-orange-500 hover:bg-orange-600'}`}>{confirmDlg.okText || '确定'}</button>
+              <button onClick={() => setConfirmDlg(null)} className="px-4 py-2 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvCancel')}</button>
+              <button onClick={() => confirmDlg.onYes()} className={`px-4 py-2 text-sm rounded-lg text-white ${confirmDlg.danger ? 'bg-red-500 hover:bg-red-600' : 'bg-orange-500 hover:bg-orange-600'}`}>{confirmDlg.okText || i18nService.t('mvOk')}</button>
             </div>
           </div>
         </div>
@@ -1072,28 +1073,28 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         const showAccount = !twoStep || addStep === 1;
         const showProxy = twoStep && addStep === 2;
         const validateStep1 = (): boolean => {
-          if (!newName.trim()) { setNotice('请填账号备注名'); return false; }
-          if (!newPersona.trim()) { setNotice('请填写人设(自动评论时按这个口吻写)'); return false; }
+          if (!newName.trim()) { setNotice(i18nService.t('mvFillAccountName')); return false; }
+          if (!newPersona.trim()) { setNotice(i18nService.t('mvPersonaRequired')); return false; }
           return true;
         };
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-[40rem] max-w-full max-h-[88vh] overflow-y-auto rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl">
             <div className="flex items-center gap-2 mb-4">
-              <div className="text-base font-semibold">{editId ? '编辑账号' : `连接 ${PLATFORM_LABEL[platform]} 账号`}</div>
-              {twoStep && <span className="text-xs px-2 py-0.5 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">第 {addStep} / 2 步 · {addStep === 1 ? '配账号' : '配代理 IP'}</span>}
-              <button type="button" onClick={() => setShowAdd(false)} aria-label="关闭" title="关闭" className="ml-auto shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+              <div className="text-base font-semibold">{editId ? i18nService.t('mvEditAccount') : i18nService.t('mvConnectAccountTitle').replace('{platform}', PLATFORM_LABEL[platform])}</div>
+              {twoStep && <span className="text-xs px-2 py-0.5 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">{i18nService.t('mvStepLabel').replace('{step}', String(addStep))} · {addStep === 1 ? i18nService.t('mvStepAccount') : i18nService.t('mvStepProxy')}</span>}
+              <button type="button" onClick={() => setShowAdd(false)} aria-label={i18nService.t('mvClose')} title={i18nService.t('mvClose')} className="ml-auto shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
 
             {showAccount && (<>
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">账号备注名</label>
-              <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="如:账号1-美食号" className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mb-3" />
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvAccountRemarkName')}</label>
+              <input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={i18nService.t('mvAccountNamePlaceholder')} className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mb-3" />
               {/* 快手:选账号类型(两端登录互不覆盖,发布用创作者中心、涨粉用主站)。建号时定,编辑不可改。 */}
               {platform === 'kuaishou' && (
                 <div className="mb-3">
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">账号类型{editId && <span className="ml-2 font-normal text-gray-400">(建号后不可更改)</span>}</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvAccountType')}{editId && <span className="ml-2 font-normal text-gray-400">{i18nService.t('mvNotChangeable')}</span>}</label>
                   <div className="flex gap-2">
                     {KS_SCOPES.map((s) => {
                       const active = editId ? false : newScope === s.key;   // 编辑态不高亮可选,只读展示
@@ -1105,17 +1106,17 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       );
                     })}
                   </div>
-                  {!editId && <div className="text-[11px] text-gray-400 mt-1">{newScope === 'creator' ? '将登录 cp.kuaishou.com,用于视频发布' : '将登录 www.kuaishou.com,用于涨粉互动'}</div>}
+                  {!editId && <div className="text-[11px] text-gray-400 mt-1">{newScope === 'creator' ? i18nService.t('mvKsCreatorHint') : i18nService.t('mvKsMainHint')}</div>}
                 </div>
               )}
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">赛道（必选）<span className="ml-2 font-normal text-gray-400">选完自动带出人设和关键词，可再改</span></label>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvTrackRequired')}<span className="ml-2 font-normal text-gray-400">{i18nService.t('mvTrackHint')}</span></label>
               {/* 赛道选择:自绘两列面板替代原生 select(赛道 30+ 项,单列太长,两列更矮)。
                   弹窗容器 overflow-y-auto 会裁绝对定位浮层,故面板用行内展开、随弹窗滚动。 */}
               {(() => { const isPreset = trackPresets.some((t) => t.name === newGroup); return (
               <div className="mb-3">
                 <button type="button" onClick={() => setTrackOpen((v) => !v)}
                   className="relative w-full text-left text-sm pl-3 pr-9 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent dark:bg-gray-800 cursor-pointer">
-                  {isPreset ? newGroup : '自定义 / 其他(自己填人设 + 关键词)'}
+                  {isPreset ? newGroup : i18nService.t('mvCustomTrack')}
                   <svg className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${trackOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -1133,23 +1134,23 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     })}
                     <button type="button" onClick={() => { pickTrack(''); setTrackOpen(false); }}
                       className={`col-span-2 text-left text-sm px-2.5 py-2 rounded-md transition-colors ${!isPreset ? 'bg-claude-accent/15 text-claude-accent font-medium' : 'hover:bg-black/5 dark:hover:bg-white/10'}`}>
-                      {!isPreset ? '✓ ' : ''}自定义 / 其他(自己填人设 + 关键词)
+                      {!isPreset ? '✓ ' : ''}{i18nService.t('mvCustomTrack')}
                     </button>
                   </div>
                 )}
               </div>
               ); })()}
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">人设<span className="ml-2 font-normal text-gray-400">你是谁、对谁说话、什么口吻</span></label>
-              <textarea value={newPersona} onChange={(e) => setNewPersona(e.target.value)} placeholder="如:爱吃会做的美食博主,评论真诚接地气" rows={4} className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mb-3" />
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">关键词<span className="ml-2 font-normal text-gray-400">空格分隔,互动时按这些搜</span></label>
-              <textarea value={newKeywords} onChange={(e) => setNewKeywords(e.target.value)} placeholder="如:美食探店 一人食 家常菜" rows={4} className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mb-4" />
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvPersona')}<span className="ml-2 font-normal text-gray-400">{i18nService.t('mvPersonaHint')}</span></label>
+              <textarea value={newPersona} onChange={(e) => setNewPersona(e.target.value)} placeholder={i18nService.t('mvPersonaPlaceholder')} rows={4} className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mb-3" />
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvKeywords')}<span className="ml-2 font-normal text-gray-400">{i18nService.t('mvKeywordsHint')}</span></label>
+              <textarea value={newKeywords} onChange={(e) => setNewKeywords(e.target.value)} placeholder={i18nService.t('mvKeywordsPlaceholder')} rows={4} className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mb-4" />
             </>)}
 
             {showProxy && (<>
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed mb-4">
-                ⚠️ 本平台已有账号。建议给这个新号配一个<strong>独立代理 IP</strong>:不配的话,它会和本平台其它号<strong>共用同一个本机 IP</strong>,多个号同 IP 容易被平台判定关联、有<strong>被风控/封号</strong>的风险。确实没有代理也可<strong>留空直接保存</strong>。{proxyPurchaseUrl && (<> 没有?<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="underline font-semibold hover:opacity-80">点这里 →</button></>)}
+                {i18nService.t('mvProxyWarnStep')}{proxyPurchaseUrl && (<> {i18nService.t('mvNoneQ')}<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="underline font-semibold hover:opacity-80">{i18nService.t('mvClickHere')}</button></>)}
               </div>
-              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">代理 IP（可选）</label>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvProxyIpOptional')}</label>
               <div className="flex gap-2 mb-2">
                 <select value={proxyForm.protocol} onChange={(e) => setProxyForm((f) => ({ ...f, protocol: e.target.value }))} className="text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent dark:bg-gray-800">
                   <option value="socks5">socks5</option>
@@ -1157,27 +1158,27 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   <option value="http">http</option>
                   <option value="https">https</option>
                 </select>
-                <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder="host(如 1.2.3.4)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder={i18nService.t('mvProxyHostPlaceholder')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
                 <input value={proxyForm.port} onChange={(e) => setProxyForm((f) => ({ ...f, port: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="port" className="w-20 text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
               </div>
               <div className="flex gap-2 mb-2">
-                <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder="用户名(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-                <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder="密码(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder={i18nService.t('mvUsernameOptional')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+                <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder={i18nService.t('mvPasswordOptional')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
               </div>
-              <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder="归属地标注(可选,仅显示用)" className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-4" />
+              <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder={i18nService.t('mvGeoOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-4" />
             </>)}
 
             {proxyMsg && showProxy && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}
             <div className="flex justify-end gap-2">
               {twoStep && addStep === 2
-                ? <button onClick={() => setAddStep(1)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">← 上一步</button>
-                : <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>}
-              {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">仍然保存</button>)}
+                ? <button onClick={() => setAddStep(1)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvPrevStep')}</button>
+                : <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvCancel')}</button>}
+              {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">{i18nService.t('mvSaveAnyway')}</button>)}
               {editId
-                ? <button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">保存</button>
+                ? <button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">{i18nService.t('mvSave')}</button>
                 : (twoStep && addStep === 1)
-                  ? <button onClick={() => { if (validateStep1()) { setNotice(''); setAddStep(2); } }} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">下一步 →</button>
-                  : (<><button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{showProxy ? '不配代理,仅保存' : '仅保存'}</button><button onClick={() => confirmAdd(true)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">保存并连接</button></>)}
+                  ? <button onClick={() => { if (validateStep1()) { setNotice(''); setAddStep(2); } }} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">{i18nService.t('mvNextStep')}</button>
+                  : (<><button onClick={() => confirmAdd(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{showProxy ? i18nService.t('mvSaveNoProxy') : i18nService.t('mvSaveOnly')}</button><button onClick={() => confirmAdd(true)} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white">{i18nService.t('mvSaveAndConnect')}</button></>)}
             </div>
           </div>
         </div>
@@ -1216,25 +1217,25 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-[26rem] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
             <div className="flex items-center mb-1">
-              <div className="text-sm font-medium">指纹浏览器</div>
-              <button type="button" onClick={() => setShowKernelModal(false)} aria-label="关闭" title="关闭" className="ml-auto shrink-0 -mr-1 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+              <div className="text-sm font-medium">{i18nService.t('mvFingerprintBrowser')}</div>
+              <button type="button" onClick={() => setShowKernelModal(false)} aria-label={i18nService.t('mvClose')} title={i18nService.t('mvClose')} className="ml-auto shrink-0 -mr-1 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
             {kernelReady && !kernelBusy ? (
-              <div className="text-sm text-green-500 my-3">✓ 指纹浏览器已就绪{selectedVersion ? `(v${selectedVersion})` : ''},现在可以连接账号 / 扫码连接 / 跑任务了。</div>
+              <div className="text-sm text-green-500 my-3">{i18nService.t('mvKernelReadyMsg').replace('{ver}', selectedVersion ? `(v${selectedVersion})` : '')}</div>
             ) : (
               <>
-                <div className="text-sm opacity-70 my-3">矩阵号需要专属指纹浏览器才能运行(独立指纹隔离,普通 Chrome 无法替代)。请下载并选中一个版本{selectedVersion ? `(将下载 v${selectedVersion})` : ''}。约 130MB,只需下载一次。</div>
+                <div className="text-sm opacity-70 my-3">{i18nService.t('mvKernelNeedMsg').replace('{ver}', selectedVersion ? i18nService.t('mvWillDownloadVer').replace('{v}', selectedVersion) : '')}</div>
                 {(kernelBusy || kernelPct > 0) && (
-                  <div className="mb-3"><div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"><div className="h-full bg-claude-accent transition-all duration-200" style={{ width: `${Math.max(2, kernelPct)}%` }} /></div><div className="text-xs opacity-60 mt-1">{kernelMsg || '准备中…'}{kernelBusy ? ` · ${kernelPct}%` : ''}</div></div>
+                  <div className="mb-3"><div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"><div className="h-full bg-claude-accent transition-all duration-200" style={{ width: `${Math.max(2, kernelPct)}%` }} /></div><div className="text-xs opacity-60 mt-1">{kernelMsg || i18nService.t('mvPreparing')}{kernelBusy ? ` · ${kernelPct}%` : ''}</div></div>
                 )}
                 {!kernelBusy && kernelMsg && !kernelReady && <div className="text-xs text-red-500 mb-2">{kernelMsg}</div>}
               </>
             )}
             <div className="flex justify-end gap-2 mt-2">
-              <button onClick={() => setShowKernelModal(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">关闭</button>
-              {!kernelReady && <button onClick={() => downloadKernel()} disabled={kernelBusy} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white disabled:opacity-50">{kernelBusy ? '下载中…' : (kernelPct > 0 ? '重试下载' : '开始下载')}</button>}
+              <button onClick={() => setShowKernelModal(false)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvClose')}</button>
+              {!kernelReady && <button onClick={() => downloadKernel()} disabled={kernelBusy} className="px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white disabled:opacity-50">{kernelBusy ? i18nService.t('mvDownloading') : (kernelPct > 0 ? i18nService.t('mvRetryDownload') : i18nService.t('mvStartDownload'))}</button>}
             </div>
           </div>
         </div>
@@ -1245,29 +1246,29 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-[26rem] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
             <div className="flex items-center mb-1">
-              <div className="text-sm font-medium">绑定代理 IP</div>
-              <button type="button" onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} aria-label="关闭" title="关闭" className="ml-auto shrink-0 -mr-1 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+              <div className="text-sm font-medium">{i18nService.t('mvBindProxyIp')}</div>
+              <button type="button" onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} aria-label={i18nService.t('mvClose')} title={i18nService.t('mvClose')} className="ml-auto shrink-0 -mr-1 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
-            <div className="text-xs opacity-60 mb-3">多开同平台必须每号一个独立 IP,否则同 IP 会被风控。第一个号可留空走本地 IP。{proxyPurchaseUrl && (<> 没有?<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">点这里 →</button></>)}</div>
+            <div className="text-xs opacity-60 mb-3">{i18nService.t('mvProxyHint')}{proxyPurchaseUrl && (<> {i18nService.t('mvNoneQ')}<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">{i18nService.t('mvClickHere')}</button></>)}</div>
             <div className="flex gap-2 mb-2">
               <select value={proxyForm.protocol} onChange={(e) => setProxyForm((f) => ({ ...f, protocol: e.target.value }))} className="text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent">
                 <option value="socks5">socks5</option><option value="socks5h">socks5h</option><option value="http">http</option><option value="https">https</option>
               </select>
-              <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder="host(如 1.2.3.4)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+              <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder={i18nService.t('mvProxyHostPlaceholder')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
               <input value={proxyForm.port} onChange={(e) => setProxyForm((f) => ({ ...f, port: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="port" className="w-20 text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
             </div>
             <div className="flex gap-2 mb-2">
-              <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder="用户名(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-              <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder="密码(可选)" className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+              <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder={i18nService.t('mvUsernameOptional')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
+              <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder={i18nService.t('mvPasswordOptional')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
             </div>
-            <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder="归属地标注(可选,仅显示用)" className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3" />
+            <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder={i18nService.t('mvGeoOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3" />
             {proxyMsg && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">取消</button>
-              {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">仍然保存</button>)}
-              <button onClick={saveProxy} disabled={proxyBusy} className={`px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white ${proxyBusy ? 'opacity-60 cursor-wait' : ''}`}>{proxyBusy ? '校验中…' : '校验并保存'}</button>
+              <button onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvCancel')}</button>
+              {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">{i18nService.t('mvSaveAnyway')}</button>)}
+              <button onClick={saveProxy} disabled={proxyBusy} className={`px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white ${proxyBusy ? 'opacity-60 cursor-wait' : ''}`}>{proxyBusy ? i18nService.t('mvValidating') : i18nService.t('mvValidateAndSave')}</button>
             </div>
           </div>
         </div>
