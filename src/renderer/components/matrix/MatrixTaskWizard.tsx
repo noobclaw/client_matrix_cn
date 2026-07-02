@@ -40,7 +40,6 @@ interface Props {
 }
 
 const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
-  const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
 
@@ -87,9 +86,9 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, funnelPhrase, funnelProb, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: selected.size >= 1, reason: isZh ? '请至少勾选一个已登录账号' : 'Select at least one account' },
-    2: totalMaxActions === 0 ? { ok: false, reason: isZh ? '至少配置一项动作 (max > 0)' : 'Configure at least one action' } : { ok: true },
-    3: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
+    1: { ok: selected.size >= 1, reason: i18nService.t('wzEngageErrSelectAccount') },
+    2: totalMaxActions === 0 ? { ok: false, reason: i18nService.t('wzEngageErrConfigAction') } : { ok: true },
+    3: { ok: allTermsAccepted, reason: i18nService.t('wzEngageErrAcceptTerms') },
   };
 
   const handleSave = async () => {
@@ -98,7 +97,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || `${platformLabel}互动 · ${selected.size}号`,
+        name: initialTask?.name || i18nService.t('wzEngageTaskName').replace('{platform}', platformLabel).replace('{n}', String(selected.size)),
         accountIds: [...selected],
         concurrency: selected.size,   // 选几个号就同时开几个窗(runner 内部有安全上限兜底)
         frequency: runInterval,
@@ -107,21 +106,21 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         funnel: (funnelSupported && hasFunnel) ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb } : { funnel_phrase: '', funnel_probability: 0 },
       });
     } catch (err) {
-      setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败' : 'Save failed'));
+      setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzEngageErrSaveFailed'));
     } finally { setSaving(false); }
   };
 
   const intervalLabel = useMemo(() => {
-    const m: Record<string, string> = { once: '不重复（手动触发）', '30min': '每 30 分钟', '1h': '每小时', '3h': '每 3 小时', '6h': '每 6 小时', daily_random: '每日随机时间一次' };
+    const m: Record<string, string> = { once: i18nService.t('wzEngageFreqOnce'), '30min': i18nService.t('wzEngageFreq30min'), '1h': i18nService.t('wzEngageFreq1h'), '3h': i18nService.t('wzEngageFreq3h'), '6h': i18nService.t('wzEngageFreq6h'), daily_random: i18nService.t('wzEngageFreqDailyRandomFull') };
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
   return (
     <div className="w-full max-w-2xl max-h-[90vh] mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">🎶 {editing ? `编辑${platformLabel}互动任务` : `配置${platformLabel}互动涨粉`}</div>
+        <div className="text-base font-semibold dark:text-white">🎶 {editing ? i18nService.t('wzEngageTitleEdit').replace('{platform}', platformLabel) : i18nService.t('wzEngageTitleCreate').replace('{platform}', platformLabel)}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">第 {step} / 3 步</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">{i18nService.t('wzEngageStepCounter').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -131,20 +130,20 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                选 {platformLabel} 账号<span className="text-xs text-gray-400 font-normal ml-1">· 已登录且配了关键词;已选 {selected.size}</span>
+                {i18nService.t('wzEngageSelectAccounts').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzEngageSelectAccountsHint').replace('{n}', String(selected.size))}</span>
               </label>
               <div className="space-y-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                 {accounts.length === 0 && accountsLoading && (
-                  <div className="p-3 text-center text-xs text-gray-400">账号加载中…</div>
+                  <div className="p-3 text-center text-xs text-gray-400">{i18nService.t('wzEngageAccountsLoading')}</div>
                 )}
                 {accounts.length === 0 && !accountsLoading && (
                   <div className="p-3 text-center space-y-2.5">
-                    <div className="text-xs text-gray-400">该平台还没有账号。先去「我的矩阵账号」添加并扫码登录、配关键词。</div>
+                    <div className="text-xs text-gray-400">{i18nService.t('wzEngageNoAccounts')}</div>
                     <button
                       type="button"
                       onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
                       className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 active:scale-95"
-                    >👥 去「我的矩阵账号」添加 →</button>
+                    >{i18nService.t('wzEngageGoAddAccounts')}</button>
                   </div>
                 )}
                 {accounts.map((a) => {
@@ -152,7 +151,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                   // 未连接(login_required)/已封 → 不可选(置灰);还要配了关键词。
                   const linked = a.status !== 'login_required' && a.status !== 'banned';
                   const ready = hasKw && linked;
-                  const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未连接' : !hasKw ? '未配关键词' : '';
+                  const reason = a.status === 'banned' ? i18nService.t('wzEngageReasonBanned') : a.status === 'login_required' ? i18nService.t('wzEngageReasonNotConnected') : !hasKw ? i18nService.t('wzEngageReasonNoKeywords') : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
@@ -165,13 +164,13 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-500">{PLATFORM_NAME[a.platform || ''] || a.platform}</span>
                           <span className="font-medium truncate dark:text-white">{title}</span>
-                          {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">{PLATFORM_NAME[a.platform || ''] || ''}号:{a.displayId}</span>}
+                          {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">{i18nService.t('wzEngageAccountIdLabel').replace('{platform}', PLATFORM_NAME[a.platform || ''] || '')}{a.displayId}</span>}
                           {a.status === 'login_required'
-                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title="去「我的矩阵账号」扫码登录这个号" className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">未连接 · 去登录 →</button>
+                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title={i18nService.t('wzEngageGoLoginTitle')} className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">{i18nService.t('wzEngageNotConnectedGoLogin')}</button>
                             : reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
                         </div>
                         <div className="text-[11px] text-gray-400 truncate">
-                          备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}{hasKw ? ` · 🏷️ ${(a.keywords || []).join('/')}` : ''}
+                          {i18nService.t('wzEngageNoteLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}{hasKw ? ` · 🏷️ ${(a.keywords || []).join('/')}` : ''}
                         </div>
                       </div>
                     </label>
@@ -184,32 +183,32 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
 
         {step === 2 && (
           <>
-            <RangeSlider label="每次运行点赞数量" min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} hardCap={LIKE_HARDCAP} hint={`每次随机点赞 ${likeMin}-${likeMax} 个视频 (0-${LIKE_HARDCAP},越大风险越高)`} disabled={saving} />
-            <RangeSlider label="每次运行关注数量" min={folMin} max={folMax} setMin={setFolMin} setMax={setFolMax} hardCap={FOLLOW_HARDCAP} hint={`每次随机关注 ${folMin}-${folMax} 个作者 (0-${FOLLOW_HARDCAP},关注是风控最严的动作,建议保守)`} disabled={saving} />
-            <RangeSlider label="每次运行评论数量" min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax} hardCap={COMMENT_HARDCAP} hint={`每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按视频上下文+该号人设自动写)`} disabled={saving} />
+            <RangeSlider label={i18nService.t('wzEngageLikeLabel')} min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} hardCap={LIKE_HARDCAP} hint={i18nService.t('wzEngageLikeHint').replace('{min}', String(likeMin)).replace('{max}', String(likeMax)).replace('{cap}', String(LIKE_HARDCAP))} disabled={saving} />
+            <RangeSlider label={i18nService.t('wzEngageFollowLabel')} min={folMin} max={folMax} setMin={setFolMin} setMax={setFolMax} hardCap={FOLLOW_HARDCAP} hint={i18nService.t('wzEngageFollowHint').replace('{min}', String(folMin)).replace('{max}', String(folMax)).replace('{cap}', String(FOLLOW_HARDCAP))} disabled={saving} />
+            <RangeSlider label={i18nService.t('wzEngageCommentLabel')} min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax} hardCap={COMMENT_HARDCAP} hint={i18nService.t('wzEngageCommentHint').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax)).replace('{cap}', String(COMMENT_HARDCAP))} disabled={saving} />
 
             {/* 引流(评论 max>0 且平台支持时显示):评论时 AI 按概率把引流文案自然融进评论。留空=纯 AI 评论,老任务不受影响。 */}
             {showFunnel && (
               <div className="rounded-xl border border-fuchsia-500/25 bg-fuchsia-500/5 px-4 py-3 space-y-3">
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    🎣 评论引流语（选填）<span className="text-xs text-gray-400 font-normal ml-1">· 留空则评论不带引流,纯 AI 内容</span>
+                    {i18nService.t('wzEngageFunnelPhraseLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzEngageFunnelPhraseHint')}</span>
                   </label>
                   <textarea
                     value={funnelPhrase}
                     onChange={(e) => setFunnelPhrase(e.target.value.slice(0, FUNNEL_PHRASE_MAX))}
-                    placeholder={'比如：完整教程在我主页置顶视频，需要的可以去看\n或：同款清单私信我发你'}
+                    placeholder={i18nService.t('wzEngageFunnelPhrasePlaceholder')}
                     rows={2}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[64px]"
                     disabled={saving}
                   />
-                  <div className="text-[11px] text-gray-400 mt-1">{funnelPhrase.trim().length} / {FUNNEL_PHRASE_MAX} 字</div>
+                  <div className="text-[11px] text-gray-400 mt-1">{i18nService.t('wzEngageFunnelCharCount').replace('{n}', String(funnelPhrase.trim().length)).replace('{max}', String(FUNNEL_PHRASE_MAX))}</div>
                 </div>
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    🎲 引流出现概率: {hasFunnel ? funnelProb : 0}%
+                    {i18nService.t('wzEngageFunnelProbLabel').replace('{n}', String(hasFunnel ? funnelProb : 0))}
                     <span className="text-xs text-gray-400 font-normal ml-1">
-                      {hasFunnel ? '· AI 会按概率把引流语自然融进评论(不是每条都带)' : '· 引流语未填,概率失效'}
+                      {hasFunnel ? i18nService.t('wzEngageFunnelProbHintOn') : i18nService.t('wzEngageFunnelProbHintOff')}
                     </span>
                   </label>
                   <input
@@ -226,10 +225,10 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             )}
 
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
-              <div className="font-semibold">⚠️ 安全提示</div>
+              <div className="font-semibold">{i18nService.t('wzEngageSafetyTitle')}</div>
               <ul className="list-disc list-inside space-y-0.5">
-                <li>关注默认 0-2 — 平台对自动关注检测最严,长期跑建议保守</li>
-                <li>多开账号务必每号配独立 IP(在「我的矩阵账号」里设),否则同 IP 易被风控</li>
+                <li>{i18nService.t('wzEngageSafetyTip1')}</li>
+                <li>{i18nService.t('wzEngageSafetyTip2')}</li>
               </ul>
             </div>
           </>
@@ -238,28 +237,28 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         {step === 3 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ 运行间隔</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzEngageRunIntervalLabel')}</label>
               <div className="flex gap-2 flex-wrap">
-                {[['once', '不重复（手动触发）'], ['30min', '每 30 分钟'], ['1h', '每小时'], ['3h', '每 3 小时'], ['6h', '每 6 小时'], ['daily_random', '每日随机时间']].map(([value, label]) => (
+                {[['once', i18nService.t('wzEngageFreqOnce')], ['30min', i18nService.t('wzEngageFreq30min')], ['1h', i18nService.t('wzEngageFreq1h')], ['3h', i18nService.t('wzEngageFreq3h')], ['6h', i18nService.t('wzEngageFreq6h')], ['daily_random', i18nService.t('wzEngageFreqDailyRandom')]].map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setRunInterval(value)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${runInterval === value ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>{label}</button>
                 ))}
               </div>
-              {runInterval === 'daily_random' && <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">✨ 推荐 — 每天在随机时间触发一次,比固定钟点更像真人,也最不容易被风控判机器人。</p>}
-              {(runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h') && <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">⚠️ 到点后再加 {(runInterval === '3h' || runInterval === '6h') ? '1-45' : '1-10'} 分钟随机延迟,避免精准卡点</p>}
+              {runInterval === 'daily_random' && <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{i18nService.t('wzEngageDailyRandomTip')}</p>}
+              {(runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h') && <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">{i18nService.t('wzEngageJitterTip').replace('{range}', (runInterval === '3h' || runInterval === '6h') ? '1-45' : '1-10')}</p>}
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
-              <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
-              <SummaryRow label="账号" value={`${selected.size} 个(各用自己的赛道词)`} />
-              <SummaryRow label="点赞数" value={`${likeMin}-${likeMax} / 次`} />
-              <SummaryRow label="关注数" value={`${folMin}-${folMax} / 次`} />
-              <SummaryRow label="评论数" value={`${cmtMin}-${cmtMax} / 次`} />
-              {showFunnel && <SummaryRow label="评论引流" value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : '（未填,纯 AI 评论）'} />}
-              <SummaryRow label="同时开窗" value={`${selected.size} 个号一起跑`} />
-              <SummaryRow label="运行频率" value={intervalLabel} />
+              <div className="font-semibold dark:text-gray-200 mb-1">{i18nService.t('wzEngageSummaryTitle')}</div>
+              <SummaryRow label={i18nService.t('wzEngageSummaryAccounts')} value={i18nService.t('wzEngageSummaryAccountsValue').replace('{n}', String(selected.size))} />
+              <SummaryRow label={i18nService.t('wzEngageSummaryLikes')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(likeMin)).replace('{max}', String(likeMax))} />
+              <SummaryRow label={i18nService.t('wzEngageSummaryFollows')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(folMin)).replace('{max}', String(folMax))} />
+              <SummaryRow label={i18nService.t('wzEngageSummaryComments')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax))} />
+              {showFunnel && <SummaryRow label={i18nService.t('wzEngageSummaryFunnel')} value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzEngageSummaryFunnelEmpty')} />}
+              <SummaryRow label={i18nService.t('wzEngageSummaryConcurrency')} value={i18nService.t('wzEngageSummaryConcurrencyValue').replace('{n}', String(selected.size))} />
+              <SummaryRow label={i18nService.t('wzEngageSummaryFrequency')} value={intervalLabel} />
             </div>
             <div className="space-y-2">
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">使用条款</div>
-              {['我理解 NoobClaw 会在我本地用各账号专属指纹浏览器代我浏览平台,所有行为使用各账号自己的 IP 和账号', '我理解平台账号风险由我自己承担'].map((term, i) => (
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzEngageTermsTitle')}</div>
+              {[i18nService.t('wzEngageTerm1'), i18nService.t('wzEngageTerm2')].map((term, i) => (
                 <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
                   <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-violet-500 shrink-0" />
                   <span className="leading-relaxed">{term}</span>
@@ -280,13 +279,13 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       )}
 
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
-        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">取消</button>
+        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzEngageCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">← 上一步</button>}
+        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzEngagePrev')}</button>}
         {step < 3 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">下一步 →</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{i18nService.t('wzEngageNext')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{saving ? '保存中...' : (editing ? '✓ 保存修改' : '🎶 创建任务')}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{saving ? i18nService.t('wzEngageSaving') : (editing ? i18nService.t('wzEngageSaveEdit') : i18nService.t('wzEngageCreate'))}</button>
         )}
       </div>
     </div>
@@ -295,14 +294,14 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
 
 const RangeSlider: React.FC<{ label: string; min: number; max: number; setMin: (v: number) => void; setMax: (v: number) => void; hardCap: number; hint: string; disabled?: boolean }> = ({ label, min, max, setMin, setMax, hardCap, hint, disabled }) => (
   <div>
-    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{label}（随机区间）</label>
+    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{label}{i18nService.t('wzEngageRandomRangeSuffix')}</label>
     <div className="grid grid-cols-2 gap-4">
       <div>
-        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">最少: <span className="font-bold text-violet-500">{min}</span></div>
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzEngageRangeMin')} <span className="font-bold text-violet-500">{min}</span></div>
         <input type="range" min={0} max={hardCap} value={min} onChange={(e) => setMin(parseInt(e.target.value, 10))} disabled={disabled} className="w-full accent-violet-500" />
       </div>
       <div>
-        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">最多: <span className="font-bold text-violet-500">{max}</span></div>
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzEngageRangeMax')} <span className="font-bold text-violet-500">{max}</span></div>
         <input type="range" min={0} max={hardCap} value={max} onChange={(e) => setMax(parseInt(e.target.value, 10))} disabled={disabled} className="w-full accent-violet-500" />
       </div>
     </div>

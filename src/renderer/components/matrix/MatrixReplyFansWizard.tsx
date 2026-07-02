@@ -37,20 +37,19 @@ interface Props {
 }
 
 const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
-  const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
 
   // 平台相关文案。小红书是唯一「逐篇笔记进详情页」的流程,其余短视频平台在各自创作者中心
   // 「评论管理」集中回复。创作者中心中文名 + 作品/笔记 量词按平台切。
   const isXhs = platform === 'xhs';
-  const ccNameZh = platform === 'kuaishou' ? '快手创作者服务平台'
-    : platform === 'bilibili' ? '哔哩哔哩创作中心'
-    : platform === 'xhs' ? '小红书创作者中心'
-    : platform === 'shipinhao' ? '视频号助手'
-    : platform === 'toutiao' ? '头条号后台'
-    : '抖音创作者中心';
-  const itemZh = isXhs ? '笔记' : '作品';
+  const ccNameZh = platform === 'kuaishou' ? i18nService.t('wzReplyCcKuaishou')
+    : platform === 'bilibili' ? i18nService.t('wzReplyCcBilibili')
+    : platform === 'xhs' ? i18nService.t('wzReplyCcXhs')
+    : platform === 'shipinhao' ? i18nService.t('wzReplyCcShipinhao')
+    : platform === 'toutiao' ? i18nService.t('wzReplyCcToutiao')
+    : i18nService.t('wzReplyCcDouyin');
+  const itemZh = isXhs ? i18nService.t('wzReplyItemNote') : i18nService.t('wzReplyItemWork');
 
   // ── 账号(回复粉丝评论不需要关键词,只要已登录创作者中心) ──
   const [selected, setSelected] = useState<Set<string>>(() => {
@@ -80,9 +79,9 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, funnelPhrase, funnelProb, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: selected.size >= 1, reason: isZh ? '请至少勾选一个已登录账号' : 'Select at least one account' },
+    1: { ok: selected.size >= 1, reason: i18nService.t('wzReplyErrSelectAccount') },
     2: { ok: true },
-    3: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
+    3: { ok: allTermsAccepted, reason: i18nService.t('wzReplyErrAcceptTerms') },
   };
 
   const handleSave = async () => {
@@ -91,28 +90,28 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || `${platformLabel}回复粉丝 · ${selected.size}号`,
+        name: initialTask?.name || i18nService.t('wzReplyTaskName').replace('{platform}', platformLabel).replace('{n}', String(selected.size)),
         accountIds: [...selected],
         concurrency: selected.size,
         frequency: runInterval,
         funnel: { funnel_phrase: funnelPhrase.trim(), funnel_probability: hasFunnel ? funnelProb : 0 },
       });
     } catch (err) {
-      setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败' : 'Save failed'));
+      setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzReplyErrSaveFailed'));
     } finally { setSaving(false); }
   };
 
   const intervalLabel = useMemo(() => {
-    const m: Record<string, string> = { once: '不重复（手动触发）', '3h': '每 3 小时', '6h': '每 6 小时', daily_random: '每日随机时间一次' };
+    const m: Record<string, string> = { once: i18nService.t('wzReplyIntervalOnce'), '3h': i18nService.t('wzReplyInterval3h'), '6h': i18nService.t('wzReplyInterval6h'), daily_random: i18nService.t('wzReplyIntervalDailyRandomOnce') };
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
   return (
     <div className="w-full max-w-2xl max-h-[90vh] mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">💌 {editing ? `编辑${platformLabel}回复粉丝任务` : `配置${platformLabel}自动回复粉丝`}</div>
+        <div className="text-base font-semibold dark:text-white">💌 {editing ? i18nService.t('wzReplyTitleEdit').replace('{platform}', platformLabel) : i18nService.t('wzReplyTitleCreate').replace('{platform}', platformLabel)}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-fuchsia-500/40 text-fuchsia-500 bg-fuchsia-500/5">第 {step} / 3 步</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-fuchsia-500/40 text-fuchsia-500 bg-fuchsia-500/5">{i18nService.t('wzReplyStepCounter').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -121,31 +120,31 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
         {step === 1 && (
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-fuchsia-500/30 bg-fuchsia-500/5 text-fuchsia-700 dark:text-fuchsia-300">
-              💌 每个勾选的账号会在<strong>自己的指纹浏览器</strong>里打开<strong>{ccNameZh}</strong>{isXhs ? <>,逐篇笔记进详情页</> : <>评论管理</>},逐条读粉丝评论 → AI 写回应 → 真人节奏发送。<strong>已回复过的、自己留的评论自动跳过</strong>,只回复粉丝、绝不评论{itemZh}本身。回复口吻按各账号设的<strong>人设</strong>。
+              💌 {i18nService.t('wzReplyIntroP1')}<strong>{i18nService.t('wzReplyIntroFingerprintBrowser')}</strong>{i18nService.t('wzReplyIntroP2')}<strong>{ccNameZh}</strong>{isXhs ? <>{i18nService.t('wzReplyIntroEntryXhs')}</> : <>{i18nService.t('wzReplyIntroEntryOther')}</>}{i18nService.t('wzReplyIntroP3')}<strong>{i18nService.t('wzReplyIntroSkip')}</strong>{i18nService.t('wzReplyIntroP4').replace('{item}', itemZh)}<strong>{i18nService.t('wzReplyIntroPersona')}</strong>{i18nService.t('wzReplyIntroP5')}
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                选 {platformLabel} 账号<span className="text-xs text-gray-400 font-normal ml-1">· 已登录{ccNameZh}即可(无需配关键词);已选 {selected.size}</span>
+                {i18nService.t('wzReplySelectAccountLabel').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzReplySelectAccountHint').replace('{cc}', ccNameZh).replace('{n}', String(selected.size))}</span>
               </label>
               <div className="space-y-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                 {accounts.length === 0 && accountsLoading && (
-                  <div className="p-3 text-center text-xs text-gray-400">账号加载中…</div>
+                  <div className="p-3 text-center text-xs text-gray-400">{i18nService.t('wzReplyAccountsLoading')}</div>
                 )}
                 {accounts.length === 0 && !accountsLoading && (
                   <div className="p-3 text-center space-y-2.5">
-                    <div className="text-xs text-gray-400">该平台还没有账号。先去「我的矩阵账号」添加并扫码登录{ccNameZh}。</div>
+                    <div className="text-xs text-gray-400">{i18nService.t('wzReplyNoAccounts').replace('{cc}', ccNameZh)}</div>
                     <button
                       type="button"
                       onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
                       className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-fuchsia-500 hover:bg-fuchsia-600 active:scale-95"
-                    >👥 去「我的矩阵账号」添加 →</button>
+                    >{i18nService.t('wzReplyGoAddAccounts')}</button>
                   </div>
                 )}
                 {accounts.map((a) => {
                   // 回复粉丝只要已登录(未封、未掉线)即可,不要求关键词。
                   const linked = a.status !== 'login_required' && a.status !== 'banned';
                   const ready = linked;
-                  const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未连接' : '';
+                  const reason = a.status === 'banned' ? i18nService.t('wzReplyStatusBanned') : a.status === 'login_required' ? i18nService.t('wzReplyStatusDisconnected') : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
@@ -157,13 +156,13 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-fuchsia-500/10 text-fuchsia-500">{PLATFORM_NAME[a.platform || ''] || a.platform}</span>
                           <span className="font-medium truncate dark:text-white">{title}</span>
-                          {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">{PLATFORM_NAME[a.platform || ''] || ''}号:{a.displayId}</span>}
+                          {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">{i18nService.t('wzReplyAccountIdLabel').replace('{platform}', PLATFORM_NAME[a.platform || ''] || '')}{a.displayId}</span>}
                           {a.status === 'login_required'
-                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title="去「我的矩阵账号」扫码登录这个号" className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">未连接 · 去登录 →</button>
+                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title={i18nService.t('wzReplyLoginLinkTitle')} className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">{i18nService.t('wzReplyDisconnectedGoLogin')}</button>
                             : reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
                         </div>
                         <div className="text-[11px] text-gray-400 truncate">
-                          备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}
+                          {i18nService.t('wzReplyRemarkLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}
                         </div>
                       </div>
                     </label>
@@ -179,25 +178,25 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
             {/* 引流语 textarea */}
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                🎣 核心引流语（选填）<span className="text-xs text-gray-400 font-normal ml-1">· 留空则回复不带引流尾巴</span>
+                🎣 {i18nService.t('wzReplyFunnelLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzReplyFunnelHint')}</span>
               </label>
               <textarea
                 value={funnelPhrase}
                 onChange={(e) => setFunnelPhrase(e.target.value.slice(0, FUNNEL_PHRASE_MAX))}
-                placeholder={'比如：完整教程在我主页置顶视频，需要的可以去看\n或：私信我领西湖路线攻略'}
+                placeholder={i18nService.t('wzReplyFunnelPlaceholder')}
                 rows={3}
                 className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[80px]"
                 disabled={saving}
               />
-              <div className="text-[11px] text-gray-400 mt-1">{funnelPhrase.trim().length} / {FUNNEL_PHRASE_MAX} 字</div>
+              <div className="text-[11px] text-gray-400 mt-1">{i18nService.t('wzReplyCharCount').replace('{n}', String(funnelPhrase.trim().length)).replace('{max}', String(FUNNEL_PHRASE_MAX))}</div>
             </div>
 
             {/* 引流概率 slider */}
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                🎲 引流尾巴出现概率: {hasFunnel ? funnelProb : 0}%
+                🎲 {i18nService.t('wzReplyProbLabel').replace('{n}', String(hasFunnel ? funnelProb : 0))}
                 <span className="text-xs text-gray-400 font-normal ml-1">
-                  {hasFunnel ? '· AI 会按概率把引流语自然衔接到回复尾部' : '· 引流语未填,概率失效'}
+                  {hasFunnel ? i18nService.t('wzReplyProbHintOn') : i18nService.t('wzReplyProbHintOff')}
                 </span>
               </label>
               <input
@@ -211,10 +210,10 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
               />
             </div>
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
-              <div className="font-semibold">⚠️ 安全提示</div>
+              <div className="font-semibold">⚠️ {i18nService.t('wzReplySafetyTitle')}</div>
               <ul className="list-disc list-inside space-y-0.5">
-                <li>只回复粉丝评论,绝不给{itemZh}本身发新评论;已回复 / 自己的评论自动跳过</li>
-                <li>多开账号务必每号配独立 IP(在「我的矩阵账号」里设),否则同 IP 易被风控</li>
+                <li>{i18nService.t('wzReplySafetyBullet1').replace('{item}', itemZh)}</li>
+                <li>{i18nService.t('wzReplySafetyBullet2')}</li>
               </ul>
             </div>
           </>
@@ -223,26 +222,26 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
         {step === 3 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ 运行间隔</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ {i18nService.t('wzReplyRunIntervalLabel')}</label>
               <div className="flex gap-2 flex-wrap">
-                {[['once', '不重复（手动触发）'], ['3h', '每 3 小时'], ['6h', '每 6 小时'], ['daily_random', '每日随机时间']].map(([value, label]) => (
+                {[['once', i18nService.t('wzReplyIntervalOnce')], ['3h', i18nService.t('wzReplyInterval3h')], ['6h', i18nService.t('wzReplyInterval6h')], ['daily_random', i18nService.t('wzReplyIntervalDailyRandom')]].map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setRunInterval(value)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${runInterval === value ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-fuchsia-500/50'}`}>{label}</button>
                 ))}
               </div>
-              {runInterval === 'daily_random' && <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">✨ 推荐 — 每天在随机时间触发一次,比固定钟点更像真人。</p>}
+              {runInterval === 'daily_random' && <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">✨ {i18nService.t('wzReplyDailyRandomTip')}</p>}
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
-              <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
-              <SummaryRow label="账号" value={`${selected.size} 个(各自回复自己${itemZh}下的粉丝评论)`} />
-              <SummaryRow label="引流语" value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : '（未填,纯 AI 回复）'} />
-              <SummaryRow label="回复范围" value={`逐条回复全部粉丝评论（最近 30 ${isXhs ? '篇笔记' : '个作品'}）`} />
-              <SummaryRow label="同时开窗" value={`${selected.size} 个号一起跑`} />
-              <SummaryRow label="运行频率" value={intervalLabel} />
-              <SummaryRow label="安全节奏" value={isXhs ? '评论间 30~90s · 笔记间 2~5min' : '评论间 30~90s · 作品间 45~150s'} />
+              <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzReplySummaryTitle')}</div>
+              <SummaryRow label={i18nService.t('wzReplySumAccountsLabel')} value={i18nService.t('wzReplySumAccountsValue').replace('{n}', String(selected.size)).replace('{item}', itemZh)} />
+              <SummaryRow label={i18nService.t('wzReplySumFunnelLabel')} value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzReplySumFunnelEmpty')} />
+              <SummaryRow label={i18nService.t('wzReplySumScopeLabel')} value={i18nService.t('wzReplySumScopeValue').replace('{item}', isXhs ? i18nService.t('wzReplyScopeUnitXhs') : i18nService.t('wzReplyScopeUnitOther'))} />
+              <SummaryRow label={i18nService.t('wzReplySumConcurrencyLabel')} value={i18nService.t('wzReplySumConcurrencyValue').replace('{n}', String(selected.size))} />
+              <SummaryRow label={i18nService.t('wzReplySumFrequencyLabel')} value={intervalLabel} />
+              <SummaryRow label={i18nService.t('wzReplySumRhythmLabel')} value={isXhs ? i18nService.t('wzReplySumRhythmXhs') : i18nService.t('wzReplySumRhythmOther')} />
             </div>
             <div className="space-y-2">
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">使用条款</div>
-              {[`我理解 NoobClaw 会在我本地用各账号专属指纹浏览器代我打开${ccNameZh},所有行为使用各账号自己的 IP 和账号`, '我理解平台账号风险由我自己承担'].map((term, i) => (
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzReplyTermsTitle')}</div>
+              {[i18nService.t('wzReplyTerm1').replace('{cc}', ccNameZh), i18nService.t('wzReplyTerm2')].map((term, i) => (
                 <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
                   <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-fuchsia-500 shrink-0" />
                   <span className="leading-relaxed">{term}</span>
@@ -260,13 +259,13 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
       )}
 
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
-        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">取消</button>
+        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzReplyCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">← 上一步</button>}
+        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzReplyPrevStep')}</button>}
         {step < 3 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">下一步 →</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">{i18nService.t('wzReplyNextStep')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">{saving ? '保存中...' : (editing ? '✓ 保存修改' : '💌 创建任务')}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">{saving ? i18nService.t('wzReplySaving') : (editing ? i18nService.t('wzReplySaveEdit') : i18nService.t('wzReplyCreateTask'))}</button>
         )}
       </div>
     </div>

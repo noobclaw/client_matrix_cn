@@ -21,12 +21,12 @@ export interface WizardAccount { id: string; displayName: string; status: string
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
 
 // AI 生图风格(对齐 backend imageStyles 的常用 key;未知值后端回落通用风格,不会报错)。
-const AI_STYLES: { value: string; label: string }[] = [
-  { value: 'ai_auto', label: '自动(按内容选)' },
-  { value: 'text_card', label: '文字卡片' },
-  { value: 'minimalist', label: '极简' },
-  { value: 'photographic', label: '写实摄影' },
-  { value: 'illustration', label: '插画' },
+const AI_STYLES: { value: string; labelKey: string }[] = [
+  { value: 'ai_auto', labelKey: 'wzImgStyleAuto' },
+  { value: 'text_card', labelKey: 'wzImgStyleTextCard' },
+  { value: 'minimalist', labelKey: 'wzImgStyleMinimalist' },
+  { value: 'photographic', labelKey: 'wzImgStylePhotographic' },
+  { value: 'illustration', labelKey: 'wzImgStyleIllustration' },
 ];
 
 export interface ImageTextWizardSave {
@@ -55,7 +55,6 @@ interface Props {
 }
 
 const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, downloadAccounts, initialTask, onCancel, onSave }) => {
-  const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
   // 视频号/头条本身没图文搜索 → 网络图要借【已登录抖音的号】搜+下图(一个抖音号服务 N 个发布号·串行)。
@@ -105,14 +104,14 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   );
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: selectedIds.length > 0, reason: isZh ? '请至少勾选一个已登录账号' : 'Select at least one account' },
+    1: { ok: selectedIds.length > 0, reason: i18nService.t('wzImgErrSelectAccount') },
     2: { ok: true }, // 参考文案全选填,随时可下一步
     3: useRealPhotos && selectedNoKeyword.length > 0
-      ? { ok: false, reason: `网络图模式需要每个号都配关键词,有 ${selectedNoKeyword.length} 个号未配(到「我的矩阵账号」编辑里加)` }
+      ? { ok: false, reason: i18nService.t('wzImgErrNoKeyword').replace('{n}', String(selectedNoKeyword.length)) }
       : (useRealPhotos && needsDownloadAccount && !downloadAccountId)
-        ? { ok: false, reason: `${platformLabel}本身搜不到网络图 → 请选 1 个【已登录抖音】的号当下图号(没有就先去「我的矩阵账号」加个抖音号)` }
+        ? { ok: false, reason: i18nService.t('wzImgErrNoDownloadAccount').replace('{platform}', platformLabel) }
         : { ok: true },
-    4: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
+    4: { ok: allTermsAccepted, reason: i18nService.t('wzImgErrAcceptTerms') },
   };
 
   const handleSave = async () => {
@@ -126,7 +125,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
       const refsOut: Record<string, string> = {};
       for (const id of selectedIds) { const v = (references[id] || '').trim(); if (v) refsOut[id] = v; }
       await onSave({
-        name: initialTask?.name || `${platformLabel}图文创作 · ${selectedIds.length} 个号`,
+        name: initialTask?.name || i18nService.t('wzImgTaskName').replace('{platform}', platformLabel).replace('{n}', String(selectedIds.length)),
         accountIds: selectedIds,
         concurrency: selectedIds.length,
         frequency: runInterval,
@@ -139,21 +138,21 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         imageDownloadAccountId: (useRealPhotos && needsDownloadAccount && downloadAccountId) ? downloadAccountId : undefined,
       });
     } catch (err) {
-      setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败' : 'Save failed'));
+      setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzImgErrSaveFailed'));
     } finally { setSaving(false); }
   };
 
   const intervalLabel = useMemo(() => {
-    const m: Record<string, string> = { once: '不重复（手动触发）', '3h': '每 3 小时', '6h': '每 6 小时', daily_random: '每日随机时间一次' };
+    const m: Record<string, string> = { once: i18nService.t('wzImgFreqOnce'), '3h': i18nService.t('wzImgFreq3h'), '6h': i18nService.t('wzImgFreq6h'), daily_random: i18nService.t('wzImgFreqDailyRandomSummary') };
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">📝 {editing ? `编辑${platformLabel}图文创作任务` : `配置${platformLabel}图文创作`}</div>
+        <div className="text-base font-semibold dark:text-white">📝 {editing ? i18nService.t('wzImgTitleEdit').replace('{platform}', platformLabel) : i18nService.t('wzImgTitleCreate').replace('{platform}', platformLabel)}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-emerald-500/40 text-emerald-500 bg-emerald-500/5">第 {step} / 4 步</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-emerald-500/40 text-emerald-500 bg-emerald-500/5">{i18nService.t('wzImgStepIndicator').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -162,29 +161,29 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         {step === 1 && (
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300">
-              📝 勾选多个已登录的{platformLabel}账号。每个号在各自指纹浏览器里按<strong>自己的赛道/人设/关键词</strong>(在「我的矩阵账号」里给每个号设)+ 随机文风,AI 生成<strong>各不相同</strong>的图文,自动配图并发到各自创作者中心。选几个号就同时开几个窗。
+              📝 {i18nService.t('wzImgStep1Tip').replace('{platform}', platformLabel)}
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                选 {platformLabel} 账号<span className="text-xs text-gray-400 font-normal ml-1">· 已登录{platformLabel}即可{selectedIds.length ? `;已选 ${selectedIds.length}` : ''}</span>
+                {i18nService.t('wzImgSelectAccountLabel').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">· {i18nService.t('wzImgSelectAccountHint').replace('{platform}', platformLabel)}{selectedIds.length ? i18nService.t('wzImgSelectedCount').replace('{n}', String(selectedIds.length)) : ''}</span>
               </label>
               <div className="space-y-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                 {accounts.length === 0 && accountsLoading && (
-                  <div className="p-3 text-center text-xs text-gray-400">账号加载中…</div>
+                  <div className="p-3 text-center text-xs text-gray-400">{i18nService.t('wzImgAccountsLoading')}</div>
                 )}
                 {accounts.length === 0 && !accountsLoading && (
                   <div className="p-3 text-center space-y-2.5">
-                    <div className="text-xs text-gray-400">该平台还没有账号。先去「我的矩阵账号」添加并扫码登录{platformLabel}。</div>
+                    <div className="text-xs text-gray-400">{i18nService.t('wzImgNoAccounts').replace('{platform}', platformLabel)}</div>
                     <button
                       type="button"
                       onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
                       className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 active:scale-95"
-                    >👥 去「我的矩阵账号」添加 →</button>
+                    >{i18nService.t('wzImgGoAddAccount')}</button>
                   </div>
                 )}
                 {accounts.map((a) => {
                   const ready = a.status !== 'login_required' && a.status !== 'banned';
-                  const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未连接' : '';
+                  const reason = a.status === 'banned' ? i18nService.t('wzImgStateBanned') : a.status === 'login_required' ? i18nService.t('wzImgStateDisconnected') : '';
                   const title = a.nickname || a.displayName;
                   const noKw = !a.keywords || a.keywords.length === 0;
                   return (
@@ -197,13 +196,13 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500">{PLATFORM_NAME[a.platform || ''] || a.platform}</span>
                           <span className="font-medium truncate dark:text-white">{title}</span>
-                          {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">{PLATFORM_NAME[a.platform || ''] || ''}号:{a.displayId}</span>}
+                          {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">{i18nService.t('wzImgAccountIdLabel').replace('{platform}', PLATFORM_NAME[a.platform || ''] || '')}{a.displayId}</span>}
                           {a.status === 'login_required'
-                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title="去「我的矩阵账号」扫码登录这个号" className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">未连接 · 去登录 →</button>
+                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title={i18nService.t('wzImgGoLoginTitle')} className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">{i18nService.t('wzImgDisconnectedGoLogin')}</button>
                             : reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
-                          {ready && noKw && <span className="text-[11px] text-amber-500 shrink-0">未配关键词</span>}
+                          {ready && noKw && <span className="text-[11px] text-amber-500 shrink-0">{i18nService.t('wzImgNoKeywordBadge')}</span>}
                         </div>
-                        <div className="text-[11px] text-gray-400 truncate">备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
+                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzImgRemarkLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
                       </div>
                     </label>
                   );
@@ -216,7 +215,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         {step === 2 && (
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300">
-              📄 给每个选中号各填一段参考文案(<strong>均可留空</strong>)。填了该号参考它创作,留空则该号按自己的赛道/人设/关键词 + 随机文风生成。这一步不填也能直接「下一步」。
+              📄 {i18nService.t('wzImgStep2Tip')}
             </div>
             <div className="space-y-2.5">
               {selectedIds.map((id) => {
@@ -231,11 +230,11 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                       <span className="font-medium truncate">{title}</span>
                       {a?.displayId && <span className="text-gray-400 shrink-0">· {a.displayId}</span>}
                     </div>
-                    <textarea value={references[id] || ''} onChange={(e) => setRef(id, e.target.value)} placeholder="(选填)给本号粘一段灵感/范文,留空则按本号赛道/人设/关键词生成" rows={2} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" disabled={saving} />
+                    <textarea value={references[id] || ''} onChange={(e) => setRef(id, e.target.value)} placeholder={i18nService.t('wzImgRefPlaceholder')} rows={2} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" disabled={saving} />
                   </div>
                 );
               })}
-              {selectedIds.length === 0 && <div className="text-xs text-gray-400">请先返回第 1 步勾选账号</div>}
+              {selectedIds.length === 0 && <div className="text-xs text-gray-400">{i18nService.t('wzImgNoSelectionBackToStep1')}</div>}
             </div>
           </>
         )}
@@ -243,33 +242,33 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         {step === 3 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ 配图方式<span className="text-xs text-gray-400 font-normal ml-1">· 全局统一,每个号各自找图</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ {i18nService.t('wzImgImageModeLabel')}<span className="text-xs text-gray-400 font-normal ml-1">· {i18nService.t('wzImgImageModeHint')}</span></label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setUseRealPhotos(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!useRealPhotos ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
-                  🎨 AI 生图<div className="text-[11px] text-gray-400 font-normal mt-0.5">每张独立生成,每号天然不同;质量稳、可控,成本较高</div>
+                  🎨 {i18nService.t('wzImgModeAiTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzImgModeAiDesc')}</div>
                 </button>
                 <button type="button" onClick={() => setUseRealPhotos(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${useRealPhotos ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
-                  🌐 网络图<div className="text-[11px] text-gray-400 font-normal mt-0.5">按本号关键词去抖音「图文」搜实景图(各号词不同→不撞图);近免费</div>
+                  🌐 {i18nService.t('wzImgModeWebTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzImgModeWebDesc')}</div>
                 </button>
               </div>
               {useRealPhotos && selectedNoKeyword.length > 0 && (
-                <div className="text-[11px] text-amber-500 mt-1.5">⚠ 有 {selectedNoKeyword.length} 个选中号没配关键词,网络图模式下它们会被跳过</div>
+                <div className="text-[11px] text-amber-500 mt-1.5">⚠ {i18nService.t('wzImgWebNoKeywordWarn').replace('{n}', String(selectedNoKeyword.length))}</div>
               )}
               {useRealPhotos && needsDownloadAccount && (
                 <div className="mt-3">
                   <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    🔻 抖音下图号<span className="text-xs text-gray-400 font-normal ml-1">· {platformLabel}本身搜不到网络图,用 1 个【已登录抖音】的号搜+下图喂给各号(一号服务多号 · 整任务串行)</span>
+                    🔻 {i18nService.t('wzImgDownloadAccountLabel')}<span className="text-xs text-gray-400 font-normal ml-1">· {i18nService.t('wzImgDownloadAccountHint').replace('{platform}', platformLabel)}</span>
                   </label>
                   {dlAccts.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-2.5 text-center">
-                      <div className="text-xs text-gray-400 mb-1.5">没有可用的抖音号。先去「我的矩阵账号」加一个并扫码登录抖音。</div>
-                      <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: 'douyin' } })); onCancel(); }} className="text-[11px] text-emerald-500 underline decoration-dotted hover:text-emerald-400">去添加抖音号 →</button>
+                      <div className="text-xs text-gray-400 mb-1.5">{i18nService.t('wzImgNoDouyinAccount')}</div>
+                      <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: 'douyin' } })); onCancel(); }} className="text-[11px] text-emerald-500 underline decoration-dotted hover:text-emerald-400">{i18nService.t('wzImgGoAddDouyin')}</button>
                     </div>
                   ) : (
                     <div className="space-y-1.5 max-h-48 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                       {dlAccts.map((a) => {
                         const ready = a.status !== 'banned' && a.status !== 'login_required';
-                        const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未连接' : '';
+                        const reason = a.status === 'banned' ? i18nService.t('wzImgStateBanned') : a.status === 'login_required' ? i18nService.t('wzImgStateDisconnected') : '';
                         const title = a.nickname || a.displayName;
                         return (
                           <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
@@ -279,14 +278,14 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                               : <span className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500">抖音</span>
+                                <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-500">{i18nService.t('wzImgDouyinBadge')}</span>
                                 <span className="font-medium truncate dark:text-white">{title}</span>
-                                {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">抖音号:{a.displayId}</span>}
+                                {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">{i18nService.t('wzImgDouyinIdLabel')}{a.displayId}</span>}
                                 {a.status === 'login_required'
-                                  ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: 'douyin' } })); onCancel(); }} title="去「我的矩阵账号」扫码登录这个抖音号" className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">未连接 · 去登录 →</button>
+                                  ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: 'douyin' } })); onCancel(); }} title={i18nService.t('wzImgGoLoginDouyinTitle')} className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">{i18nService.t('wzImgDisconnectedGoLogin')}</button>
                                   : reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
                               </div>
-                              <div className="text-[11px] text-gray-400 truncate">备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
+                              <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzImgRemarkLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
                             </div>
                           </label>
                         );
@@ -299,27 +298,27 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
             {!useRealPhotos && (
               <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🎨 AI 生图风格</label>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🎨 {i18nService.t('wzImgAiStyleLabel')}</label>
                 <select value={aiImageStyle} onChange={(e) => setAiImageStyle(e.target.value)} disabled={saving} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
-                  {AI_STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  {AI_STYLES.map((s) => <option key={s.value} value={s.value}>{i18nService.t(s.labelKey)}</option>)}
                 </select>
               </div>
             )}
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">每篇配图张数 <span className="text-emerald-500 font-bold">{imageCount}</span><span className="text-xs text-gray-400 font-normal ml-2">· 每个号每次运行生成 1 篇</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgImageCountLabel')} <span className="text-emerald-500 font-bold">{imageCount}</span><span className="text-xs text-gray-400 font-normal ml-2">· {i18nService.t('wzImgImageCountHint')}</span></label>
               <input type="range" min={2} max={6} value={imageCount} onChange={(e) => setImageCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
               <div className="flex justify-between text-[10px] text-gray-400"><span>2</span><span>6</span></div>
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 生成后</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 {i18nService.t('wzImgAfterGenLabel')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setAutoPublish(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${autoPublish ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
-                  🚀 直接群发<div className="text-[11px] text-gray-400 font-normal mt-0.5">各号生成后自动发布到创作者中心</div>
+                  🚀 {i18nService.t('wzImgPublishTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzImgPublishDesc')}</div>
                 </button>
                 <button type="button" onClick={() => setAutoPublish(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!autoPublish ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
-                  💾 仅本地<div className="text-[11px] text-gray-400 font-normal mt-0.5">只生成存本地,你审核后手动发</div>
+                  💾 {i18nService.t('wzImgLocalTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzImgLocalDesc')}</div>
                 </button>
               </div>
             </div>
@@ -330,25 +329,25 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         {step === 4 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ 运行频率</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ {i18nService.t('wzImgFreqLabel')}</label>
               <div className="flex gap-2 flex-wrap">
-                {[['once', '不重复（手动触发）'], ['3h', '每 3 小时'], ['6h', '每 6 小时'], ['daily_random', '每日随机时间']].map(([value, label]) => (
+                {[['once', i18nService.t('wzImgFreqOnce')], ['3h', i18nService.t('wzImgFreq3h')], ['6h', i18nService.t('wzImgFreq6h')], ['daily_random', i18nService.t('wzImgFreqDailyRandom')]].map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setRunInterval(value)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${runInterval === value ? 'border-emerald-500 bg-emerald-500/10 text-emerald-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>{label}</button>
                 ))}
               </div>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
-              <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
-              <SummaryRow label="账号" value={`${selectedIds.length} 个(各自身份+随机文风,内容互不相同)`} />
-              <SummaryRow label="配图" value={useRealPhotos ? `网络图,每篇 ${imageCount} 张(按本号关键词搜)` : `AI 生图,每篇 ${imageCount} 张(${AI_STYLES.find((s) => s.value === aiImageStyle)?.label || aiImageStyle})`} />
-              <SummaryRow label="数量" value={`每号每轮 1 篇,共 ${selectedIds.length} 篇/轮`} />
-              <SummaryRow label="发布" value={autoPublish ? '直接群发到各号创作者中心' : '仅本地保存(手动审核后发)'} />
-              <SummaryRow label="参考文案" value={`${selectedIds.filter((id) => (references[id] || '').trim()).length}/${selectedIds.length} 个号已填(其余按身份生成)`} />
-              <SummaryRow label="运行频率" value={intervalLabel} />
+              <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzImgSummaryTitle')}</div>
+              <SummaryRow label={i18nService.t('wzImgSummaryAccounts')} value={i18nService.t('wzImgSummaryAccountsVal').replace('{n}', String(selectedIds.length))} />
+              <SummaryRow label={i18nService.t('wzImgSummaryImage')} value={useRealPhotos ? i18nService.t('wzImgSummaryImageWeb').replace('{n}', String(imageCount)) : i18nService.t('wzImgSummaryImageAi').replace('{n}', String(imageCount)).replace('{style}', i18nService.t(AI_STYLES.find((s) => s.value === aiImageStyle)?.labelKey || '') || aiImageStyle)} />
+              <SummaryRow label={i18nService.t('wzImgSummaryCount')} value={i18nService.t('wzImgSummaryCountVal').replace('{n}', String(selectedIds.length))} />
+              <SummaryRow label={i18nService.t('wzImgSummaryPublish')} value={autoPublish ? i18nService.t('wzImgSummaryPublishAuto') : i18nService.t('wzImgSummaryPublishLocal')} />
+              <SummaryRow label={i18nService.t('wzImgSummaryRef')} value={i18nService.t('wzImgSummaryRefVal').replace('{filled}', String(selectedIds.filter((id) => (references[id] || '').trim()).length)).replace('{total}', String(selectedIds.length))} />
+              <SummaryRow label={i18nService.t('wzImgSummaryFreq')} value={intervalLabel} />
             </div>
             <div className="space-y-2">
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">使用条款</div>
-              {['我理解 NoobClaw 会在我本地用各账号专属指纹浏览器代我生成图文并发布', '我理解内容合规与平台账号风险由我自己承担'].map((term, i) => (
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzImgTermsTitle')}</div>
+              {[i18nService.t('wzImgTerm1'), i18nService.t('wzImgTerm2')].map((term, i) => (
                 <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
                   <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-emerald-500 shrink-0" />
                   <span className="leading-relaxed">{term}</span>
@@ -366,13 +365,13 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
       )}
 
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
-        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">取消</button>
+        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzImgCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">← 上一步</button>}
+        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzImgPrev')}</button>}
         {step < 4 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">下一步 →</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{i18nService.t('wzImgNext')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{saving ? '保存中...' : (editing ? '✓ 保存修改' : '📝 创建任务')}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{saving ? i18nService.t('wzImgSaving') : (editing ? i18nService.t('wzImgSaveEdit') : i18nService.t('wzImgCreateTask'))}</button>
         )}
       </div>
     </div>

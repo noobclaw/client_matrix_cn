@@ -69,9 +69,9 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, withImage, language, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: selectedIds.length > 0, reason: isZh ? '请至少勾选一个已登录账号' : 'Select at least one account' },
+    1: { ok: selectedIds.length > 0, reason: i18nService.t('wzBnPostErrSelectAccount') },
     2: { ok: true },
-    3: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
+    3: { ok: allTermsAccepted, reason: i18nService.t('wzBnPostErrAcceptTerms') },
   };
 
   const handleSave = async () => {
@@ -81,7 +81,7 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || `币安广场自动发帖 · ${selectedIds.length} 个号`,
+        name: initialTask?.name || i18nService.t('wzBnPostDefaultTaskName').replace('{n}', String(selectedIds.length)),
         accountIds: selectedIds,
         concurrency: selectedIds.length,
         frequency: runInterval,
@@ -90,23 +90,23 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
         autoPublish,
       });
     } catch (err) {
-      setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败' : 'Save failed'));
+      setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzBnPostErrSaveFailed'));
     } finally { setSaving(false); }
   };
 
   const intervalLabel = useMemo(() => {
-    const m: Record<string, string> = { once: '不重复（手动触发）', '3h': '每 3 小时', '6h': '每 6 小时', daily_random: '每日随机时间一次' };
+    const m: Record<string, string> = { once: i18nService.t('wzBnPostFreqOnce'), '3h': i18nService.t('wzBnPostFreq3h'), '6h': i18nService.t('wzBnPostFreq6h'), daily_random: i18nService.t('wzBnPostFreqDailyRandomOnce') };
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
-  const langLabel = (l: string) => (l === 'zh' ? '中文' : l === 'en' ? 'English' : '随账号语言(默认中文)');
+  const langLabel = (l: string) => (l === 'zh' ? i18nService.t('wzBnPostLangZh') : l === 'en' ? i18nService.t('wzBnPostLangEn') : i18nService.t('wzBnPostLangMixed'));
 
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">📊 {editing ? '编辑币安广场发帖任务' : '配置币安广场自动发帖'}</div>
+        <div className="text-base font-semibold dark:text-white">📊 {editing ? i18nService.t('wzBnPostTitleEdit') : i18nService.t('wzBnPostTitleCreate')}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-amber-500/40 text-amber-500 bg-amber-500/5">第 {step} / 3 步</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-amber-500/40 text-amber-500 bg-amber-500/5">{i18nService.t('wzBnPostStepIndicator').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -115,29 +115,29 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
         {step === 1 && (
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300">
-              📊 勾选多个已登录的{platformLabel}账号。每个号在各自指纹浏览器里抓近 3 周 web3 热门资讯,按<strong>自己的人设/赛道/关键词</strong>(在「我的矩阵账号」里给每个号设),AI 深度创作<strong>各不相同</strong>的币安广场图文,可选配图后发到币安广场。选几个号就同时开几个窗。
+              📊 {i18nService.t('wzBnPostIntroPart1').replace('{platform}', platformLabel)}<strong>{i18nService.t('wzBnPostIntroStrong1')}</strong>{i18nService.t('wzBnPostIntroPart2')}<strong>{i18nService.t('wzBnPostIntroStrong2')}</strong>{i18nService.t('wzBnPostIntroPart3')}
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                选 {platformLabel} 账号<span className="text-xs text-gray-400 font-normal ml-1">· 已登录{platformLabel}即可{selectedIds.length ? `;已选 ${selectedIds.length}` : ''}</span>
+                {i18nService.t('wzBnPostSelectAccountLabel').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzBnPostSelectAccountHint').replace('{platform}', platformLabel)}{selectedIds.length ? i18nService.t('wzBnPostSelectedCount').replace('{n}', String(selectedIds.length)) : ''}</span>
               </label>
               <div className="space-y-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                 {accounts.length === 0 && accountsLoading && (
-                  <div className="p-3 text-center text-xs text-gray-400">账号加载中…</div>
+                  <div className="p-3 text-center text-xs text-gray-400">{i18nService.t('wzBnPostAccountsLoading')}</div>
                 )}
                 {accounts.length === 0 && !accountsLoading && (
                   <div className="p-3 text-center space-y-2.5">
-                    <div className="text-xs text-gray-400">该平台还没有账号。先去「我的矩阵账号」添加并扫码登录{platformLabel}。</div>
+                    <div className="text-xs text-gray-400">{i18nService.t('wzBnPostNoAccounts').replace('{platform}', platformLabel)}</div>
                     <button
                       type="button"
                       onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
                       className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-amber-500 hover:bg-amber-600 active:scale-95"
-                    >👥 去「我的矩阵账号」添加 →</button>
+                    >{i18nService.t('wzBnPostGoAddAccount')}</button>
                   </div>
                 )}
                 {accounts.map((a) => {
                   const ready = a.status !== 'login_required' && a.status !== 'banned';
-                  const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未连接' : '';
+                  const reason = a.status === 'banned' ? i18nService.t('wzBnPostStatusBanned') : a.status === 'login_required' ? i18nService.t('wzBnPostStatusDisconnected') : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
@@ -151,10 +151,10 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
                           <span className="font-medium truncate dark:text-white">{title}</span>
                           {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">@{a.displayId}</span>}
                           {a.status === 'login_required'
-                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title="去「我的矩阵账号」扫码登录这个号" className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">未连接 · 去登录 →</button>
+                            ? <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: a.platform || platform } })); onCancel(); }} title={i18nService.t('wzBnPostGoLoginTitle')} className="text-[11px] text-amber-500 underline decoration-dotted hover:text-amber-400 shrink-0">{i18nService.t('wzBnPostGoLogin')}</button>
                             : reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
                         </div>
-                        <div className="text-[11px] text-gray-400 truncate">备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
+                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzBnPostRemarkPrefix')}{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
                       </div>
                     </label>
                   );
@@ -168,7 +168,7 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
         {step === 2 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 写作语言</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzBnPostLangLabel')}</label>
               <div className="flex gap-2 flex-wrap">
                 {(['mixed', 'zh', 'en'] as const).map((l) => (
                   <button key={l} type="button" onClick={() => setLanguage(l)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${language === l ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>{langLabel(l)}</button>
@@ -177,25 +177,25 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ 配图</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzBnPostImageLabel')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setWithImage(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  📝 纯文字<div className="text-[11px] text-gray-400 font-normal mt-0.5">只发文字帖,最快、零配图成本</div>
+                  {i18nService.t('wzBnPostImageTextOnly')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnPostImageTextOnlyDesc')}</div>
                 </button>
                 <button type="button" onClick={() => setWithImage(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  🎨 配图<div className="text-[11px] text-gray-400 font-normal mt-0.5">更吸睛。web3 资讯优先用原文自带图,无图才 AI 生图(走生图 token)</div>
+                  {i18nService.t('wzBnPostImageWith')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnPostImageWithDesc')}</div>
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 生成后</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzBnPostAfterGenLabel')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setAutoPublish(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${autoPublish ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  🚀 直接群发<div className="text-[11px] text-gray-400 font-normal mt-0.5">各号生成后自动发到币安广场</div>
+                  {i18nService.t('wzBnPostPublishAuto')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnPostPublishAutoDesc')}</div>
                 </button>
                 <button type="button" onClick={() => setAutoPublish(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!autoPublish ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  💾 仅生成不发<div className="text-[11px] text-gray-400 font-normal mt-0.5">只生成正文(在日志里看),不自动发布</div>
+                  {i18nService.t('wzBnPostPublishDraft')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnPostPublishDraftDesc')}</div>
                 </button>
               </div>
             </div>
@@ -205,26 +205,26 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
         {step === 3 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ 运行频率</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzBnPostFreqLabel')}</label>
               <div className="flex gap-2 flex-wrap">
-                {[['once', '不重复（手动触发）'], ['3h', '每 3 小时'], ['6h', '每 6 小时'], ['daily_random', '每日随机时间']].map(([value, label]) => (
+                {[['once', i18nService.t('wzBnPostFreqOnce')], ['3h', i18nService.t('wzBnPostFreq3h')], ['6h', i18nService.t('wzBnPostFreq6h')], ['daily_random', i18nService.t('wzBnPostFreqDailyRandom')]].map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setRunInterval(value)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${runInterval === value ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>{label}</button>
                 ))}
               </div>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
-              <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
-              <SummaryRow label="账号" value={`${selectedIds.length} 个(各自身份,内容互不相同)`} />
-              <SummaryRow label="内容来源" value="web3 资讯深度创作" />
-              <SummaryRow label="语言" value={langLabel(language)} />
-              <SummaryRow label="配图" value={withImage ? '配图(源图优先 → AI 生图)' : '纯文字'} />
-              <SummaryRow label="数量" value={`每号每轮 1 条,共 ${selectedIds.length} 条/轮`} />
-              <SummaryRow label="发布" value={autoPublish ? '直接群发到币安广场' : '仅生成不发(日志里看)'} />
-              <SummaryRow label="运行频率" value={intervalLabel} />
+              <div className="font-semibold dark:text-gray-200 mb-1">{i18nService.t('wzBnPostSummaryTitle')}</div>
+              <SummaryRow label={i18nService.t('wzBnPostSummaryAccounts')} value={i18nService.t('wzBnPostSummaryAccountsValue').replace('{n}', String(selectedIds.length))} />
+              <SummaryRow label={i18nService.t('wzBnPostSummarySource')} value={i18nService.t('wzBnPostSummarySourceValue')} />
+              <SummaryRow label={i18nService.t('wzBnPostSummaryLanguage')} value={langLabel(language)} />
+              <SummaryRow label={i18nService.t('wzBnPostSummaryImage')} value={withImage ? i18nService.t('wzBnPostSummaryImageWith') : i18nService.t('wzBnPostSummaryImageTextOnly')} />
+              <SummaryRow label={i18nService.t('wzBnPostSummaryCount')} value={i18nService.t('wzBnPostSummaryCountValue').replace('{n}', String(selectedIds.length))} />
+              <SummaryRow label={i18nService.t('wzBnPostSummaryPublish')} value={autoPublish ? i18nService.t('wzBnPostSummaryPublishAuto') : i18nService.t('wzBnPostSummaryPublishDraft')} />
+              <SummaryRow label={i18nService.t('wzBnPostSummaryFreq')} value={intervalLabel} />
             </div>
             <div className="space-y-2">
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">使用条款</div>
-              {['我理解 NoobClaw 会在我本地用各账号专属指纹浏览器代我生成并发布币安广场图文', '我理解内容合规与平台账号风险由我自己承担'].map((term, i) => (
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzBnPostTermsTitle')}</div>
+              {[i18nService.t('wzBnPostTerm1'), i18nService.t('wzBnPostTerm2')].map((term, i) => (
                 <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
                   <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-amber-500 shrink-0" />
                   <span className="leading-relaxed">{term}</span>
@@ -242,13 +242,13 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
       )}
 
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
-        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">取消</button>
+        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzBnPostCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">← 上一步</button>}
+        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzBnPostPrev')}</button>}
         {step < 3 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">下一步 →</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">{i18nService.t('wzBnPostNext')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">{saving ? '保存中...' : (editing ? '✓ 保存修改' : '📊 创建任务')}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">{saving ? i18nService.t('wzBnPostSaving') : (editing ? i18nService.t('wzBnPostSaveEdit') : i18nService.t('wzBnPostCreateTask'))}</button>
         )}
       </div>
     </div>

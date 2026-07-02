@@ -63,7 +63,6 @@ interface Props {
 }
 
 const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, accounts, sourceAccounts, accountsLoading, initialTask, onCancel, onSave }) => {
-  const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
 
@@ -99,10 +98,10 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, sourcePlatform, sourceAccountId, withImage, language, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: selectedIds.length > 0, reason: isZh ? '请至少勾选一个已登录币安账号' : 'Select at least one account' },
-    2: { ok: !!sourceAccountId, reason: isZh ? '请选择一个采集号(源平台上已登录的号)' : 'Pick a source account' },
+    1: { ok: selectedIds.length > 0, reason: i18nService.t('wzBnRepostReasonSelectAccount') },
+    2: { ok: !!sourceAccountId, reason: i18nService.t('wzBnRepostReasonPickSource') },
     3: { ok: true },
-    4: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
+    4: { ok: allTermsAccepted, reason: i18nService.t('wzBnRepostReasonAcceptTerms') },
   };
 
   const handleSave = async () => {
@@ -113,7 +112,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || `币安广场批量搬运 · ${PLATFORM_NAME[sourcePlatform]}→币安 · ${selectedIds.length} 个号`,
+        name: initialTask?.name || i18nService.t('wzBnRepostTaskName').replace('{platform}', PLATFORM_NAME[sourcePlatform]).replace('{n}', String(selectedIds.length)),
         accountIds: selectedIds,
         concurrency: 1,
         frequency: runInterval,
@@ -125,24 +124,24 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
         autoPublish,
       });
     } catch (err) {
-      setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败' : 'Save failed'));
+      setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzBnRepostSaveFailed'));
     } finally { setSaving(false); }
   };
 
   const intervalLabel = useMemo(() => {
-    const m: Record<string, string> = { once: '不重复（手动触发）', '3h': '每 3 小时', '6h': '每 6 小时', daily_random: '每日随机时间一次' };
+    const m: Record<string, string> = { once: i18nService.t('wzBnRepostIntervalOnceFull'), '3h': i18nService.t('wzBnRepostInterval3h'), '6h': i18nService.t('wzBnRepostInterval6h'), daily_random: i18nService.t('wzBnRepostIntervalDailyRandomFull') };
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
-  const langLabel = (l: string) => (l === 'zh' ? '中文' : l === 'en' ? 'English' : '随账号语言(默认中文)');
+  const langLabel = (l: string) => (l === 'zh' ? i18nService.t('wzBnRepostLangZh') : l === 'en' ? i18nService.t('wzBnRepostLangEn') : i18nService.t('wzBnRepostLangMixed'));
   const srcAcc = sourceCandidates.find((a) => a.id === sourceAccountId);
 
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">♻️ {editing ? '编辑币安广场搬运任务' : '配置币安广场批量搬运'}</div>
+        <div className="text-base font-semibold dark:text-white">♻️ {editing ? i18nService.t('wzBnRepostTitleEdit') : i18nService.t('wzBnRepostTitleCreate')}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-amber-500/40 text-amber-500 bg-amber-500/5">第 {step} / 4 步</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-amber-500/40 text-amber-500 bg-amber-500/5">{i18nService.t('wzBnRepostStepIndicator').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -151,23 +150,23 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
         {step === 1 && (
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300">
-              ♻️ 勾选多个已登录的{platformLabel}发布号。下一步再选 1 个源平台采集号:它按关键词搜+下素材,采够后每个币安号<strong>各领一条独立仿写</strong>发出去(两号不撞同源、文案各不同)。
+              ♻️ {i18nService.t('wzBnRepostStep1IntroA').replace('{platform}', platformLabel)}<strong>{i18nService.t('wzBnRepostStep1IntroStrong')}</strong>{i18nService.t('wzBnRepostStep1IntroB')}
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                选 {platformLabel} 发布号<span className="text-xs text-gray-400 font-normal ml-1">· 已登录即可{selectedIds.length ? `;已选 ${selectedIds.length}` : ''}</span>
+                {i18nService.t('wzBnRepostSelectPublisherLabel').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzBnRepostSelectPublisherHint')}{selectedIds.length ? i18nService.t('wzBnRepostSelectedCount').replace('{n}', String(selectedIds.length)) : ''}</span>
               </label>
               <div className="space-y-1.5 max-h-64 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
-                {accounts.length === 0 && accountsLoading && (<div className="p-3 text-center text-xs text-gray-400">账号加载中…</div>)}
+                {accounts.length === 0 && accountsLoading && (<div className="p-3 text-center text-xs text-gray-400">{i18nService.t('wzBnRepostAccountsLoading')}</div>)}
                 {accounts.length === 0 && !accountsLoading && (
                   <div className="p-3 text-center space-y-2.5">
-                    <div className="text-xs text-gray-400">该平台还没有账号。先去「我的矩阵账号」添加并扫码登录{platformLabel}。</div>
-                    <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }} className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-amber-500 hover:bg-amber-600 active:scale-95">👥 去「我的矩阵账号」添加 →</button>
+                    <div className="text-xs text-gray-400">{i18nService.t('wzBnRepostNoAccounts').replace('{platform}', platformLabel)}</div>
+                    <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }} className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-amber-500 hover:bg-amber-600 active:scale-95">{i18nService.t('wzBnRepostGoAddAccounts')}</button>
                   </div>
                 )}
                 {accounts.map((a) => {
                   const ready = a.status !== 'login_required' && a.status !== 'banned';
-                  const reason = a.status === 'banned' ? '已封' : a.status === 'login_required' ? '未连接' : '';
+                  const reason = a.status === 'banned' ? i18nService.t('wzBnRepostStatusBanned') : a.status === 'login_required' ? i18nService.t('wzBnRepostStatusDisconnected') : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
@@ -182,7 +181,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
                           {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">@{a.displayId}</span>}
                           {reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
                         </div>
-                        <div className="text-[11px] text-gray-400 truncate">备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
+                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzBnRepostRemarkPrefix')}{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
                       </div>
                     </label>
                   );
@@ -195,33 +194,33 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
         {step === 2 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🎞️ 搬运形态<span className="text-xs text-gray-400 font-normal ml-1">· 先选形态,下面来源平台跟着变</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🎞️ {i18nService.t('wzBnRepostMaterialLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzBnRepostMaterialHint')}</span></label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => { setMaterial('image'); setSourcePlatform(firstEnabledSource('image')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'image' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  🖼️ 图文<div className="text-[11px] text-gray-400 font-normal mt-0.5">小红书 / X 源图 + 仿写正文 → 币安图文帖</div>
+                  🖼️ {i18nService.t('wzBnRepostMaterialImage')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostMaterialImageDesc')}</div>
                 </button>
                 <button type="button" onClick={() => { setMaterial('video'); setSourcePlatform(firstEnabledSource('video')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'video' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  🎬 视频<div className="text-[11px] text-gray-400 font-normal mt-0.5">抖音 / TikTok 无水印源视频 + 仿写配文 → 币安视频帖(TikTok 须VPN)</div>
+                  🎬 {i18nService.t('wzBnRepostMaterialVideo')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostMaterialVideoDesc')}</div>
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 来源平台<span className="text-xs text-gray-400 font-normal ml-1">· {material === 'image' ? '图文源:小红书 / X' : '视频源:抖音 / TikTok'}</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 {i18nService.t('wzBnRepostSourcePlatformLabel')}<span className="text-xs text-gray-400 font-normal ml-1">· {material === 'image' ? i18nService.t('wzBnRepostSourceHintImage') : i18nService.t('wzBnRepostSourceHintVideo')}</span></label>
               <div className="flex gap-2 flex-wrap">
                 {SOURCE_BY_MATERIAL[material].map((sp) => (
-                  <button key={sp.id} type="button" disabled={!sp.enabled} onClick={() => { if (sp.enabled) { setSourcePlatform(sp.id); setSourceAccountId(''); } }} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${sourcePlatform === sp.id ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'} ${!sp.enabled ? 'opacity-40 cursor-not-allowed' : ''}`}>{sp.label}{!sp.enabled ? '(敬请期待)' : ''}</button>
+                  <button key={sp.id} type="button" disabled={!sp.enabled} onClick={() => { if (sp.enabled) { setSourcePlatform(sp.id); setSourceAccountId(''); } }} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${sourcePlatform === sp.id ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'} ${!sp.enabled ? 'opacity-40 cursor-not-allowed' : ''}`}>{sp.label}{!sp.enabled ? i18nService.t('wzBnRepostComingSoon') : ''}</button>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🧺 采集号<span className="text-xs text-gray-400 font-normal ml-1">· 选 1 个{PLATFORM_NAME[sourcePlatform]}上已登录的号(它负责搜+下素材)</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🧺 {i18nService.t('wzBnRepostCollectorLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzBnRepostCollectorHint').replace('{platform}', PLATFORM_NAME[sourcePlatform])}</span></label>
               <div className="space-y-1.5 max-h-48 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                 {sourceCandidates.length === 0 && (
                   <div className="p-3 text-center space-y-2.5">
-                    <div className="text-xs text-gray-400">没有{PLATFORM_NAME[sourcePlatform]}账号。先去「我的矩阵账号」添加并登录一个{PLATFORM_NAME[sourcePlatform]}号当采集号。</div>
-                    <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: sourcePlatform } })); onCancel(); }} className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-amber-500 hover:bg-amber-600 active:scale-95">👥 去添加{PLATFORM_NAME[sourcePlatform]}号 →</button>
+                    <div className="text-xs text-gray-400">{i18nService.t('wzBnRepostNoCollector').replace('{platform}', PLATFORM_NAME[sourcePlatform])}</div>
+                    <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: sourcePlatform } })); onCancel(); }} className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-amber-500 hover:bg-amber-600 active:scale-95">{i18nService.t('wzBnRepostGoAddCollector').replace('{platform}', PLATFORM_NAME[sourcePlatform])}</button>
                   </div>
                 )}
                 {sourceCandidates.map((a) => {
@@ -238,9 +237,9 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
                           <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">{PLATFORM_NAME[a.platform || ''] || a.platform}</span>
                           <span className="font-medium truncate dark:text-white">{title}</span>
                           {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">@{a.displayId}</span>}
-                          {!ready && <span className="text-[11px] text-amber-500 shrink-0">{a.status === 'banned' ? '已封' : '未连接'}</span>}
+                          {!ready && <span className="text-[11px] text-amber-500 shrink-0">{a.status === 'banned' ? i18nService.t('wzBnRepostStatusBanned') : i18nService.t('wzBnRepostStatusDisconnected')}</span>}
                         </div>
-                        <div className="text-[11px] text-gray-400 truncate">备注:{a.displayName}{a.group ? ` · ${a.group}` : ''}{Array.isArray(a.keywords) && a.keywords.length > 0 ? ` · 关键词:${a.keywords.join('、')}` : ''}</div>
+                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzBnRepostRemarkPrefix')}{a.displayName}{a.group ? ` · ${a.group}` : ''}{Array.isArray(a.keywords) && a.keywords.length > 0 ? `${i18nService.t('wzBnRepostKeywordsPrefix')}${a.keywords.join('、')}` : ''}</div>
                       </div>
                     </label>
                   );
@@ -249,11 +248,11 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🔍 搜索关键词<span className="text-xs text-gray-400 font-normal ml-1">· 直接用采集号自己的关键词(每轮随机轮换,搜尽自动换下一个)</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🔍 {i18nService.t('wzBnRepostKeywordLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzBnRepostKeywordHint')}</span></label>
               <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-[12px] text-gray-600 dark:text-gray-300 min-h-[38px] flex items-center">
                 {srcAcc && Array.isArray(srcAcc.keywords) && srcAcc.keywords.length > 0
                   ? srcAcc.keywords.join('、')
-                  : <span className="text-amber-500">该采集号还没设关键词 —— 去「我的矩阵账号」给它加几个赛道关键词</span>}
+                  : <span className="text-amber-500">{i18nService.t('wzBnRepostNoKeywords')}</span>}
               </div>
             </div>
 
@@ -263,7 +262,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
         {step === 3 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 仿写语言</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 {i18nService.t('wzBnRepostRewriteLangLabel')}</label>
               <div className="flex gap-2 flex-wrap">
                 {(['mixed', 'zh', 'en'] as const).map((l) => (
                   <button key={l} type="button" onClick={() => setLanguage(l)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${language === l ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>{langLabel(l)}</button>
@@ -272,25 +271,25 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
             </div>
             {material === 'image' && (
               <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ 配图</label>
+                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ {i18nService.t('wzBnRepostImageLabel')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setWithImage(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                    🎨 配源图<div className="text-[11px] text-gray-400 font-normal mt-0.5">用采集号下好的源图(贴合内容、零生图成本)</div>
+                    🎨 {i18nService.t('wzBnRepostImageWithSource')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostImageWithSourceDesc')}</div>
                   </button>
                   <button type="button" onClick={() => setWithImage(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                    📝 纯文字<div className="text-[11px] text-gray-400 font-normal mt-0.5">只发仿写正文,不配图</div>
+                    📝 {i18nService.t('wzBnRepostImageTextOnly')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostImageTextOnlyDesc')}</div>
                   </button>
                 </div>
               </div>
             )}
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 生成后</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 {i18nService.t('wzBnRepostAfterGenLabel')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setAutoPublish(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${autoPublish ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  🚀 直接群发<div className="text-[11px] text-gray-400 font-normal mt-0.5">各号仿写后自动发到币安广场</div>
+                  🚀 {i18nService.t('wzBnRepostPublishNow')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostPublishNowDesc')}</div>
                 </button>
                 <button type="button" onClick={() => setAutoPublish(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!autoPublish ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
-                  💾 仅生成不发<div className="text-[11px] text-gray-400 font-normal mt-0.5">只生成正文(日志里看),不自动发布</div>
+                  💾 {i18nService.t('wzBnRepostGenOnly')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostGenOnlyDesc')}</div>
                 </button>
               </div>
             </div>
@@ -300,28 +299,28 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
         {step === 4 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ 运行频率</label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ {i18nService.t('wzBnRepostFrequencyLabel')}</label>
               <div className="flex gap-2 flex-wrap">
-                {[['once', '不重复（手动触发）'], ['3h', '每 3 小时'], ['6h', '每 6 小时'], ['daily_random', '每日随机时间']].map(([value, label]) => (
+                {[['once', i18nService.t('wzBnRepostIntervalOnce')], ['3h', i18nService.t('wzBnRepostInterval3h')], ['6h', i18nService.t('wzBnRepostInterval6h')], ['daily_random', i18nService.t('wzBnRepostIntervalDailyRandom')]].map(([value, label]) => (
                   <button key={value} type="button" onClick={() => setRunInterval(value)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${runInterval === value ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>{label}</button>
                 ))}
               </div>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
-              <div className="font-semibold dark:text-gray-200 mb-1">📋 任务摘要</div>
-              <SummaryRow label="来源" value={`${PLATFORM_NAME[sourcePlatform]} · 采集号 ${srcAcc ? (srcAcc.nickname || srcAcc.displayName) : '(未选)'}`} />
-              <SummaryRow label="关键词" value={srcAcc && Array.isArray(srcAcc.keywords) && srcAcc.keywords.length ? `采集号关键词(${srcAcc.keywords.length} 个,随机轮换)` : '采集号关键词'} />
-              <SummaryRow label="形态" value={material === 'image' ? '图文(源图+仿写)' : '视频'} />
-              <SummaryRow label="发布号" value={`${selectedIds.length} 个币安号,各领一条独立仿写`} />
-              <SummaryRow label="语言" value={langLabel(language)} />
-              <SummaryRow label="配图" value={material === 'video' ? '视频帖(自带画面)' : (withImage ? '配源图' : '纯文字')} />
-              <SummaryRow label="节奏" value="每号顺序发,相邻两条间隔 1-2 分钟" />
-              <SummaryRow label="发布" value={autoPublish ? '直接群发到币安广场' : '仅生成不发'} />
-              <SummaryRow label="运行频率" value={intervalLabel} />
+              <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzBnRepostSummaryTitle')}</div>
+              <SummaryRow label={i18nService.t('wzBnRepostSummarySource')} value={`${PLATFORM_NAME[sourcePlatform]} · ${i18nService.t('wzBnRepostSummarySourceCollector').replace('{name}', srcAcc ? (srcAcc.nickname || srcAcc.displayName) : i18nService.t('wzBnRepostSummaryNotSelected'))}`} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryKeyword')} value={srcAcc && Array.isArray(srcAcc.keywords) && srcAcc.keywords.length ? i18nService.t('wzBnRepostSummaryKeywordCount').replace('{n}', String(srcAcc.keywords.length)) : i18nService.t('wzBnRepostSummaryKeywordPlain')} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryMaterial')} value={material === 'image' ? i18nService.t('wzBnRepostSummaryMaterialImage') : i18nService.t('wzBnRepostSummaryMaterialVideo')} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryPublisher')} value={i18nService.t('wzBnRepostSummaryPublisherValue').replace('{n}', String(selectedIds.length))} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryLanguage')} value={langLabel(language)} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryImage')} value={material === 'video' ? i18nService.t('wzBnRepostSummaryImageVideo') : (withImage ? i18nService.t('wzBnRepostSummaryImageWithSource') : i18nService.t('wzBnRepostSummaryImageTextOnly'))} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryPace')} value={i18nService.t('wzBnRepostSummaryPaceValue')} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryPublish')} value={autoPublish ? i18nService.t('wzBnRepostSummaryPublishAuto') : i18nService.t('wzBnRepostSummaryPublishGenOnly')} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryFrequency')} value={intervalLabel} />
             </div>
             <div className="space-y-2">
-              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">使用条款</div>
-              {['我理解 NoobClaw 会在我本地用采集号搜集素材、用各币安号专属指纹浏览器代我仿写并发布', '我理解搬运内容的版权/合规与平台账号风险由我自己承担'].map((term, i) => (
+              <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzBnRepostTermsTitle')}</div>
+              {[i18nService.t('wzBnRepostTerm1'), i18nService.t('wzBnRepostTerm2')].map((term, i) => (
                 <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
                   <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-amber-500 shrink-0" />
                   <span className="leading-relaxed">{term}</span>
@@ -339,13 +338,13 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
       )}
 
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
-        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">取消</button>
+        <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzBnRepostCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">← 上一步</button>}
+        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzBnRepostPrev')}</button>}
         {step < 4 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">下一步 →</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">{i18nService.t('wzBnRepostNext')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">{saving ? '保存中...' : (editing ? '✓ 保存修改' : '♻️ 创建任务')}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">{saving ? i18nService.t('wzBnRepostSaving') : (editing ? i18nService.t('wzBnRepostSaveEdit') : i18nService.t('wzBnRepostCreate'))}</button>
         )}
       </div>
     </div>
