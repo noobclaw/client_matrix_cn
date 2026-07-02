@@ -250,8 +250,8 @@ export const RunHistoryPage: React.FC<Props> = ({
           <div>
             <h2 className="text-lg font-bold dark:text-white">
               📊 {filterByTaskId
-                ? (isZh ? `任务 #${filterByTaskId.slice(0, 8)} 的运行记录` : `Run History · #${filterByTaskId.slice(0, 8)}`)
-                : (isZh ? `${platformLabel}运行记录` : `${platformLabel} Run History`)}
+                ? i18nService.t('rhTitleTask').replace('{id}', filterByTaskId.slice(0, 8))
+                : i18nService.t('rhTitlePlatform').replace('{platform}', platformLabel)}
             </h2>
             {filterByTaskId && onClearFilter && (
               <button
@@ -259,12 +259,12 @@ export const RunHistoryPage: React.FC<Props> = ({
                 onClick={onClearFilter}
                 className="mt-1 text-xs text-blue-500 hover:underline"
               >
-                ← {isZh ? '查看所有' : 'Show all'}{platformLabel}{isZh ? '运行记录' : 'runs'}
+                ← {i18nService.t('rhShowAll').replace('{platform}', platformLabel)}
               </button>
             )}
             {filteredTaskName && (
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {isZh ? '任务: ' : 'Task: '}{filteredTaskName}
+                {i18nService.t('rhTaskColon')}{filteredTaskName}
               </div>
             )}
           </div>
@@ -273,16 +273,16 @@ export const RunHistoryPage: React.FC<Props> = ({
         {loading && records.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
             <span className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
-            {isZh ? '加载中...' : 'Loading...'}
+            {i18nService.t('rhLoading')}
           </div>
         ) : records.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
             <div className="text-4xl mb-2">📜</div>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-              {isZh ? `没有${platformLabel}运行记录` : `No ${platformLabel} runs yet`}
+              {i18nService.t('rhNoneForPlatform').replace('{platform}', platformLabel)}
             </div>
             <div className="text-xs text-gray-400 dark:text-gray-500">
-              {isZh ? '任务运行后这里会自动出现历史记录' : 'Run history appears here after a task executes'}
+              {i18nService.t('rhEmptyHint')}
             </div>
           </div>
         ) : (
@@ -303,11 +303,11 @@ export const RunHistoryPage: React.FC<Props> = ({
                 : null;
               const statusPill = (() => {
                 switch (rec.status) {
-                  case 'done':    return { icon: '✅', label: isZh ? '成功' : 'Success', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-                  case 'partial': return { icon: '⚠️', label: isZh ? '部分成功' : 'Partial', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-                  case 'error':   return { icon: '❌', label: isZh ? '失败' : 'Failed',  color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-                  case 'stopped': return { icon: '⏹️', label: isZh ? '已停止' : 'Stopped', color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
-                  case 'running': return { icon: '⏳', label: isZh ? '运行中' : 'Running', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                  case 'done':    return { icon: '✅', label: i18nService.t('rhStatusSuccess'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                  case 'partial': return { icon: '⚠️', label: i18nService.t('rhStatusPartial'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                  case 'error':   return { icon: '❌', label: i18nService.t('rhStatusFailed'),  color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                  case 'stopped': return { icon: '⏹️', label: i18nService.t('rhStatusStopped'), color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
+                  case 'running': return { icon: '⏳', label: i18nService.t('rhStatusRunning'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };
                   default:        return { icon: '❓', label: rec.status, color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
                 }
               })();
@@ -347,7 +347,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                         const tokens = Number(rec.result?.tokens_used) || 0;
                         const cost = Number((rec.result as any)?.cost_usd) || 0;
                         return (
-                          <span title={isZh ? 'AI Token × 每百万单价 ≈ 美金' : 'tokens × $/M ≈ USD'}>
+                          <span title={i18nService.t('rhCostTip')}>
                             · 💎 {compactNum(tokens)} {HIDE_WEB3 ? `≈ ￥${cnyFromUsd(cost)}` : `≈ $${cost.toFixed(4)}`}
                           </span>
                         );
@@ -373,9 +373,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                     if (!ac && !at) return null;
                     const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = isZh
-                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
-                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
+                    const labels: Record<string, string> = { like: i18nService.t('rhActLike'), follow: i18nService.t('rhActFollow'), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
                     // Union of keys present in either map — running rows
                     // may briefly have only targets (orchestrator set
                     // them, no addActionCount yet); completed rows have
@@ -407,7 +405,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                     return (
                       <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 flex-wrap" title={isZh ? (isRunning ? '本次运行已完成 / 计划目标' : '本次完成的动作') : (isRunning ? 'Done / planned this run' : 'Actions completed this run')}>
                         <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
-                          {isZh ? (isRunning ? '本次运行进度' : '本次完成') : (isRunning ? 'Current Run Progress' : 'Actions')}:
+                          {isRunning ? i18nService.t('rhCurrentProgress') : i18nService.t('rhActionsDone')}:
                         </span>
                         {keys.map(k => {
                           const done = ac?.[k] ?? 0;
@@ -433,9 +431,9 @@ export const RunHistoryPage: React.FC<Props> = ({
                   {/* IDs row — both task id and record id so users can
                       tell separate runs of the same task apart. */}
                   <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 dark:text-gray-500 font-mono">
-                    <span>{isZh ? '任务id:' : 'task:'} #{rec.task_id.slice(0, 8)}</span>
+                    <span>{i18nService.t('rhTaskId')} #{rec.task_id.slice(0, 8)}</span>
                     <span>·</span>
-                    <span>{isZh ? '记录id:' : 'record:'} #{shortId(rec.id)}</span>
+                    <span>{i18nService.t('rhRecordId')} #{shortId(rec.id)}</span>
                   </div>
                   {/* Result summary + error reason */}
                   {(rec.error || (rec as any).summary || rec.result) && (
@@ -463,21 +461,21 @@ export const RunHistoryPage: React.FC<Props> = ({
                       )}
                       {rec.result && typeof rec.result.collected_count === 'number' && rec.result.collected_count > 0 && (
                         <span className="mr-2">
-                          {isZh ? `采集 ${rec.result.collected_count} 条` : `Collected ${rec.result.collected_count}`}
+                          {i18nService.t('rhCollected').replace('{n}', String(rec.result.collected_count))}
                         </span>
                       )}
                       {rec.result && typeof rec.result.draft_count === 'number' && rec.result.draft_count > 0 && (
                         <span className="mr-2">
-                          {isZh ? `产出 ${rec.result.draft_count} 条` : `Produced ${rec.result.draft_count}`}
+                          {i18nService.t('rhProduced').replace('{n}', String(rec.result.draft_count))}
                         </span>
                       )}
                       {rec.result && typeof rec.result.posted === 'number' && rec.result.posted > 0 && (
                         <span className="mr-2">
-                          {isZh ? `发布 ${rec.result.posted} 条` : `Posted ${rec.result.posted}`}
+                          {i18nService.t('rhPosted').replace('{n}', String(rec.result.posted))}
                         </span>
                       )}
                       <span className="text-[10px] text-gray-400">
-                        {isZh ? `· ${rec.step_logs.length} 条日志` : `· ${rec.step_logs.length} log entries`}
+                        {i18nService.t('rhLogEntries').replace('{n}', String(rec.step_logs.length))}
                       </span>
                     </div>
                   )}
@@ -494,12 +492,10 @@ export const RunHistoryPage: React.FC<Props> = ({
                   disabled={safePage === 1}
                   className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-green-500/50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  « {isZh ? '上一页' : 'Prev'}
+                  « {i18nService.t('rhPrev')}
                 </button>
                 <span className="text-gray-500 dark:text-gray-400 min-w-[120px] text-center">
-                  {isZh
-                    ? `第 ${safePage} / ${totalPages} 页（共 ${records.length} 条）`
-                    : `Page ${safePage} / ${totalPages} (${records.length} total)`}
+                  {i18nService.t('rhPageInfo').replace('{cur}', String(safePage)).replace('{total}', String(totalPages)).replace('{count}', String(records.length))}
                 </span>
                 <button
                   type="button"
@@ -507,7 +503,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                   disabled={safePage === totalPages}
                   className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-green-500/50 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {isZh ? '下一页' : 'Next'} »
+                  {i18nService.t('rhNext')} »
                 </button>
               </div>
             )}
