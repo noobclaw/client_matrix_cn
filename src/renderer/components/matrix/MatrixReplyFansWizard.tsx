@@ -108,7 +108,7 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
   }, [runInterval]);
 
   return (
-    <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
+    <div className="w-full max-w-2xl max-h-[90vh] mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="text-base font-semibold dark:text-white">💌 {editing ? `编辑${platformLabel}回复粉丝任务` : `配置${platformLabel}自动回复粉丝`}</div>
         <div className="flex items-center gap-3">
