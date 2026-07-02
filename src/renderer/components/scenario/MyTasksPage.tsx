@@ -49,18 +49,18 @@ interface Props {
 
 // Platform pill label is locale-aware: Chinese when zh, English when en.
 // Returns { icon, label } for whichever locale is active right now.
-function platformMeta(platformId: string, isZh: boolean): { icon: string; label: string } {
-  if (platformId === 'xhs')     return { icon: '📕', label: isZh ? '小红书' : 'Xiaohongshu' };
-  if (platformId === 'x')       return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
-  if (platformId === 'binance') return { icon: '🔶', label: isZh ? '币安广场' : 'Binance Square' };
+function platformMeta(platformId: string): { icon: string; label: string } {
+  if (platformId === 'xhs')     return { icon: '📕', label: i18nService.t('platXhs') };
+  if (platformId === 'x')       return { icon: '🐦', label: i18nService.t('platX') };
+  if (platformId === 'binance') return { icon: '🔶', label: i18nService.t('platBinance') };
   if (platformId === 'youtube') return { icon: '📺', label: 'YouTube' };
   if (platformId === 'tiktok')  return { icon: '🎵', label: 'TikTok' };
-  if (platformId === 'douyin')  return { icon: '🎵', label: isZh ? '抖音' : 'Douyin' };
-  if (platformId === 'kuaishou') return { icon: '⚡', label: isZh ? '快手' : 'Kuaishou' };
-  if (platformId === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩' : 'Bilibili' };
-  if (platformId === 'shipinhao') return { icon: '📱', label: isZh ? '视频号' : 'WeChat Channels' };
-  if (platformId === 'toutiao')  return { icon: '📰', label: isZh ? '头条号' : 'Toutiao' };
-  if (platformId === 'video')    return { icon: '🎬', label: isZh ? '视频搬运·二创' : 'Video Remix' };
+  if (platformId === 'douyin')  return { icon: '🎵', label: i18nService.t('platDouyin') };
+  if (platformId === 'kuaishou') return { icon: '⚡', label: i18nService.t('platKuaishou') };
+  if (platformId === 'bilibili') return { icon: '📺', label: i18nService.t('platBilibili') };
+  if (platformId === 'shipinhao') return { icon: '📱', label: i18nService.t('platShipinhao') };
+  if (platformId === 'toutiao')  return { icon: '📰', label: i18nService.t('platToutiao') };
+  if (platformId === 'video')    return { icon: '🎬', label: i18nService.t('platVideo') };
   return { icon: '🤖', label: platformId };
 }
 
@@ -341,7 +341,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
       <section className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold dark:text-white">
-            📋 {isZh ? `我的${platformLabel}任务` : `My ${platformLabel} Tasks`}
+            📋 {i18nService.t('mtpMyTasks').replace('{platform}', platformLabel)}
           </h2>
           {/* Tutorial entry — opens the docs page for this platform's growth
               workflow in the system browser. zh / zh-TW go to the Chinese
@@ -368,10 +368,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                            border border-amber-500/30 hover:border-amber-500/60
                            shadow-sm hover:shadow-md hover:shadow-amber-500/20
                            transition-all duration-200 hover:-translate-y-0.5"
-                title={isZh ? '查看本平台涨粉教程' : 'Open growth tutorial for this platform'}
+                title={i18nService.t('mtpTutorialTitle')}
               >
                 <span className="text-sm leading-none">📖</span>
-                <span>{isZh ? '涨粉教程' : 'Growth Tutorial'}</span>
+                <span>{i18nService.t('mtpGrowthTutorial')}</span>
                 <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">→</span>
               </button>
             );
@@ -381,13 +381,13 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
         {loading && tasks.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
             <span className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
-            {isZh ? '加载中...' : 'Loading...'}
+            {i18nService.t('rhLoading')}
           </div>
         ) : tasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
             <div className="text-4xl mb-2">📭</div>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              {isZh ? `还没有${platformLabel}任务` : `No ${platformLabel} tasks yet`}
+              {i18nService.t('mtpNoTasks').replace('{platform}', platformLabel)}
             </div>
             {/* v2.4.30: skip the "click the L1 tab above" hint — give the
                 user a direct CTA button that jumps straight to Create
@@ -407,7 +407,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       : 'bg-green-500 hover:bg-green-600 shadow-green-500/25'
                 }`}
               >
-                {platformId === 'x' ? '🐦' : platformId === 'binance' ? '🔶' : '📕'} {isZh ? `新建${platformLabel}任务` : `New ${platformLabel} task`}
+                {platformId === 'x' ? '🐦' : platformId === 'binance' ? '🔶' : '📕'} {i18nService.t('mtpNewTask').replace('{platform}', platformLabel)}
               </button>
             )}
           </div>
@@ -416,7 +416,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
             {sortedTasks.map(task => {
               const scenario = scenarioById.get(task.scenario_id);
               const platformId = scenario?.platform || 'xhs';
-              const platMeta = platformMeta(platformId, isZh);
+              const platMeta = platformMeta(platformId);
               const isRunning = runningTaskIds.has(task.id);
               // Type badge per scenario id (Twitter has 3 distinct ones,
               // XHS has 2 distinct ones via workflow_type)
