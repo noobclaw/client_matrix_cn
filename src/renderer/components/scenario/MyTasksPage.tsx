@@ -136,7 +136,7 @@ const TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
   study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
 };
 
-function scheduleLabel(task: Task, isZh: boolean): string {
+function scheduleLabel(task: Task): string {
   // v6.x: 列表卡片频次文案跟 TaskDetailPage intervalMap (line ~1059) 严格对齐 —
   //   核心字段同样的措辞(短间隔的 +1-10/+1-45 分钟随机延迟、daily_random 的
   //   "每日随机时间一次(<window> 间)"、once 的"不重复（手动触发）")。
@@ -144,40 +144,30 @@ function scheduleLabel(task: Task, isZh: boolean): string {
   //   页一字不差,否则用户会以为 list 和 detail 在描述两件事。
   const interval = (task as any).run_interval || 'daily_random';
   const schedWin = (task as any).schedule_window || '09:00-23:00';
-  const map: Record<string, string> = isZh
-    ? {
-        '30min': '每30分钟(+1-10 分钟随机延迟)',
-        '1h': '每小时(+1-10 分钟随机延迟)',
-        '3h': '每3小时(+1-45 分钟随机延迟)',
-        '6h': '每6小时(+1-45 分钟随机延迟)',
-        'daily': '每天 ' + (task.daily_time || '08:00'),
-        'daily_random': '每日随机时间一次(' + schedWin + ' 间)',
-        'once': '不重复（手动触发）',
-      }
-    : {
-        '30min': 'Every 30min (+1-10min jitter)',
-        '1h': 'Hourly (+1-10min jitter)',
-        '3h': 'Every 3h (+1-45min jitter)',
-        '6h': 'Every 6h (+1-45min jitter)',
-        'daily': 'Daily ' + (task.daily_time || '08:00'),
-        'daily_random': 'Once daily (random within ' + schedWin + ')',
-        'once': 'Once (manual)',
-      };
+  const map: Record<string, string> = {
+    '30min': i18nService.t('freq30min'),
+    '1h': i18nService.t('freq1h'),
+    '3h': i18nService.t('freq3h'),
+    '6h': i18nService.t('freq6h'),
+    'daily': i18nService.t('freqDaily').replace('{time}', task.daily_time || '08:00'),
+    'daily_random': i18nService.t('freqDailyRandom').replace('{win}', schedWin),
+    'once': i18nService.t('freqOnce'),
+  };
   return map[interval] || interval;
 }
 
 /** v4.31.43: 把 next_planned_run_at 渲染成简短的"还差多久 · 绝对时间",
  *  跟 detail page 的"下次运行"显示一致。运行中 / once / link_rewrite 不
  *  调用此函数(那些有专门的 pill)。 */
-function nextRunLabel(task: Task, isZh: boolean): string {
+function nextRunLabel(task: Task): string {
   const planned = (task as any).next_planned_run_at as number | undefined;
   if (planned && planned > Date.now()) {
     const diff = planned - Date.now();
     const mins = Math.round(diff / 60000);
     let rel: string;
-    if (mins < 60) rel = mins + (isZh ? ' 分钟后' : 'm');
-    else if (mins < 24 * 60) rel = Math.round(mins / 60) + (isZh ? ' 小时后' : 'h');
-    else rel = Math.round(mins / (60 * 24)) + (isZh ? ' 天后' : 'd');
+    if (mins < 60) rel = i18nService.t('relMin').replace('{n}', String(mins));
+    else if (mins < 24 * 60) rel = i18nService.t('relHour').replace('{n}', String(Math.round(mins / 60)));
+    else rel = i18nService.t('relDay').replace('{n}', String(Math.round(mins / (60 * 24))));
     const d = new Date(planned);
     const sameDay = (a: Date, b: Date) =>
       a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -185,56 +175,56 @@ function nextRunLabel(task: Task, isZh: boolean): string {
     const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
     const hh = String(d.getHours()).padStart(2, '0');
     const mm = String(d.getMinutes()).padStart(2, '0');
-    const datePart = sameDay(d, now) ? (isZh ? '今天' : 'today')
-                  : sameDay(d, tomorrow) ? (isZh ? '明天' : 'tmrw')
+    const datePart = sameDay(d, now) ? i18nService.t('relToday')
+                  : sameDay(d, tomorrow) ? i18nService.t('relTomorrow')
                   : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
     return `${rel} · ${datePart} ${hh}:${mm}`;
   }
-  return isZh ? '即将' : 'Soon';
+  return i18nService.t('relSoon');
 }
 
 // 任务卡片「配置摘要」小标签:按任务类型从透传的 config 里抠关键参数(来源/形态/关键词/语言/配图/发布等),
 // 让列表卡片一眼看清这条任务在干嘛(不止「N 条/次」)。无对应配置则返回空数组、不渲染。
-function langShort(l: string | undefined, isZh: boolean): string {
+function langShort(l: string | undefined): string {
   if (l === 'en') return 'EN';
-  if (l === 'zh') return isZh ? '中文' : 'ZH';
-  return isZh ? '中/EN' : 'Auto';
+  if (l === 'zh') return i18nService.t('langZh');
+  return i18nService.t('langAuto');
 }
-function taskConfigChips(task: Task, isZh: boolean): string[] {
+function taskConfigChips(task: Task): string[] {
   const sid = String(task.scenario_id || '');
   const t = task as any;
-  const pubChip = (auto: boolean) => (auto ? (isZh ? '🚀 直接发布' : '🚀 Publish') : (isZh ? '💾 仅本地' : '💾 Local'));
+  const pubChip = (auto: boolean) => (auto ? i18nService.t('chipPublish') : i18nService.t('chipLocal'));
   const chips: string[] = [];
   if (sid === 'binance_repost' && t.binanceRepost) {
     const c = t.binanceRepost;
-    const srcMap: Record<string, string> = { xhs: '小红书', douyin: '抖音', tiktok: 'TikTok', x: 'X' };
-    chips.push(c.material === 'video' ? '🎬 视频' : '🖼️ 图文');
-    chips.push(`📥 ${srcMap[c.sourcePlatform] || c.sourcePlatform}${isZh ? '→币安' : '→BN'}`);
+    const srcMap: Record<string, string> = { xhs: i18nService.t('platXhs'), douyin: i18nService.t('platDouyin'), tiktok: 'TikTok', x: 'X' };
+    chips.push(c.material === 'video' ? i18nService.t('chipVideo') : i18nService.t('chipImageText'));
+    chips.push(i18nService.t('chipRepostSrc').replace('{src}', srcMap[c.sourcePlatform] || c.sourcePlatform));
     if (c.keyword) chips.push(`🔍 ${String(c.keyword).slice(0, 12)}`);
-    chips.push(`🌐 ${langShort(c.language, isZh)}`);
+    chips.push(`🌐 ${langShort(c.language)}`);
     chips.push(pubChip(c.autoPublish !== false));
   } else if (sid === 'binance_post' && t.binancePost) {
     const c = t.binancePost;
-    chips.push(isZh ? '📰 web3 资讯' : '📰 web3 news');
-    chips.push(`🌐 ${langShort(c.language, isZh)}`);
-    chips.push(c.withImage !== false ? (isZh ? '🖼️ 配图' : '🖼️ Image') : (isZh ? '📝 纯文字' : '📝 Text'));
+    chips.push(i18nService.t('chipWeb3News'));
+    chips.push(`🌐 ${langShort(c.language)}`);
+    chips.push(c.withImage !== false ? (i18nService.t('chipImage')) : (i18nService.t('chipTextOnly')));
     chips.push(pubChip(c.autoPublish !== false));
   } else if (sid === 'x_post' && t.tweetPost) {
     const c = t.tweetPost;
-    chips.push(c.mode === 'web3' ? (isZh ? '📰 web3 资讯' : '📰 web3 news') : (isZh ? '✍️ 自由创作' : '✍️ Freeform'));
-    chips.push(`🌐 ${langShort(c.language, isZh)}`);
-    chips.push(c.withImage ? (isZh ? '🖼️ 配图' : '🖼️ Image') : (isZh ? '📝 纯文字' : '📝 Text'));
-    if (c.isBlueV) chips.push(isZh ? '✔️ 蓝V' : '✔️ Blue');
+    chips.push(c.mode === 'web3' ? (i18nService.t('chipWeb3News')) : (i18nService.t('chipFreeform')));
+    chips.push(`🌐 ${langShort(c.language)}`);
+    chips.push(c.withImage ? (i18nService.t('chipImage')) : (i18nService.t('chipTextOnly')));
+    if (c.isBlueV) chips.push(i18nService.t('chipBlueV'));
   } else if (/_image_text$/.test(sid) && t.imageText) {
     const c = t.imageText;
-    chips.push(c.useRealPhotos ? (isZh ? '📷 网络图' : '📷 Web img') : (isZh ? '🎨 AI 生图' : '🎨 AI img'));
-    if (c.imageCount) chips.push(`🖼️ ${c.imageCount}${isZh ? ' 张/篇' : ' imgs'}`);
-    if (c.dailyCount) chips.push(`📄 ${c.dailyCount}${isZh ? ' 篇/号' : '/acct'}`);
+    chips.push(c.useRealPhotos ? (i18nService.t('chipWebImg')) : (i18nService.t('chipAiImg')));
+    if (c.imageCount) chips.push(i18nService.t('chipImgsPer').replace('{n}', String(c.imageCount)));
+    if (c.dailyCount) chips.push(i18nService.t('chipPerAcct').replace('{n}', String(c.dailyCount)));
     chips.push(pubChip(c.autoPublish !== false));
   } else if (/_viral_production_career$/.test(sid) && t.viralRewrite) {
     const c = t.viralRewrite;
-    chips.push(isZh ? '🔥 爆款仿写' : '🔥 Viral');
-    if (c.dailyCount) chips.push(`📄 ${c.dailyCount}${isZh ? ' 篇/号' : '/acct'}`);
+    chips.push(i18nService.t('chipViral'));
+    if (c.dailyCount) chips.push(i18nService.t('chipPerAcct').replace('{n}', String(c.dailyCount)));
     chips.push(pubChip(c.autoPublish !== false));
   }
   return chips;
@@ -521,9 +511,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // Track / display name
               const track = TRACK_ICONS[task.track];
               const subTitle = (() => {
-                if (isVideoDownload) return isZh ? '视频链接' : 'Video links';
-                if (isLinkRewriteTwitter) return isZh ? '指定推文链接' : 'Manual tweet URLs';
-                if (isXhsLinkMode) return isZh ? '指定链接' : 'Manual XHS links';
+                if (isVideoDownload) return i18nService.t('subVideoLinks');
+                if (isLinkRewriteTwitter) return i18nService.t('subManualTweet');
+                if (isXhsLinkMode) return i18nService.t('subManualXhs');
                 if (track) return track.name_zh;
                 return scenario?.name_zh || task.scenario_id;
               })();
@@ -576,7 +566,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         // 实际不区分 active,所有 enabled 任务都到点跑,显示具体的
                         // 下次运行时间更直观。
                         <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
-                          ⏰ {nextRunLabel(task, isZh)}
+                          ⏰ {nextRunLabel(task)}
                         </span>
                       )}
                     </div>
@@ -683,7 +673,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               ? `${fMin}-${fMax}` : `0-${task.daily_count || 3}`;
                             const rStr = (typeof rMin === 'number' && typeof rMax === 'number')
                               ? `${rMin}-${rMax}` : `${task.daily_count || 1}`;
-                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
+                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
                           }
                           // post_creator(Binance/X)+ binance_from_x_repost + v6.x 3 个新源:daily_post_min/max
                           // v6.x: 跟 TaskDetailPage(line ~1130/1135/1140)同步用"每次 N 条"前缀
@@ -697,36 +687,36 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                             const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
                               ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
                             return isZh
-                              ? `⏰ ${scheduleLabel(task, isZh)} · 每次 ${pStr} 条`
-                              : `⏰ ${scheduleLabel(task, isZh)} · ${pStr}/run`;
+                              ? `⏰ ${scheduleLabel(task)} · 每次 ${pStr} 条`
+                              : `⏰ ${scheduleLabel(task)} · ${pStr}/run`;
                           }
                           // 回复粉丝评论:每次处理"最近 N 篇笔记/作品"的全部未回复评论(N =
                           //   max_notes/works_per_run,默认 30),不是"N 条/次"。
                           if (sid === 'xhs_reply_fans_comment') {
-                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 篇笔记/次' : 'latest 30 notes/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '最近 30 篇笔记/次' : 'latest 30 notes/run'}`;
                           }
                           if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment' || sid === 'toutiao_reply_fans_comment') {
-                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 个作品/次' : 'latest 30 videos/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '最近 30 个作品/次' : 'latest 30 videos/run'}`;
                           }
                           if (sid === 'toutiao_reply_fans_comment') {
-                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 篇/次' : 'latest 30 posts/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${isZh ? '最近 30 篇/次' : 'latest 30 posts/run'}`;
                           }
                           // XHS auto_reply:用 daily_count_min/max
                           if ((task as any).scenario_id?.includes('auto_reply') ||
                               (typeof cMin === 'number' && typeof cMax === 'number')) {
                             const cStr = (typeof cMin === 'number' && typeof cMax === 'number')
                               ? `${cMin}-${cMax}` : String(task.daily_count || 1);
-                            return `⏰ ${scheduleLabel(task, isZh)} · ${cStr} ${isZh ? '篇/次' : 'articles/run'}`;
+                            return `⏰ ${scheduleLabel(task)} · ${cStr} ${isZh ? '篇/次' : 'articles/run'}`;
                           }
                           // 币安广场自动发帖 / 批量搬运:每号每轮 1 条,共 N 条/轮(N=账号数)。
                           if (sid === 'binance_post' || sid === 'binance_repost') {
                             const accN = Array.isArray(t.account_ids) ? t.account_ids.length : 1;
                             return isZh
-                              ? `⏰ ${scheduleLabel(task, isZh)} · 每号 1 条(共 ${accN} 条/轮)`
-                              : `⏰ ${scheduleLabel(task, isZh)} · 1/account (${accN}/run)`;
+                              ? `⏰ ${scheduleLabel(task)} · 每号 1 条(共 ${accN} 条/轮)`
+                              : `⏰ ${scheduleLabel(task)} · 1/account (${accN}/run)`;
                           }
                           // 兜底:旧 daily_count 单值
-                          return `⏰ ${scheduleLabel(task, isZh)} · ${task.daily_count || 1} ${isZh ? '条/次' : '/run'}`;
+                          return `⏰ ${scheduleLabel(task)} · ${task.daily_count || 1} ${isZh ? '条/次' : '/run'}`;
                         })()}
                       </div>
                     )}
@@ -740,7 +730,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     )}
                     {/* 配置摘要小标签(来源/形态/关键词/语言/配图/发布等),让卡片信息更丰富 */}
                     {(() => {
-                      const chips = taskConfigChips(task, isZh);
+                      const chips = taskConfigChips(task);
                       return chips.length > 0 ? (
                         <div className="flex flex-wrap gap-1 pt-0.5">
                           {chips.map((c, i) => (
