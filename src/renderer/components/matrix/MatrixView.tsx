@@ -43,9 +43,10 @@ const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutia
 const VISIBLE_PLATFORMS = HIDE_WEB3 ? PLATFORMS.filter((p) => p !== 'binance') : PLATFORMS;
 // 每个平台最多添加的账号数:客户端兜底 10,服务端 /api/matrix/config 的 maxAccountsPerPlatform 可覆盖(admin 调,不打包)。
 const MAX_ACCOUNTS_PER_PLATFORM_FALLBACK = 10;
-const PLATFORM_LABEL: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: '推特', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
+const PLAT_KEY: Record<string, string> = { douyin: 'platDouyin', xhs: 'platXhs', bilibili: 'platBilibili', kuaishou: 'platKuaishou', x: 'platX', binance: 'platBinance', shipinhao: 'platShipinhao', toutiao: 'platToutiao' };
+const platLabel = (p: string): string => PLAT_KEY[p] ? i18nService.t(PLAT_KEY[p]) : (p === 'tiktok' ? 'TikTok' : p === 'youtube' ? 'YouTube' : p);
 // 平台号的标签:平台名已以「号」结尾(视频号)就不再加「号」,否则拼「号」(抖音号/快手号…)。
-const platformIdLabel = (p: string): string => { const l = PLATFORM_LABEL[p] || ''; return l.endsWith('号') ? l : l + '号'; };
+const platformIdLabel = (p: string): string => platLabel(p) + i18nService.t('mvIdSuffix');
 const LOGIN_URL: Record<string, string> = {
   douyin: 'https://www.douyin.com/', xhs: 'https://www.xiaohongshu.com/', bilibili: 'https://passport.bilibili.com/login',
   kuaishou: 'https://www.kuaishou.com/', tiktok: 'https://www.tiktok.com/login', x: 'https://x.com/login',
@@ -410,7 +411,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     // 达套餐上限:弹窗(带「去升级会员」按钮直达会员订阅)而非一次性 toast,引导用户升级。
     if (platformTotal >= maxAccountsPerPlatform) {
       setConfirmDlg({
-        title: i18nService.t('mvPlanLimitTitle').replace('{platform}', PLATFORM_LABEL[platform]),
+        title: i18nService.t('mvPlanLimitTitle').replace('{platform}', platLabel(platform)),
         body: i18nService.t('mvPlanLimitBody').replace('{n}', String(maxAccountsPerPlatform)),
         okText: i18nService.t('mvGoUpgrade'),
         onYes: () => { setConfirmDlg(null); openWallet('subscription'); },
@@ -463,7 +464,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 扫码登录二次确认:点「好的,我已知晓」才真正打开指纹浏览器导航到平台登录页(避免「一点就开浏览器」的突兀)。
   const promptScanLogin = (accountId: string, plat: string, displayName: string, loginScope?: string) => {
     if (!requireLogin()) return;
-    const platName = PLATFORM_LABEL[plat] || i18nService.t('mvThisPlatform');
+    const platName = platLabel(plat) || i18nService.t('mvThisPlatform');
     const scopeName = plat === 'kuaishou' ? (loginScope === 'creator' ? i18nService.t('mvKsCreatorFull') : i18nService.t('mvKsMainFull')) : '';
     setConfirmDlg({
       title: i18nService.t('mvScanConnectTitle').replace('{platform}', platName).replace('{scope}', scopeName ? ' · ' + scopeName : ''),
@@ -699,7 +700,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="flex items-center gap-2.5">
                 {/* 当前平台账号数 / 上限(上限服务端可调) */}
                 <span className="text-xs text-gray-400 dark:text-gray-500">{accounts.filter((a) => a.platform === platform).length}/{maxAccountsPerPlatform}</span>
-                <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">{i18nService.t('mvConnectAccount').replace('{platform}', PLATFORM_LABEL[platform])}</button>
+                <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">{i18nService.t('mvConnectAccount').replace('{platform}', platLabel(platform))}</button>
               </div>
             </div>
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
@@ -708,7 +709,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 const expiredCount = expiredCountByPlatform[p] || 0;
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
-                  {PLATFORM_LABEL[p]}
+                  {platLabel(p)}
                   {/* 该平台有登录过期账号 → 红圈计数角标(提醒去重新扫码连接) */}
                   {expiredCount > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none">{expiredCount}</span>
@@ -730,7 +731,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
                 <div className="text-4xl mb-2">📭</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">{i18nService.t('mvNoAccountsYet')}</div>
-                <button onClick={openAdd} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">{i18nService.t('mvConnectAccount').replace('{platform}', PLATFORM_LABEL[platform])}</button>
+                <button onClick={openAdd} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">{i18nService.t('mvConnectAccount').replace('{platform}', platLabel(platform))}</button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -824,7 +825,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-wrap gap-2 mb-6">
               {VISIBLE_PLATFORMS.map((p) => (
-                <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>{PLATFORM_LABEL[p]}</button>
+                <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>{platLabel(p)}</button>
               ))}
             </div>
             {platform === 'douyin' ? (
@@ -859,12 +860,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 </section>
               </>
             ) : (
-              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500 dark:text-gray-400">{i18nService.t('mvPlatformComingSoon').replace('{platform}', PLATFORM_LABEL[platform])}</div>
+              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500 dark:text-gray-400">{i18nService.t('mvPlatformComingSoon').replace('{platform}', platLabel(platform))}</div>
             )}
             {showNewWizard && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
                 <MatrixTaskWizard
-                  platformLabel={PLATFORM_LABEL[platform]}
+                  platformLabel={platLabel(platform)}
                   platform={platform}
                   accounts={platformAccounts as any}
                   initialTask={null}
@@ -876,7 +877,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             {showNewReplyWizard && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
                 <MatrixReplyFansWizard
-                  platformLabel={PLATFORM_LABEL[platform]}
+                  platformLabel={platLabel(platform)}
                   platform={platform}
                   accounts={platformAccounts as any}
                   initialTask={null}
@@ -892,10 +893,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {screen === 'tasks' && !selectedTask && (
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-              <h2 className="text-lg font-bold dark:text-white">📋 {i18nService.t('mvMyGrowthTasks').replace('{platform}', PLATFORM_LABEL[platform])}</h2>
+              <h2 className="text-lg font-bold dark:text-white">📋 {i18nService.t('mvMyGrowthTasks').replace('{platform}', platLabel(platform))}</h2>
               <div className="flex items-center gap-2">
                 <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="text-sm px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-white">
-                  {VISIBLE_PLATFORMS.map((p) => <option key={p} value={p}>{PLATFORM_LABEL[p]}</option>)}
+                  {VISIBLE_PLATFORMS.map((p) => <option key={p} value={p}>{platLabel(p)}</option>)}
                 </select>
                 <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">🎶 {i18nService.t('mvNewTask')}</button>
               </div>
@@ -903,8 +904,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             {platformTasks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
                 <div className="text-4xl mb-2">📭</div>
-                <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">{i18nService.t('mvNoGrowthTasks').replace('{platform}', PLATFORM_LABEL[platform])}</div>
-                <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">🎶 {i18nService.t('mvNewEngageTask').replace('{platform}', PLATFORM_LABEL[platform])}</button>
+                <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">{i18nService.t('mvNoGrowthTasks').replace('{platform}', platLabel(platform))}</div>
+                <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">🎶 {i18nService.t('mvNewEngageTask').replace('{platform}', platLabel(platform))}</button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -916,7 +917,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       className={`w-full text-left rounded-xl border p-4 transition-colors relative ${isRunning ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700 hover:border-violet-500/50 dark:hover:border-violet-500/50 bg-white dark:bg-gray-900'}`}>
                       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {PLATFORM_LABEL[t.platform]}</span>
+                          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {platLabel(t.platform)}</span>
                           {isReply
                             ? <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 {i18nService.t('mvReplyFans')}</span>
                             : <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 {i18nService.t('mvEngageGrowth')}</span>}
@@ -1035,7 +1036,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   return (
                   <div key={r.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {PLATFORM_LABEL[r.platform] || r.platform}</span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {platLabel(r.platform) || r.platform}</span>
                       {runIsReply && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 {i18nService.t('mvReplyFans')}</span>}
                       <span className="font-medium dark:text-white">{r.taskName}</span>
                       <span className="text-xs text-gray-500">{fmtTime(r.startedAt)}</span>
@@ -1081,7 +1082,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-[40rem] max-w-full max-h-[88vh] overflow-y-auto rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl">
             <div className="flex items-center gap-2 mb-4">
-              <div className="text-base font-semibold">{editId ? i18nService.t('mvEditAccount') : i18nService.t('mvConnectAccountTitle').replace('{platform}', PLATFORM_LABEL[platform])}</div>
+              <div className="text-base font-semibold">{editId ? i18nService.t('mvEditAccount') : i18nService.t('mvConnectAccountTitle').replace('{platform}', platLabel(platform))}</div>
               {twoStep && <span className="text-xs px-2 py-0.5 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">{i18nService.t('mvStepLabel').replace('{step}', String(addStep))} · {addStep === 1 ? i18nService.t('mvStepAccount') : i18nService.t('mvStepProxy')}</span>}
               <button type="button" onClick={() => setShowAdd(false)} aria-label={i18nService.t('mvClose')} title={i18nService.t('mvClose')} className="ml-auto shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
@@ -1189,7 +1190,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       {showTaskEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
           <MatrixTaskWizard
-            platformLabel={PLATFORM_LABEL[platform]}
+            platformLabel={platLabel(platform)}
             platform={platform}
             accounts={platformAccounts as any}
             initialTask={tasks.find((t) => t.id === taskEditId) || null}
@@ -1202,7 +1203,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       {showReplyEditModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-auto">
           <MatrixReplyFansWizard
-            platformLabel={PLATFORM_LABEL[platform]}
+            platformLabel={platLabel(platform)}
             platform={platform}
             accounts={platformAccounts as any}
             initialTask={tasks.find((t) => t.id === replyEditId) || null}
