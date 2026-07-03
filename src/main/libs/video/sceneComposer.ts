@@ -110,7 +110,7 @@ function renderBlock(b: SceneBlock, band: { top: number; height: number; index: 
       const val = esc((b.text || '').slice(0, 16));
       const lab = b.sub ? esc(b.sub.slice(0, 40)) : '';
       return wrap(
-        `<div class="big-n" data-fit data-fit-maxh="${Math.round(H * 0.62)}" data-fit-min="60" data-anim="pop" data-start="${s0.toFixed(2)}" data-duration="0.8" data-ease="back" style="color:${accent}">${val}</div>`
+        `<div class="big-n" data-fit data-fit-grow data-fit-max="${Math.round(H * 0.62)}" data-fit-maxh="${Math.round(H * 0.62)}" data-fit-min="60" data-anim="pop" data-start="${s0.toFixed(2)}" data-duration="0.8" data-ease="back" style="color:${accent}">${val}</div>`
         + (lab ? `<div class="big-l" data-fit data-fit-maxh="${Math.round(H * 0.3)}" data-fit-min="24" data-anim="fade-up" data-start="${(s0 + 0.3).toFixed(2)}" data-duration="0.6">${lab}</div>` : ''),
       );
     }
@@ -141,18 +141,25 @@ function renderBlock(b: SceneBlock, band: { top: number; height: number; index: 
     case 'steps': {
       const items = (b.items || []).slice(0, 8);
       const n = Math.max(1, items.length);
-      const rowH = Math.floor((H - (n - 1) * 14) / n);
+      const rowGap = 14;
+      // 行高封顶(防 3-4 条平分一大带 → 每张卡巨高、内容飘在中间显得很小);封顶后整组纵向居中。
+      const rowCap = b.type === 'stats' ? 240 : 200;
+      const rowH = Math.min(rowCap, Math.floor((H - (n - 1) * rowGap) / n));
+      const usedH = n * rowH + (n - 1) * rowGap;
+      const yOff = Math.max(0, Math.round((H - usedH) / 2));
       const rows = items.map((it, i) => {
         const st = (s0 + i * band.itemStagger).toFixed(2);
-        const rowTop = i * (rowH + 14);
+        const rowTop = yOff + i * (rowH + rowGap);
         const name = esc((it.name || '').slice(0, 60));
         const val = it.value ? esc(it.value.slice(0, 20)) : '';
         const sub = it.sub ? esc(it.sub.slice(0, 50)) : '';
         if (b.type === 'stats') {
-          // 半屏卡:两列;这里按行渲染(单列)保证 data-fit 简单稳,数值大字 + 标签
+          // 数值大字【自动放大填满卡】(data-fit-grow),标签只在有 name 时才渲染(AI 只给数值时不留空标签)。
+          const hasLab = !!name && name !== val;
+          const valMax = Math.round(rowH * (hasLab ? 0.6 : 0.72));
           return `<div class="s-row" style="top:${rowTop}px;height:${rowH}px" data-anim="rise" data-start="${st}" data-duration="0.55" data-ease="expo">`
-            + `<div class="s-val" data-fit data-fit-maxh="${Math.round(rowH * 0.6)}" data-fit-min="34" style="color:${accent}">${val || name}</div>`
-            + (val ? `<div class="s-lab" data-fit data-fit-maxh="${Math.round(rowH * 0.34)}" data-fit-min="20">${name}</div>` : '')
+            + `<div class="s-val" data-fit data-fit-grow data-fit-max="${valMax}" data-fit-maxh="${valMax}" data-fit-min="40" style="color:${accent}">${val || name}</div>`
+            + (hasLab ? `<div class="s-lab" data-fit data-fit-maxh="${Math.round(rowH * 0.28)}" data-fit-min="20">${name}</div>` : '')
             + `</div>`;
         }
         if (b.type === 'steps') {
@@ -351,7 +358,7 @@ const SCENE_SYSTEM = [
   '- {"type":"heroTitle","text":"大标题(≤20字)","sub":"副题(可选,≤28字)"} —— 开场/主题,一屏最多 1 个,放最上面。',
   '- {"type":"bullets","items":[{"name":"要点","value":"数值(可选)","sub":"说明(可选)"}]} —— 无序要点/清单(≤6 条)。',
   '- {"type":"ranks","items":[{"rank":1,"name":"名称","value":"数值","sub":"说明(可选)"}]} —— 排行榜/盘点(≤6 条,带名次)。',
-  '- {"type":"stats","items":[{"value":"98.4%","name":"这个数值的含义"}]} —— 关键指标卡(≤4 个,突出大数字)。',
+  '- {"type":"stats","items":[{"value":"98.4%","name":"这个数值的含义"}]} —— 关键指标卡(≤4 个,突出大数字)。**每项都要给 name(该数值的标签/含义),别只给孤零零的数字。**',
   '- {"type":"bigStat","text":"1.2亿","sub":"标签说明"} —— 单个核心大数字,冲击力强。',
   '- {"type":"steps","items":[{"name":"步骤/阶段","sub":"说明(可选)"}]} —— 流程/步骤/时间线(≤5 条,带序号)。',
   '- {"type":"quote","text":"金句正文","sub":"作者(可选)"} —— 金句/观点。',

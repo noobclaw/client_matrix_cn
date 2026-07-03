@@ -75,7 +75,7 @@ const SWISS_GRID: Theme = {
   fontBody: `'Helvetica Neue',Helvetica,Arial,${CJK_SANS},sans-serif`,
   fontMono: `'JetBrains Mono','SF Mono',Consolas,monospace`,
   titleWeight: 900, labelWeight: 400, titleUpper: false, titleLetterSpacing: '-1px',
-  blockStyle: 'sharp', cardShadow: '20px 20px 0 rgba(10,30,61,0.10)', cardRadius: 0,
+  blockStyle: 'sharp', cardShadow: '12px 12px 0 rgba(10,30,61,0.12)', cardRadius: 0,
   bgLayerHtml: `<div class="th-swiss-grid"></div>`,
   extraCss: `
 .th-swiss-grid{position:absolute;inset:0;pointer-events:none;

@@ -141,10 +141,20 @@ export const NBC_RUNTIME_JS = `(function(){
     //   真正多一行 ≈ 1.2×字号(几十像素),远超容差,所以按字号比例给容差绝不会漏判真溢出。
     // 横向容差小(粗体/斜体溢出个位像素),给 2px 即可。
     function over(){
-      var vtol = Math.max(4, size*0.15);
+      // 容差给到 0.3×字号:line-height:1 的大数字/大标题,固有行盒(含升降部)比 clientHeight
+      //   高出 ~20%,容差太小会被当【假溢出】一路缩到 min(数字反而变小)。真正多一行 ≈ 1.0×字号,
+      //   远超 0.3×,不会漏判真溢出。
+      var vtol = Math.max(6, size*0.3);
       return el.scrollHeight > el.clientHeight+vtol || el.scrollWidth > el.clientWidth+2;
     }
-    while(over() && size > minPx && guard < 240){ size -= 1; guard++; el.style.fontSize = size+'px'; }
+    // data-fit-grow:内容比盒子小时【放大字号填满】(大数字/大标题用),放到临界再退一步。
+    //   上限 data-fit-max(默认 400)。没这属性就只缩不放(纯防溢出)。
+    if(el.hasAttribute('data-fit-grow')){
+      var maxPx = parseFloat(el.getAttribute('data-fit-max')); if(!isFinite(maxPx)) maxPx = 400;
+      var gg = 0;
+      while(!over() && size < maxPx && gg < 400){ size += 2; gg++; el.style.fontSize = size+'px'; }
+    }
+    while(over() && size > minPx && guard < 400){ size -= 1; guard++; el.style.fontSize = size+'px'; }
   }
   function fitAll(){
     var xs = document.querySelectorAll('[data-fit]');
