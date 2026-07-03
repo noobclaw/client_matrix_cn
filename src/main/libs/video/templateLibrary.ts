@@ -190,7 +190,7 @@ function renderRankList(spec: TemplateSpec): string {
 `;
 
   const titleBlock = `<div id="title">
-    <div class="t1">${splitKinetic(spec.title || '榜单速览', 0.1, { stagger: 0.05, anim: 'fade-up', ease: 'expo' })}</div>
+    <div class="t1" data-fit data-fit-maxh="190" data-fit-min="46">${splitKinetic(spec.title || '榜单速览', 0.1, { stagger: 0.05, anim: 'fade-up', ease: 'expo' })}</div>
     ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.5" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
     <div class="rule" data-anim="wipe-right" data-start="0.4" data-duration="0.5"></div>
   </div>`;
@@ -309,7 +309,7 @@ function renderNewsCards(spec: TemplateSpec): string {
   const body = `<div id="breaking" data-anim="wipe-right" data-start="0" data-duration="0.45">
       <span class="tag">BREAKING</span><span class="line"></span>
     </div>
-    <div id="title" data-anim="slide-in-left" data-start="0.25" data-duration="0.6" data-ease="expo"><span data-loop="glitch" data-loop-phase="1.7" style="display:inline-block">${esc(spec.title || '今日要点')}</span></div>
+    <div id="title" data-fit data-fit-maxh="116" data-fit-min="40" data-anim="slide-in-left" data-start="0.25" data-duration="0.6" data-ease="expo"><span data-loop="glitch" data-loop-phase="1.7" style="display:inline-block">${esc(spec.title || '今日要点')}</span></div>
     ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.55" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
     <div id="cards-area">${pages}</div>
     ${pager}
@@ -369,7 +369,7 @@ function renderCountdown(spec: TemplateSpec): string {
   }).join('');
   const body = `<div id="spotlight"></div>
   <div id="title">
-    <div class="t1">${splitKinetic(spec.title || 'Top ' + totalN, 0.1, { stagger: 0.05, anim: 'pop', ease: 'back' })}</div>
+    <div class="t1" data-fit data-fit-maxh="190" data-fit-min="44">${splitKinetic(spec.title || 'Top ' + totalN, 0.1, { stagger: 0.05, anim: 'pop', ease: 'back' })}</div>
     ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.5" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
   </div>
   <div id="list-area">${pages}</div>
@@ -436,7 +436,7 @@ function renderStatBoard(spec: TemplateSpec): string {
     <div class="swiss-line v" style="left:50%" data-anim="fade" data-start="0.35" data-duration="0.5"></div>
     <div id="swiss-circle" data-anim="pop" data-start="0.5" data-duration="0.7" data-ease="back"></div>
     <div id="swiss-square" data-anim="fade" data-start="0.6" data-duration="0.5"><div style="width:100%;height:100%;background:inherit" data-loop="spin" data-loop-period="24"></div></div>
-    <div id="title" data-anim="slide-in-left" data-start="0.2" data-duration="0.6" data-ease="expo">${esc(spec.title || '数据看板')}<span class="dot">.</span></div>
+    <div id="title" data-fit data-fit-maxh="122" data-fit-min="40" data-anim="slide-in-left" data-start="0.2" data-duration="0.6" data-ease="expo">${esc(spec.title || '数据看板')}<span class="dot">.</span></div>
     ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.5" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
     <div id="grid-area">${pages}</div>
     ${pageFlashesHtml(slots.map((s) => s.pageStartSec))}

@@ -120,6 +120,36 @@ export function pageFlashesHtml(pageStartSecs: number[]): string {
  */
 export const NBC_RUNTIME_JS = `(function(){
   function clamp(x,lo,hi){return x<lo?lo:x>hi?hi:x;}
+  // ── auto-fit(抄 html-video / HyperFrames「文字必然落进盒子」的纪律,但做成【动态】版)──
+  // 静态 maxLength 猜不准(CJK/Latin 宽度差、字号阶梯不同),我们直接在渲染前测量:
+  // 任何带 [data-fit] 的元素,若内容溢出它的盒子(高或宽),就【逐档降字号】直到落进去或触底。
+  //   data-fit-min   最小字号 px(默认 20,再小就认命不再降,至少不塌)
+  //   data-fit-maxh  给盒子一个最大高度 px(自动加 overflow:hidden)—— 用于 height:auto 的
+  //                  标题/副标题带,没有它就测不出纵向溢出。宽度靠 left/right 或 max-width 天然界定。
+  //   data-fit-maxw  给盒子一个最大宽度 px(可选)
+  // 纯布局数学、无壁钟、只在 init 跑一次(seek 不重复跑,省算力)。
+  function fitEl(el){
+    var minPx = parseFloat(el.getAttribute('data-fit-min')); if(!isFinite(minPx)) minPx = 20;
+    var maxh = parseFloat(el.getAttribute('data-fit-maxh'));
+    var maxw = parseFloat(el.getAttribute('data-fit-maxw'));
+    if(isFinite(maxh)){ el.style.maxHeight = maxh+'px'; el.style.overflow = 'hidden'; }
+    if(isFinite(maxw)){ el.style.maxWidth = maxw+'px'; }
+    var size = parseFloat(window.getComputedStyle(el).fontSize)||40;
+    var guard = 0;
+    // 纵向容差:line-height(常 1.15~1.2)比字体固有行盒略矮时,单行文字的 scrollHeight 会
+    //   比 clientHeight 高出几像素(粗体尤甚)—— 这是【假溢出】,容差太小会把正常单行标题一路缩到底。
+    //   真正多一行 ≈ 1.2×字号(几十像素),远超容差,所以按字号比例给容差绝不会漏判真溢出。
+    // 横向容差小(粗体/斜体溢出个位像素),给 2px 即可。
+    function over(){
+      var vtol = Math.max(4, size*0.15);
+      return el.scrollHeight > el.clientHeight+vtol || el.scrollWidth > el.clientWidth+2;
+    }
+    while(over() && size > minPx && guard < 240){ size -= 1; guard++; el.style.fontSize = size+'px'; }
+  }
+  function fitAll(){
+    var xs = document.querySelectorAll('[data-fit]');
+    for(var i=0;i<xs.length;i++){ try{ fitEl(xs[i]); }catch(e){} }
+  }
   // 缓动函数(对齐 GSAP 的 .out 系列,纯确定性数学,无壁钟):
   //   cubic / quad / linear / back(回弹过冲) / expo(迅猛冲入) / elastic(弹性) / bounce(弹跳)
   function ease(p,kind){
@@ -275,7 +305,11 @@ export const NBC_RUNTIME_JS = `(function(){
       }
     }
   };
+  nbc.fit = fitAll;
   window.__nbc = nbc;
+  // 渲染前先把所有 [data-fit] 元素收进盒子(一次性),再置 ready —— 引擎 waitReady 通过后
+  //   逐帧 seek 时字号已锁定,不会每帧重算,也不会有溢出/叠字残留。
+  try{ fitAll(); }catch(e){}
   nbc.ready = true;
 })();`;
 
