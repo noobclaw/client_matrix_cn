@@ -376,6 +376,10 @@ export interface WrapHtmlOptions {
    * window.__timelines,供 __nbc.seek(t) 逐帧 totalTime(t)。
    */
   setupScript?: string;
+  /** 随包 Latin 展示字体的 @font-face CSS(base64 内联,fontAsset.loadFontFaceCss())。
+   *  放 <style> 最前,让主题的 font-family(Shrikhand/Syne/Space Grotesk…)解析到内嵌字体。
+   *  空 = 全走系统字体(themes 已给系统 fallback,仍好看)。 */
+  fontFaceCss?: string;
 }
 
 export function wrapTemplateHtml(opts: WrapHtmlOptions): string {
@@ -394,7 +398,7 @@ export function wrapTemplateHtml(opts: WrapHtmlOptions): string {
   const setupTag = opts.setupScript
     ? `<script>try{(function(){${opts.setupScript}\n})();}catch(e){}</script>`
     : '';
-  return `<!doctype html><html><head><meta charset="utf-8">${gsapTag}<style>${templateBaseCss(opts.brandColor)}${opts.css}</style></head>
+  return `<!doctype html><html><head><meta charset="utf-8">${gsapTag}<style>${opts.fontFaceCss || ''}${templateBaseCss(opts.brandColor)}${opts.css}</style></head>
 <body><div id="stage"${stageClass}>
 <div class="bg-grid"></div><div class="bg-glow"></div>
 ${opts.bodyHtml}

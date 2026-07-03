@@ -167,7 +167,7 @@ const NYT_CHART: Theme = {
   moods: ['趋势', '图表', '增长', '走势', '折线', '统计', '数据'],
   bg: '#f7f5ee', ink: '#1a1a1a', muted: 'rgba(26,26,26,0.6)', accent: '#a91d1d', accent2: '#1a1a1a',
   cardBg: '#f7f5ee', cardBorder: 'rgba(26,26,26,0.12)',
-  fontTitle: `'Source Serif Pro','Source Serif 4',Georgia,${CJK_SERIF},serif`,
+  fontTitle: `'Instrument Serif','Source Serif Pro',Georgia,${CJK_SERIF},serif`,
   fontBody: `'IBM Plex Sans','Segoe UI',${CJK_SANS},sans-serif`,
   fontMono: `'IBM Plex Mono','JetBrains Mono',Consolas,monospace`,
   titleWeight: 500, labelWeight: 400, titleUpper: false, titleLetterSpacing: '-0.5px',

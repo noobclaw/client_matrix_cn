@@ -30,6 +30,7 @@ import { renderTemplate, pageSizeFor, calcPageCount, calcPageRanges, type Templa
 import { renderHtmlToVideo, resolveHeadlessBrowser, auditHtml } from './htmlVideoRenderer';
 import { generateFreeformScene, type FreeformResult } from './freeformWriter';
 import { wrapTemplateHtml } from './templateAnim';
+import { loadFontFaceCss } from './fontAsset';
 import { loadGsapSource } from './gsapAsset';
 import { synthesize, getLastTtsError, getVoiceFallbacks } from './tts';
 import { getTtsVoice } from './config';
@@ -182,6 +183,7 @@ async function produceFreeformHtml(
       fps: args.fps,
       captionCues: args.captionCues,
       watermark: args.watermark,
+      fontFaceCss: loadFontFaceCss(),
       gsapSource: useGsap ? gsapSource! : undefined,
       setupScript: useGsap ? scene.setupScript : undefined,
     });
