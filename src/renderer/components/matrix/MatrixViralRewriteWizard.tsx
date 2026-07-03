@@ -12,6 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -19,13 +20,8 @@ export interface WizardAccount { id: string; displayName: string; status: string
 
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok' };
 
-const AI_STYLES: { value: string; labelKey: string }[] = [
-  { value: 'ai_auto', labelKey: 'wzViralStyleAuto' },
-  { value: 'text_card', labelKey: 'wzViralStyleTextCard' },
-  { value: 'minimalist', labelKey: 'wzViralStyleMinimalist' },
-  { value: 'photographic', labelKey: 'wzViralStylePhotographic' },
-  { value: 'illustration', labelKey: 'wzViralStyleIllustration' },
-];
+// AI 生图风格:从 backend /api/image/styles 拉全量目录(~38 个风格·7 大类),失败回退
+// FALLBACK_IMAGE_STYLES。风格 id 即后端 orchestrator 认的 key。见组件内 stylesList。
 
 export interface ViralRewriteWizardSave {
   name: string;
@@ -60,6 +56,10 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
   const vr = initialTask?.viralRewrite || {};
   const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(20, Number(vr.dailyCount) || 1)));
   const [aiImageStyle, setAiImageStyle] = useState<string>(vr.aiImageStyle || 'ai_auto');
+  // 全量风格目录(server-side 单源;拉不到回退兜底列表)。
+  const [stylesList, setStylesList] = useState<ImageStyle[]>(FALLBACK_IMAGE_STYLES);
+  useEffect(() => { let alive = true; fetchImageStyles().then((r) => { if (alive) setStylesList(r.styles); }); return () => { alive = false; }; }, []);
+  const isZhStyle = i18nService.currentLanguage.startsWith('zh');
   const [autoPublish, setAutoPublish] = useState<boolean>(vr.autoPublish !== false);
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
@@ -181,7 +181,7 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🎨 {i18nService.t('wzViralAiStyleLabel')}<span className="text-xs text-gray-400 font-normal ml-1">· {i18nService.t('wzViralAiStyleHint')}</span></label>
               <select value={aiImageStyle} onChange={(e) => setAiImageStyle(e.target.value)} disabled={saving} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/40">
-                {AI_STYLES.map((s) => <option key={s.value} value={s.value}>{i18nService.t(s.labelKey)}</option>)}
+                {stylesList.map((opt) => <option key={opt.id} value={opt.id}>{opt.icon} {isZhStyle ? opt.zh : opt.en} — {isZhStyle ? opt.desc_zh : opt.desc_en}</option>)}
               </select>
             </div>
             <div>
@@ -212,7 +212,7 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzViralSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzViralSummaryAccount')} value={i18nService.t('wzViralSummaryAccountVal').replace('{n}', String(selectedIds.length))} />
               <SummaryRow label={i18nService.t('wzViralSummaryCount')} value={i18nService.t('wzViralSummaryCountVal').replace('{daily}', String(dailyCount)).replace('{total}', String(selectedIds.length * dailyCount))} />
-              <SummaryRow label={i18nService.t('wzViralSummaryImage')} value={i18nService.t('wzViralSummaryImageVal').replace('{style}', i18nService.t(AI_STYLES.find((s) => s.value === aiImageStyle)?.labelKey || '') || aiImageStyle)} />
+              <SummaryRow label={i18nService.t('wzViralSummaryImage')} value={i18nService.t('wzViralSummaryImageVal').replace('{style}', (() => { const s = stylesList.find((x) => x.id === aiImageStyle); return s ? (isZhStyle ? s.zh : s.en) : aiImageStyle; })())} />
               <SummaryRow label={i18nService.t('wzViralSummaryPublish')} value={autoPublish ? i18nService.t('wzViralSummaryPublishAuto') : i18nService.t('wzViralSummaryPublishLocal')} />
               <SummaryRow label={i18nService.t('wzViralSummaryFreq')} value={intervalLabel} />
             </div>

@@ -13,6 +13,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -20,14 +21,8 @@ export interface WizardAccount { id: string; displayName: string; status: string
 
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
 
-// AI 生图风格(对齐 backend imageStyles 的常用 key;未知值后端回落通用风格,不会报错)。
-const AI_STYLES: { value: string; labelKey: string }[] = [
-  { value: 'ai_auto', labelKey: 'wzImgStyleAuto' },
-  { value: 'text_card', labelKey: 'wzImgStyleTextCard' },
-  { value: 'minimalist', labelKey: 'wzImgStyleMinimalist' },
-  { value: 'photographic', labelKey: 'wzImgStylePhotographic' },
-  { value: 'illustration', labelKey: 'wzImgStyleIllustration' },
-];
+// AI 生图风格:从 backend /api/image/styles 拉全量目录(~38 个风格·7 大类),失败回退
+// FALLBACK_IMAGE_STYLES。风格 id 即后端 orchestrator 认的 key,选中即生效。见组件内 stylesList。
 
 export interface ImageTextWizardSave {
   name: string;
@@ -73,6 +68,10 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [useRealPhotos, setUseRealPhotos] = useState<boolean>(!!it.useRealPhotos);
   const [imageCount, setImageCount] = useState<number>(Math.max(2, Math.min(6, Number(it.imageCount) || (it.useRealPhotos ? 6 : 4))));
   const [aiImageStyle, setAiImageStyle] = useState<string>(it.aiImageStyle || 'ai_auto');
+  // 全量风格目录(server-side 单源;拉不到回退兜底列表)。
+  const [stylesList, setStylesList] = useState<ImageStyle[]>(FALLBACK_IMAGE_STYLES);
+  useEffect(() => { let alive = true; fetchImageStyles().then((r) => { if (alive) setStylesList(r.styles); }); return () => { alive = false; }; }, []);
+  const isZhStyle = i18nService.currentLanguage.startsWith('zh');
   const [autoPublish, setAutoPublish] = useState<boolean>(it.autoPublish !== false); // 默认群发
   // 抖音下图号(仅视频号/头条网络图用):默认回填上次选的,否则首个就绪抖音号。
   const [downloadAccountId, setDownloadAccountId] = useState<string>(() => {
@@ -300,7 +299,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🎨 {i18nService.t('wzImgAiStyleLabel')}</label>
                 <select value={aiImageStyle} onChange={(e) => setAiImageStyle(e.target.value)} disabled={saving} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
-                  {AI_STYLES.map((s) => <option key={s.value} value={s.value}>{i18nService.t(s.labelKey)}</option>)}
+                  {stylesList.map((opt) => <option key={opt.id} value={opt.id}>{opt.icon} {isZhStyle ? opt.zh : opt.en} — {isZhStyle ? opt.desc_zh : opt.desc_en}</option>)}
                 </select>
               </div>
             )}
@@ -339,7 +338,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzImgSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzImgSummaryAccounts')} value={i18nService.t('wzImgSummaryAccountsVal').replace('{n}', String(selectedIds.length))} />
-              <SummaryRow label={i18nService.t('wzImgSummaryImage')} value={useRealPhotos ? i18nService.t('wzImgSummaryImageWeb').replace('{n}', String(imageCount)) : i18nService.t('wzImgSummaryImageAi').replace('{n}', String(imageCount)).replace('{style}', i18nService.t(AI_STYLES.find((s) => s.value === aiImageStyle)?.labelKey || '') || aiImageStyle)} />
+              <SummaryRow label={i18nService.t('wzImgSummaryImage')} value={useRealPhotos ? i18nService.t('wzImgSummaryImageWeb').replace('{n}', String(imageCount)) : i18nService.t('wzImgSummaryImageAi').replace('{n}', String(imageCount)).replace('{style}', (() => { const s = stylesList.find((x) => x.id === aiImageStyle); return s ? (isZhStyle ? s.zh : s.en) : aiImageStyle; })())} />
               <SummaryRow label={i18nService.t('wzImgSummaryCount')} value={i18nService.t('wzImgSummaryCountVal').replace('{n}', String(selectedIds.length))} />
               <SummaryRow label={i18nService.t('wzImgSummaryPublish')} value={autoPublish ? i18nService.t('wzImgSummaryPublishAuto') : i18nService.t('wzImgSummaryPublishLocal')} />
               <SummaryRow label={i18nService.t('wzImgSummaryRef')} value={i18nService.t('wzImgSummaryRefVal').replace('{filled}', String(selectedIds.filter((id) => (references[id] || '').trim()).length)).replace('{total}', String(selectedIds.length))} />
