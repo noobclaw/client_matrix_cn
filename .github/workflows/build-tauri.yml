@@ -326,10 +326,24 @@ jobs:
             fi
           fi
 
+      # 国内版:给分发用的安装包文件名加 _cn 标记(.dmg/.msi/.exe),跟国际版区分开。
+      #   .app 本体不改名(改了会破坏前面已完成的签名/公证),只改可分发的安装器。
+      - name: Tag CN installer files with _cn
+        shell: bash
+        run: |
+          BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle"
+          find "$BUNDLE" -type f \( -name "*.dmg" -o -name "*.msi" -o -name "*.exe" \) | while read -r f; do
+            dir=$(dirname "$f"); base=$(basename "$f"); ext="${base##*.}"; stem="${base%.*}"
+            case "$stem" in
+              *_cn) ;;                                        # 已带 _cn 就跳过(幂等)
+              *) mv "$f" "$dir/${stem}_cn.${ext}"; echo "renamed -> ${stem}_cn.${ext}" ;;
+            esac
+          done
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: noobclaw-tauri-${{ matrix.target }}
+          name: noobclaw-cn-tauri-${{ matrix.target }}
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*
           retention-days: 7
