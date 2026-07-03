@@ -9,6 +9,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
+import { pruneAccountFromTasks } from './taskStore';
 import type { MatrixAccount, AccountStatus, Fingerprint, Proxy } from './types';
 
 function baseDir(): string {
@@ -330,4 +331,7 @@ export function findAccountByUid(platform: string, boundUid: string, excludeId: 
 export function removeAccount(id: string): void {
   cache = loadAccounts().filter((a) => a.id !== id);
   persist();
+  // 联动清理任务引用:否则 tasks.json 仍带着已删账号 id → 运行时变幽灵号被误判「超额暂停」。
+  // (taskStore 不 import accountManager,无循环依赖。)
+  pruneAccountFromTasks(id);
 }

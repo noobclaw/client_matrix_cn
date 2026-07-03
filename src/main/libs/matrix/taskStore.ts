@@ -135,6 +135,22 @@ export function removeTask(id: string): void {
   persist();
 }
 
+/**
+ * 删号联动:把某个账号 id 从所有任务的 accountIds 里摘掉,避免 tasks.json 残留已删账号的
+ * 幽灵 id(运行时会被误判「超额暂停」并在 UI 冒出一个不存在的号)。只在有实际变更时落盘。
+ */
+export function pruneAccountFromTasks(accountId: string): void {
+  const tasks = loadTasks();
+  let changed = false;
+  for (const t of tasks) {
+    if (Array.isArray(t.accountIds) && t.accountIds.includes(accountId)) {
+      t.accountIds = t.accountIds.filter((id) => id !== accountId);
+      changed = true;
+    }
+  }
+  if (changed) { cache = tasks; persist(); }
+}
+
 export function setTaskEnabled(id: string, enabled: boolean): void {
   const t = getTask(id); if (!t) return;
   t.enabled = enabled;

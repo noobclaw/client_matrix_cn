@@ -60,6 +60,12 @@ class NoobClawAuthService {
   private _drawerReady = false;
   private _pendingDrawerQueue: Array<{ amount: string; fromWallet?: string; level?: number }> = [];
 
+  // 首个 /api/ai/balance 成功返回前,tokenBalance 还是构造时的初始 0。此时若用户
+  // 「打开点太快」就去启动任务,hasEnoughBalanceForTask 会拿 0 < 阈值 误判「余额不足」
+  // 弹窗拦下(用户反馈:刚打开点快了报余额不足)。用这个标记区分「真的 0」与「还没拉到」,
+  // 未拉到时不做客户端乐观拦截,交给后端真实 402 兜底。
+  private _balanceLoaded = false;
+
   // Dynamically read, supports local/production environment switching
   private get backendUrl() { return getBackendApiUrl(); }
 
@@ -86,6 +92,10 @@ class NoobClawAuthService {
       this.state.avatarUrl = savedAvatar || null;
       this.state.socialEmail = localStorage.getItem('noobclaw_social_email') || null;
       this.state.socialProvider = localStorage.getItem('noobclaw_social_provider') || null;
+      // 余额快照:上次成功 refreshBalance 时缓存的显示值,启动时同步恢复 → 顶部条秒显上次余额/档位,
+      //   不用干等首个网络请求(冷启动 DNS+TLS+后端 JOIN 要几百 ms~1s,以前这段一直显示 0/空)。
+      //   仅作显示兜底;真实校验仍等 refreshBalance 首刷(_balanceLoaded 保持 false)。
+      this.restoreBalanceSnapshot();
       // Sync token to main process and refresh balance in background
       // Use setTimeout to ensure window.electron is available
       setTimeout(() => {
@@ -94,9 +104,25 @@ class NoobClawAuthService {
         // Load cached avatar from local disk first (instant, no network)
         this.loadCachedAvatar();
       }, 0);
-      this.refreshBalance().catch(console.error);
+      this.loadBalanceWithRetry();  // 启动短退避重试:sidecar 没起好首拉会失败,别干等 15s 轮询
       this.refreshAvatar().catch(console.error);
       this.startBalancePolling();
+    }
+  }
+
+  // 启动时拉余额的短退避重试。根因:Tauri 下所有外部请求经 tauriShim 代理走 sidecar
+  //   (127.0.0.1:18801/api/proxy),而 sidecar 是 app 启动时才拉起的 Node 子进程,冷启动要
+  //   一两秒。启动瞬间首个 refreshBalance 往往打在 sidecar ready 之前 → 代理失败(返 502)→
+  //   _balanceLoaded 仍 false → 以前要等下一次 15s 轮询才成功 → 用户「余额过好久才显示」。
+  //   这里在首拉失败后按递增退避快速重试到成功(约 1~3s 内),不再依赖 15s 心跳。
+  //   叠加启动时的余额快照(restoreBalanceSnapshot),顶部条先秒显上次值、再被真实值覆盖。
+  private async loadBalanceWithRetry(): Promise<void> {
+    const delays = [0, 400, 700, 1000, 1500, 2000, 2500, 3000]; // 首拉即时,后续递增,总预算 ~11s
+    for (const d of delays) {
+      if (d) await new Promise((r) => setTimeout(r, d));
+      if (!this.state.isAuthenticated) return;        // 退避途中退登了
+      await this.refreshBalance().catch(() => {});
+      if (this._balanceLoaded) return;                // 拿到真实余额,收工(15s 轮询接管后续刷新)
     }
   }
 
@@ -231,6 +257,12 @@ class NoobClawAuthService {
    */
   hasEnoughBalanceForTask(threshold = 10000): boolean {
     if (!this.state.isAuthenticated) return true;
+    // 余额还没首刷到位(刚打开 / 点太快):不拿初始 0 误判不足,后台补刷一次,
+    // 本次放行 —— 后端启动任务时若真的不足会返 402(同样弹 token-insufficient)。
+    if (!this._balanceLoaded) {
+      this.refreshBalance().catch(() => {});
+      return true;
+    }
     if (this.state.tokenBalance >= threshold) return true;
     window.dispatchEvent(new CustomEvent('noobclaw:token-insufficient', {
       detail: { balance: this.state.tokenBalance, threshold },
@@ -247,6 +279,7 @@ class NoobClawAuthService {
       if (res.ok) {
         const data = await res.json();
         this.state.tokenBalance = data.tokenBalance;
+        this._balanceLoaded = true;  // 首刷到位后 hasEnoughBalanceForTask 才做本地拦截
         // 双桶 + 会员档位明细(顶部条 tag / 订阅进度条 / 增量包数 用)。后端老版本不返这些时兜底。
         if (typeof data.paidBalance === 'number') this.state.paidBalance = data.paidBalance;
         if (typeof data.subCredits === 'number') this.state.subCredits = data.subCredits;
@@ -262,6 +295,7 @@ class NoobClawAuthService {
         if (typeof data.subUsedRatio === 'number') this.state.subUsedRatio = data.subUsedRatio;
         // 把当前生效号数上限推给 sidecar(运行时截断超额号用),仅变化时推,避免每 15s 刷 IPC。
         this.pushPlanLimitIfChanged();
+        this.persistBalanceSnapshot();  // 缓存本次余额/档位,供下次启动秒显
         this.notify();
         // v1.x: 后端在 /api/ai/balance 顺道返回"已上链已结算但还没通知客户端"
         // 的 BUSDT 返佣列表(并原子标记 notified_at)。客户端每 15s 调一次本接口,
@@ -388,6 +422,42 @@ class NoobClawAuthService {
     };
   }
 
+  // 余额显示快照 —— 只缓存顶部条/钱包页展示需要的字段,启动时同步恢复避免「先 0 后跳」。
+  //   不缓存 authToken(那在单独 key)。写在 refreshBalance 成功后。
+  private static readonly BALANCE_SNAPSHOT_KEY = 'noobclaw_balance_snapshot';
+  private persistBalanceSnapshot(): void {
+    try {
+      const s = this.state;
+      const snap = {
+        tokenBalance: s.tokenBalance, paidBalance: s.paidBalance, subCredits: s.subCredits,
+        planCode: s.planCode, planName: s.planName, subActive: s.subActive, subExpireAt: s.subExpireAt,
+        subStatus: s.subStatus, subPlanName: s.subPlanName, subPeriodEnd: s.subPeriodEnd,
+        maxAccountsPerPlatform: s.maxAccountsPerPlatform, subUsedRatio: s.subUsedRatio,
+      };
+      localStorage.setItem(NoobClawAuthService.BALANCE_SNAPSHOT_KEY, JSON.stringify(snap));
+    } catch { /* localStorage 满/禁用时忽略,不影响主链路 */ }
+  }
+  private restoreBalanceSnapshot(): void {
+    try {
+      const raw = localStorage.getItem(NoobClawAuthService.BALANCE_SNAPSHOT_KEY);
+      if (!raw) return;
+      const snap = JSON.parse(raw);
+      if (!snap || typeof snap !== 'object') return;
+      if (typeof snap.tokenBalance === 'number') this.state.tokenBalance = snap.tokenBalance;
+      if (typeof snap.paidBalance === 'number') this.state.paidBalance = snap.paidBalance;
+      if (typeof snap.subCredits === 'number') this.state.subCredits = snap.subCredits;
+      if (typeof snap.planCode === 'string') this.state.planCode = snap.planCode;
+      if (typeof snap.planName === 'string') this.state.planName = snap.planName;
+      if (typeof snap.subActive === 'boolean') this.state.subActive = snap.subActive;
+      this.state.subExpireAt = typeof snap.subExpireAt === 'string' ? snap.subExpireAt : this.state.subExpireAt;
+      this.state.subStatus = typeof snap.subStatus === 'string' ? snap.subStatus : this.state.subStatus;
+      this.state.subPlanName = typeof snap.subPlanName === 'string' ? snap.subPlanName : this.state.subPlanName;
+      this.state.subPeriodEnd = typeof snap.subPeriodEnd === 'string' ? snap.subPeriodEnd : this.state.subPeriodEnd;
+      if (typeof snap.maxAccountsPerPlatform === 'number' && snap.maxAccountsPerPlatform > 0) this.state.maxAccountsPerPlatform = snap.maxAccountsPerPlatform;
+      if (typeof snap.subUsedRatio === 'number') this.state.subUsedRatio = snap.subUsedRatio;
+    } catch { /* 坏快照忽略,等 refreshBalance 覆盖 */ }
+  }
+
   // 当前生效号数上限/到期变化时,推给 sidecar 的本地镜像(planLimit store),供定时任务运行时截断。
   // 用一个 key 去重,只在真正变化时发 IPC(否则每 15s 一次浪费)。失败静默(不挡余额主链路)。
   private lastPushedLimitKey = '';
@@ -430,7 +500,9 @@ class NoobClawAuthService {
     localStorage.removeItem('noobclaw_avatar_url');
     localStorage.removeItem('noobclaw_social_email');
     localStorage.removeItem('noobclaw_social_provider');
+    localStorage.removeItem(NoobClawAuthService.BALANCE_SNAPSHOT_KEY);  // 清余额快照,换号/退登不残留旧余额
     this.syncTokenToMain(null);
+    this._balanceLoaded = false;  // 复位:下次登录前重新走「未拉到不拦截」保护
     this.stopBalancePolling();  // 退登后停掉全局心跳,避免对 401 旧 token 持续打/balance
     this.notify();
   }

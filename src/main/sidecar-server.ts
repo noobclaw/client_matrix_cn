@@ -249,12 +249,17 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     const { getPlanLimit, allowedAccountIds } = await import('./libs/matrix/planLimit');
     const startedAt = Date.now();
     const collected = new Map<string, any>(); // 每号最后一条结果(用于运行记录)
-    const accIds: string[] = task.accountIds || [];
+    const planLimit = getPlanLimit();
+    const platformAccts = loadAccounts().filter((a) => a.platform === platform);
+    // 只保留【当前平台真实存在】的号:删号后 tasks.json 里可能残留已删账号 id(removeAccount
+    //   过去不回改 task.accountIds),这些幽灵 id 在账号库查不到 → getAccount 返回 null,以前会
+    //   被当「超额号」暂停,UI 冒出一个不存在的号(displayName 回退成 id,如 douyin_xxx_yyy)还
+    //   报「超出会员号数」误导用户。在源头剔除,不显示也不判暂停;suspendedIds 就只剩真正超档的真号。
+    const validIds = new Set(platformAccts.map((a) => a.id));
+    const accIds: string[] = (task.accountIds || []).filter((id) => validIds.has(id));
     // 会员号数墙:按当前生效档位上限,本平台只跑【最早绑定的前 N 个】号;超额号(会员到期/降级后
     //   多出来的)暂停跳过——数据不删,续费/升级即恢复。limit 由渲染进程从 /api/ai/balance 推下来
     //   (planLimit store);从未推送 → 默认很大 → 不暂停任何号(宁可不拦绝不误杀)。
-    const planLimit = getPlanLimit();
-    const platformAccts = loadAccounts().filter((a) => a.platform === platform);
     const allowSet = allowedAccountIds(platformAccts, planLimit.maxAccountsPerPlatform);
     const runIds: string[] = accIds.filter((id) => allowSet.has(id));
     const suspendedIds: string[] = accIds.filter((id) => !allowSet.has(id));

@@ -96,7 +96,11 @@ const StepLogBox: React.FC<{
   logs: Array<{ time: string; status: string; message: string }>;
   isActive: boolean;
   renderLogMessage: (m: string) => React.ReactNode;
-}> = ({ logs, isActive, renderLogMessage }) => {
+}> = ({ logs: logsProp, isActive, renderLogMessage }) => {
+  // 防御:历史运行记录/某些进度快照里的账号对象可能没有 logs 字段
+  // (progress.accounts[].logs 为 undefined)。直接 logs.length 会整块崩
+  // (「渲染错误 MainView:matrixTasks — undefined is not an object 'logs.length'」)。
+  const logs = Array.isArray(logsProp) ? logsProp : [];
   const containerRef = useRef<HTMLDivElement | null>(null);
   // stickToBottom: true means we should auto-scroll on new logs. Defaults to
   // true (initial render lands at the bottom — newest log visible) and only
