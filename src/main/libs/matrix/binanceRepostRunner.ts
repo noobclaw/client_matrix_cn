@@ -427,7 +427,14 @@ async function publishOne(
         body: body == null ? undefined : JSON.stringify(body),
         signal: opts.signal,
       });
-      return await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
+      // 累加 AI 生图 token/费用到「本次消耗」(imageGen 走通用 apiCall 不经 onCost,原漏此大头;
+      //   sync /generate 与 async /status(done) 都返 token_cost+_noobclaw.costUsd,仅 done 时>0 天然不重复)。
+      try {
+        const imgTokens = Number((data as any)?.token_cost) || 0;
+        if (imgTokens > 0) { chargedCredits += imgTokens; chargedUsd += Number((data as any)?._noobclaw?.costUsd) || 0; }
+      } catch { /* non-fatal */ }
+      return data;
     };
 
     const ctx: any = {
