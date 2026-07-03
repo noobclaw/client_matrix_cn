@@ -40,10 +40,14 @@ function randInt(min: number, max: number): number {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
 }
 function matrixDir(): string { return process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix'); }
-// 登录预检导航 URL(图文发布在创作者中心,按平台取;主站登录态覆盖创作端的也走创作端页确认)。
+// 登录预检导航 URL —— ⚠️ 必须导到【需登录才能进的创作页】(抖音发图文页 / 小红书发布页),
+//   绝不能用营销首页 creator.douyin.com/:首页登录态也常驻「扫码登录/手机号登录」入口文字,
+//   checkKernelLogin 的文字判据会误命中 → 把登录着的好号误判「过期」而 skip(用户实测:
+//   运行判过期,但打开指纹浏览器里其实正常登录)。URL 对齐发布任务 PUBLISHER_ANCHOR_URL
+//   (见 kernelPool 铁律:DOM 登录墙标记须【已导航到创作页】后查)。
 const IMAGE_TEXT_LOGIN_HOME: Record<string, string> = {
-  douyin: 'https://creator.douyin.com/',
-  xhs: 'https://creator.xiaohongshu.com/',
+  douyin: 'https://creator.douyin.com/creator-micro/content/upload?default-tab=3',
+  xhs: 'https://creator.xiaohongshu.com/publish/publish?source=official',
 };
 
 export interface ImageTextTaskOptions {
