@@ -170,6 +170,13 @@ function makeAiCall(pack: any, authToken: string | undefined, report: (m: string
       signal, // 点停止时立即 abort 这次 AI 调用(否则要等 AI 回完才退)
     });
     const data: any = await res.json().catch(() => ({}));
+    // 后端非 2xx(余额不足 402 / 内容审核 / 限流 / 5xx)必须抛错,不能把 {error,message}
+    //   当成空 content 静默吞掉 —— 否则上层只看到空串误报「返回空」,看不出是余额不足。
+    if (!res.ok) {
+      const beMsg = String((data && (data.message || data.error)) || ('http_' + res.status));
+      if (res.status === 402 || /INSUFFICIENT_TOKENS|insufficient|余额/i.test(beMsg)) throw new Error('余额不足,请充值后重试 (' + beMsg + ')');
+      throw new Error('AI 请求失败 ' + res.status + ': ' + beMsg);
+    }
     // AI 调用的权威扣费(同视频管线口径):billableTokens=实扣积分,costUsd=权威美元。累进「本次消耗」。
     try {
       const aiCredits = Number(data?._noobclaw?.billableTokens) || 0;
