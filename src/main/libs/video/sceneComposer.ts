@@ -18,6 +18,7 @@
 
 import { callNoobclawChat } from './templateHtmlWriter';
 import { escapeHtml as esc } from './templateAnim';
+import { pickTheme, THEME_BY_ID, type Theme } from './themes';
 import type { ContentLang } from './scriptWriter';
 
 // ── 画布常量(与 templateAnim/freeform 对齐)────────────────────────────────
@@ -33,7 +34,9 @@ const INNER_W = CANVAS_W - SAFE_L - SAFE_R;
 // ── block 类型 ──────────────────────────────────────────────────────────────
 export interface SceneBlockItem { name?: string; value?: string; sub?: string; rank?: number; }
 export interface SceneBlock {
-  type: 'heroTitle' | 'bullets' | 'ranks' | 'stats' | 'bigStat' | 'quote' | 'tags' | 'steps' | 'paragraph';
+  type: 'heroTitle' | 'bullets' | 'ranks' | 'stats' | 'bigStat' | 'quote' | 'tags' | 'steps' | 'paragraph' | 'chart';
+  /** chart 专用:折线(line,趋势)或柱状(bar,对比)。缺省 line。 */
+  chartKind?: 'line' | 'bar';
   /** heroTitle/quote/paragraph/bigStat 用的主文字。 */
   text?: string;
   /** heroTitle 副题 / quote 作者 / bigStat 标签。 */
@@ -48,6 +51,8 @@ export interface SceneBlock {
 export interface Scene {
   /** 情绪/风格提示(仅影响强调色深浅等,可空)。 */
   mood?: string;
+  /** AI 建议的设计主题 id(themes.ts);ctx.themeId(用户/pipeline 显式指定)优先级更高。 */
+  themeId?: string;
   blocks: SceneBlock[];
 }
 
@@ -57,6 +62,11 @@ export interface ComposeCtx {
   durationSec: number;
   narrationOn: boolean;
   captionsOn: boolean;
+  /** 指定设计主题 id(themes.ts);不传则按内容气质自动挑。 */
+  themeId?: string;
+  /** renderScene 内部按主题回填(渲染 block/chart 用):次要色 + 明暗模式。 */
+  mutedColor?: string;
+  mode?: 'light' | 'dark';
 }
 
 export interface SceneResult {
@@ -68,7 +78,7 @@ export interface SceneResult {
 // ── 类型默认纵向权重(决定各 block 分到多少高度)──────────────────────────
 const DEFAULT_WEIGHT: Record<SceneBlock['type'], number> = {
   heroTitle: 1.1, bigStat: 1.4, quote: 2.2, paragraph: 1.6,
-  bullets: 2.6, ranks: 2.8, stats: 2.4, steps: 2.6, tags: 0.9,
+  bullets: 2.6, ranks: 2.8, stats: 2.4, steps: 2.6, tags: 0.9, chart: 3.0,
 };
 
 /** clamp helper。 */
@@ -166,76 +176,171 @@ function renderBlock(b: SceneBlock, band: { top: number; height: number; index: 
       }).join('');
       return wrap(`<div class="listwrap">${rows}</div>`);
     }
+    case 'chart':
+      return wrap(renderChart(b, H, ctx));
     default:
       return '';
   }
 }
 
-/** 场景 → {css, bodyHtml}。确定性铺带 + data-fit 兜底,永不塌。 */
+/** 从显示串抽数值(去掉 +/-/%/单位):"+18.96%"→18.96,"1.2亿"→1.2。取不到=0。 */
+function numOf(raw: string | undefined): number {
+  if (!raw) return 0;
+  const m = String(raw).match(/-?\d+(?:\.\d+)?/);
+  return m ? parseFloat(m[0]) : 0;
+}
+
+/**
+ * 真图表原语(抄 NYT Data Chart 折线 + Pentagram 柱状,配色随主题):手绘 SVG,坐标由 JS 算,
+ * 确定性、可逐帧渲染。数据类内容不再堆数字卡 —— 画真图。items:[{name=x轴标签, value=y值}]。
+ */
+function renderChart(b: SceneBlock, H: number, ctx: ComposeCtx): string {
+  const ink = ctx.brandColor, accent = ctx.accentColor, muted = ctx.mutedColor || '#888';
+  const mono = 'font-family:inherit';
+  const pts = (b.items || []).slice(0, 9).map((it) => ({ label: esc((it.name || '').slice(0, 8)), v: numOf(it.value), raw: esc((it.value || '').slice(0, 10)) }));
+  if (pts.length < 2) return `<div class="ch-empty" style="color:${muted};text-align:center;padding-top:${Math.round(H / 2 - 30)}px">—</div>`;
+  const W = INNER_W;
+  const padL = 24, padR = 90, padT = 46, padB = 76;
+  const cw = W - padL - padR, ch = H - padT - padB;
+  const vals = pts.map((p) => p.v);
+  const maxV = Math.max(...vals), minV = Math.min(0, ...vals);
+  const range = (maxV - minV) || 1;
+  const X = (i: number) => padL + (i / (pts.length - 1)) * cw;
+  const Y = (v: number) => padT + ch - ((v - minV) / range) * ch;
+  const kind = b.chartKind === 'bar' ? 'bar' : 'line';
+  const s0 = 0.5;
+
+  // Y 轴 3 条网格线 + 刻度
+  const gridN = 3;
+  let grid = '';
+  for (let g = 0; g <= gridN; g++) {
+    const gv = minV + (range * g) / gridN;
+    const gy = Y(gv);
+    grid += `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${(W - padR).toFixed(1)}" y2="${gy.toFixed(1)}" stroke="${muted}" stroke-width="0.5" opacity="0.28"/>`;
+    grid += `<text x="${padL - 6}" y="${(gy - 6).toFixed(1)}" fill="${muted}" font-size="20" style="${mono}">${gv >= 1000 ? Math.round(gv / 1000) + 'k' : Math.round(gv)}</text>`;
+  }
+  // X 轴标签
+  let xlab = '';
+  pts.forEach((p, i) => { xlab += `<text x="${X(i).toFixed(1)}" y="${(padT + ch + 34).toFixed(1)}" fill="${muted}" font-size="20" text-anchor="middle" style="${mono}">${p.label}</text>`; });
+
+  let body = '';
+  if (kind === 'bar') {
+    const bw = Math.min(cw / pts.length * 0.55, 120);
+    pts.forEach((p, i) => {
+      const bx = X(i) - bw / 2, by = Y(p.v), bh = padT + ch - by;
+      const isMax = p.v === maxV;
+      body += `<rect x="${bx.toFixed(1)}" y="${(padT + ch).toFixed(1)}" width="${bw.toFixed(1)}" height="0" rx="4" fill="${isMax ? accent : ink}" opacity="${isMax ? '0.95' : '0.85'}" data-anim="grow-bar" data-start="${(s0 + i * 0.08).toFixed(2)}" data-duration="0.6" data-bar-y="${by.toFixed(1)}" data-bar-h="${bh.toFixed(1)}"/>`;
+      body += `<text x="${X(i).toFixed(1)}" y="${(by - 14).toFixed(1)}" fill="${isMax ? accent : ink}" font-size="26" font-weight="800" text-anchor="middle" data-anim="fade" data-start="${(s0 + i * 0.08 + 0.3).toFixed(2)}">${p.raw}</text>`;
+    });
+  } else {
+    const linePts = pts.map((p, i) => `${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+    const areaD = `M ${X(0).toFixed(1)} ${(padT + ch).toFixed(1)} ` + pts.map((p, i) => `L ${X(i).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(' ') + ` L ${X(pts.length - 1).toFixed(1)} ${(padT + ch).toFixed(1)} Z`;
+    // 末段用强调色实心加粗(拐点),前段主色
+    const lastTwo = pts.slice(-2).map((p, i) => `${X(pts.length - 2 + i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+    body += `<path d="${areaD}" fill="${accent}" fill-opacity="0.08" data-anim="fade" data-start="${s0.toFixed(2)}"/>`;
+    body += `<polyline points="${linePts}" fill="none" stroke="${ink}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" data-anim="fade" data-start="${s0.toFixed(2)}" data-duration="0.8"/>`;
+    body += `<polyline points="${lastTwo}" fill="none" stroke="${accent}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round" data-anim="fade" data-start="${(s0 + 0.5).toFixed(2)}"/>`;
+    pts.forEach((p, i) => {
+      const last = i >= pts.length - 2;
+      body += `<circle cx="${X(i).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="${last ? 8 : 5}" fill="${last ? accent : ink}" data-anim="pop" data-start="${(s0 + i * 0.06 + 0.2).toFixed(2)}" data-duration="0.4"/>`;
+      if (last) body += `<text x="${X(i).toFixed(1)}" y="${(Y(p.v) - 20).toFixed(1)}" fill="${accent}" font-size="26" font-weight="800" text-anchor="middle" data-anim="fade" data-start="${(s0 + i * 0.06 + 0.4).toFixed(2)}">${p.raw}</text>`;
+    });
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" style="overflow:visible">${grid}${body}${xlab}</svg>`;
+}
+
+/** 主题优先级:ctx.themeId(用户/pipeline 显式)> scene.themeId(AI 建议)> 内容气质自动挑。 */
+function resolveTheme(scene: Scene, ctx: ComposeCtx): Theme {
+  if (ctx.themeId && THEME_BY_ID[ctx.themeId]) return THEME_BY_ID[ctx.themeId];
+  if (scene.themeId && THEME_BY_ID[scene.themeId]) return THEME_BY_ID[scene.themeId];
+  const text = [scene.mood || '', ...(scene.blocks || []).flatMap((b) => [b.text || '', ...(b.items || []).map((i) => i.name || '')])].join(' ');
+  return pickTheme({ text });
+}
+
+/** 场景 → {css, bodyHtml}。确定性铺带 + data-fit 兜底 + 设计主题(审美层),永不塌。 */
 export function renderScene(scene: Scene, ctx: ComposeCtx): SceneResult {
+  const theme = resolveTheme(scene, ctx);
+  // 把 block 渲染用的两个色映射到主题:标题用 ink(浅底=深字),数字/装饰用 accent。
+  const tctx: ComposeCtx = { ...ctx, brandColor: theme.ink, accentColor: theme.accent, mutedColor: theme.muted, mode: theme.mode };
   const bottom = ctx.captionsOn ? BOTTOM_CAPTION : BOTTOM_NOCAP;
   const regionH = bottom - CONTENT_TOP;
-  // 过滤空 block,封顶 6 个(再多铺不下)
   const blocks = (scene.blocks || []).filter((b) => b && b.type).slice(0, 6);
+  const bg = themeBgHtml(theme);
   if (blocks.length === 0) {
-    return { css: baseCss(ctx), bodyHtml: `<div class="blk" style="top:${CONTENT_TOP}px;height:200px"><div class="hero-t" style="color:${ctx.brandColor}">·</div></div>` };
+    return { css: baseCss(theme), bodyHtml: bg + `<div class="blk" style="top:${CONTENT_TOP}px;height:200px"><div class="hero-t">·</div></div>` };
   }
   // 纵向按权重分带,预留 block 间 GAP
   const weights = blocks.map((b) => cl(b.weight ?? DEFAULT_WEIGHT[b.type] ?? 1.5, 0.6, 4));
   const totalW = weights.reduce((a, c) => a + c, 0);
   const usableH = regionH - GAP * (blocks.length - 1);
-  // list 类 block 的条目在整段时长内的揭示节奏:有配音 → 沿时长铺开;无 → 快速错峰(见下方 itemStagger)
   let cursor = CONTENT_TOP;
   const parts: string[] = [];
   blocks.forEach((b, i) => {
     const h = Math.max(120, Math.round((weights[i] / totalW) * usableH));
-    // 该 block 的进场时刻:块间错峰 0.35s;有配音时把 list 的条目揭示拉到整段时长
     const blockStart = ctx.narrationOn ? cl(0.4 + (i / Math.max(1, blocks.length)) * ctx.durationSec * 0.5, 0.4, ctx.durationSec - 1) : 0.3 + i * 0.35;
     const isList = ['bullets', 'ranks', 'stats', 'steps'].includes(b.type);
     const itemCount = Math.max(1, (b.items || []).length);
     const itemStagger = ctx.narrationOn && isList
       ? cl((ctx.durationSec - blockStart - 1) / itemCount, 0.2, 1.2)
       : 0.14;
-    parts.push(renderBlock(b, { top: cursor, height: h, index: i, startSec: blockStart, itemStagger }, ctx));
+    parts.push(renderBlock(b, { top: cursor, height: h, index: i, startSec: blockStart, itemStagger }, tctx));
     cursor += h + GAP;
   });
-  // 背景氛围:液态 blob 慢漂 + 颗粒 + 暗角(克制,不糊)
-  const ambient = `<div class="fx-blob" data-loop="float" data-loop-period="13" data-loop-amp="70" style="width:620px;height:620px;background:${ctx.brandColor};opacity:0.32;top:-160px;left:-140px"></div>`
-    + `<div class="fx-blob" data-loop="float" data-loop-period="17" data-loop-amp="86" data-loop-phase="2.3" style="width:520px;height:520px;background:${ctx.accentColor};opacity:0.24;bottom:-140px;right:-150px"></div>`
-    + `<div class="fx-vignette"></div><div class="fx-grain"></div>`;
-  return { css: baseCss(ctx), bodyHtml: ambient + parts.join('\n') };
+  return { css: baseCss(theme), bodyHtml: bg + parts.join('\n') };
 }
 
-function baseCss(ctx: ComposeCtx): string {
-  const { accentColor: accent } = ctx;
+/** 主题背景层 + 角落元信息标签(装饰,增强编辑设计感)。 */
+function themeBgHtml(theme: Theme): string {
+  const layer = (theme.bgLayerHtml || '').replace(/\{\{ACCENT\}\}/g, theme.accent);
+  const corner = theme.cornerLabel ? `<div class="th-corner">${esc(theme.cornerLabel)}</div>` : '';
+  return layer + corner;
+}
+
+/** 从主题 token 生成全部 block CSS(颜色/字体/卡片风格皆随主题)。 */
+function baseCss(theme: Theme): string {
+  const { ink, muted, accent } = theme;
+  const isDark = theme.mode === 'dark';
+  const tShadow = isDark ? '0 6px 26px rgba(0,0,0,0.5)' : 'none';   // 文字阴影只在暗底给,浅底不给(显脏)
+  // 卡片视觉:flat=无卡(靠 extraCss 画规则线);其余=主题卡背景+描边+阴影+圆角
+  const card = theme.blockStyle === 'flat'
+    ? 'background:transparent;border:none;box-shadow:none;border-radius:0'
+    : `background:${theme.cardBg};border:1px solid ${theme.cardBorder};box-shadow:${theme.cardShadow};border-radius:${theme.cardRadius}px`;
+  const badgeInk = isDark ? '#0b0e11' : '#ffffff';  // 序号圆点里的字色(暗底主题用深、浅底用白)
+  const tagBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)';
   return `
+html,body{background:${theme.bg};color:${ink}}
+#stage{background:${theme.bg}}
+.bg-grid,.bg-glow{display:${isDark ? 'block' : 'none'}}
+#stage,.blk,.blk *{font-family:${theme.fontBody}}
 .blk{position:absolute;left:${SAFE_L}px;width:${INNER_W}px;overflow:hidden}
-.hero-t{font-size:96px;font-weight:900;line-height:1.12;text-align:center;letter-spacing:1px;text-shadow:0 6px 26px rgba(0,0,0,0.5)}
-.hero-s{font-size:44px;font-weight:600;color:#9aa2b1;line-height:1.3;text-align:center;letter-spacing:4px;margin-top:20px}
-.big-n{font-size:240px;font-weight:900;line-height:1;text-align:center;letter-spacing:-4px;text-shadow:0 8px 34px ${accent}44}
-.big-l{font-size:44px;font-weight:700;color:#c7ccd4;text-align:center;margin-top:16px;line-height:1.3}
-.q-mark{font-size:200px;line-height:0.5;font-family:Georgia,serif;opacity:0.4;text-align:center}
-.q-t{font-size:64px;font-weight:800;line-height:1.5;text-align:center;margin-top:26px;text-shadow:0 4px 24px rgba(0,0,0,0.5)}
-.q-a{font-size:36px;color:#aeb4bf;text-align:center;margin-top:26px;letter-spacing:3px;font-style:italic}
-.para{font-size:46px;font-weight:600;line-height:1.55;color:#e6e9ef;text-align:left}
+.hero-t{font-family:${theme.fontTitle};font-size:96px;font-weight:${theme.titleWeight};line-height:1.12;text-align:center;letter-spacing:${theme.titleLetterSpacing};color:${ink};text-shadow:${tShadow}${theme.titleUpper ? ';text-transform:uppercase' : ''}}
+.hero-s{font-size:44px;font-weight:${theme.labelWeight};color:${muted};line-height:1.3;text-align:center;letter-spacing:4px;margin-top:20px}
+.big-n{font-family:${theme.fontTitle};font-size:240px;font-weight:${theme.titleWeight};line-height:1;text-align:center;letter-spacing:-4px;color:${accent}}
+.big-l{font-size:44px;font-weight:${theme.labelWeight};color:${muted};text-align:center;margin-top:16px;line-height:1.3}
+.q-mark{font-family:Georgia,'Times New Roman',${theme.fontTitle};font-size:200px;line-height:0.5;color:${accent};opacity:0.35;text-align:center}
+.q-t{font-family:${theme.fontTitle};font-size:64px;font-weight:${Math.max(600, theme.titleWeight - 100)};line-height:1.5;text-align:center;margin-top:26px;color:${ink};text-shadow:${tShadow}}
+.q-a{font-size:36px;color:${muted};text-align:center;margin-top:26px;letter-spacing:3px;font-style:italic}
+.para{font-size:46px;font-weight:${theme.labelWeight};line-height:1.55;color:${ink};text-align:left}
 .tagrow{display:flex;flex-wrap:wrap;gap:22px;align-content:center;justify-content:center;height:100%}
-.tag{display:inline-flex;align-items:center;font-size:40px;font-weight:700;padding:14px 34px;border-radius:999px;border:2px solid;background:rgba(255,255,255,0.04);color:#fff}
+.tag{display:inline-flex;align-items:center;font-size:40px;font-weight:700;padding:14px 34px;border-radius:999px;border:2px solid;background:${tagBg};color:${ink}}
 .listwrap{position:relative;width:100%;height:100%}
-.r-row{position:absolute;left:0;right:0;display:flex;align-items:center;padding:0 40px;border-radius:26px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.32);overflow:hidden}
+.r-row{position:absolute;left:0;right:0;display:flex;align-items:center;padding:0 40px;${card};overflow:hidden}
 .r-badge{flex:0 0 auto;width:78px;height:78px;border-radius:50%;border:2px solid;display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:900;margin-right:26px}
 .r-bar{flex:0 0 auto;width:10px;height:64%;border-radius:6px;margin-right:30px}
 .r-body{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.r-nm{font-size:48px;font-weight:800;line-height:1.16;overflow:hidden}
-.r-sb{font-size:28px;color:#848e9c;margin-top:6px;line-height:1.2;overflow:hidden}
-.r-val{flex:0 0 auto;font-size:56px;font-weight:900;text-align:right;margin-left:22px;white-space:nowrap}
-.s-row{position:absolute;left:0;right:0;display:flex;flex-direction:column;justify-content:center;align-items:center;border-radius:22px;background:linear-gradient(135deg,#15181d,#1d2126);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35)}
-.s-val{font-size:88px;font-weight:900;line-height:1;text-align:center}
-.s-lab{font-size:32px;color:#c7ccd4;margin-top:10px;text-align:center;line-height:1.2}
+.r-nm{font-size:48px;font-weight:800;line-height:1.16;color:${ink};overflow:hidden}
+.r-sb{font-size:28px;color:${muted};margin-top:6px;line-height:1.2;overflow:hidden}
+.r-val{flex:0 0 auto;font-family:${theme.fontTitle};font-size:56px;font-weight:900;text-align:right;margin-left:22px;white-space:nowrap}
+.s-row{position:absolute;left:0;right:0;display:flex;flex-direction:column;justify-content:center;align-items:center;${card}}
+.s-val{font-family:${theme.fontTitle};font-size:88px;font-weight:${theme.titleWeight};line-height:1;text-align:center}
+.s-lab{font-size:32px;color:${muted};margin-top:10px;text-align:center;line-height:1.2}
 .st-row{position:absolute;left:0;right:0;display:flex;align-items:center;padding-left:6px}
-.st-dot{flex:0 0 auto;width:66px;height:66px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:900;color:#0b0e11;margin-right:28px;box-shadow:0 0 22px ${accent}66}
+.st-dot{flex:0 0 auto;width:66px;height:66px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:900;color:${badgeInk};margin-right:28px}
 .st-body{flex:1;min-width:0}
-.st-nm{font-size:46px;font-weight:800;line-height:1.18;overflow:hidden}
-.st-sb{font-size:28px;color:#848e9c;margin-top:6px;line-height:1.25;overflow:hidden}
+.st-nm{font-size:46px;font-weight:800;line-height:1.18;color:${ink};overflow:hidden}
+.st-sb{font-size:28px;color:${muted};margin-top:6px;line-height:1.25;overflow:hidden}
+.th-corner{position:absolute;top:64px;right:${SAFE_R}px;font-family:${theme.fontMono};font-size:22px;letter-spacing:4px;color:${muted};opacity:0.7;text-transform:uppercase;z-index:5}
+${theme.extraCss}
 `;
 }
 
@@ -252,7 +357,9 @@ const SCENE_SYSTEM = [
   '- {"type":"quote","text":"金句正文","sub":"作者(可选)"} —— 金句/观点。',
   '- {"type":"tags","tags":["标签1","标签2"]} —— 关键词标签云(≤10 个)。',
   '- {"type":"paragraph","text":"一段话(≤120字)"} —— 说明性段落。',
-  '可选给每个 block 加 "weight":1~4 控制它占的高度(大数字/榜单给大,标签给小)。',
+  '- {"type":"chart","chartKind":"line","items":[{"name":"2024","value":"310"},{"name":"2025","value":"468"}]} —— 【真图表】!有【趋势/逐年/走势】数据时用 line(折线),有【几项对比】用 bar(柱状)。items 是数据点(name=X轴标签, value=纯数值)。≥2 个点。有时间序列数据时【优先用 chart 而不是堆数字卡】。',
+  '可选给每个 block 加 "weight":1~4 控制它占的高度(大数字/图表/榜单给大,标签给小)。',
+  '可选在顶层给 "theme":"<主题id>" 指定设计主题(不给则按内容气质自动挑)。可选 id:swiss_grid(数据看板·灰底藏青金)/nyt_chart(趋势图表·奶油衬线)/pentagram(单指标大数字·白红)/vignelli(快讯速览·白红黑粗体)/bold_poster(海报宣言·暖纸番茄红)/build_minimal(金句极简·近白宋体)/warm_grain(资讯故事·米色暖)/takram(自然科普·米绿柔和)/glitch(故障赛博·黑青品红)/bold_signal(发布焦点·暗橙)/creative_voltage(创意电光·蓝)/midnight(web3暗色)。按内容气质选最搭的一套。',
   '',
   '硬规则(违反=废片):',
   '1. blocks 数量 2~5 个。第一个通常是 heroTitle 点题。整屏内容【必须一屏放得下】—— 宁可精简,不要硬塞十几条。',
@@ -298,7 +405,7 @@ function extractJsonObject(raw: string): string {
 /** 校验/清洗 AI 场景 JSON。任何一步不合规就返回 null(触发 freeform 回退老路径)。 */
 function sanitizeScene(parsed: any): Scene | null {
   if (!parsed || !Array.isArray(parsed.blocks)) return null;
-  const VALID = new Set(['heroTitle', 'bullets', 'ranks', 'stats', 'bigStat', 'quote', 'tags', 'steps', 'paragraph']);
+  const VALID = new Set(['heroTitle', 'bullets', 'ranks', 'stats', 'bigStat', 'quote', 'tags', 'steps', 'paragraph', 'chart']);
   const blocks: SceneBlock[] = [];
   for (const raw of parsed.blocks) {
     if (!raw || typeof raw.type !== 'string' || !VALID.has(raw.type)) continue;
@@ -306,6 +413,7 @@ function sanitizeScene(parsed: any): Scene | null {
     if (typeof raw.text === 'string' && raw.text.trim()) b.text = raw.text.trim();
     if (typeof raw.sub === 'string' && raw.sub.trim()) b.sub = raw.sub.trim();
     if (typeof raw.weight === 'number' && Number.isFinite(raw.weight)) b.weight = raw.weight;
+    if (raw.type === 'chart') b.chartKind = raw.chartKind === 'bar' ? 'bar' : 'line';
     if (Array.isArray(raw.items)) {
       b.items = raw.items.slice(0, 8).map((it: any) => {
         const o: SceneBlockItem = {};
@@ -322,7 +430,10 @@ function sanitizeScene(parsed: any): Scene | null {
     if (hasContent) blocks.push(b);
   }
   if (blocks.length === 0) return null;
-  return { blocks: blocks.slice(0, 6) };
+  const scene: Scene = { blocks: blocks.slice(0, 6) };
+  // AI 可选给 theme(设计主题 id);合法就带上,由 renderScene 优先采用。
+  if (typeof parsed.theme === 'string' && THEME_BY_ID[parsed.theme]) scene.themeId = parsed.theme;
+  return scene;
 }
 
 export interface ComposeSceneInput {

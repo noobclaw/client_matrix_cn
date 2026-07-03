@@ -185,6 +185,14 @@ export const NBC_RUNTIME_JS = `(function(){
       case 'wipe-right': op = 1; el.style.clipPath = 'inset(0 '+((1-e)*100)+'% 0 0)'; break;
       case 'wipe-left':  op = 1; el.style.clipPath = 'inset(0 0 0 '+((1-e)*100)+'%)'; break;
       case 'rise': op = e; tx = 'translateY('+((1-e)*120)+'px) scale('+(0.94+0.06*e)+')'; break;
+      // 柱状图长高:SVG rect 从基线往上长(改 height/y 属性,非 transform)。data-bar-y/data-bar-h 为终值。
+      case 'grow-bar': {
+        var by = parseFloat(el.getAttribute('data-bar-y'))||0;
+        var bh = parseFloat(el.getAttribute('data-bar-h'))||0;
+        el.setAttribute('height', (bh*e).toFixed(1));
+        el.setAttribute('y', (by + bh*(1-e)).toFixed(1));
+        op = 1; break;
+      }
       // 白闪转场:p 走 0→1,亮度 sin(p·π) 走 0→1→0,中点最亮。用【线性 p】不用缓动,
       // 保证对称;duration 外恒 0。
       case 'flash': op = Math.sin(Math.min(1,Math.max(0,p))*Math.PI)*0.92; break;
