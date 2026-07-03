@@ -286,8 +286,15 @@ class VideoTaskStore {
         const parsed = JSON.parse(rawRuns);
         if (Array.isArray(parsed)) {
           this.runs = parsed.map((r: VideoRunRecord) => {
-            // 老记录没有 costUsd 字段 → 兜底 0(详情页据此只显 💎 token、不显 $)。
-            const withCost = typeof r.costUsd === 'number' ? r : { ...r, costUsd: 0 };
+            // 老记录字段兜底:costUsd 缺 → 0;logs 缺(早于该字段的持久化记录)→ []。
+            //   logs 若为 undefined,运行记录页 run.logs.length 会整块崩(「渲染错误
+            //   MainView:matrixRuns — undefined is not an object 'logs.length'」),必须在
+            //   反序列化入口就补齐(消费端也各自加了 ?. 兜底,双保险)。
+            const withCost: VideoRunRecord = {
+              ...r,
+              costUsd: typeof r.costUsd === 'number' ? r.costUsd : 0,
+              logs: Array.isArray(r.logs) ? r.logs : [],
+            };
             // 重启后上次跑到一半的运行记录已无主进程 job 续命,标记为中断
             if (withCost.status === 'running') {
               return { ...withCost, status: 'error' as const, error: withCost.error || '应用重启,该任务已中断', finishedAt: withCost.finishedAt || Date.now() };

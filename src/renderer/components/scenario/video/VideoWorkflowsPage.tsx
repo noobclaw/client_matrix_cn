@@ -814,7 +814,7 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
             </span>
           ) : null}
           <span className="text-[10px] text-gray-400">
-            {isZh ? `· ${run.logs.length} 条日志` : `· ${run.logs.length} log entries`}
+            {isZh ? `· ${run.logs?.length ?? 0} 条日志` : `· ${run.logs?.length ?? 0} log entries`}
           </span>
         </div>
       )}
@@ -1251,7 +1251,7 @@ function useTicker(active: boolean): void {
  */
 const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showProgressPill?: boolean }> = ({ isZh, run, showProgressPill = true }) => {
   const logRef = useRef<HTMLDivElement>(null);
-  const logLen = run?.logs.length ?? 0;
+  const logLen = run?.logs?.length ?? 0;
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -1320,7 +1320,7 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
           ref={logRef}
           className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-900 text-gray-200 p-3 h-64 overflow-y-auto font-mono text-[11px] leading-relaxed"
         >
-          {run.logs.map((l, i) => (
+          {(run.logs ?? []).map((l, i) => (
             <div key={i} className="flex gap-2">
               <span className="text-gray-500 shrink-0">{l.time}</span>
               <span className="break-words whitespace-pre-wrap">{renderVideoLog(l.message)}</span>
