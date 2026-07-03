@@ -184,8 +184,7 @@ export function renderScene(scene: Scene, ctx: ComposeCtx): SceneResult {
   const weights = blocks.map((b) => cl(b.weight ?? DEFAULT_WEIGHT[b.type] ?? 1.5, 0.6, 4));
   const totalW = weights.reduce((a, c) => a + c, 0);
   const usableH = regionH - GAP * (blocks.length - 1);
-  // 每个 list 类 block 的条目在整段时长内的揭示节奏:有配音 → 沿时长铺开;无 → 快速错峰
-  const listCount = blocks.filter((b) => ['bullets', 'ranks', 'stats', 'steps'].includes(b.type)).length;
+  // list 类 block 的条目在整段时长内的揭示节奏:有配音 → 沿时长铺开;无 → 快速错峰(见下方 itemStagger)
   let cursor = CONTENT_TOP;
   const parts: string[] = [];
   blocks.forEach((b, i) => {
@@ -200,7 +199,6 @@ export function renderScene(scene: Scene, ctx: ComposeCtx): SceneResult {
     parts.push(renderBlock(b, { top: cursor, height: h, index: i, startSec: blockStart, itemStagger }, ctx));
     cursor += h + GAP;
   });
-  void listCount;
   // 背景氛围:液态 blob 慢漂 + 颗粒 + 暗角(克制,不糊)
   const ambient = `<div class="fx-blob" data-loop="float" data-loop-period="13" data-loop-amp="70" style="width:620px;height:620px;background:${ctx.brandColor};opacity:0.32;top:-160px;left:-140px"></div>`
     + `<div class="fx-blob" data-loop="float" data-loop-period="17" data-loop-amp="86" data-loop-phase="2.3" style="width:520px;height:520px;background:${ctx.accentColor};opacity:0.24;bottom:-140px;right:-150px"></div>`

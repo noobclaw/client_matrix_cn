@@ -11,7 +11,7 @@
  *   · seek 协议在 templateAnim.NBC_RUNTIME_JS 里统一注入,本文件不重复
  *   · 字幕节点也是声明式 `[data-caption-start/end]`,跟动画同一引擎,无对齐误差
  *
- * 仍是 5 套(rank_list/news_cards/quote/countdown/stat_board)的产品差异化:
+ * 8 套固定模板(rank_list/news_cards/quote/countdown/stat_board/timeline/cover_hero/billboard)的产品差异化:
  *   · 用户向导选「版式」依然是按内容类型挑(HF 不按内容类型分,是我们的产品优势)
  *   · AI 只填结构化数据,保证质量稳定(LLM 不写 HTML,不会画风跑偏)
  */
