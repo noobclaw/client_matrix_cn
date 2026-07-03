@@ -3987,6 +3987,23 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
   { id: 'billboard', zh: '逐条大字', en: 'Billboard', emoji: '🎬', hint: '每条一整屏大字,金句连发、逐条揭晓' },
 ];
 
+// 「AI 自由排版」设计主题(themes.ts 里的成套审美)。auto = 按内容气质自动挑。
+const THEME_OPTIONS: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'auto', zh: '🎲 自动(按内容挑)', en: '🎲 Auto (by content)' },
+  { id: 'swiss_grid', zh: '📐 瑞士网格 · 数据看板', en: '📐 Swiss Grid · data' },
+  { id: 'nyt_chart', zh: '📈 纽时图表 · 趋势', en: '📈 NYT Chart · trend' },
+  { id: 'pentagram', zh: '🔺 五角星 · 单指标大字', en: '🔺 Pentagram · big stat' },
+  { id: 'vignelli', zh: '🅰️ 维格纳利 · 快讯黑红', en: '🅰️ Vignelli · bold red' },
+  { id: 'bold_poster', zh: '🍅 大字海报 · 宣言', en: '🍅 Bold Poster' },
+  { id: 'build_minimal', zh: '🕊️ 极简留白 · 金句', en: '🕊️ Build Minimal' },
+  { id: 'warm_grain', zh: '📜 暖纸颗粒 · 资讯', en: '📜 Warm Grain' },
+  { id: 'takram', zh: '🌿 自然柔和 · 科普', en: '🌿 Takram' },
+  { id: 'glitch', zh: '📺 故障信号 · 赛博', en: '📺 Glitch' },
+  { id: 'bold_signal', zh: '🔶 暗色焦点 · 发布', en: '🔶 Bold Signal' },
+  { id: 'creative_voltage', zh: '⚡ 电光创意', en: '⚡ Creative Voltage' },
+  { id: 'midnight', zh: '🌌 暗色科技 · web3', en: '🌌 Midnight · web3' },
+];
+
 // 模板速生「热榜做数据源」可选榜单 —— name 同时是 /api/web3/hot-search?sources= 的参数,
 // 必须跟后端 HOT_SOURCE_ORDER / GlobalHotSearchPage TAB_GROUPS 的名字【精确一致】
 // (注意:不是 HOTSPOT_SOURCES 的 zh,后者把 Google/YouTube 写成「Google 趋势/YouTube 热门」对不上)。
@@ -4701,6 +4718,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [hotlistError, setHotlistError] = useState<string>('');
   // 「AI 自由排版」专用:用户对风格/重点的自由描述(像 HyperFrames 那样用自然语言表达意图)。
   const [brief, setBrief] = useState<string>(et?.brief || '');
+  // 设计主题('auto' = 按内容气质自动挑;其余 = 指定 themes.ts 里的某套)。
+  const [themeId, setThemeId] = useState<string>(et?.themeId || 'auto');
   // 选某个热榜 → 拉前 TOPN 条标题。失败给提示,用户可改回粘贴。
   const loadHotlist = async (name: string) => {
     setHotlistName(name); setHotlistItems([]); setHotlistError(''); setHotlistLoading(true);
@@ -4878,6 +4897,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           subtitleEnabled: narration ? subtitleEnabled : undefined,
           // 「AI 自由排版」风格意图(其它版式忽略)。
           brief: style === 'ai_freeform' && brief.trim() ? brief.trim() : undefined,
+          // 设计主题('auto' 不传,交给内容气质/AI 自动挑)。
+          themeId: style === 'ai_freeform' && themeId && themeId !== 'auto' ? themeId : undefined,
           // 热榜数据源:存榜名 → 出片时主进程实时抓最新榜单(定时任务天天更新);
           // dataText 同时存了选榜时的快照,实时抓失败时兜底。
           hotlistSource: dataSourceMode === 'hotlist' && hotlistName ? hotlistName : undefined,
@@ -5011,6 +5032,15 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       </ol>
                     </div>
                   )}
+                </Field>
+              )}
+
+              {style === 'ai_freeform' && (
+                <Field label={isZh ? '设计主题' : 'Design theme'} hint={isZh ? '成套审美(配色/字体/装饰)。自动 = 按内容气质挑最搭的一套' : 'curated look; Auto picks by content'}>
+                  <select value={themeId} onChange={(e) => setThemeId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white dark:bg-[#1a1a2e]">
+                    {THEME_OPTIONS.map((t) => <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>)}
+                  </select>
                 </Field>
               )}
 

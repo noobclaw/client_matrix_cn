@@ -446,6 +446,8 @@ export interface ComposeSceneInput {
   durationSec: number;
   narrationOn: boolean;
   captionsOn: boolean;
+  /** 用户在向导里显式选的设计主题 id;'auto'/空 = 交给 AI/内容气质自动挑。 */
+  themeId?: string;
 }
 
 export interface ComposeSceneOutput {
@@ -470,6 +472,8 @@ export async function composeSceneFromAI(
     durationSec: input.durationSec,
     narrationOn: input.narrationOn,
     captionsOn: input.captionsOn,
+    // 用户显式选主题(非 auto)才透传;否则留空,由 scene.themeId(AI)/内容气质自动挑。
+    themeId: input.themeId && input.themeId !== 'auto' ? input.themeId : undefined,
   };
   try {
     onProgress?.('🧩 正在规划画面结构(结构化安全排版)…');

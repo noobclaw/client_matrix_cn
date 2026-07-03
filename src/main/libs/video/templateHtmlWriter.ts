@@ -45,6 +45,8 @@ export interface TemplateOptions {
   watermark?: string;        // 右下角水印文案。空字符串 = 不显示
   /** 「AI 自由排版」专用:用户对风格/重点的自由描述,拼进 freeformWriter prompt。其它版式忽略。 */
   brief?: string;
+  /** 设计主题 id(themes.ts);'auto'/空 = 按内容气质自动挑。用于 sceneComposer 主题化渲染。 */
+  themeId?: string;
   /** 热榜数据源榜名(同 /api/web3/hot-search?sources=)。非空 = 出片时实时抓该榜前 N 条当内容,
    *  抓失败退回 dataText 快照。空 = 用 dataText。 */
   hotlistSource?: string;

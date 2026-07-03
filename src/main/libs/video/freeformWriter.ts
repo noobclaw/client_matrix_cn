@@ -47,6 +47,8 @@ export interface FreeformInput {
   gsapAvailable: boolean;
   /** 用户对风格/重点的自由描述(如「赛博朋克风、突出第一名、多用大数字」)。空 = AI 自行决定。 */
   brief?: string;
+  /** 用户显式选的设计主题 id(themes.ts);'auto'/空 = 自动挑。 */
+  themeId?: string;
   /** 体检不通过时的修复上下文:带上一版 + 问题清单,让 AI 改而不是重起炉灶。 */
   fixHint?: FreeformFixHint;
 }
@@ -266,7 +268,7 @@ export async function generateFreeformScene(
   //   概念,重出一版意义不大)。任何失败(鉴权/余额除外,那个上抛)→ 落到老整页 HTML 路径。
   if (!input.fixHint) {
     const scene = await composeSceneFromAI({
-      dataText: input.dataText, title: input.title, brief: input.brief, lang: input.lang,
+      dataText: input.dataText, title: input.title, brief: input.brief, lang: input.lang, themeId: input.themeId,
       brandColor: input.brandColor, accentColor: input.accentColor || '#0ecb81',
       durationSec: input.durationSec, narrationOn: input.narrationOn, captionsOn: input.captionsOn,
     }, onProgress);
