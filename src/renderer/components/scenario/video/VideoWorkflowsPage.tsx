@@ -3982,6 +3982,9 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
   { id: 'quote', zh: '金句 / 语录', en: 'Quote', emoji: '✍️', hint: '观点、知识点、避坑' },
   { id: 'countdown', zh: '盘点倒数', en: 'Countdown', emoji: '🔟', hint: '倒数揭晓 Top 榜' },
   { id: 'stat_board', zh: '数据看板', en: 'Stat board', emoji: '📊', hint: '几个关键指标大数字' },
+  { id: 'timeline', zh: '时间轴 / 历程', en: 'Timeline', emoji: '🧭', hint: '发展历程、路线图、步骤流程' },
+  { id: 'cover_hero', zh: '大字封面', en: 'Cover', emoji: '💥', hint: '单主题重磅开场,巨型标题 + 亮点' },
+  { id: 'billboard', zh: '逐条大字', en: 'Billboard', emoji: '🎬', hint: '每条一整屏大字,金句连发、逐条揭晓' },
 ];
 
 // 模板速生「热榜做数据源」可选榜单 —— name 同时是 /api/web3/hot-search?sources= 的参数,

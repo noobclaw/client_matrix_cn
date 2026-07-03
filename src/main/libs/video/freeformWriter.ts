@@ -19,6 +19,7 @@
  */
 
 import { callNoobclawChat } from './templateHtmlWriter';
+import { composeSceneFromAI } from './sceneComposer';
 import type { ContentLang } from './scriptWriter';
 
 export interface FreeformFixHint {
@@ -259,6 +260,21 @@ export async function generateFreeformScene(
   input: FreeformInput,
   onProgress?: (msg: string) => void,
 ): Promise<FreeformResult> {
+  // ── P2 主路径:【结构化安全排版】(sceneComposer)——AI 只出场景 JSON,我们铺进不塌的
+  //   安全版式(每 block 一条纵向带 + data-fit 自适应)。只在【首次尝试】走(有 fixHint =
+  //   上一版体检没过,交给下面的整页 HTML 修复路径按具体问题改;结构化版没有「按问题改」的
+  //   概念,重出一版意义不大)。任何失败(鉴权/余额除外,那个上抛)→ 落到老整页 HTML 路径。
+  if (!input.fixHint) {
+    const scene = await composeSceneFromAI({
+      dataText: input.dataText, title: input.title, brief: input.brief, lang: input.lang,
+      brandColor: input.brandColor, accentColor: input.accentColor || '#0ecb81',
+      durationSec: input.durationSec, narrationOn: input.narrationOn, captionsOn: input.captionsOn,
+    }, onProgress);
+    if (scene) {
+      // 结构化版全走 data-* 声明式动画,不产 GSAP setupScript。
+      return { css: scene.css, bodyHtml: scene.bodyHtml, source: 'ai', model: 'noobclawai-chat', tokens: scene.tokens, costUsd: scene.costUsd };
+    }
+  }
   const models: Array<'noobclawai-reasoner' | 'noobclawai-chat'> = ['noobclawai-reasoner', 'noobclawai-chat'];
   const label: Record<string, string> = { 'noobclawai-reasoner': 'Pro 模型', 'noobclawai-chat': 'flash 模型' };
   let lastReason = 'AI 未产出可用 HTML';

@@ -25,7 +25,7 @@ function apiBase(): string {
 /** 模板版式枚举(card 向导让用户选)。
  *  ai_freeform = 「AI 自由排版」:AI 写整页 HTML+CSS(+可选 GSAP),走 freeformWriter +
  *  体检迭代闭环,不走固定模板渲染。其余 5 个是固定精品模板。 */
-export type TemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board' | 'ai_freeform';
+export type TemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board' | 'timeline' | 'cover_hero' | 'billboard' | 'ai_freeform';
 
 /** 「模板速生」任务输入子对象。 */
 export interface TemplateOptions {

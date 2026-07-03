@@ -118,6 +118,9 @@ export function pageSizeFor(style: TemplateStyle): number {
     case 'news_cards': return 4;
     case 'countdown': return 6;
     case 'stat_board': return 4;
+    case 'timeline': return 5;
+    case 'cover_hero': return 3; // 只用前 3 条当亮点条,单页不分页
+    case 'billboard': return 1;  // 每屏一条大字,N 条轮播
     case 'quote': return 1; // 金句只展示 items[0],分页无意义
     default: return 4;
   }
@@ -447,6 +450,123 @@ function renderStatBoard(spec: TemplateSpec): string {
   });
 }
 
+// ── 精品模板 6:竖向时间轴 / 里程碑(timeline)── 左侧轴线 + 节点,逐条揭示 ────────
+// 适合:发展历程 / 路线图 / 步骤流程 / 大事记。每页 5 个节点,超了分页。
+function renderTimeline(spec: TemplateSpec): string {
+  const accent = spec.accentColor || '#0ecb81';
+  const PAGE = 5;
+  const css = `
+#title{position:absolute;top:150px;left:96px;right:80px;text-align:left;font-size:70px;font-weight:900;color:#fff;line-height:1.16}
+#title .dot{color:${accent}}
+#tl-area{position:absolute;top:330px;left:96px;right:70px;bottom:140px}
+#tl-rail{position:absolute;left:44px;top:10px;bottom:10px;width:4px;background:linear-gradient(${spec.brandColor},${accent});border-radius:4px}
+.page{position:absolute;inset:0}
+.node{position:absolute;left:0;right:0;display:flex;align-items:flex-start}
+.node .dot{flex:0 0 auto;width:92px;display:flex;justify-content:center;position:relative;z-index:2}
+.node .dot b{width:56px;height:56px;border-radius:50%;background:${spec.brandColor};border:4px solid #0b0e11;box-shadow:0 0 0 4px ${accent}55;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#0b0e11}
+.node .card{flex:1;min-width:0;margin-left:14px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;border-radius:22px;box-shadow:0 10px 30px rgba(0,0,0,0.32);padding:26px 34px}
+.node .nm{font-size:44px;font-weight:800;line-height:1.2;overflow:hidden}
+.node .sb{font-size:28px;color:#9aa2b1;margin-top:10px;line-height:1.4;overflow:hidden}
+`;
+  const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
+  const pages = slots.map((slot) => {
+    const n = Math.max(1, slot.items.length);
+    const nodes = slot.items.map((it, i) => {
+      const start = slot.pageStartSec + 0.25 + i * 0.2;
+      const topPct = (i / n) * 100;
+      const hPct = 100 / n;
+      const sub = it.sub || it.value || '';
+      return `<div class="node" style="top:${topPct.toFixed(2)}%;height:${hPct.toFixed(2)}%" data-anim="fade-left" data-start="${start.toFixed(2)}" data-duration="0.55" data-ease="expo">
+        <div class="dot"><b>${(it.rank ?? (slot.pageIndex * PAGE + i + 1))}</b></div>
+        <div class="card"><div class="nm" data-fit data-fit-maxh="120" data-fit-min="28">${esc(it.name)}</div>${sub ? `<div class="sb" data-fit data-fit-maxh="90" data-fit-min="22">${esc(sub)}</div>` : ''}</div>
+      </div>`;
+    }).join('');
+    return `<div class="page" ${pageDataAttrs(slot)}><div id="tl-rail"></div>${nodes}</div>`;
+  }).join('');
+  const body = `<div id="title" data-fit data-fit-maxh="150" data-fit-min="40" data-anim="slide-in-left" data-start="0.1" data-duration="0.6" data-ease="expo">${esc(spec.title || '发展历程')}<span class="dot">.</span></div>
+  <div id="tl-area">${pages}</div>
+  ${pageFlashesHtml(slots.map((s) => s.pageStartSec))}
+  <div class="fx-grain"></div>`;
+  return wrapTemplateHtml({
+    bodyHtml: body, css, brandColor: spec.brandColor,
+    durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
+  });
+}
+
+// ── 精品模板 7:大字封面 / 开场(cover_hero)── 巨型逐字标题 + 副题 + 最多 3 个亮点条 ──
+// 适合:单主题重磅开场 / 标题党 / 主题海报。单页,不分页(只用前 3 条 items 当亮点)。
+function renderCoverHero(spec: TemplateSpec): string {
+  const accent = spec.accentColor || '#0ecb81';
+  const chips = spec.items.slice(0, 3);
+  const css = `
+#ch-glow{position:absolute;inset:0;background:radial-gradient(70% 42% at 50% 38%,${spec.brandColor}22 0%,transparent 62%);pointer-events:none}
+#ch-kicker{position:absolute;top:360px;left:80px;right:80px;text-align:center;font-size:38px;font-weight:800;letter-spacing:10px;color:${accent}}
+#ch-title{position:absolute;top:470px;left:70px;right:70px;text-align:center;font-size:150px;font-weight:900;line-height:1.06;color:#fff;text-shadow:0 10px 40px rgba(0,0,0,0.6)}
+#ch-sub{position:absolute;top:900px;left:120px;right:120px;text-align:center;font-size:46px;font-weight:600;color:#c7ccd4;line-height:1.4}
+#ch-chips{position:absolute;left:100px;right:100px;bottom:300px;display:flex;flex-direction:column;gap:26px}
+.ch-chip{display:flex;align-items:center;gap:24px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;border-radius:20px;padding:26px 36px;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
+.ch-chip .k{flex:0 0 auto;width:16px;height:56px;border-radius:6px;background:${accent}}
+.ch-chip .tx{flex:1;min-width:0;font-size:42px;font-weight:800;line-height:1.2;overflow:hidden}
+.ch-chip .v{flex:0 0 auto;font-size:48px;font-weight:900;color:${accent};white-space:nowrap}
+`;
+  const chipHtml = chips.map((it, i) => {
+    const start = 1.0 + i * 0.28;
+    return `<div class="ch-chip" data-anim="slide-in-right" data-start="${start.toFixed(2)}" data-duration="0.55" data-ease="expo">
+      <div class="k"></div><div class="tx" data-fit data-fit-maxh="110" data-fit-min="26">${esc(it.name)}</div>${it.value ? `<div class="v" data-fit data-fit-maxw="240" data-fit-min="26">${esc(it.value)}</div>` : ''}
+    </div>`;
+  }).join('');
+  const kicker = spec.subtitle ? esc(spec.subtitle) : '';
+  const body = `<div id="ch-glow"></div>
+  ${liquidBlobsHtml(spec.brandColor, accent)}
+  ${kicker ? `<div id="ch-kicker" data-anim="fade-down" data-start="0.2" data-duration="0.6">${kicker}</div>` : ''}
+  <div id="ch-title" data-fit data-fit-maxh="380" data-fit-min="72">${splitKinetic(spec.title || '重磅', 0.4, { stagger: 0.06, anim: 'pop', ease: 'back', duration: 0.6 })}</div>
+  ${chipHtml ? `<div id="ch-chips">${chipHtml}</div>` : ''}
+  <div class="fx-vignette"></div><div class="fx-grain"></div>`;
+  return wrapTemplateHtml({
+    bodyHtml: body, css, brandColor: spec.brandColor,
+    durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
+  });
+}
+
+// ── 精品模板 8:逐条全屏大字(billboard)── 每条 item 一整屏居中大字,逐条切换 ──────
+// 适合:金句连发 / 要点逐条强调 / 数字逐个揭晓。每页 1 条(N 条 = N 页轮播)。
+function renderBillboard(spec: TemplateSpec): string {
+  const accent = spec.accentColor || '#0ecb81';
+  const css = `
+#bb-idx{position:absolute;top:150px;left:0;right:0;text-align:center;font-size:40px;font-weight:900;letter-spacing:8px;color:${accent}}
+#bb-area{position:absolute;top:0;left:0;right:0;bottom:0}
+.page{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 110px}
+.bb-n{font-size:96px;font-weight:900;line-height:1.14;text-align:center;color:#fff;text-shadow:0 8px 34px rgba(0,0,0,0.55)}
+.bb-v{font-size:120px;font-weight:900;color:${accent};margin-top:34px;line-height:1;text-shadow:0 6px 30px ${accent}44}
+.bb-s{font-size:40px;font-weight:600;color:#9aa2b1;margin-top:30px;text-align:center;line-height:1.4}
+.bb-rule{width:120px;height:6px;border-radius:6px;background:${spec.brandColor};margin:40px auto 0}
+`;
+  const slots = paginate(spec.items, 1, spec.durationSec, spec.pageTimings);
+  const total = spec.items.length;
+  const pages = slots.map((slot) => {
+    const it = slot.items[0];
+    if (!it) return '';
+    const s0 = slot.pageStartSec + 0.15;
+    const idx = slot.pageIndex + 1;
+    return `<div class="page" ${pageDataAttrs(slot)}>
+      <div class="bb-n" data-fit data-fit-maxh="520" data-fit-min="46" data-anim="fade-up" data-start="${s0.toFixed(2)}" data-duration="0.6" data-ease="expo">${esc(it.name)}</div>
+      ${it.value ? `<div class="bb-v" data-fit data-fit-maxh="200" data-fit-min="54" data-anim="pop" data-start="${(s0 + 0.25).toFixed(2)}" data-duration="0.7" data-ease="back">${esc(it.value)}</div>` : ''}
+      <div class="bb-rule" data-anim="wipe-right" data-start="${(s0 + 0.4).toFixed(2)}" data-duration="0.5"></div>
+      ${it.sub ? `<div class="bb-s" data-fit data-fit-maxh="120" data-fit-min="24" data-anim="fade" data-start="${(s0 + 0.55).toFixed(2)}" data-duration="0.6">${esc(it.sub)}</div>` : ''}
+      <div style="position:absolute;bottom:180px;left:0;right:0;text-align:center;font-size:34px;color:#5e6673;letter-spacing:6px">${idx} / ${total}</div>
+    </div>`;
+  }).join('');
+  const body = `${liquidBlobsHtml(spec.brandColor, accent)}
+  <div id="bb-idx" data-anim="fade" data-start="0.1" data-duration="0.5">${esc(spec.title || '')}</div>
+  <div id="bb-area">${pages}</div>
+  ${pageFlashesHtml(slots.map((s) => s.pageStartSec))}
+  <div class="fx-vignette"></div><div class="fx-grain"></div>`;
+  return wrapTemplateHtml({
+    bodyHtml: body, css, brandColor: spec.brandColor,
+    durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
+  });
+}
+
 /** 按 style 渲染精品模板 → 完整 HTML(含 paused seek 协议)。 */
 export function renderTemplate(spec: TemplateSpec): string {
   switch (spec.style) {
@@ -460,6 +580,12 @@ export function renderTemplate(spec: TemplateSpec): string {
       return renderCountdown(spec);
     case 'stat_board':
       return renderStatBoard(spec);
+    case 'timeline':
+      return renderTimeline(spec);
+    case 'cover_hero':
+      return renderCoverHero(spec);
+    case 'billboard':
+      return renderBillboard(spec);
     default:
       return renderNewsCards(spec);
   }
