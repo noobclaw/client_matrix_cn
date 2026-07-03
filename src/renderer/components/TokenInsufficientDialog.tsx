@@ -2,12 +2,13 @@ import React from 'react';
 import { i18nService } from '../services/i18n';
 
 interface TokenInsufficientDialogProps {
-  onConfirm: () => void;
+  onConfirm: () => void;        // 充值(永久积分)
   onCancel: () => void;
+  onSubscribe?: () => void;     // 续费/开通会员(订阅桶);不传则不显示该按钮
   balance?: number;
 }
 
-const TokenInsufficientDialog: React.FC<TokenInsufficientDialogProps> = ({ onConfirm, onCancel, balance }) => {
+const TokenInsufficientDialog: React.FC<TokenInsufficientDialogProps> = ({ onConfirm, onCancel, onSubscribe, balance }) => {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
       <div className="w-full max-w-sm mx-4 p-8 rounded-2xl border border-yellow-500/30 dark:bg-[#1a1a2e] bg-white shadow-2xl text-center" onClick={e => e.stopPropagation()}>
@@ -31,6 +32,14 @@ const TokenInsufficientDialog: React.FC<TokenInsufficientDialogProps> = ({ onCon
         >
           {i18nService.t('tokenInsufficientTopUp')}
         </button>
+        {onSubscribe && (
+          <button
+            onClick={onSubscribe}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-semibold hover:from-violet-600 hover:to-fuchsia-600 transition-all mb-3 shadow-lg"
+          >
+            {i18nService.t('tokenInsufficientSubscribe')}
+          </button>
+        )}
         <button
           onClick={onCancel}
           className="w-full py-2 rounded-xl dark:text-gray-500 text-gray-400 text-sm hover:dark:text-gray-300 hover:text-gray-600 transition-colors"

@@ -579,6 +579,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   };
   const runTaskNow = async (t: MatrixTask) => {
     if (!requireLogin()) return;
+    // 余额预检:总积分(永久桶+有效订阅桶)不足阈值 → 弹充值/续费弹窗,不空跑一趟。
+    //   与 TaskDetailPage.handleRunNow 口径一致(手动运行都先拦一道)。
+    if (!noobClawAuth.hasEnoughBalanceForTask()) return;
     if (!requireKernel()) return;
     if (running) { setNotice(i18nService.t('mvAnotherTaskRunning')); return; }
     setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setSelectedTaskId(t.id);

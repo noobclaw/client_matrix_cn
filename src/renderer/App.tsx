@@ -25,6 +25,7 @@ import { apiService } from './services/api';
 import { themeService } from './services/theme';
 import { coworkService } from './services/cowork';
 import { scheduledTaskService } from './services/scheduledTask';
+import { openWallet } from './services/walletNav';
 import { checkForAppUpdate, type AppUpdateInfo, type AppUpdateDownloadProgress, UPDATE_POLL_INTERVAL_MS, UPDATE_HEARTBEAT_INTERVAL_MS } from './services/appUpdate';
 import { defaultConfig } from './config';
 import { setAvailableModels, setSelectedModel } from './store/slices/modelSlice';
@@ -583,11 +584,22 @@ const App: React.FC = () => {
     }
   }, [authState.isAuthenticated, authState.authToken]);
 
-  // Listen for token-insufficient event from api.ts
+  // Listen for token-insufficient event from api.ts / noobclawAuth 预检(renderer 内 CustomEvent)
   useEffect(() => {
     const handler = () => setShowTokenDialog(true);
     window.addEventListener('noobclaw:token-insufficient', handler);
     return () => window.removeEventListener('noobclaw:token-insufficient', handler);
+  }, []);
+
+  // 运行中(含定时任务)余额不足:sidecar 检测到 runner 命中 402 → broadcastSSE
+  //   'noobclaw:token-insufficient' → 这里弹同一个充值/续费弹窗(否则用户只在流式日志里看到,
+  //   任务一直失败却不知道要去充值/续费)。先刷一次余额让弹窗数字最新,再弹。
+  useEffect(() => {
+    const off = (window.electron as any)?.ipcRenderer?.on?.('noobclaw:token-insufficient', () => {
+      noobClawAuth.refreshBalance().catch(() => {});
+      setShowTokenDialog(true);
+    });
+    return () => { try { off?.(); } catch { /* noop */ } };
   }, []);
 
   // Listen for show-wallet event (e.g. from low-balance button)
@@ -986,7 +998,8 @@ const App: React.FC = () => {
       )}
       {showTokenDialog && (
         <TokenInsufficientDialog
-          onConfirm={() => { setShowTokenDialog(false); setMainView('wallet'); }}
+          onConfirm={() => { setShowTokenDialog(false); openWallet('topup'); }}
+          onSubscribe={() => { setShowTokenDialog(false); openWallet('subscription'); }}
           onCancel={() => setShowTokenDialog(false)}
         />
       )}

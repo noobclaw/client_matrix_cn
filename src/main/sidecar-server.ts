@@ -317,8 +317,20 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
       if (live.perAccount[accountId]) live.perAccount[accountId].targets = tg; // 该号真实随机配额覆盖兜底
       recomputeTargets();
     };
+    // 运行中余额不足 → 弹窗信号(含定时任务:调度也走本 run 块)。runner 命中 402 会把
+    //   '余额不足…' 写进 item.reason 或让整个任务 reject → 这里一次性广播,renderer 弹充值/续费
+    //   弹窗,用户不必盯着流式日志才知道该充值。每次运行只播一次(避免多号刷屏)。
+    let insufficientNotified = false;
+    const INSUFFICIENT_RE = /余额不足|insufficient|INSUFFICIENT_TOKENS|积分.*不足/i;
+    const notifyInsufficient = (why: unknown) => {
+      if (insufficientNotified) return;
+      if (!INSUFFICIENT_RE.test(String(why ?? ''))) return;
+      insufficientNotified = true;
+      broadcastSSE('noobclaw:token-insufficient', { taskId: task.id, source: 'matrix-run' });
+    };
     const cbOnItem = (item: any) => {
         collected.set(item.accountId, item);
+        notifyInsufficient(item?.reason);
         // 聚合 done = 各号最新累计 counts 之和;聚合 cost = 各号最新累计扣费之和(每号是到目前的累计,直接相加不重复)。
         const sum = zero();
         const costSum = { credits: 0, usd: 0 };
@@ -407,7 +419,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
       } catch (e) { coworkLog('WARN', 'sidecar-server', 'addRun failed', { err: String(e) }); }
       broadcastSSE('matrix:progress', { type: 'done', report, taskId: task.id });
     })
-      .catch((e: any) => { live.status = 'error'; live.error = e?.message || String(e); broadcastSSE('matrix:progress', { type: 'error', error: e?.message || String(e), taskId: task.id }); })
+      .catch((e: any) => { live.status = 'error'; live.error = e?.message || String(e); notifyInsufficient(e?.message || String(e)); broadcastSSE('matrix:progress', { type: 'error', error: e?.message || String(e), taskId: task.id }); })
       .finally(() => { release(); });
     return { ok: true };
   } catch (e: any) {
@@ -1326,12 +1338,19 @@ const server = http.createServer(async (req, res) => {
                   outputPath: result.outputPath,
                   error: result.error,
                 });
+                // 运行中(含定时视频任务)余额不足 → 弹充值/续费弹窗(同矩阵涨粉任务口径)。
+                if (!result.ok && /余额不足|insufficient|积分.*不足/i.test(String(result.error ?? ''))) {
+                  broadcastSSE('noobclaw:token-insufficient', { source: 'video-run' });
+                }
               }).catch((e: any) => {
                 broadcastSSE('video:progress', {
                   jobId: 'final',
                   status: 'error',
                   error: e?.message || String(e),
                 });
+                if (/余额不足|insufficient|积分.*不足/i.test(String(e?.message ?? ''))) {
+                  broadcastSSE('noobclaw:token-insufficient', { source: 'video-run' });
+                }
               }).finally(cleanup);
               return writeJSON(res, 200, { ok: true, status: 'started' });
             } catch (e: any) {
