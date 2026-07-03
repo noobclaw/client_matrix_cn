@@ -79,6 +79,9 @@ const App: React.FC = () => {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [authState, setAuthState] = useState(noobClawAuth.getState());
   const [showTokenDialog, setShowTokenDialog] = useState(false);
+  // 镜像 showTokenDialog 供 SSE 事件回调同步读(闭包里读 state 会拿到旧值)。
+  //   窗口开着时,后续「余额不足」事件(多任务并发)一律忽略 → 没关闭就只弹一次。
+  const tokenDialogOpenRef = useRef(false);
   const [showLoginWall, setShowLoginWall] = useState(false);
   const toastTimerRef = useRef<number | null>(null);
   const hasInitialized = useRef(false);
@@ -594,13 +597,18 @@ const App: React.FC = () => {
   // 运行中(含定时任务)余额不足:sidecar 检测到 runner 命中 402 → broadcastSSE
   //   'noobclaw:token-insufficient' → 这里弹同一个充值/续费弹窗(否则用户只在流式日志里看到,
   //   任务一直失败却不知道要去充值/续费)。先刷一次余额让弹窗数字最新,再弹。
+  //   守卫:弹窗已开着就整段忽略(多个任务并发命中不足时不重复刷余额/重触发)——没关闭只弹一次。
   useEffect(() => {
     const off = (window.electron as any)?.ipcRenderer?.on?.('noobclaw:token-insufficient', () => {
+      if (tokenDialogOpenRef.current) return;
       noobClawAuth.refreshBalance().catch(() => {});
       setShowTokenDialog(true);
     });
     return () => { try { off?.(); } catch { /* noop */ } };
   }, []);
+
+  // 保持 ref 与弹窗开关同步,供上面的 SSE 回调即时读到最新状态。
+  useEffect(() => { tokenDialogOpenRef.current = showTokenDialog; }, [showTokenDialog]);
 
   // Listen for show-wallet event (e.g. from low-balance button)
   useEffect(() => {
