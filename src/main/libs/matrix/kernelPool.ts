@@ -670,7 +670,7 @@ export async function kernelWheel(accountId: string, x: number, y: number, delta
  * accept 含 video/mp4/空)→ 给所有命中的都 setFileInputFiles(多候选不确定哪个真,全设最稳)。
  */
 export async function kernelSetFileInput(
-  accountId: string, selector: string, filePaths: string[], opts?: { deep?: boolean },
+  accountId: string, selector: string, filePaths: string[], opts?: { deep?: boolean; single?: boolean },
 ): Promise<{ ok: boolean; reason?: string; found: number; attached: number }> {
   // 0) 本地文件先校验存在(对齐旧 uploadFileToInput 的 fs.existsSync 前置):路径错时给明确
   //    file_not_found,而不是笼统的 set_file_input_failed —— 否则成片路径/合成失败也只会显示同一个错。
@@ -682,9 +682,13 @@ export async function kernelSetFileInput(
   const s = await getPage(accountId);
   const sel = selector || '';
   const deep = !!opts?.deep;
+  const single = !!opts?.single;
   // 1) 深遍历收集候选 input 到 window.__mtxFI,返回数量。
   //    ⚠️ 旧版只穿 shadowRoot 漏了同源 iframe;对齐旧客户端 uploadVideoToInputDeep 的三层深遍历,补 iframe.contentDocument。
-  const collectExpr = `(function(sel, deep){
+  //    single=true(图文上传用):最终只灌【一个】input(优先 accept 含 image 的),对齐扩展 uploadFileFromUrl 的
+  //    querySelector 单设 —— 否则"全设"把图也灌进图文页「添加文件」附件 input(accept 空/*),帖子冒出多余
+  //    nbmx_img.jpg 文件(图片本身 4 张仍正常)。视频上传不传 single,多候选仍"全设最稳"。
+  const collectExpr = `(function(sel, deep, single){
     function collect(root, out){
       try { root.querySelectorAll('input[type=file]').forEach(function(el){ out.push(el); }); } catch(e){}
       var nodes=[]; try { nodes = root.querySelectorAll('*'); } catch(e){}
@@ -697,9 +701,13 @@ export async function kernelSetFileInput(
     if(sel){ for(var i=0;i<all.length;i++){ try{ if(all[i].matches(sel)) pick.push(all[i]); }catch(e){} } }
     if(!pick.length && (deep || !sel)){ pick = all.filter(function(el){ var a=(el.accept||'').toLowerCase(); return a.indexOf('video')>=0||a.indexOf('mp4')>=0||a===''; }); }
     if(!pick.length && deep) pick = all;
+    if(single && pick.length > 1){
+      var imgs = pick.filter(function(el){ return (el.accept||'').toLowerCase().indexOf('image')>=0; });
+      pick = [ imgs.length ? imgs[0] : pick[0] ];
+    }
     window.__mtxFI = pick;
     return pick.length;
-  })(${JSON.stringify(sel)}, ${deep})`;
+  })(${JSON.stringify(sel)}, ${deep}, ${single})`;
   const cnt: any = await send(s, 'Runtime.evaluate', { expression: collectExpr, returnByValue: true });
   const n = Number(cnt?.result?.value || 0);
   if (!n) return { ok: false, reason: 'no_input_matched(sel=' + (sel || '∅') + ',deep=' + deep + ')', found: 0, attached: 0 };

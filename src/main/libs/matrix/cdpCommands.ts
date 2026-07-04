@@ -185,7 +185,9 @@ export async function matrixCmd(
           tmpPaths.push(p);
         }
         if (!tmpPaths.length) return { error: 'empty_files' };
-        const r: any = await kernelSetFileInput(accountId, String(params?.selector || ''), tmpPaths, { deep: true });
+        // single:true —— 图文上传只灌【一个】image input(对齐扩展 uploadFileFromUrl 的 querySelector 单设);
+        //   否则"全设"会把图也灌进图文页「添加文件」附件 input,帖子冒出多余 nbmx_img.jpg 文件(图片本身正常)。
+        const r: any = await kernelSetFileInput(accountId, String(params?.selector || ''), tmpPaths, { deep: true, single: true });
         // 5 分钟后清理临时文件(此时上传早已完成),避免 tmp 堆积。
         setTimeout(() => { for (const p of tmpPaths) { try { fs.unlinkSync(p); } catch { /* ignore */ } } }, 5 * 60 * 1000);
         return r && r.ok ? { ok: true, message: `set ${tmpPaths.length} files` } : { error: (r && r.reason) || 'set_file_input_failed' };
