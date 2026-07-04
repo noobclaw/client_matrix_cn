@@ -731,6 +731,14 @@ async function runVideoPipeline(
     //   不报错。后续完全复用 stock 图片模式的写稿/配图/合成/发布。
     let hotspotTopic: HotspotTopic | null = null;
     let hotspotMaterial = '';
+    // 取材平台(抖音/TikTok):用户在向导里选的【最优先】,老任务无此字段才按选中热点标题语言兜底
+    //   (中文→抖音,其他→TikTok)。取材(prefetch)+ 铺镜(visuals)两处统一用它路由,
+    //   不能再各自 detectLang(标题) —— 否则用户选了 TikTok 但热点是中文标题时会被判回抖音。
+    const resolveMaterialPlatform = (): 'douyin' | 'tiktok' => {
+      const sel = (input as any).hotspotMaterialPlatform;
+      if (sel === 'douyin' || sel === 'tiktok') return sel;
+      return String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh') ? 'douyin' : 'tiktok';
+    };
     // 新流程:中文热搜【先上抖音搜】下视频/图文 + 抓真实帖子标题 —— 标题给 AI 写口播稿(替掉 Serper),
     //   视频/图同时留着后面铺镜(buildDouyinPool / buildDouyinImagePool 直接复用,不再二次下载)。
     let douyinPrefetch: { mode: 'video' | 'image'; paths: string[]; titles: string[] } | null = null;
@@ -780,8 +788,8 @@ async function runVideoPipeline(
       // 【新流程,不再 Serper 联网取材】中文热搜直接上抖音搜:下视频/图文 + 抓真实帖子标题,
       //   拿这些抖音标题 + 热搜标题给 AI 写口播稿(很真实、贴热点);素材同时留着后面铺镜。
       //   非中文(TikTok 路,WIP)/ 抖音没结果 → 没标题 → AI 仅按热搜标题写,绝不回 Serper。
-      const tlang = detectLang(hotspotTopic.title);
-      if (tlang === 'zh') {
+      // 走抖音还是 TikTok 取材,按【用户在向导选的取材平台】,不再按标题语言(见 resolveMaterialPlatform)。
+      if (resolveMaterialPlatform() === 'douyin') {
         const dyMode: 'video' | 'image' = input.hotspotMaterialSource === 'douyin' ? 'video' : 'image';
         const want = dyMode === 'video'
           ? Math.max(6, Math.min(15, Math.ceil((input.targetSeconds ?? 60) / 6)))
@@ -1268,7 +1276,7 @@ async function runVideoPipeline(
       };
       tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`);
     } else if (input.engine === 'hotspot' && input.hotspotMaterialSource === 'douyin'
-               && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && resolveMaterialPlatform() === 'douyin'
                && (douyinPool = await buildDouyinPool())) {
       // 中文话题 + 选「视频混剪」:抖音混剪 —— 只按热搜标题搜、切片铺镜(见 buildDouyinPool,用户要求不 AI
       //   拆词)。取不到 → 短路落下面抖音图文 / 文字卡。非中文话题应走 TikTok(待做)。
@@ -1276,7 +1284,7 @@ async function runVideoPipeline(
       assignVisuals = (videoIdx: number) => ({ sceneClips: douyinPool!.assign(videoIdx), imagePool: [] });
       tracker.done('visuals', '🎬 抖音混剪就绪(按热搜标题搜 · 底部黑条盖原字幕)');
     } else if (input.engine === 'hotspot'
-               && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && resolveMaterialPlatform() === 'douyin'
                && (douyinImgPool = await buildDouyinImagePool())) {
       // 中文话题:选了图片配图、或选了视频混剪但视频没取到 → 抖音图文(只按热搜标题搜,见
       //   buildDouyinImagePool)。复用 hotspotDouyinMode=true:字幕走中下 lower;图镜
@@ -1289,7 +1297,7 @@ async function runVideoPipeline(
       });
       tracker.done('visuals', '🖼️ 抖音图文就绪(按热搜标题搜 · 图片缓慢运镜)');
     } else if (input.engine === 'hotspot' && input.hotspotMaterialSource === 'douyin'
-               && !String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && resolveMaterialPlatform() === 'tiktok'
                && (tiktokPool = await buildTiktokPool())) {
       // 英文/小语种话题 + 选「视频混剪」:TikTok 混剪 —— 只按热搜标题搜、切片铺镜(对称抖音 buildDouyinPool)。
       //   取不到 → 短路落下面 TikTok 图集 / 文字卡。中文话题应走上面抖音。
@@ -1297,7 +1305,7 @@ async function runVideoPipeline(
       assignVisuals = (videoIdx: number) => ({ sceneClips: tiktokPool!.assign(videoIdx), imagePool: [] });
       tracker.done('visuals', '🎬 TikTok 混剪就绪(按热搜标题搜 · 底部黑条盖原字幕)');
     } else if (input.engine === 'hotspot'
-               && !String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && resolveMaterialPlatform() === 'tiktok'
                && (tiktokImgPool = await buildTiktokImagePool())) {
       // 英文/小语种话题:选了图片配图、或选了视频混剪但视频没取到 → TikTok 图集图(Ken Burns,对称抖音图文)。
       hotspotDouyinMode = true;
