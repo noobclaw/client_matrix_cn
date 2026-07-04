@@ -2708,17 +2708,18 @@ const VideoConfigModal: React.FC<{
       setKeywords((a.keywords || []).join(' '));
     }
   };
-  // 新建:账号加载完默认选中第一个(平台→第一个号)→ 身份面板常驻、弹窗高度固定;编辑保留已存身份不覆盖。
+  // 新建:账号加载完只默认高亮第一个账号所在【平台】(方便直接在该平台选号),不自动选中账号
+  // —— 账号必须用户手动挑,挑中后才带出该号赛道/人设/关键词(编辑保留已存身份不覆盖)。
+  // ⚠️ 只初始化一次(ref):否则切平台时会 setIdentityAccountId('') 触发本 effect,又把平台/账号
+  //    重置回第一个 → 表现为「点其他平台 tab 一直闪、切不动」。
+  const didInitIdentityRef = useRef(false);
   useEffect(() => {
-    if (!matrixMode || isEdit || identityAccountId) return;
+    if (!matrixMode || isEdit || didInitIdentityRef.current) return;
     const first = matrixAccounts[0];
     if (!first) return;
-    setIdentityPlatform(first.platform);
-    setIdentityAccountId(first.id);
-    setMatrixTrack(first.group || '');
-    setPersona(first.persona || '');
-    setKeywords((first.keywords || []).join(' '));
-  }, [matrixMode, isEdit, identityAccountId, matrixAccounts]);
+    didInitIdentityRef.current = true;
+    setIdentityPlatform((prev) => prev || first.platform);
+  }, [matrixMode, isEdit, matrixAccounts]);
   const matrixAccountsReady = !matrixMode || outputMode !== 'upload'
     || selectedPlatformIds.every((p) => !!accountByPlatform[p] && accountsFor(p).some((a) => a.id === accountByPlatform[p] && a.status !== 'login_required'));
 
