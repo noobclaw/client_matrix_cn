@@ -387,8 +387,13 @@ function mxRunToRecord(r: any): any {
   const t = r.totals || {};
   const status = r.failed > 0 && r.success === 0 ? 'error' : r.failed > 0 ? 'partial' : 'done';
   const items: any[] = Array.isArray(r.items) ? r.items : [];
+  // ⚠️ step 字段必须给:RunRecordDetailPage 按 log.step 分组(Object.keys→Number),
+  // 缺了 step 会得到 key='undefined'→Number('undefined')=NaN→stepGroups[NaN]=undefined→
+  // `logs.length` 整块崩(「渲染错误 MainView:matrixRuns — undefined is not an object 'logs.length'」)。
+  // 矩阵是逐号互动、没有多步骤概念,统一归到第 1 步。
   const step_logs = items.map((it) => ({
     time: hhmmss(r.finishedAt || r.startedAt),
+    step: 1,
     status: it.state === 'success' ? 'done' : it.state === 'failed' ? 'error' : 'running',
     message: `[${it.displayName || it.accountId}] ${it.state}${it.counts ? ` 赞${it.counts.like || 0}/关${it.counts.follow || 0}/评${it.counts.comment || 0}` : ''}${it.reason ? ` (${it.reason})` : ''}`,
   }));
@@ -735,7 +740,19 @@ class ScenarioService {
    *  output dir. Replaces getAllRuns for the Run History UI. */
   async listRunRecords(filter?: { task_id?: string; platform?: string; light?: boolean }): Promise<Array<any>> {
     if (MATRIX_EDITION) {
-      try { const r = await MX()?.listRuns?.(filter?.task_id ? { taskId: filter.task_id } : undefined); return r?.ok && Array.isArray(r.runs) ? r.runs.map(mxRunToRecord) : []; } catch { return []; }
+      // 按 platform tab 过滤:runStore 只按 taskId 过滤,不认 platform → 之前「我的矩阵运行记录」
+      // 抖音 tab 下混进币安/推特/小红书的记录。按记录真实 platform(runStore 每条都存了)再筛一遍。
+      // 仅在「无 task_id」的全局按平台列表时筛;带 task_id 时已是单任务(单平台)记录,不再叠 platform
+      // 过滤——否则 openHistoryForTask 对非 x/xhs/binance 平台回退 currentPlatform、一旦不匹配会把
+      // 该任务历史整个筛空。
+      try {
+        const r = await MX()?.listRuns?.(filter?.task_id ? { taskId: filter.task_id } : undefined);
+        const runs = r?.ok && Array.isArray(r.runs) ? r.runs : [];
+        const scoped = (filter?.platform && !filter?.task_id)
+          ? runs.filter((x: any) => (x?.platform || 'douyin') === filter.platform)
+          : runs;
+        return scoped.map(mxRunToRecord);
+      } catch { return []; }
     }
     try {
       const r = await window.electron.scenario.listRunRecords(filter);

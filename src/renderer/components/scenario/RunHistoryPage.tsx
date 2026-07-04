@@ -475,7 +475,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                         </span>
                       )}
                       <span className="text-[10px] text-gray-400">
-                        {i18nService.t('rhLogEntries').replace('{n}', String(rec.step_logs.length))}
+                        {i18nService.t('rhLogEntries').replace('{n}', String(Array.isArray(rec.step_logs) ? rec.step_logs.length : 0))}
                       </span>
                     </div>
                   )}

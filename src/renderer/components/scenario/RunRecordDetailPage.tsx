@@ -245,11 +245,14 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     }
   })();
 
-  // Group step logs by step number for cleaner rendering
+  // Group step logs by step number for cleaner rendering.
+  // 防御:step_logs 可能缺失(老记录/适配层),或单条 log 缺 step 字段。缺 step 时归到第 1 步,
+  // 否则 key 会变成 'undefined' → Number(NaN) → 重新索引取到 undefined → `logs.length` 整块崩。
   const stepGroups: Record<number, RunRecord['step_logs']> = {};
-  for (const log of rec.step_logs) {
-    if (!stepGroups[log.step]) stepGroups[log.step] = [];
-    stepGroups[log.step].push(log);
+  for (const log of (Array.isArray(rec.step_logs) ? rec.step_logs : [])) {
+    const k = Number.isFinite(log.step as any) ? (log.step as number) : 1;
+    if (!stepGroups[k]) stepGroups[k] = [];
+    stepGroups[k].push(log);
   }
   const stepNumbers = Object.keys(stepGroups).map(Number).sort((a, b) => a - b);
 
@@ -348,7 +351,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
             />
           );
         })()}
-        <Stat label={i18nService.t('rrStatLogEntries')} value={rec.step_logs.length} />
+        <Stat label={i18nService.t('rrStatLogEntries')} value={Array.isArray(rec.step_logs) ? rec.step_logs.length : 0} />
       </div>
 
       {/* Result + output dir */}
