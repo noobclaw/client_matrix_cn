@@ -811,7 +811,7 @@ async function runVideoPipeline(
           ? Math.max(6, Math.min(15, Math.ceil((input.targetSeconds ?? 60) / 6)))
           : Math.max(10, Math.min(30, Math.ceil((input.targetSeconds ?? 60) / 3)));
         tracker.progress(`🎬 上 TikTok 搜「${hotspotTopic.title}」,下${tkMode === 'video' ? '视频' : '图集'} + 抓标题…`);
-        const tk = await fetchTiktokClips([hotspotTopic.title], want, assetDir, (m) => tracker.progress(m), signal, tkMode);
+        const tk = await fetchTiktokClips([hotspotTopic.title], want, assetDir, (m) => tracker.progress(m), signal, tkMode, (input as any).hotspotMaterialAccountId);
         tiktokPrefetch = { mode: tkMode, paths: tk.paths, titles: tk.titles };
         if (tk.titles.length > 0) {
           hotspotMaterial = `TikTok 上关于「${hotspotTopic.title}」的热门帖子标题(供你了解大家在聊什么、按真实角度写,别照抄、别张冠李戴):\n`
@@ -1807,7 +1807,7 @@ async function runVideoPipeline(
           if (tiktokPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${tiktokPrefetch.paths.length} 个 TikTok 视频(不重复下载)`);
           tk = { paths: tiktokPrefetch.paths, titles: tiktokPrefetch.titles };
         } else {
-          tk = await fetchTiktokClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
+          tk = await fetchTiktokClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'video', (input as any).hotspotMaterialAccountId);
         }
         if (tk.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
         try {
@@ -1919,7 +1919,7 @@ async function runVideoPipeline(
           if (tiktokPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${tiktokPrefetch.paths.length} 张 TikTok 图(不重复下载)`);
           tk = { paths: tiktokPrefetch.paths, titles: tiktokPrefetch.titles };
         } else {
-          tk = await fetchTiktokClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
+          tk = await fetchTiktokClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image', (input as any).hotspotMaterialAccountId);
         }
         if (tk.paths.length) {
           poolByTerm.set(term, tk.paths);

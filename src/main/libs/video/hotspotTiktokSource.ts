@@ -100,6 +100,109 @@ async function downloadOne(url: string, dest: string, videoTabId?: number): Prom
   return nodeFetchToFile(url, dest);
 }
 
+/**
+ * 矩阵 edition 取材:用【向导里指定的取材账号(没指定则智能选一个已关联 TikTok 号)】的指纹内核搜+下素材。
+ * 对称抖音 hotspotDouyinSource.fetchDouyinClipsViaKernel:不走插件/扫码登录,直接起该号内核 CDP。
+ * 账号都不可用 → 清晰报错(上层据此提示去关联 TikTok 号),绝不抛。
+ */
+async function fetchTiktokClipsViaKernel(
+  keywords: string[], wantCount: number, destDir: string,
+  onLog: (m: string) => void, signal: AbortSignal | undefined, mode: 'video' | 'image',
+  preferredAccountId?: string,
+): Promise<TiktokClipsResult> {
+  const diag: TiktokClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
+  if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
+  // 懒加载矩阵模块(避免顶层循环依赖)。
+  const { accountsByPlatform, accountBadgeLabel } = require('../matrix/accountManager');
+  const { launchKernel, kernelNavigate, checkKernelLogin, closeKernel } = require('../matrix/kernelPool');
+  const { runMatrixTiktokSearch } = require('../matrix/driverCtx');
+
+  const usable = (accountsByPlatform('tiktok') as any[]).filter((a) => a.status !== 'login_required' && a.status !== 'banned' && a.status !== 'limited');
+  if (usable.length === 0) {
+    onLog('⚠️ 没有已关联的 TikTok 矩阵账号,无法取材 —— 请到「我的矩阵账号」关联一个 TikTok 号(大陆需 VPN)');
+    diag.reason = 'no_matrix_tiktok_account';
+    return { paths: [], titles: [], diag };
+  }
+  // 选号顺序:用户在向导里【指定的取材账号】排最前,其余作为登录失效时的兜底;没指定就智能选第一个已关联。
+  let ordered = usable;
+  if (preferredAccountId) {
+    const pref = usable.find((a) => a.id === preferredAccountId);
+    ordered = pref ? [pref, ...usable.filter((a) => a.id !== preferredAccountId)] : usable;
+  }
+  // 逐个候选号:起内核 + 验登录,找到第一个真登录的就用它取材。
+  let accountId = '';
+  for (const cand of ordered) {
+    if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
+    try {
+      await launchKernel({ accountId: cand.id, kernelVersion: cand.kernelVersion, userDataDir: cand.userDataDir, fingerprint: cand.fingerprint, proxy: cand.proxy, label: accountBadgeLabel(cand) });
+    } catch { onLog(`   「${cand.displayName}」内核启动失败,换下一个…`); continue; }
+    // 先导航到 www.tiktok.com 再验登录(须同源才拿得到 cookie,about:blank 上会误判)。
+    try { await kernelNavigate(cand.id, 'https://www.tiktok.com/'); await sleep(2500); } catch { /* 导航失败也继续,checkKernelLogin 自身兜底 */ }
+    const loggedIn = await checkKernelLogin(cand.id, 'tiktok').catch(() => false);
+    if (loggedIn) { accountId = cand.id; onLog(`🧬 用 TikTok 账号「${cand.displayName}」的指纹浏览器取材`); break; }
+    onLog(`   「${cand.displayName}」登录态失效,换下一个…`);
+    try { closeKernel(cand.id); } catch { /* ignore */ } // 引用计数 -1
+  }
+  if (!accountId) {
+    onLog('⚠️ 已关联的 TikTok 账号登录态都失效了,无法取材(请到「我的矩阵账号」重新登录关联,大陆需 VPN)');
+    diag.reason = 'not_logged_in';
+    return { paths: [], titles: [], diag };
+  }
+  diag.loggedIn = true;
+
+  try {
+    // 搜+取源(带重试,口径同抖音内核版)。
+    const MAX_TRIES = 3, RETRY_WAIT_MS = 8000;
+    let urls: string[] = [], titles: string[] = [];
+    for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+      if (signal?.aborted) { diag.reason = 'aborted'; break; }
+      onLog(mode === 'image' ? '🔎 按标题搜 TikTok 图集、取图…' : '🔎 按标题搜 TikTok、取无水印源…');
+      const r = await runMatrixTiktokSearch(accountId, keywords, wantCount, mode, onLog);
+      diag.reached = true; diag.scriptDiag = r.diag;
+      if (Array.isArray(r.titles) && r.titles.length > titles.length) titles = r.titles;
+      if (Array.isArray(r.urls) && r.urls.length) { urls = r.urls; break; }
+      if (r.reason && r.reason.startsWith('no_matrix_driver')) { onLog('⚠️ ' + r.reason); diag.reason = r.reason; break; }
+      if (attempt < MAX_TRIES) { onLog(`   ⚠️ 第 ${attempt}/${MAX_TRIES} 次没搜到,等 ${Math.round(RETRY_WAIT_MS / 1000)}s 再试(可能瞬时没网/VPN 抖动)…`); await sleep(RETRY_WAIT_MS); }
+    }
+    diag.gotUrls = urls.length;
+    if (urls.length === 0) {
+      if (!diag.reason) diag.reason = 'no_urls';
+      onLog(mode === 'image' ? '⚠️ TikTok 没取到可用图集图片' : '⚠️ TikTok 没取到可用视频源');
+      return { paths: [], titles, diag };
+    }
+    onLog(`⬇️ 下载 ${urls.length} 个 TikTok ${mode === 'image' ? '图片' : '视频'}…`);
+    try { fs.mkdirSync(destDir, { recursive: true }); } catch { /* 已存在 */ }
+    const ext = mode === 'image' ? 'jpg' : 'mp4';
+    const base = mode === 'image' ? 'img' : 'clip';
+    const paths: string[] = [];
+    const { matrixCmd } = require('../matrix/cdpCommands');
+    for (let i = 0; i < urls.length; i++) {
+      if (signal?.aborted) break;
+      onLog(`⬇️ 下载 ${i + 1}/${urls.length}…`);
+      const dest = path.join(destDir, `${base}_${String(i).padStart(2, '0')}.${ext}`);
+      // 【内核同源下载】:内核页在 tiktok.com,用 main_world_fetch_api(base64)带账号 cookie/同 IP 下,
+      //   绕开主进程直连 TikTok CDN 被 IP 绑定/防盗链拒(TikTok CDN 在日本/大陆尤其易单点失败)。
+      let ok = false;
+      try {
+        const res: any = await matrixCmd(accountId, 'main_world_fetch_api', { url: String(urls[i]), responseType: 'base64', credentials: 'include' });
+        if (res && res.ok !== false && typeof res.body === 'string' && res.body.length > 100) {
+          const buf = Buffer.from(res.body, 'base64');
+          if (buf.length > 10000) { fs.writeFileSync(dest, buf); ok = true; }
+        }
+      } catch { /* 内核下失败 → 回落主进程直连 */ }
+      // 兜底:内核下不到 → 主进程直连(带 Referer,无 cookie)。
+      if (!ok) ok = await nodeFetchToFile(urls[i], dest);
+      if (ok) { paths.push(dest); diag.downloaded++; }
+      else onLog(`   ⏭️ 第 ${i + 1} 个下载失败,跳过`);
+    }
+    onLog(`✅ TikTok 素材就绪:${paths.length}/${urls.length} 个${titles.length ? ` · ${titles.length} 个标题` : ''}`);
+    return { paths, titles, diag };
+  } finally {
+    // 取完【强制关】取材窗(取材走 runExclusiveTiktok 串行锁,跑完本流程是该号唯一使用者)。
+    try { if (accountId) closeKernel(accountId, { force: true }); } catch { /* ignore */ }
+  }
+}
+
 /** 等 TikTok 登录:cookie 快路径 → 先探一次 → 没登录就开 tiktok.com tab + 轮询(最多 3 分钟)。 */
 async function ensureTiktokLoggedIn(onLog: (m: string) => void, signal?: AbortSignal): Promise<boolean> {
   // ⚠️ 不再用 cookie 快路径:checkVideoLoginByCookie 会开「运行检查」窗读 cookie 但取材不负责关 → 孤儿窗。
@@ -146,8 +249,9 @@ export function fetchTiktokClips(
   onLog: (m: string) => void,
   signal?: AbortSignal,
   mode: 'video' | 'image' = 'video',
+  preferredAccountId?: string,
 ): Promise<TiktokClipsResult> {
-  return runExclusiveTiktok(onLog, () => fetchTiktokClipsImpl(keywords, wantCount, destDir, onLog, signal, mode));
+  return runExclusiveTiktok(onLog, () => fetchTiktokClipsImpl(keywords, wantCount, destDir, onLog, signal, mode, preferredAccountId));
 }
 
 async function fetchTiktokClipsImpl(
@@ -157,10 +261,17 @@ async function fetchTiktokClipsImpl(
   onLog: (m: string) => void,
   signal?: AbortSignal,
   mode: 'video' | 'image' = 'video',
+  preferredAccountId?: string,
 ): Promise<TiktokClipsResult> {
   const diag: TiktokClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
   // 排队等待期间任务可能已被取消 → 直接降级返空,不再驱动浏览器。
   if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
+
+  // 矩阵 edition:没有浏览器插件 —— 取材走【向导里指定的取材账号(没指定则智能选一个已关联 TikTok 号)+ 它的指纹内核 CDP】,
+  //   不再新开 TikTok tab 扫码登录(对称抖音 fetchDouyinClipsViaKernel)。
+  let MATRIX = false;
+  try { MATRIX = require('../../matrixEdition').MATRIX_EDITION === true; } catch { /* 非矩阵构建 */ }
+  if (MATRIX) return fetchTiktokClipsViaKernel(keywords, wantCount, destDir, onLog, signal, mode, preferredAccountId);
 
   // 1. 拉下发脚本(走发布 driver 同款 publish-drivers 热更新;key = 文件名 tiktok_search)
   const pack = await fetchPublishDrivers();

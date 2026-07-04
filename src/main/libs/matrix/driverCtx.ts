@@ -222,6 +222,41 @@ export async function runMatrixDouyinSearch(
 }
 
 /**
+ * 在指定账号的指纹内核里跑【TikTok 取材】driver(tiktok_search)——对称 runMatrixDouyinSearch。
+ * 与发布同源:走 /api/matrix/drivers 拉脚本、ctx.cmd 路由到该号 CDP(matrixCmd)。
+ * 与插件版 hotspotTiktokSource 的 ctx 契约一致:{ input:{keywords,wantCount,mode}, cmd, sleep, log }。
+ * 绝不抛 —— 失败归一成 { urls:[], reason }。
+ */
+export async function runMatrixTiktokSearch(
+  accountId: string,
+  keywords: string[],
+  wantCount: number,
+  mode: 'video' | 'image',
+  onLog: (msg: string) => void,
+): Promise<{ urls: string[]; titles: string[]; reason?: string; diag?: unknown }> {
+  try {
+    const drivers = await fetchMatrixDrivers();
+    const code = drivers?.['tiktok_search'];
+    if (!code) return { urls: [], titles: [], reason: 'no_matrix_driver:tiktok_search(后端 /api/matrix/drivers 未下发)' };
+    let fn: (ctx: any) => Promise<any>;
+    try { fn = new AsyncFunction('ctx', code) as (ctx: any) => Promise<any>; }
+    catch (e: any) { return { urls: [], titles: [], reason: 'compile_failed:' + String(e?.message || e).slice(0, 80) }; }
+    const ctx = {
+      input: { keywords, wantCount, mode },
+      cmd: (command: string, params: any, timeoutMs?: number) => matrixCmd(accountId, command, params, timeoutMs),
+      sleep,
+      log: (m: string) => { try { onLog('   ' + m); } catch { /* ignore */ } },
+    };
+    const ret: any = await fn(ctx);
+    const urls = Array.isArray(ret?.urls) ? ret.urls.filter((u: any) => typeof u === 'string') : [];
+    const titles = Array.isArray(ret?.titles) ? ret.titles.filter((s: any) => typeof s === 'string' && s.trim()).map((s: string) => s.trim()) : [];
+    return { urls, titles, reason: ret?.reason, diag: ret?.diag };
+  } catch (e: any) {
+    return { urls: [], titles: [], reason: 'matrix_search_threw:' + String(e?.message || e).slice(0, 120) };
+  }
+}
+
+/**
  * 在指定账号的指纹内核里跑该平台的发布 driver。
  * 流程:导航到创作者中心 anchor → 拉矩阵 driver 脚本 → 同契约 ctx 执行。
  * 绝不抛,归一成 PublishResult。
