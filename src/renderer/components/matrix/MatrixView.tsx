@@ -1100,7 +1100,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 onClick={() => { const c = connectChoice; setConnectChoice(null); setCookieText(''); setCookieImport({ accountId: c.accountId, plat: c.plat, displayName: c.displayName, loginScope: c.loginScope }); }}
                 className="text-left rounded-xl border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-3">
                 <div className="text-sm font-semibold dark:text-gray-200">🍪 {i18nService.currentLanguage === 'zh' ? '导入 cookie' : 'Import cookie'}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{i18nService.currentLanguage === 'zh' ? '海外号(Google/Apple 登录)或已在其它浏览器登录过的号' : 'For Google/Apple-login accounts, or accounts already signed in on another browser'}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{i18nService.currentLanguage === 'zh' ? '导入你浏览器已有账号的 Cookie 完成指纹浏览器内登录' : 'Import existing account cookies from your browser to sign in inside the fingerprint browser'}</div>
               </button>
             </div>
             <div className="mt-4 flex justify-end">
@@ -1121,7 +1121,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               return (
                 <div className="text-xs text-gray-600 dark:text-gray-300 mb-3 leading-relaxed rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 space-y-1">
                   <div>{zh ? '① 给你的' : '① Install '}<strong>{zh ? '普通浏览器(Chrome/Edge)装扩展 ' : 'Cookie-Editor'}</strong>
-                    <a href={`https://chromewebstore.google.com/detail/cookie-editor/iphcomljdfghbkdcfndaijbokpgddeno`} target="_blank" rel="noreferrer" className="text-violet-500 underline mx-0.5">Cookie-Editor</a>
+                    <a href={`https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm`} target="_blank" rel="noreferrer" className="text-violet-500 underline mx-0.5">Cookie-Editor</a>
                     {zh ? '(Chrome 应用商店免费)' : ' from the Chrome Web Store'}</div>
                   <div>{zh ? <>② 在那个浏览器打开 <strong>{site}</strong> 并<strong>登录好这个号</strong>(Google 一键登也行,普通浏览器能登)</> : <>② Open <strong>{site}</strong> there and <strong>log into this account</strong> (Google login works in a normal browser)</>}</div>
                   <div>{zh ? <>③ 点扩展图标 → <strong>Export(导出)</strong> → 选 <strong>JSON</strong>(会自动复制)→ 粘到下面框里</> : <>③ Click the extension icon → <strong>Export</strong> → <strong>JSON</strong> (auto-copied) → paste below</>}</div>
