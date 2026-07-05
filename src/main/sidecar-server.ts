@@ -217,6 +217,10 @@ function broadcastSSE(event: string, data: unknown): void {
   }
 }
 
+// 让 accountManager.setAccountStatus 变更时也能广播 'matrix:account'(否则任务里标 login_required 只落盘,
+// 开着的「我的矩阵账号」页不刷新)。动态 import 避免与 accountManager 循环依赖;启动时注册一次即可。
+void import('./libs/matrix/accountManager').then((m) => m.setAccountSSEBroadcast?.(broadcastSSE)).catch(() => { /* ignore */ });
+
 // 矩阵任务运行(手动 IPC 与定时调度共用,保证「全局同时只跑一个」+ 进度 SSE 一致)。
 async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{ ok: boolean; error?: string }> {
   // 按【平台】并发:先取任务拿平台,再做「同平台已在跑?」+「并发已满?」检查;check→add 之间无 await(原子占锁,杜绝双跑)。

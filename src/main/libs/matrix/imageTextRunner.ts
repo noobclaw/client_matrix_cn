@@ -434,7 +434,8 @@ export async function runImageTextTask(opts: ImageTextTaskOptions): Promise<Enga
         await sleep(2000);
         let dlLoggedIn = true;
         try { dlLoggedIn = await checkKernelLogin(dlAcct, 'douyin'); } catch { dlLoggedIn = true; }
-        if (!dlLoggedIn) coworkLog('WARN', 'imageTextRunner', `download account ${dlAcct} douyin not logged in — web image search may fail (orchestrator falls back to AI images)`);
+        // 明确未登录才标红(catch 里 dlLoggedIn=true → 读失败不误杀);标了卡片立即变红,下次也不再当配图下载号。
+        if (!dlLoggedIn) { setAccountStatus(dlAcct, 'login_required'); coworkLog('WARN', 'imageTextRunner', `download account ${dlAcct} douyin not logged in — marked login_required; web image search may fail (orchestrator falls back to AI images)`); }
       } catch (e) { coworkLog('WARN', 'imageTextRunner', 'launch download kernel failed', { err: String(e) }); }
     }
   }

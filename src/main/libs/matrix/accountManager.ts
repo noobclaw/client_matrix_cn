@@ -149,11 +149,22 @@ export function upsertAccount(account: MatrixAccount): void {
   persist();
 }
 
+// SSE 广播注入(sidecar 启动时 setAccountSSEBroadcast(broadcastSSE),动态 import 避免循环依赖)。
+// setAccountStatus 变更后广播 'matrix:account' → 渲染层 onAccount 触发 reload,「我的矩阵账号」卡片实时刷新。
+// 之前只 persist() 落盘:任务里标 login_required 后,开着的账号页看不到、须重开页才刷新(用户实测币安发帖过期卡片不变红)。
+let _accountSSEBroadcast: ((event: string, data: unknown) => void) | null = null;
+export function setAccountSSEBroadcast(fn: (event: string, data: unknown) => void): void {
+  _accountSSEBroadcast = fn;
+}
+
 export function setAccountStatus(id: string, status: AccountStatus): void {
   const a = getAccount(id);
   if (!a) return;
+  const changed = a.status !== status;
   a.status = status;
   persist();
+  // 状态真变了才广播(避免 running→running 之类空转刷屏);payload 带 id/status,渲染层收到即整表 reload。
+  if (changed) { try { _accountSSEBroadcast?.('matrix:account', { id, status }); } catch { /* 广播失败不影响落盘 */ } }
 }
 
 /** 标记「刚确认该号登录态有效」(任务/发布/保活成功时调)。主动保活据 lastAliveAt 筛「超 N 天没活跃」的号。 */

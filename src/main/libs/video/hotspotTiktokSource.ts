@@ -113,7 +113,7 @@ async function fetchTiktokClipsViaKernel(
   const diag: TiktokClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
   if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
   // 懒加载矩阵模块(避免顶层循环依赖)。
-  const { accountsByPlatform, accountBadgeLabel } = require('../matrix/accountManager');
+  const { accountsByPlatform, accountBadgeLabel, setAccountStatus } = require('../matrix/accountManager');
   const { launchKernel, kernelNavigate, checkKernelLogin, closeKernel } = require('../matrix/kernelPool');
   const { runMatrixTiktokSearch } = require('../matrix/driverCtx');
 
@@ -138,9 +138,12 @@ async function fetchTiktokClipsViaKernel(
     } catch { onLog(`   「${cand.displayName}」内核启动失败,换下一个…`); continue; }
     // 先导航到 www.tiktok.com 再验登录(须同源才拿得到 cookie,about:blank 上会误判)。
     try { await kernelNavigate(cand.id, 'https://www.tiktok.com/'); await sleep(2500); } catch { /* 导航失败也继续,checkKernelLogin 自身兜底 */ }
-    const loggedIn = await checkKernelLogin(cand.id, 'tiktok').catch(() => false);
+    let loggedIn = false, checkFailed = false;
+    try { loggedIn = await checkKernelLogin(cand.id, 'tiktok'); } catch { checkFailed = true; } // 读失败不误杀
     if (loggedIn) { accountId = cand.id; onLog(`🧬 用 TikTok 账号「${cand.displayName}」的指纹浏览器取材`); break; }
-    onLog(`   「${cand.displayName}」登录态失效,换下一个…`);
+    // 明确判「未登录」才把卡片标「登录过期」(读失败只换下一个、不误标)→「我的矩阵账号」立即变红、下次也不再选它。
+    if (!checkFailed) setAccountStatus(cand.id, 'login_required');
+    onLog(`   「${cand.displayName}」登录态失效${checkFailed ? '(读取失败)' : ',已标「登录过期」'},换下一个…`);
     try { closeKernel(cand.id); } catch { /* ignore */ } // 引用计数 -1
   }
   if (!accountId) {
