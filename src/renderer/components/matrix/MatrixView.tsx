@@ -1121,7 +1121,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               return (
                 <div className="text-xs text-gray-600 dark:text-gray-300 mb-3 leading-relaxed rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 space-y-1">
                   <div>{zh ? '① 给你的' : '① Install '}<strong>{zh ? '普通浏览器(Chrome/Edge)装扩展 ' : 'Cookie-Editor'}</strong>
-                    <a href={`https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm`} target="_blank" rel="noreferrer" className="text-violet-500 underline mx-0.5">Cookie-Editor</a>
+                    {/* Tauri 里裸 <a target=_blank> 点不开(无 opener 接管),必须走 window.open shim 开系统浏览器(用户实测)。 */}
+                    <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm', '_blank')} className="text-violet-500 underline mx-0.5 cursor-pointer bg-transparent border-0 p-0 text-xs">Cookie-Editor</button>
                     {zh ? '(Chrome 应用商店免费)' : ' from the Chrome Web Store'}</div>
                   <div>{zh ? <>② 在那个浏览器打开 <strong>{site}</strong> 并<strong>登录好这个号</strong>(Google 一键登也行,普通浏览器能登)</> : <>② Open <strong>{site}</strong> there and <strong>log into this account</strong> (Google login works in a normal browser)</>}</div>
                   <div>{zh ? <>③ 点扩展图标 → <strong>Export(导出)</strong> → 选 <strong>JSON</strong>(会自动复制)→ 粘到下面框里</> : <>③ Click the extension icon → <strong>Export</strong> → <strong>JSON</strong> (auto-copied) → paste below</>}</div>
