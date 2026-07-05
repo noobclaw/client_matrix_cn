@@ -96,14 +96,20 @@ export interface EngageItemResult {
 
 // ── scenario pack 下发(/api/matrix/scenarios/:id)──
 async function fetchEngagePack(id: string): Promise<any | null> {
-  try {
-    const res = await fetch(`${baseUrl()}/api/matrix/scenarios/${id}`, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch (e) {
-    coworkLog('WARN', 'engageRunner', 'fetch pack failed', { err: String(e) });
-    return null;
+  // 两次尝试:用户常为 TikTok 等开关 VPN,对 api 的请求会瞬断/超时 —— 一次失败别直接判「后端未部署」,
+  // 等 3s 再试一次,大多数抖动都能扛过去。
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(`${baseUrl()}/api/matrix/scenarios/${id}`, { signal: AbortSignal.timeout(10_000) });
+      if (res.ok) return await res.json();
+      coworkLog('WARN', 'engageRunner', 'fetch pack non-ok', { id, status: res.status, attempt });
+      if (res.status === 404) return null; // 真没这个剧本,重试无意义
+    } catch (e) {
+      coworkLog('WARN', 'engageRunner', 'fetch pack failed', { id, attempt, err: String(e) });
+    }
+    if (attempt === 1) await sleep(3000);
   }
+  return null;
 }
 
 // ── 本地 engageHistory(按号去重,避免重复互动同一视频)──
@@ -563,8 +569,14 @@ export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageRepo
   const scenarioId = opts.scenarioId || ENGAGE_SCENARIO_ID[opts.platform] || `${opts.platform}_auto_engage`;
   const pack = await fetchEngagePack(scenarioId);
   if (!pack || !pack.orchestrator) {
-    return { platform: opts.platform, total: opts.accountIds.length, success: 0, failed: 0, skipped: opts.accountIds.length,
-      items: opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_scenario(后端未部署?)' })) };
+    // ⚠️ 必须发日志+item 再返回:这条路以前【静默】返回 → UI 永远停在「已加入运行队列…」装死
+    //   (任务实际已完成),用户以为卡住(真机实测,常见诱因是开关 VPN 时对 api 的请求瞬断)。
+    const items = opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_scenario(后端未部署/网络瞬断)' }));
+    for (const it of items) {
+      try { opts.onLog?.(it.accountId, `❌ 取不到互动剧本「${scenarioId}」(后端未部署或网络瞬断,已重试)——本次跳过,请稍后再点「直接运行」`); } catch { /* ignore */ }
+      try { opts.onItem?.(it); } catch { /* ignore */ }
+    }
+    return { platform: opts.platform, total: opts.accountIds.length, success: 0, failed: 0, skipped: opts.accountIds.length, items };
   }
   coworkLog('INFO', 'engageRunner', `${opts.taskType || 'engage'} ${opts.platform} x${opts.accountIds.length} (${scenarioId})`);
   const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id), opts.onItem);
