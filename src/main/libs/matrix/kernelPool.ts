@@ -962,7 +962,7 @@ const LOGIN_COOKIES: Record<string, string[]> = {
   tiktok: ['sessionid', 'sid_tt'],
   x: ['auth_token'],
   binance: ['logined', 'p20t'],                          // 新增(实测)
-  youtube: ['SID', 'SAPISID', 'LOGIN_INFO'],             // 新增(实测)
+  youtube: ['LOGIN_INFO'],   // 只认 LOGIN_INFO:SID/SAPISID 是 Google 全站 cookie、游客也有,会把登出的 YT 号误判已登录
   // ⚠️ 待 VPN 真机确认(2026-07-03 加):IG 登录态标志 cookie = sessionid + ds_user_id(后者明文=uid);
   //   FB = c_user(明文=uid)+ xs。海外平台,须 VPN 真机核对 cookie 名。
   instagram: ['sessionid', 'ds_user_id'],
@@ -1042,7 +1042,8 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
     } else if (platform === 'reddit') {
       // Reddit:/api/me.json 是 cookie 鉴权的 JSON 接口(不需 oauth)。登录态返回 {data:{name,...}} 或 {name,...};
       //   未登录返回空 / 无 name。最准,语言无关。异常落 "?" 交回 cookie 快筛。
-      probe = '(async function(){try{var r=await fetch("/api/me.json",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();var d=(j&&j.data)||j||{};if(d&&d.name)return "1";return "0";}catch(e){return "?";}})()';
+      // ⚠️ 限流/出错(非 200)时 me.json 会返回无 name 的 body → 原来直接判 "0" 误杀活号(同 XHS 类)。加 r.ok 守卫:非 200 交回 "?"。
+      probe = '(async function(){try{var r=await fetch("/api/me.json",{credentials:"include",headers:{accept:"application/json"}});if(!r.ok)return "?";var j=await r.json();var d=(j&&j.data)||j||{};if(d&&d.name)return "1";return "0";}catch(e){return "?";}})()';
     }
     if (probe) {
       try {
