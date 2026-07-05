@@ -1115,7 +1115,7 @@ const IDENTITY_EXPR: Record<string, string> = {
   // FB(2026-07-03 真机验):uid=c_user 明文 cookie;昵称在【自己主页 profile.php?id=<c_user>】的 og:title(首页 feed
   //   ogTitle 为 null,故靠 IDENTITY_SELF_URL 先跳主页再读),兜底 h1 / document.title(去掉"(N)"和"| Facebook");
   //   头像=fbcdn 里 t1.30497-1(FB 头像路径)的 <image xlink:href>(首页/主页都有,与 rsrc.php UI 精灵、t39 帖图区分)。
-  facebook: '(function(){try{var uid=(document.cookie.match(/c_user=(\\d+)/)||[])[1]||null;var BAD=/^(通知|通知消息|Notifications|Facebook|Meta|首页|主页|Home|Marketplace|市场|菜单|Menu|动态消息|News Feed|好友|Friends|视频|Video|个人主页)$/i;function clean(s){s=(s||"").replace(/^\\(\\d+\\)\\s*/,"").replace(/\\s*[|\\-\\u2013]\\s*Facebook.*$/i,"").trim();return s;}var cands=[];cands.push(clean(document.title));var ogt=document.querySelector(\'meta[property="og:title"]\');if(ogt)cands.push(clean(ogt.getAttribute("content")));var h1=document.querySelector("h1");if(h1)cands.push(clean((h1.textContent||"").slice(0,60)));var nick=null;for(var i=0;i<cands.length;i++){var c=cands[i];if(c&&!BAD.test(c)&&c.length<=60){nick=c;break;}}var av=null;var ogi=document.querySelector(\'meta[property="og:image"]\');if(ogi)av=(ogi.getAttribute("content")||"").trim()||null;if(!av){var ims=document.querySelectorAll("image");for(var j=0;j<ims.length;j++){var h=ims[j].getAttribute("xlink:href")||ims[j].getAttribute("href")||"";if(/t1\\.30497|scontent/.test(h)){av=h;break;}}}return JSON.stringify({nickname:nick,uid:uid,displayId:uid,avatar:av});}catch(e){return "{}";}})()',
+  facebook: '(function(){try{var uid=(document.cookie.match(/c_user=(\\d+)/)||[])[1]||null;var BAD=/^(通知|通知消息|Notifications|Facebook|Meta|首页|主页|Home|Marketplace|市场|菜单|Menu|动态消息|News Feed|好友|Friends|视频|Video|个人主页)$/i;function clean(s){s=(s||"").replace(/^\\(\\d+\\)\\s*/,"").replace(/\\s*[|\\-\\u2013]\\s*Facebook.*$/i,"").trim();return s;}var cands=[];var ogt=document.querySelector(\'meta[property="og:title"]\');if(ogt)cands.push(clean(ogt.getAttribute("content")));cands.push(clean(document.title));var h1=document.querySelector("h1");if(h1)cands.push(clean((h1.textContent||"").slice(0,60)));var nick=null;for(var i=0;i<cands.length;i++){var c=cands[i];if(c&&!BAD.test(c)&&c.length<=60){nick=c;break;}}var av=null;var ogi=document.querySelector(\'meta[property="og:image"]\');if(ogi)av=(ogi.getAttribute("content")||"").trim()||null;if(!av){var ims=document.querySelectorAll("image");for(var j=0;j<ims.length;j++){var h=ims[j].getAttribute("xlink:href")||ims[j].getAttribute("href")||"";if(/t1\\.30497|scontent/.test(h)){av=h;break;}}}return JSON.stringify({nickname:nick,uid:uid,displayId:uid,avatar:av});}catch(e){return "{}";}})()',
   // Reddit:/api/me.json(cookie 鉴权)一把出 name(用户名)/ id(t2 uid)/ icon_img|snoovatar_img(头像)。
   //   头像 URL 里的 &amp; 要还原成 &。displayId = u/<name>。同 xhs/B站 的「问接口」路子,最稳。
   reddit: '(async function(){try{var r=await fetch("/api/me.json",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();var d=(j&&j.data)||j||{};if(!d.name)return "{}";var av=String(d.snoovatar_img||d.icon_img||"").replace(/&amp;/g,"&").split("?")[0];return JSON.stringify({nickname:d.name,displayId:"u/"+d.name,uid:d.id?("t2_"+d.id):d.name,avatar:av});}catch(e){return "{}";}})()',
@@ -1157,7 +1157,9 @@ export async function kernelReadIdentity(accountId: string, platform: string): P
       try { await kernelNavigate(accountId, selfUrl(cookieUid)); } catch { /* 导航失败就按当前页读,不阻塞 */ }
       for (let i = 0; i < 6; i++) {
         await sleep(1500);
-        try { const probe = JSON.parse((await kernelEval(accountId, expr)) || '{}'); if (probe && (probe.nickname || probe.displayId || probe.avatar)) break; } catch { /* 还没渲染好,继续等 */ }
+        // ⚠️ 只等【nickname】,不能用 displayId —— FB/IG 的 displayId=uid(明文 cookie)恒有值,
+        //   会第一轮就退出、没等主页名字(og:title)异步渲染出来 → 读到导航里的「通知」(用户实测)。
+        try { const probe = JSON.parse((await kernelEval(accountId, expr)) || '{}'); if (probe && probe.nickname) break; } catch { /* 还没渲染好,继续等 */ }
       }
     }
     // 自己主页 URL 不在 cookie、要从当前页读出来的平台(TikTok):先读导航栏拿到 /@号 → 跳过去 → 轮询到昵称出来。
@@ -1194,9 +1196,13 @@ export async function kernelReadIdentity(accountId: string, platform: string): P
             if (o._dbg) lastDbg = String(o._dbg);
           }
         } catch { /* 还没渲染好,继续等 */ }
-        if (out.nickname || out.avatar || out.displayId) {
-          // 抖音号可能比昵称/头像晚渲染:缺号时再多等几轮(最多 ~6s);其它平台一拿到就停。
+        // 等【真正的 nickname】再停 —— 不能靠 displayId(FB/IG 的 displayId=uid 恒有值 → 会没等名字渲染就退,
+        //   读到导航「通知」);没 nickname 的极少数平台轮询满(~12s)后落 uid/avatar 兜底,不会误存错名字。
+        if (out.nickname) {
+          // 抖音号(displayId)可能比昵称晚渲染:缺号时再多等几轮(最多 ~6s);其它平台拿到昵称就停。
           if (!(platform === 'douyin' && !out.displayId && i < 4)) break;
+        } else if (out.avatar && i >= 5) {
+          break; // 轮询大半天只拿到头像、始终没昵称 → 别再干等,用头像+uid 收尾
         }
         await sleep(1500);
       }
