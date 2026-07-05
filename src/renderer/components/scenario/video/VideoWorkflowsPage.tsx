@@ -2344,9 +2344,10 @@ const VideoConfigModal: React.FC<{
     editTask ? (editTask.input.keywords || []).join(' ') : (isZh ? defaultPreset.keywords.zh : defaultPreset.keywords.en),
   );
   // 矩阵号第2步「选号」:选中账号后用该号的 group(赛道)/persona/keywords 生成,不再手填。
-  // identityPlatform/identityAccountId 仅用于第2步选号 UI;matrixTrack 存该号赛道(buildInput 的 track 用它)。
-  const [identityPlatform, setIdentityPlatform] = useState<string>('');
-  const [identityAccountId, setIdentityAccountId] = useState<string>('');
+  // identityPlatform/identityAccountId 用于第2步选号 UI,并随 input 持久化 —— 编辑时回填平台高亮
+  // 和已选账号(老任务没存这俩字段则回落空,仅靠下方身份摘要块展示)。matrixTrack 存该号赛道。
+  const [identityPlatform, setIdentityPlatform] = useState<string>(editTask?.input.identityPlatform || '');
+  const [identityAccountId, setIdentityAccountId] = useState<string>(editTask?.input.identityAccountId || '');
   const [matrixTrack, setMatrixTrack] = useState<string>(editTask?.input.track || '');
   const [script, setScript] = useState(editTask?.input.script || '');
   // 文案模式:strict 严格逐字 / ai 参考再创作。编辑老任务时按 input 推断(无字段则有文案=strict)。
@@ -2636,6 +2637,9 @@ const VideoConfigModal: React.FC<{
     // 「存本地不上传」→ 空数组(pipeline 推「📂 未选发布平台 · 仅存本地」);
     // 「上传到各大平台」→ 用户勾选的几个 id(未登录的运行期跳过)。
     publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
+    // 矩阵号:身份选号(第2步)持久化 —— 编辑时回填平台高亮 + 已选账号。
+    identityPlatform: matrixMode && identityPlatform ? identityPlatform : undefined,
+    identityAccountId: matrixMode && identityAccountId ? identityAccountId : undefined,
     // 矩阵号:每个发布平台选定的账号(平台→accountId),发布时按号走 CDP。仅取已勾平台的映射。
     publishAccounts: matrixMode && outputMode === 'upload'
       ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => [p, accountByPlatform[p]]))

@@ -283,6 +283,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixKernelBusy, setMatrixKernelBusy] = useState(false);
   // 重复任务提示:某平台已有同类型任务时,关掉向导并弹此提示,给「去查看 / 编辑」入口跳对应管理 tab。
   const [dupNotice, setDupNotice] = useState<{ platform: string; label: string } | null>(null);
+  // 一个平台每种任务只允许 1 个(taskStore duplicate_type)。点「创建」时先查重:已有同类型任务
+  // 直接弹「去查看编辑」,不让用户填完整个向导才在保存时报错。listTasks 慢(sidecar 忙)时 1.5s
+  // 超时放行 —— 查重失败/超时都不拦创建,保存时的 duplicate_type 仍是最终兜底。
+  const hasDupTask = async (platform: string, type: string, label: string): Promise<boolean> => {
+    try {
+      const r: any = await Promise.race([
+        (window as any).electron?.matrix?.listTasks?.(),
+        new Promise((res) => setTimeout(() => res(null), 1500)),
+      ]);
+      const tasks: any[] = r?.ok && Array.isArray(r.tasks) ? r.tasks : [];
+      if (tasks.some((t) => t?.platform === platform && t?.type === type)) {
+        setDupNotice({ platform, label });
+        return true;
+      }
+    } catch { /* 查不出来就放行 */ }
+    return false;
+  };
   const ensureMatrixKernel = async (): Promise<boolean> => {
     try {
       const r = await (window as any).electron?.matrix?.kernelStatus?.();
@@ -305,6 +322,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
   const openMatrixWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; } // 未登录 → 弹登录窗
+    if (await hasDupTask(platform, 'engage', '互动')) return;
     // 先秒开弹窗:内核检查 + 账号加载都后台异步(sidecar 忙时 IPC 排队,await 在开弹窗前会卡几秒)。
     setMatrixAccounts([]);
     setMatrixAccountsLoading(true);
@@ -382,6 +400,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const mapWizardAccount = (a: any): WizardAccount => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar });
   const openMatrixReplyWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'reply_fan', '回复粉丝')) return;
     // 先秒开弹窗,内核检查 + 账号加载后台异步(对齐编辑流程,避免 sidecar 忙时卡几秒)。
     setMatrixReplyAccounts([]);
     setMatrixReplyAccountsLoading(true);
@@ -435,6 +454,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 「视频无水印下载」向导(单账号):账号取主站 scope(同 replyAccountFilter,douyin 走主站登录态)。
   const openMatrixDownloadWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'video_download', '视频下载')) return;
     // 先秒开弹窗,内核检查 + 账号加载后台异步(对齐编辑流程,避免 sidecar 忙时卡几秒)。
     setMatrixDownloadAccounts([]);
     setMatrixDownloadAccountsLoading(true);
@@ -487,6 +507,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 「图文创作」向导(多账号):账号取主站 scope(同 replyAccountFilter,douyin 主站登录态即覆盖创作者中心)。
   const openMatrixImageTextWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'image_text', '图文创作')) return;
     // 先秒开弹窗,内核检查 + 账号加载后台异步(对齐编辑流程,避免 sidecar 忙时卡几秒)。
     setMatrixImageTextAccounts([]);
     setMatrixImageTextAccountsLoading(true);
@@ -552,6 +573,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 「自动发推」向导(多账号):账号取主站 scope(推特主站登录态,发推在 x.com 主站)。
   const openMatrixTweetWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'x_post', '自动发推')) return;
     // 先秒开弹窗,内核检查 + 账号加载后台异步(对齐编辑流程,避免 sidecar 忙时卡几秒)。
     setMatrixTweetAccounts([]);
     setMatrixTweetAccountsLoading(true);
@@ -611,6 +633,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 「币安广场自动发帖」向导(多账号):账号取主站 scope(币安主站登录态即覆盖币安广场)。
   const openMatrixBinanceWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'binance_post', '币安广场发帖')) return;
     // 先秒开弹窗,内核检查 + 账号加载后台异步(对齐编辑流程,避免 sidecar 忙时卡几秒)。
     setMatrixBinanceAccounts([]);
     setMatrixBinanceAccountsLoading(true);
@@ -667,6 +690,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // ── Facebook 自动发帖向导(复用 binancePostRunner + facebook_post 剧本) ──
   const openMatrixFacebookWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'facebook_post', 'Facebook 发帖')) return;
     setMatrixFacebookAccounts([]);
     setMatrixFacebookAccountsLoading(true);
     setMatrixFacebookTask(null);
@@ -725,6 +749,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // ── Reddit 自动发帖向导(复用 binancePostRunner + reddit_post 剧本) ──
   const openMatrixRedditWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'reddit_post', 'Reddit 发帖')) return;
     setMatrixRedditAccounts([]);
     setMatrixRedditAccountsLoading(true);
     setMatrixRedditTask(null);
@@ -783,6 +808,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // ── Instagram 自动发帖向导(复用 binancePostRunner + instagram_post 剧本) ──
   const openMatrixInstagramWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'instagram_post', 'Instagram 发帖')) return;
     setMatrixInstagramAccounts([]);
     setMatrixInstagramAccountsLoading(true);
     setMatrixInstagramTask(null);
@@ -850,6 +876,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
   const openMatrixRepostWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'binance_repost', '币安广场搬运')) return;
     setMatrixRepostAccounts([]); setMatrixRepostSourceAccounts([]);
     setMatrixRepostAccountsLoading(true);
     setMatrixRepostTask(null);
@@ -891,6 +918,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 「爆款批量仿写」向导(多账号):账号取主站 scope(同 replyAccountFilter,小红书主站登录态)。
   const openMatrixViralWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'viral_rewrite', '爆款仿写')) return;
     // 先秒开弹窗,内核检查 + 账号加载后台异步(对齐编辑流程,避免 sidecar 忙时卡几秒)。
     setMatrixViralAccounts([]);
     setMatrixViralAccountsLoading(true);

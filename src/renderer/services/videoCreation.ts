@@ -135,6 +135,9 @@ export interface VideoCreationInput {
   useStockVideo?: boolean;
   /** 口播稿语言(创作语言,如 'zh'/'zh-TW'/'en'/'ja'/'vi'…)。空/'auto' = 按文案/关键词自动探测。 */
   scriptLang?: string;
+  /** 矩阵号:身份选号(选号步)选中的平台/账号,仅用于编辑回填(生成参数已在 track/persona/keywords)。 */
+  identityPlatform?: string;
+  identityAccountId?: string;
   /** edge-tts 音色,空 = 用默认(zh-CN-XiaoxiaoNeural)。 */
   voice?: string;
   /** 语速档(-50~+50,单位%),0/空 = 正常语速。 */
