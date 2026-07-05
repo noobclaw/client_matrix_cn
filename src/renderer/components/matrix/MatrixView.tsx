@@ -465,7 +465,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   };
   // 「连接账号」统一入口:点开先弹窗选连接方式(扫码 / 导入 cookie),再走各自流程。持有待连接的账号信息。
   const [connectChoice, setConnectChoice] = useState<{ accountId: string; plat: string; displayName: string; loginScope?: string } | null>(null);
-  // 导入 cookie 登录:海外号(Google/Apple 登录)、买来的 cookie 号——不在指纹内核里跑 OAuth,注入已登录 cookie(行业标准)。
+  // 导入 cookie 登录:海外号(Google/Apple 登录)或已在其它浏览器登录过的号——不在指纹内核里跑 OAuth,注入已登录 cookie(行业标准)。
   const [cookieImport, setCookieImport] = useState<{ accountId: string; plat: string; displayName: string; loginScope?: string } | null>(null);
   const [cookieText, setCookieText] = useState('');
   const [cookieBusy, setCookieBusy] = useState(false);
@@ -1095,12 +1095,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{i18nService.currentLanguage === 'zh' ? '打开指纹浏览器,需要您完成登录。成功后状态会自动变「已连接」。' : 'Opens the fingerprint browser for you to log in. Status turns "Connected" automatically once done.'}</div>
               </button>
-              {/* 导入 cookie:海外号(Google/Apple 登录,内核里 OAuth 走不通)、买来的 cookie 号走这条。 */}
+              {/* 导入 cookie:海外号(Google/Apple 登录,内核里 OAuth 走不通)或已在其它浏览器登录过的号走这条。 */}
               <button
                 onClick={() => { const c = connectChoice; setConnectChoice(null); setCookieText(''); setCookieImport({ accountId: c.accountId, plat: c.plat, displayName: c.displayName, loginScope: c.loginScope }); }}
                 className="text-left rounded-xl border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-3">
                 <div className="text-sm font-semibold dark:text-gray-200">🍪 {i18nService.currentLanguage === 'zh' ? '导入 cookie' : 'Import cookie'}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{i18nService.currentLanguage === 'zh' ? '海外号(Google/Apple 登录)/ 买来的 cookie 号' : 'Google/Apple-login or bought accounts'}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{i18nService.currentLanguage === 'zh' ? '海外号(Google/Apple 登录)或已在其它浏览器登录过的号' : 'For Google/Apple-login accounts, or accounts already signed in on another browser'}</div>
               </button>
             </div>
             <div className="mt-4 flex justify-end">

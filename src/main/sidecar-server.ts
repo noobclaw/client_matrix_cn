@@ -1509,7 +1509,7 @@ const server = http.createServer(async (req, res) => {
           }
           case 'matrix:importCookieLogin': {
             // 导入 cookie 登录:把外部导出的登录 cookie 灌进本号 profile → 导航验活体 → 读身份 → 关联。
-            //   海外 Google/Apple 登录号、买来的 cookie 号走这条(不在指纹内核里跑 OAuth,行业标准做法)。
+            //   海外 Google/Apple 登录号、已在其它浏览器登录过的号走这条(不在指纹内核里跑 OAuth,行业标准做法)。
             try {
               const { getAccount, setAccountStatus, accountBadgeLabel, platformKey, setAccountIdentity, findAccountByUid } = await import('./libs/matrix/accountManager');
               const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, kernelSetCookies, kernelClearCookies } = await import('./libs/matrix/kernelPool');

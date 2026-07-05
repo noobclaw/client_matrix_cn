@@ -916,7 +916,7 @@ export async function kernelClearCookies(accountId: string): Promise<void> {
 }
 
 // ── 导入 cookie 登录:把外部(普通浏览器 Cookie-Editor 导出)的登录 cookie 灌进本号 profile ──
-//   行业标准做法:海外号(Google/Apple 登录)、买来的 cookie 号,不在指纹内核里跑 OAuth,而是注入已登录 cookie。
+//   行业标准做法:海外号(Google/Apple 登录)、已在其它浏览器登录过的号,不在指纹内核里跑 OAuth,而是注入已登录 cookie。
 //   cookie 项对齐 Cookie-Editor 导出格式({name,value,domain,path,secure,httpOnly,sameSite,expirationDate})。
 //   走 CDP Network.setCookie(与 checkKernelLogin 的 getAllCookies 同一套通道)。
 export async function kernelSetCookies(accountId: string, cookies: any[]): Promise<{ set: number; failed: number }> {
