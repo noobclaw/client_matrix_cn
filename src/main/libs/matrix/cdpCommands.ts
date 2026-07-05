@@ -34,9 +34,16 @@ export async function matrixCmd(
       return { ok: true, value };
     }
     // 任意 JS:扩展版用 new Function(code) 会被严 CSP 站拦;这里包成 IIFE 直接 CDP 求值绕开。
+    //   契约本是「传裸语句、用 return 取值」(如 binance 传 'return X;')。但很多剧本(FB/Reddit/
+    //   tiktok/douyin/ins/youtube 的 evalJs/apiGet)直接传了【自调用 IIFE 表达式】—— 被二次包成
+    //   (function(){ (iife)() })() 后外层没 return → 恒返回 undefined(FB 只滚不评、Reddit 取不到
+    //   modhash 的真凶,2026-07-05 实测)。判定:code 以 '(' 开头 = 表达式/IIFE(含 async),补 return
+    //   取其值(await 由 kernelEval 的 awaitPromise 兜住);否则原样(自带 return / 多语句)。
+    //   注:以 '(' 开头的 code 之前必返回 undefined(本就坏的),补 return 只会修复、不会回归。
     case 'javascript': {
       const code = String(params?.code || '');
-      const value = await kernelEval(accountId, '(function(){' + code + '\n})()');
+      const body = code.trim().charAt(0) === '(' ? 'return (' + code + '\n)' : code;
+      const value = await kernelEval(accountId, '(function(){' + body + '\n})()');
       return { ok: true, result: value, value };
     }
     // 可信按键(CDP Input.dispatchKeyEvent,isTrusted=true):搜索框 Enter 提交等。
