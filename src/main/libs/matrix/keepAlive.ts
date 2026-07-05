@@ -84,6 +84,21 @@ async function keepAliveOne(accountId: string): Promise<void> {
     await sleep(4000); // 等服务器下发续期 cookie 落盘
     let ok = true;
     try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = true; } // cookie 读失败不误杀(不标过期)
+    // 复验(2026-07-05,治小红书等「账号标过期、点开内核页面却登录着」的误报):headless 下部分平台
+    // 会被风控降级当游客(如小红书 /me 返回 guest)→ 单次「未登录」不可信。换【可见后台窗】重开重验,
+    // 仍未登录才标 login_required —— 宁可这轮漏标(保持 idle,下轮再查),绝不误杀登录着的好号。
+    if (!ok) {
+      try { closeKernel(acc.id); } catch { /* ignore */ }
+      try {
+        await launchKernel({
+          accountId: acc.id, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir,
+          fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc),
+        });
+        if (home) { try { await kernelNavigate(acc.id, home); } catch { /* ignore */ } }
+        await sleep(6000);
+        try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = true; }
+      } catch { ok = true; } // 复验开窗失败 → 不标过期(维持 idle)
+    }
     if (ok) {
       markAccountAlive(acc.id);
       try { const { probeAndSaveHealth } = await import('./proxyBridge'); await probeAndSaveHealth(acc); } catch { /* 代理探测失败不影响保活 */ }

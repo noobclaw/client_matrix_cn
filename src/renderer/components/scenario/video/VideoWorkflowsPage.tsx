@@ -900,6 +900,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
             <div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{dataPreview}</div>
           </div>
         </Row>
+        {scriptLangDisplay(t?.lang, isZh) && <Row label={`🌐 ${isZh ? '生成语言' : 'Language'}`}>{scriptLangDisplay(t?.lang, isZh)}</Row>}
         <Row label={`🎤 ${isZh ? '配音' : 'Voice-over'}`}>{templateNarrationSummary(input, isZh)}</Row>
         <Row label={`🎵 ${isZh ? '背景音乐' : 'BGM'}`}>{templateBgmSummary(input, isZh)}</Row>
         <Row label={`🎨 ${isZh ? '品牌色' : 'Brand'}`}>
@@ -956,6 +957,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
           );
         })()}
       </Row>
+      {scriptLangDisplay(input.scriptLang, isZh) && <Row label={`🌐 ${isZh ? '创作语言' : 'Language'}`}>{scriptLangDisplay(input.scriptLang, isZh)}</Row>}
       <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
         {input.engine === 'ai'
           ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
@@ -1032,6 +1034,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <div className="break-words whitespace-pre-wrap">
           📊 {isZh ? '内容' : 'Content'}：<span className="text-gray-400">[{isZh ? `${dataCount} 条` : `${dataCount} items`}]</span> {dataPreview}
         </div>
+        {scriptLangDisplay(t?.lang, isZh) && <div>🌐 {isZh ? '生成语言' : 'Language'}：{scriptLangDisplay(t?.lang, isZh)}</div>}
         <div>🎤 {isZh ? '配音' : 'Voice-over'}：{templateNarrationSummary(input, isZh)}</div>
         <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{templateBgmSummary(input, isZh)}</div>
         <div className="inline-flex items-center gap-2">
@@ -1089,6 +1092,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       <div className="break-words whitespace-pre-wrap">
         📝 {isZh ? '视频文案' : 'Script'}：<span className="text-gray-400">[{scriptTag}]</span> {scriptBody}
       </div>
+      {scriptLangDisplay(input.scriptLang, isZh) && <div>🌐 {isZh ? '创作语言' : 'Language'}：{scriptLangDisplay(input.scriptLang, isZh)}</div>}
       <div>🎞️ {isZh ? '画面' : 'Visuals'}：{visuals}</div>
       <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
     </>
@@ -2179,6 +2183,14 @@ const SCRIPT_LANGS: { code: string; zh: string; en: string; voicePrefixes: strin
   { code: 'pt',    zh: 'Português', en: 'Portuguese', voicePrefixes: ['pt-'], defaultVoice: 'pt-BR-FranciscaNeural' },
   { code: 'fr',    zh: 'Français', en: 'French',     voicePrefixes: ['fr-'], defaultVoice: 'fr-FR-DeniseNeural' },
 ];
+
+/** 创作/生成语言展示标签:'auto'/空 = 返回 null(跟内容走,详情页不占一行)。 */
+function scriptLangDisplay(code: string | undefined, isZh: boolean): string | null {
+  const c = (code || '').trim();
+  if (!c || c === 'auto') return null;
+  const o = SCRIPT_LANGS.find((l) => l.code === c);
+  return o ? (isZh ? o.zh : o.en) : c;
+}
 
 // 本地内置背景音乐(随包 bundle 在 resources/bgm/,来源 MoneyPrinterTurbo 免版税曲库)。
 // value 用 builtin:<id> token 传给主进程,bgm.ts 还原成 resources/bgm/<id>.mp3。

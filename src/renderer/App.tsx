@@ -52,6 +52,20 @@ import { noobClawSSE } from './services/noobclawSSE';
 import { MATRIX_EDITION } from './matrixEdition';
 
 const App: React.FC = () => {
+  // 原生窗口标题跟随界面语言(tauri.conf 的静态中文 title 只是启动兜底)。
+  // Tauri v2 走 window 插件命令;Electron dev(无 __TAURI__)自动 no-op。
+  useEffect(() => {
+    const apply = () => {
+      try {
+        const t = i18nService.t('appWindowTitle');
+        if (t && t !== 'appWindowTitle') {
+          (window as any).__TAURI__?.core?.invoke?.('plugin:window|set_title', { label: 'main', value: t });
+        }
+      } catch { /* ignore */ }
+    };
+    apply();
+    return i18nService.subscribe(apply);
+  }, []);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions>({});
   // 启动默认落到「一键涨粉」(scenarioCreate),而不是 AI 对话(cowork)。副作用:Sidebar 的
