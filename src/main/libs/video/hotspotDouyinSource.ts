@@ -26,6 +26,11 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as
 
 const LOGIN_WAIT_MS = 3 * 60 * 1000;
 
+/** 可中断等待:每 0.5s 查一次 signal —— 重试间隔里点「停止」立即结束,不再干等整段(停止卡顿源之一)。 */
+async function abortableWait(ms: number, signal?: AbortSignal): Promise<void> {
+  for (let waited = 0; waited < ms && !signal?.aborted; waited += 500) await sleep(Math.min(500, ms - waited));
+}
+
 export interface DouyinClipsDiag {
   reached: boolean;       // 脚本是否跑起来并返回
   loggedIn: boolean;      // 抖音登录态
@@ -107,7 +112,7 @@ async function fetchDouyinClipsViaKernel(
       if (Array.isArray(r.titles) && r.titles.length > titles.length) titles = r.titles;
       if (Array.isArray(r.urls) && r.urls.length) { urls = r.urls; break; }
       if (r.reason && r.reason.startsWith('no_matrix_driver')) { onLog('⚠️ ' + r.reason); diag.reason = r.reason; break; }
-      if (attempt < MAX_TRIES) { onLog(`   ⚠️ 第 ${attempt}/${MAX_TRIES} 次没搜到,等 ${Math.round(RETRY_WAIT_MS / 1000)}s 再试…`); await sleep(RETRY_WAIT_MS); }
+      if (attempt < MAX_TRIES) { onLog(`   ⚠️ 第 ${attempt}/${MAX_TRIES} 次没搜到,等 ${Math.round(RETRY_WAIT_MS / 1000)}s 再试…`); await abortableWait(RETRY_WAIT_MS, signal); }
     }
     diag.gotUrls = urls.length;
     if (urls.length === 0) {
@@ -307,7 +312,7 @@ async function fetchDouyinClipsImpl(
     if (urls.length > 0) break;
     if (attempt < MAX_TRIES) {
       onLog(`   ⚠️ 第 ${attempt}/${MAX_TRIES} 次没搜到${mode === 'image' ? '图文' : '视频'},等 ${Math.round(RETRY_WAIT_MS / 1000)}s 再试(可能瞬时没网)…`);
-      await sleep(RETRY_WAIT_MS);
+      await abortableWait(RETRY_WAIT_MS, signal);
     }
   }
   diag.scriptDiag = ret?.diag;

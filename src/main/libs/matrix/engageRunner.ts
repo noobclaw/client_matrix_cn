@@ -172,7 +172,7 @@ const FUNNEL_WEAVE_PROMPT = [
   '# 差异签名: {{nonce}}(仅用来让每次结果不同,不要把它写进评论)',
 ].join('\n');
 
-function makeAiCall(pack: any, authToken: string | undefined, report: (m: string) => void, onCost?: (credits: number, usd: number) => void, signal?: AbortSignal, funnel?: { phrase?: string; prob?: number }) {
+function makeAiCall(pack: any, authToken: string | undefined, report: (m: string) => void, onCost?: (credits: number, usd: number) => void, signal?: AbortSignal, funnel?: { phrase?: string; prob?: number; langHint?: string }) {
   // 单次 chat 调用(系统提示 + 用户消息 → content 文本)。主评论与引流融入复用它。
   const doChat = async (systemPrompt: string, userMessage: string, wantJson: boolean, model?: string): Promise<string> => {
     if (!authToken) throw new Error('AI_NOT_CONFIGURED');
@@ -218,10 +218,15 @@ function makeAiCall(pack: any, authToken: string | undefined, report: (m: string
     const dice = Math.floor(Math.random() * 100) + 1; // 1-100
     if (dice > prob) return baseComment; // 未命中概率 → 纯评论
     const nonce = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+    // 语言约束跟主评论一致:任务选了具体评论语言时,融合输出也必须用该语言 ——
+    // 不带的话二次 AI 调用可能把已是目标语言的评论改写回中/英混语(强制语言+引流同开时跑偏)。
     const sys = FUNNEL_WEAVE_PROMPT
       .split('{{reply_body}}').join(base)
       .split('{{funnel_phrase}}').join(phrase)
-      .split('{{nonce}}').join(nonce);
+      .split('{{nonce}}').join(nonce)
+      + (funnel?.langHint ? '
+
+' + funnel.langHint : '');
     try {
       const raw = await doChat(sys, JSON.stringify({ task: 'weave_funnel', comment: base, funnel: phrase }), false);
       let polished = String(raw || '').trim()
@@ -368,6 +373,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       // 但只有 comment_composer 出口(互动评论)会用到,reply_fan 走后端 fan_reply_body,互不影响。
       phrase: task.funnel_phrase || '',
       prob: typeof task.funnel_probability === 'number' ? task.funnel_probability : 0,
+      langHint: task.comment_language_hint || '', // 强制评论语言时,引流融合输出也锁同一语言
     }); // 传 abort signal:点停止时这次 AI 调用立即中断
     const browserFn: any = (command: string, params?: any, timeout?: number) => matrixCmd(accountId, command, params, timeout);
     // task-tab 对象:orchestrator 在 _activeTab 上调 browser/navigate/scroll/id。
