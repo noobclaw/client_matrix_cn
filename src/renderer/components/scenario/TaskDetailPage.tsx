@@ -1108,6 +1108,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         // v2.4.60: 频次显示真实用户配置(min/max),不再写死 daily_count
                         const sid = task.scenario_id;
                         const t = task as any;
+                        // 评论语言标记:海外互动任务设了【具体语言】(非 auto)时,摘要里标出来(国内平台跟帖子语言,不标)。
+                        const COMMENT_LANG_LABEL: Record<string, string> = { zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
+                        const cLang: string = t.comment_lang || t.quota?.comment_lang || 'auto';
+                        const langTag = (cLang && cLang !== 'auto' && COMMENT_LANG_LABEL[cLang])
+                          ? ` · ${i18nService.currentLanguage === 'zh' ? '评论语言' : 'Comment lang'}: ${COMMENT_LANG_LABEL[cLang]}`
+                          : '';
                         const fMin = t.daily_follow_min, fMax = t.daily_follow_max;
                         const rMin = t.daily_reply_min, rMax = t.daily_reply_max;
                         const lMin = t.daily_like_min, lMax = t.daily_like_max;
@@ -1123,7 +1129,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             ? `${lMin}-${lMax}` : null;
                           var summary = `${intervalLabel} · ${i18nService.t('tdFollow')} ${fStr} · ${i18nService.t('tdReply')} ${rStr}`;
                           if (lStr) summary += ` · ${i18nService.t('tdLike')} ${lStr}`;
-                          return summary;
+                          return summary + langTag; // x / 币安广场:海外,标评论语言
                         }
                         // youtube/tiktok/douyin 互动: 跟 X auto_engage 同款 — 各动作 min-max 区间
                         // YouTube 用 subscribe，TikTok/Douyin 用 follow，配额字段名同步
@@ -1136,13 +1142,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           };
                           const lStr = fmtRange(lMin, lMax, 3);
                           const cmStr = fmtRange(cmMin, cmMax, 1);
+                          // 海外平台(youtube/tiktok)才标评论语言;国内(douyin/kuaishou/bilibili)跟帖子语言、不标。
+                          const engLangTag = (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage') ? langTag : '';
                           if (sid === 'youtube_auto_engage') {
                             const sStr = fmtRange(sMin, sMax, 1);
-                            return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}`;
+                            return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
                           }
                           // tiktok / douyin 用 follow
                           const fStr2 = fmtRange(fMin, fMax, 1);
-                          return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdFollow')} ${fStr2} · ${i18nService.t('tdComment')} ${cmStr}`;
+                          return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdFollow')} ${fStr2} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
                         }
                         // v4.31.27: binance_from_x_repost 也走 daily_post_min/max(批量搬运同样按"每次 N 条")
                         // v4.31.30: 频次摘要文案对齐 wizard step3 — 之前只有数字+"条/次",
