@@ -18,10 +18,12 @@ const FUNNEL_PHRASE_MAX = 200;
 const FUNNEL_PROB_MIN = 1;
 const FUNNEL_PROB_MAX = 100;
 const FUNNEL_PROB_DEFAULT = 50;
-// 评论引流仅对「评论走 comment_composer 单串出口」的平台生效(客户端 makeAiCall 在此出口融入)。
-// 抖音/快手/B站/TikTok/YouTube 属此列;小红书/X 评论走 __raw__ 批量/英文回复、币安广场剧本自带
-// 禁「引流」词过滤 —— 这三家此处不暴露引流,避免用户配了却不生效的误导(后续按需各自后端接入)。
-const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube']);
+// 评论引流生效面:
+//   抖音/快手/B站/TikTok/YouTube —— 评论走 comment_composer 单串出口,客户端 makeAiCall 融入;
+//   币安广场 —— 剧本(binance_square_auto_engage)自己读 task.funnel_phrase/probability 做 AI 融合,
+//     融合结果仍过禁词质检(硬广模式照拦,只放行软引流),后端热下发即生效。
+//   小红书/X 仍不支持(评论走 __raw__ 批量/英文回复,后续按需接入)——不暴露,避免配了不生效的误导。
+const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube', 'binance']);
 
 type WizardStep = 1 | 2 | 3 | 4;
 // 步骤:1 选账号 / 2 点赞+关注 / 3 评论(数量+语言+引流,单独一步免拥挤) / 4 频率+条款。
