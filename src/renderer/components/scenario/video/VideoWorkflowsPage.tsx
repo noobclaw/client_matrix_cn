@@ -928,6 +928,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <Row label={`🔥 ${isZh ? '热点源' : 'Sources'}`}>{srcs}</Row>
         <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
         <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
+        {scriptLangDisplay(input.scriptLang, isZh) && <Row label={`🌐 ${isZh ? '创作语言' : 'Language'}`}>{scriptLangDisplay(input.scriptLang, isZh)}</Row>}
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{`${voiceLabel}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : '')}`}</Row>
         <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '智能混剪 · 配音' : 'Smart remix') : (isZh ? '智能配图(抖音图文/TikTok · Ken Burns)' : 'Smart images (Douyin/TikTok · Ken Burns)')}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
@@ -1066,6 +1067,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <div className="break-words">🔥 {isZh ? '热点源' : 'Sources'}：{srcs}</div>
         <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
         <div>🔢 {isZh ? '每次条数' : 'Per run'}：{hotspotCountLabel(input, isZh)}</div>
+        {scriptLangDisplay(input.scriptLang, isZh) && <div>🌐 {isZh ? '创作语言' : 'Language'}：{scriptLangDisplay(input.scriptLang, isZh)}</div>}
         <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceLabel}{subTag}</div>
         <div>🎞️ {isZh ? '画面' : 'Visuals'}：{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '智能混剪' : 'Smart remix') : (isZh ? '智能配图(抖音图文/TikTok)' : 'Smart images (Douyin/TikTok)')}</div>
         <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
@@ -4217,6 +4219,16 @@ export const HotspotVideoModal: React.FC<{
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
   const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-YunjianNeural');
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
+  // 创作语言:决定 AI 口播稿语言('auto' = 按热点标题语言,老行为)。中文热搜 + 英文口播 = 热点出海玩法。
+  // 选定语言与音色语种不匹配 → 自动切该语种默认音色(与在线素材/模板速生同一套联动)。
+  const [scriptLang, setScriptLang] = useState<string>((ei as any).scriptLang || 'auto');
+  const pickScriptLang = (code: string) => {
+    setScriptLang(code);
+    const opt = SCRIPT_LANGS.find((l) => l.code === code);
+    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) {
+      setVoice(opt.defaultVoice);
+    }
+  };
   // 字幕样式 + BGM(用户要可调)。字幕位置默认按界面语言:中文→中下(配合抖音混剪盖原字幕),海外→底部。
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(ei.subtitlePosition || (isZh ? 'lower' : 'bottom'));
   const [subtitleColor, setSubtitleColor] = useState<string>(ei.subtitleColor || '#FFE600');
@@ -4342,6 +4354,8 @@ export const HotspotVideoModal: React.FC<{
     // 画面素材来源平台 + 取材账号(运行时用该账号指纹内核全网搜+下素材)。
     hotspotMaterialPlatform: materialPlatform,
     hotspotMaterialAccountId: materialAccountId || undefined,
+    // 创作语言:'auto' 不传 = 按热点标题语言(老行为);选定 = 口播稿/字幕强制该语言(热点出海)。
+    scriptLang: scriptLang !== 'auto' ? scriptLang : undefined,
     referenceImages: [],
     aspect: '9:16',
     publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
@@ -4655,6 +4669,14 @@ export const HotspotVideoModal: React.FC<{
           {/* ── Step 4:配音 + 背景音乐 ── */}
           {step === 4 && (
             <>
+              <Field label={isZh ? '创作语言' : 'Script language'} hint={isZh ? '决定 AI 口播稿和字幕的语言;自动 = 跟热点标题。选外语可做「中文热点讲给海外看」' : 'AI narration & subtitle language; Auto follows the topic. Pick another to retell local trends abroad'}>
+                <select value={scriptLang} onChange={(e) => pickScriptLang(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                  {SCRIPT_LANGS.map((l) => (
+                    <option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label={isZh ? '配音音色' : 'Voice'}>
                 <select value={voice} onChange={(e) => setVoice(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">

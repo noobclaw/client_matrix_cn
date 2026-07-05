@@ -376,6 +376,9 @@ export async function runTemplatePipeline(
         tracker.fail('voice', '配音稿为空(AI 产稿失败,且未填自定义口播稿)');
         return { ok: false, error: '配音稿为空,请关闭配音或填写自定义口播稿' };
       }
+      // 把最终口播稿亮进进度日志(对齐 stock pipeline 的「📝 视频文案」),用户不用翻输出目录
+      // 的 文案.txt 就能看到生成结果;显式选了生成语言时一并标出。
+      tracker.progress(`📝 口播稿(约 ${script.length} 字${forceLangName ? ` · ${forceLangName}` : ''}${tpl.voiceScript ? '' : ' · AI 生成'}):${script}`);
       const voice = tpl.voice || input.voice || getTtsVoice();
       const rate = typeof tpl.voiceRate === 'number' ? tpl.voiceRate
         : typeof input.voiceRate === 'number' ? input.voiceRate : 0;
