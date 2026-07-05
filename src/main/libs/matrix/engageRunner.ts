@@ -183,27 +183,42 @@ function makeAiCall(pack: any, authToken: string | undefined, report: (m: string
     };
     if (wantJson && (/json/i.test(systemPrompt) || /json/i.test(userMessage))) body.response_format = { type: 'json_object' };
     else if (!wantJson) body.response_format = { type: 'text' };
-    const res = await fetch(`${baseUrl()}/api/ai/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify(body),
-      signal, // 点停止时立即 abort 这次 AI 调用(否则要等 AI 回完才退)
-    });
-    const data: any = await res.json().catch(() => ({}));
-    // 后端非 2xx(余额不足 402 / 内容审核 / 限流 / 5xx)必须抛错,不能把 {error,message}
-    //   当成空 content 静默吞掉 —— 否则上层只看到空串误报「返回空」,看不出是余额不足。
-    if (!res.ok) {
-      const beMsg = String((data && (data.message || data.error)) || ('http_' + res.status));
-      if (res.status === 402 || /INSUFFICIENT_TOKENS|insufficient|余额/i.test(beMsg)) throw new Error('余额不足,请充值后重试 (' + beMsg + ')');
-      throw new Error('AI 请求失败 ' + res.status + ': ' + beMsg);
+    // 网络抖动重试:用户常开着 VPN,对 api 的请求会瞬断(undici「fetch failed」)或 5xx/429 →
+    //   评论生成只调一次就报「AI 生成评论失败: fetch failed」白丢一条。退避重试 3 次;
+    //   402 余额不足 / 4xx 确定性错误 / 用户已停止(abort)不重试。
+    const MAX_ATTEMPTS = 3;
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      if (signal?.aborted) throw new Error('user_stopped');
+      let res: Response;
+      try {
+        res = await fetch(`${baseUrl()}/api/ai/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+          body: JSON.stringify(body),
+          signal,
+        });
+      } catch (e: any) {
+        if (signal?.aborted || /aborted/i.test(String(e?.message || e))) throw new Error('user_stopped');
+        lastErr = e;
+        if (attempt < MAX_ATTEMPTS) { await new Promise((r) => setTimeout(r, attempt * 2000)); continue; }
+        throw new Error('AI 请求网络失败(已重试 ' + MAX_ATTEMPTS + ' 次):' + String(e?.message || e).slice(0, 80));
+      }
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const beMsg = String((data && (data.message || data.error)) || ('http_' + res.status));
+        if (res.status === 402 || /INSUFFICIENT_TOKENS|insufficient|余额/i.test(beMsg)) throw new Error('余额不足,请充值后重试 (' + beMsg + ')');
+        if ((res.status >= 500 || res.status === 429) && attempt < MAX_ATTEMPTS) { lastErr = new Error('http_' + res.status); await new Promise((r) => setTimeout(r, attempt * 2000)); continue; }
+        throw new Error('AI 请求失败 ' + res.status + ': ' + beMsg);
+      }
+      try {
+        const aiCredits = Number(data?._noobclaw?.billableTokens) || 0;
+        const aiUsd = Number(data?._noobclaw?.costUsd) || 0;
+        if ((aiCredits > 0 || aiUsd > 0) && onCost) onCost(aiCredits, aiUsd);
+      } catch { /* ignore */ }
+      return data?.choices?.[0]?.message?.content ?? '';
     }
-    // AI 调用的权威扣费(同视频管线口径):billableTokens=实扣积分,costUsd=权威美元。累进「本次消耗」。
-    try {
-      const aiCredits = Number(data?._noobclaw?.billableTokens) || 0;
-      const aiUsd = Number(data?._noobclaw?.costUsd) || 0;
-      if ((aiCredits > 0 || aiUsd > 0) && onCost) onCost(aiCredits, aiUsd);
-    } catch { /* ignore */ }
-    return data?.choices?.[0]?.message?.content ?? '';
+    throw lastErr || new Error('AI 请求失败');
   };
 
   // 引流融入:仅对「互动评论」(comment_composer,返回纯文本串)且任务填了引流语时,

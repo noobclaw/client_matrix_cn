@@ -1517,9 +1517,19 @@ const server = http.createServer(async (req, res) => {
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
               let cookies: any[] = [];
-              try { cookies = Array.isArray(a?.cookies) ? a.cookies : JSON.parse(String(a?.cookiesRaw || '[]')); }
-              catch { return writeJSON(res, 200, { ok: false, error: 'cookie 解析失败:请粘贴 Cookie-Editor 导出的 JSON 数组' }); }
-              if (!Array.isArray(cookies) || !cookies.length) return writeJSON(res, 200, { ok: false, error: 'cookie 为空或格式不对' });
+              if (Array.isArray(a?.cookies)) {
+                cookies = a.cookies;
+              } else {
+                let parsed: any;
+                try { parsed = JSON.parse(String(a?.cookiesRaw || '[]')); }
+                catch { return writeJSON(res, 200, { ok: false, error: 'cookie 解析失败:请粘贴 Cookie-Editor 导出的 JSON 数组' }); }
+                if (Array.isArray(parsed)) cookies = parsed;
+                else if (parsed && Array.isArray(parsed.cookies)) cookies = parsed.cookies;
+                else if (parsed && typeof parsed === 'object' && parsed.data && (parsed.version || parsed.url)) {
+                  return writeJSON(res, 200, { ok: false, error: '这是【加密导出】(Cookie-Editor 的 Encrypt 导出),导不进。请改用官方 Cookie-Editor,点 Export 选【JSON】(得到的是 [ {name,value,...} ] 明文数组),再粘进来。' });
+                }
+              }
+              if (!Array.isArray(cookies) || !cookies.length) return writeJSON(res, 200, { ok: false, error: 'cookie 为空或格式不对:应是 [ {name,value,domain,...} ] 这样的明文数组(Cookie-Editor → Export → JSON)' });
               const pk = platformKey(acc);
               await launchKernel({
                 accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
