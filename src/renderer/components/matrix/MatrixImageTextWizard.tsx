@@ -58,10 +58,18 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
   // ── 多选账号 ──(默认勾选所有「就绪」号)
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
-    if (Array.isArray(initialTask?.accountIds) && initialTask.accountIds.length) return initialTask.accountIds.map(String);
+    // 去重:老任务的 accountIds 可能存了重复 id → 计数「已选 2」但列表只有 1 个号(用户实测)。
+    if (Array.isArray(initialTask?.accountIds) && initialTask.accountIds.length) return Array.from(new Set(initialTask.accountIds.map(String)));
     return accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id);
   });
   const toggle = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  // 账号加载好后剔除【幽灵 id】(已删除的号残留在 accountIds 里,查不到就不渲染却仍计数 → 计数虚高)。
+  //   只在账号真加载完(!loading 且有号)后剪,避免加载中把全部误剪空。
+  useEffect(() => {
+    if (accountsLoading || !accounts.length) return;
+    const live = new Set(accounts.map((a) => a.id));
+    setSelectedIds((prev) => { const next = prev.filter((id) => live.has(id)); return next.length === prev.length ? prev : next; });
+  }, [accounts, accountsLoading]);
 
   // ── 图文配置(全局) ──
   const it = initialTask?.imageText || {};

@@ -54,7 +54,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
   // ── 多选账号 ──(默认勾选所有「就绪」号)
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
-    if (Array.isArray(initialTask?.accountIds) && initialTask.accountIds.length) return initialTask.accountIds.map(String);
+    if (Array.isArray(initialTask?.accountIds) && initialTask.accountIds.length) return Array.from(new Set(initialTask.accountIds.map(String)));
     return accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id);
   });
   const toggle = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
