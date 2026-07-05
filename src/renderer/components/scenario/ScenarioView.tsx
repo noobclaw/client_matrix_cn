@@ -354,6 +354,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         daily_like_min: task.daily_like_min, daily_like_max: task.daily_like_max,
         daily_follow_min: task.daily_follow_min, daily_follow_max: task.daily_follow_max,
         daily_comment_min: task.daily_comment_min, daily_comment_max: task.daily_comment_max,
+        // 评论语言回填:漏了会在编辑时显示 auto、保存后把已存语言洗掉(mxTaskToScenario 已透传该字段)。
+        comment_lang: (task as any).comment_lang,
       },
       // 评论引流回填(老任务无此字段 → 空 → 向导显示未填)。
       funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },

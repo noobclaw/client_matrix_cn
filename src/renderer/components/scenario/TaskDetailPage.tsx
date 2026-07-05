@@ -1136,7 +1136,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         }
                         // youtube/tiktok/douyin 互动: 跟 X auto_engage 同款 — 各动作 min-max 区间
                         // YouTube 用 subscribe，TikTok/Douyin 用 follow，配额字段名同步
-                        if (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage' || sid === 'douyin_auto_engage' || sid === 'kuaishou_auto_engage' || sid === 'bilibili_auto_engage') {
+                        if (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage' || sid === 'douyin_auto_engage' || sid === 'kuaishou_auto_engage' || sid === 'bilibili_auto_engage'
+                          || sid === 'facebook_auto_engage' || sid === 'reddit_auto_engage' || sid === 'instagram_auto_engage') {
                           const sMin = t.daily_subscribe_min, sMax = t.daily_subscribe_max;
                           const cmMin = t.daily_comment_min, cmMax = t.daily_comment_max;
                           const fmtRange = (mn: any, mx: any, fb: number): string => {
@@ -1145,8 +1146,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           };
                           const lStr = fmtRange(lMin, lMax, 3);
                           const cmStr = fmtRange(cmMin, cmMax, 1);
-                          // 海外平台(youtube/tiktok)才标评论语言;国内(douyin/kuaishou/bilibili)跟帖子语言、不标。
-                          const engLangTag = (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage') ? langTag : '';
+                          // 海外平台(youtube/tiktok/facebook/reddit/instagram)才标评论语言;国内(douyin/kuaishou/bilibili)跟帖子语言、不标。
+                          const engLangTag = (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage' || sid === 'facebook_auto_engage' || sid === 'reddit_auto_engage' || sid === 'instagram_auto_engage') ? langTag : '';
                           if (sid === 'youtube_auto_engage') {
                             const sStr = fmtRange(sMin, sMax, 1);
                             return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
