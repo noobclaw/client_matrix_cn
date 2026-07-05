@@ -35,6 +35,16 @@ import type { ImageTextConfig } from './types';
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
 function baseUrl(): string { return process.env.NOOBCLAW_API_BASE_URL || DEFAULT_BASE_URL; }
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+/** 可中断等待:点停止后立即返回,不再干等整段(错峰 3-15s 是任务停不下来的主因)。 */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const t = setTimeout(() => { cleanup(); resolve(); }, ms);
+    const onAbort = () => { cleanup(); resolve(); };
+    const cleanup = () => { clearTimeout(t); try { signal?.removeEventListener('abort', onAbort); } catch { /* ignore */ } };
+    try { signal?.addEventListener('abort', onAbort, { once: true }); } catch { /* ignore */ }
+  });
+}
 function randInt(min: number, max: number): number {
   const lo = Math.min(min, max), hi = Math.max(min, max);
   return lo + Math.floor(Math.random() * (hi - lo + 1));
@@ -165,7 +175,7 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
     return { accountId, state: 'skipped', reason: 'no_keywords_for_real_photos' };
   }
 
-  await sleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000)); // 错峰
+  await abortableSleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000), opts.signal); // 错峰(可中断:停止立即结束)
 
   // 本场景不产生 like/follow/comment(留 0 对齐 EngageItemResult);完成维度是 post(发帖数)。
   const counts = { like: 0, follow: 0, comment: 0, post: 0 };

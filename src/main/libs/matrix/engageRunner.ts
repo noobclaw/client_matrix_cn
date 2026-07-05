@@ -48,6 +48,16 @@ const CAPTCHA_DETECT_EXPR = "(function(){try{"
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
 function baseUrl(): string { return process.env.NOOBCLAW_API_BASE_URL || DEFAULT_BASE_URL; }
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+/** 可中断等待:点停止后立即返回,不再干等整段(错峰 3-15s / 导航等待等停不下来的主因)。 */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const t = setTimeout(() => { cleanup(); resolve(); }, ms);
+    const onAbort = () => { cleanup(); resolve(); };
+    const cleanup = () => { clearTimeout(t); try { signal?.removeEventListener('abort', onAbort); } catch { /* ignore */ } };
+    try { signal?.addEventListener('abort', onAbort, { once: true }); } catch { /* ignore */ }
+  });
+}
 function randInt(min: number, max: number): number {
   const lo = Math.min(min, max), hi = Math.max(min, max);
   return lo + Math.floor(Math.random() * (hi - lo + 1));
@@ -306,7 +316,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   if (needsKeywords && (!acc.keywords || acc.keywords.length === 0)) { log('❌ 跳过:未配置关键词(到「我的矩阵账号」编辑里添加)'); return { accountId, state: 'skipped', reason: 'no_keywords' }; }
   if (acc.status === 'banned' || acc.status === 'limited') { log('❌ 跳过:账号状态为 ' + acc.status); return { accountId, state: 'skipped', reason: 'account_' + acc.status }; }
 
-  await sleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000)); // 错峰
+  await abortableSleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000), opts.signal); // 错峰(可中断:停止立即结束)
+  if (opts.signal?.aborted) { log('🛑 已停止'); return { accountId, state: 'skipped', reason: 'aborted' }; }
 
   const counts = { like: 0, follow: 0, comment: 0 };
   let chargedCredits = 0; // 该号本次累计扣费(积分),每笔互动动作扣费后累加
@@ -317,6 +328,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   let finished: { status: string; error?: string } | null = null;
 
   try {
+    if (opts.signal?.aborted) { return { accountId, state: 'skipped', reason: 'aborted' }; }
     setAccountStatus(accountId, 'running');
     log('启动指纹内核');
     await launchKernel({
@@ -334,8 +346,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     const navUrl = (opts.taskType === 'reply_fan' && acc.loginScope)
       ? loginUrlFor(opts.platform, acc.loginScope)
       : (PLATFORM_HOME[opts.platform] || 'https://www.douyin.com/');
+    if (opts.signal?.aborted) { try { closeKernel(accountId, { force: true }); } catch { /* ignore */ } return { accountId, state: 'skipped', reason: 'aborted' }; }
     await kernelNavigate(accountId, navUrl);
-    await sleep(2000);
+    await abortableSleep(2000, opts.signal);
+    if (opts.signal?.aborted) { try { closeKernel(accountId, { force: true }); } catch { /* ignore */ } return { accountId, state: 'skipped', reason: 'aborted' }; }
 
     // 跑前登录态检查:cookie 过期 / 没关联 → 跳过该号 + 标「需关联」(其它号照跑),不空转。
     let loggedIn = true;
