@@ -196,10 +196,16 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         {step === 2 && (
           <>
             <RangeSlider label={i18nService.t('wzEngageLikeLabel')} min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} hardCap={LIKE_HARDCAP} hint={i18nService.t('wzEngageLikeHint').replace('{min}', String(likeMin)).replace('{max}', String(likeMax)).replace('{cap}', String(LIKE_HARDCAP))} disabled={saving} />
-            {/* Reddit 无「关注用户」玩法(涨粉靠发帖不靠关注)→ 隐藏关注数量;其余平台照常。 */}
-            {platform !== 'reddit' && (
-            <RangeSlider label={i18nService.t('wzEngageFollowLabel')} min={folMin} max={folMax} setMin={setFolMin} setMax={setFolMax} hardCap={FOLLOW_HARDCAP} hint={i18nService.t('wzEngageFollowHint').replace('{min}', String(folMin)).replace('{max}', String(folMax)).replace('{cap}', String(FOLLOW_HARDCAP))} disabled={saving} />
-            )}
+            {/* Reddit 无「关注用户」玩法(涨粉靠发帖不靠关注)→ 隐藏关注数量;其余平台照常。
+                FB 走「加好友」(FB 涨粉正道,对方通过=互相可见),文案与上限(20)专门收口,风控更敏感。 */}
+            {platform !== 'reddit' && (() => {
+              const isFb = platform === 'facebook';
+              const folCap = isFb ? 20 : FOLLOW_HARDCAP;
+              const folLabel = isFb ? (i18nService.currentLanguage === 'zh' ? '每次运行加好友数量' : 'Friend requests per run') : i18nService.t('wzEngageFollowLabel');
+              return (
+                <RangeSlider label={folLabel} min={folMin} max={Math.min(folMax, folCap)} setMin={setFolMin} setMax={setFolMax} hardCap={folCap} hint={i18nService.t('wzEngageFollowHint').replace('{min}', String(folMin)).replace('{max}', String(Math.min(folMax, folCap))).replace('{cap}', String(folCap))} disabled={saving} />
+              );
+            })()}
 
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
               <div className="font-semibold">{i18nService.t('wzEngageSafetyTitle')}</div>
