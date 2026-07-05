@@ -996,7 +996,10 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
     let probe = '';
     if (platform === 'xhs') {
       // 小红书:/me 的 guest 标志(web_session 游客也下发 → 必须问接口)。guest:true=未登录,guest:false+user_id=已登录。
-      probe = '(async function(){try{var r=await fetch("https://edith.xiaohongshu.com/api/sns/web/v2/user/me",{credentials:"include"});var j=await r.json();var d=(j&&j.data)||{};if(d.guest===true)return "0";if(d.guest===false&&d.user_id)return "1";return "?";}catch(e){return "?";}})()';
+      // ⚠️ 裸 fetch user/me 现在会被当【游客】返回 guest:true(接口要签名头 x-s/x-t)——
+      //   不能拿它当「未登录」证据(真机实测:页面登录着却被误判过期)。只信【正向】guest:false+user_id="1";
+      //   拿不到正向就查页面登录墙文字,有才判 "0",否则 "?" 交回兜底 —— 绝不误杀登录着的好号(铁律)。
+      probe = '(async function(){try{var r=await fetch("https://edith.xiaohongshu.com/api/sns/web/v2/user/me",{credentials:"include"});var j=await r.json();var d=(j&&j.data)||{};if(d.guest===false&&d.user_id)return "1";}catch(e){}try{var t=(document.body&&document.body.innerText)||"";if(/扫码登录|手机号登录|新用户.*扫码|登录后查看更多|登录发现更多/.test(t))return "0";}catch(e){}return "?";})()';
     } else if (platform === 'bilibili') {
       probe = '(async function(){try{var r=await fetch("https://api.bilibili.com/x/web-interface/nav",{credentials:"include"});var j=await r.json();var d=(j&&j.data)||{};if(d.isLogin===true)return "1";if(d.isLogin===false)return "0";return "?";}catch(e){return "?";}})()';
     } else if (platform === 'toutiao') {
