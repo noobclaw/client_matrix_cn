@@ -987,8 +987,9 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
     if (!cookies.length) { const r2 = await send(s, 'Network.getCookies', {}); cookies = r2?.cookies || []; }
     const names = new Set<string>(cookies.map((c: any) => String(c.name)));
     const need = LOGIN_COOKIES[platform] || [];
-    // ① cookie 快筛
-    if (!need.some((n) => names.has(n))) return false;
+    // ① cookie 快筛(binance 例外:重 WAF、session cookie 名多变,登录着也常没 logined/p20t → 硬卡会误判过期。
+    //    币安改成【不卡 cookie,交给下面 DOM/localStorage 正向判据】,绝不因 cookie 名对不上误杀好号)。
+    if (platform !== 'binance' && !need.some((n) => names.has(n))) return false;
     // ② 活体判定:对齐成熟开源 social-auto-upload(导航到创作/上传页 → 检测登录墙标记)。
     //   【铁律:只在检到「明确未登录」证据(登录墙文字/元素、或接口明说未登录)时才判未登录;否则一律 "?" 交回 ③/cookie
     //    → 绝不把登录着的好号误判过期】。有官方 isLogin 接口的(小红书/B站)用接口最准;其余用 social-auto-upload 的 DOM 标记。
@@ -1020,9 +1021,16 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
       // social-auto-upload:未登录的 studio 上传页有 select.tiktok-*-SelectFormContainer*(地区/登录选择表单)。
       probe = '(function(){try{if(document.querySelector(\'select[class*="SelectFormContainer"]\'))return "0";return "?";}catch(e){return "?";}})()';
     } else if (platform === 'binance') {
-      // 币安广场:照抖音思路用【登录墙文字检测】+ 顶部 login/register CTA 双保险。未登录的广场登录墙才有这些文案/按钮;
-      //   登录态是头像、看到的是 feed,没有。只在检到才判未登录,否则 "?" → 绝不误判好号。
-      probe = '(function(){try{var t=(document.body&&document.body.innerText)||"";if(/Sign up to earn rewards|Join global crypto users|Discover real insights from verified|Log in to Binance|登录后即可|扫码登录/i.test(t))return "0";var ns=document.querySelectorAll("a,button,[role=button]");for(var i=0;i<ns.length;i++){var el=ns[i];var rc=el.getBoundingClientRect();if(!(rc.width>0&&rc.height>0))continue;if(rc.top<0||rc.top>200)continue;var hf=((el.getAttribute&&el.getAttribute("href"))||"").toLowerCase();var tx=(el.textContent||"").replace(/\\s+/g,"").toLowerCase();if(hf.indexOf("/login")>=0||hf.indexOf("/register")>=0)return "0";if(tx==="signup"||tx==="login"||tx==="登录"||tx==="注册")return "0";}return "?";}catch(e){return "?";}})()';
+      // 币安广场【正向优先】:登录态才有的 localStorage(operation_list_user_id / BN_FEED_KOL)或「分享您的洞见/
+      //   Share your」发帖框 → 明确判 "1"。这些是登录后才存在的强正向信号,拿它当权威(真机实测:登录着却被判过期,
+      //   根因是原来靠「顶部有登录/注册按钮」的反向扫描误命中促销位)。只在【登录墙文字】出现时才 "0",否则 "?"。
+      //   去掉原来的顶部 login/register CTA 扫描(误杀源)。
+      probe = '(function(){try{'
+        + 'try{if(localStorage.getItem("operation_list_user_id")||localStorage.getItem("BN_FEED_KOL"))return "1";}catch(e){}'
+        + 'var t=(document.body&&document.body.innerText)||"";'
+        + 'if(/分享您的洞见|分享你的洞见|Share your|发帖|发布动态/.test(t))return "1";'
+        + 'if(/Sign up to earn rewards|Join global crypto users|Discover real insights from verified|Log in to Binance|登录后即可|扫码登录|请先登录/i.test(t))return "0";'
+        + 'return "?";}catch(e){return "?";}})()';
     } else if (platform === 'instagram') {
       // IG:【语言无关】判据(UI 随 locale 变,不能靠文字)—— 登录墙有 username 输入框 / 或重定向到 /accounts/login。
       //   登录态没有登录表单。只判 0,否则 "?" 交回 cookie。待 VPN 真机确认正向标记(如导航头像)。
