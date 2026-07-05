@@ -1052,9 +1052,10 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
       } catch { /* "?"/异常 → 落 ③,绝不误杀 */ }
     }
     // ③ 通用兜底:当前页被重定向到登录页 = 服务端已判未登录(cookie 还在但失效)。读不到 URL 就只信 cookie。
+    //   ⚠️ TikTok 例外:内核常被风控跳到验证/登录页,而 sessionid 是登录专有(登出即无)——已过 ① cookie 就别再让 ③ 误判失效。
     try {
       const href = await kernelEval(accountId, 'location.href');
-      if (/(login|passport|signin|sign-in|account\/security)/i.test(String(href || ''))) return false;
+      if (platform !== 'tiktok' && /(login|passport|signin|sign-in|account\/security)/i.test(String(href || ''))) return false;
     } catch { /* ignore */ }
     return true;
   } catch { return false; }
