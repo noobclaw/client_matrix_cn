@@ -249,9 +249,7 @@ function makeAiCall(pack: any, authToken: string | undefined, report: (m: string
       .split('{{reply_body}}').join(base)
       .split('{{funnel_phrase}}').join(phrase)
       .split('{{nonce}}').join(nonce)
-      + (funnel?.langHint ? '
-
-' + funnel.langHint : '');
+      + (funnel?.langHint ? '\n\n' + funnel.langHint : '');
     try {
       const raw = await doChat(sys, JSON.stringify({ task: 'weave_funnel', comment: base, funnel: phrase }), false);
       let polished = String(raw || '').trim()
