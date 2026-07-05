@@ -2806,6 +2806,28 @@ const VideoConfigModal: React.FC<{
     didInitIdentityRef.current = true;
     setIdentityPlatform((prev) => prev || first.platform);
   }, [matrixMode, isEdit, matrixAccounts]);
+  // 编辑态回填选号高亮:identityPlatform/identityAccountId 是后加字段,老任务没存 → 平台/账号不高亮
+  //   (但身份卡有数据,因为它读的是一直存的 track/persona/keywords)。这里在账号加载好后,
+  //   若这俩为空就【用已存身份反推账号】:优先精确 id 命中,否则按 group+persona+keywords 匹配,
+  //   匹配到就回填平台高亮 + 选中账号。只做一次(ref),不覆盖用户在弹窗里的手动改动。
+  const didBackfillIdentityRef = useRef(false);
+  useEffect(() => {
+    if (!matrixMode || !isEdit || didBackfillIdentityRef.current) return;
+    if (!matrixAccounts.length) return;
+    if (identityPlatform && identityAccountId) { didBackfillIdentityRef.current = true; return; }
+    const storedId = editTask?.input.identityAccountId || '';
+    const track = (editTask?.input.track || '').trim();
+    const persona = (editTask?.input.persona || '').trim();
+    const kw = (editTask?.input.keywords || []).join(' ').trim();
+    const match = matrixAccounts.find((a) => a.id === storedId)
+      || matrixAccounts.find((a) => (a.group || '').trim() === track && (a.persona || '').trim() === persona && (a.keywords || []).join(' ').trim() === kw && (track || persona || kw))
+      || matrixAccounts.find((a) => (a.group || '').trim() === track && (a.persona || '').trim() === persona && (track || persona));
+    if (match) {
+      didBackfillIdentityRef.current = true;
+      setIdentityPlatform((prev) => prev || match.platform);
+      setIdentityAccountId((prev) => prev || match.id);
+    }
+  }, [matrixMode, isEdit, matrixAccounts, identityPlatform, identityAccountId, editTask]);
   const matrixAccountsReady = !matrixMode || outputMode !== 'upload'
     || selectedPlatformIds.every((p) => !!accountByPlatform[p] && accountsFor(p).some((a) => a.id === accountByPlatform[p] && a.status !== 'login_required'));
 
