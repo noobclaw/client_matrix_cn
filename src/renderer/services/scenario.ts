@@ -56,6 +56,8 @@ const MATRIX_ENGAGE_SCENARIO_ID: Record<string, string> = {
   douyin: 'douyin_auto_engage', xhs: 'xhs_auto_engage', kuaishou: 'kuaishou_auto_engage',
   bilibili: 'bilibili_auto_engage', x: 'x_auto_engage', binance: 'binance_square_auto_engage',
   youtube: 'youtube_auto_engage', tiktok: 'tiktok_auto_engage',
+  // ⚠️ 新平台必须补进来:缺了会兜底成 douyin_auto_engage → 卡片/详情/运行记录全按「抖音」渲染(用户实测)。
+  facebook: 'facebook_auto_engage', reddit: 'reddit_auto_engage', instagram: 'instagram_auto_engage',
 };
 const MATRIX_ENGAGE_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_ENGAGE_SCENARIO_ID).map(([p, id]) => [id, p]));
@@ -66,6 +68,8 @@ const MATRIX_ENGAGE_META: Record<string, { name_zh: string; icon: string }> = {
   kuaishou: { name_zh: '快手 互动涨粉', icon: '⚡' }, bilibili: { name_zh: '哔哩哔哩 互动涨粉', icon: '📺' },
   x: { name_zh: '推特 互动涨粉', icon: '🐦' }, binance: { name_zh: '币安广场互动涨粉', icon: '🤝' },
   youtube: { name_zh: 'YouTube 互动涨粉', icon: '▶️' }, tiktok: { name_zh: 'TikTok 互动涨粉', icon: '🎬' },
+  facebook: { name_zh: 'Facebook 互动涨粉', icon: '👥' }, reddit: { name_zh: 'Reddit 互动涨粉', icon: '🟠' },
+  instagram: { name_zh: 'Instagram 互动涨粉', icon: '📷' },
 };
 const engageScenarioIdForPlatform = (platform?: string): string =>
   (platform && MATRIX_ENGAGE_SCENARIO_ID[platform]) || 'douyin_auto_engage';

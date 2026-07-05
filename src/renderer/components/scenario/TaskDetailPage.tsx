@@ -734,6 +734,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', label: i18nService.t('tdTypeBinanceFromTiktokViral'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'youtube_auto_engage')            return { icon: '📺', label: i18nService.t('tdTypeYoutubeAutoEngage'), color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
     if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: i18nService.t('tdTypeTiktokAutoEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'facebook_auto_engage')           return { icon: '👥', label: i18nService.t('tdTypeFacebookAutoEngage'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'reddit_auto_engage')             return { icon: '🟠', label: i18nService.t('tdTypeRedditAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'instagram_auto_engage')          return { icon: '📷', label: i18nService.t('tdTypeInstagramAutoEngage'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: i18nService.t('tdTypeDouyinAutoEngage'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
     if (sid === 'douyin_image_text')              return { icon: '📝', label: i18nService.t('tdTypeDouyinImageText'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'douyin_reply_fans_comment')      return { icon: '💬', label: i18nService.t('tdTypeDouyinReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };

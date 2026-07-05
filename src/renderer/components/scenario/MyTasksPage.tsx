@@ -484,6 +484,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'binance_from_x_link')          return { icon: '🔗', k: 'scnBnFromXLink', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 if (sid === 'youtube_auto_engage')          return { icon: '📺', k: 'scnYtEngage', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
                 if (sid === 'tiktok_auto_engage')           return { icon: '🎵', k: 'scnTtEngage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'facebook_auto_engage')         return { icon: '👥', k: 'scnFbEngage', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'reddit_auto_engage')           return { icon: '🟠', k: 'scnRdEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if (sid === 'instagram_auto_engage')        return { icon: '📷', k: 'scnIgEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (sid === 'douyin_auto_engage')           return { icon: '🎵', k: 'scnDyEngage', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
                 if (sid === 'douyin_image_text')            return { icon: '📝', k: 'scnDyImageText', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'douyin_reply_fans_comment')    return { icon: '💬', k: 'scnDyReplyFans', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
@@ -516,6 +519,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                   if ((plat as any) === 'douyin')  return { icon: '💬', k: 'scnDyEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                   if ((plat as any) === 'kuaishou') return { icon: '💬', k: 'scnKsEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                   if ((plat as any) === 'bilibili') return { icon: '💬', k: 'scnBiliEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                  if ((plat as any) === 'facebook') return { icon: '💬', k: 'scnFbEngage', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                  if ((plat as any) === 'reddit')   return { icon: '💬', k: 'scnRdEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                  if ((plat as any) === 'instagram') return { icon: '💬', k: 'scnIgEngage', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                   return { icon: '💬', k: 'scnXhsEngage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 }
                 if (plat === 'binance') return { icon: '🔶', k: 'scnBnPostShort', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
