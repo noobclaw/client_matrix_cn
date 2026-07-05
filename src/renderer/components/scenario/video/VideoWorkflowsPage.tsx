@@ -1812,8 +1812,18 @@ const VideoCreateFlow: React.FC<{
 
   // v2.8: 四个视频创作任务跟币安等其它任务一样,必须先登录 NoobClaw 账号才能用。
   //   未登录点「开始创作」→ 弹账号登录框(requireLoginUI),不打开配置弹窗。
-  const openWithLogin = (open: () => void) => () => {
+  // 满额拦截提前到【点卡片时】(与矩阵任务「入口查重」同口径):总数已到上限直接弹提示,
+  //   不再让用户填完整个向导才在提交时报「已满」。查询慢(1.5s 超时)/失败放行 —— 提交时仍有兜底。
+  const [limitFull, setLimitFull] = useState(false);
+  const openWithLogin = (open: () => void) => async () => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    try {
+      const ok = await Promise.race([
+        videoQueue.canCreate(),
+        new Promise<boolean>((res) => setTimeout(() => res(true), 1500)),
+      ]);
+      if (!ok) { setLimitFull(true); return; }
+    } catch { /* 查不出来放行 */ }
     open();
   };
 
@@ -1867,6 +1877,28 @@ const VideoCreateFlow: React.FC<{
       <section className="mt-6">
         <VideoFeaturePills isZh={isZh} />
       </section>
+
+      {/* 视频任务已满提示(点卡片即拦,与矩阵任务查重弹窗同口径) */}
+      {limitFull && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <span className="text-xl leading-none">⚠️</span>
+              <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
+                {isZh
+                  ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+                  : `Video tasks are full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one in "My Videos" first.`}
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2 justify-end">
+              <button type="button" onClick={() => setLimitFull(false)} className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{isZh ? '关闭' : 'Close'}</button>
+              {onGoTasks && (
+                <button type="button" onClick={() => { setLimitFull(false); onGoTasks(); }} className="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600">{isZh ? '去我的视频任务' : 'Go to My Videos'}</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {cinemaOpen && (
         <VideoConfigModal isZh={isZh} matrixMode={matrixMode} forcedMode="pure_ai" onClose={() => setCinemaOpen(false)} onCreated={onCreated} />
