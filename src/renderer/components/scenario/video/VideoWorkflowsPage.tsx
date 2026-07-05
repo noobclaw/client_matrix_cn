@@ -3896,7 +3896,17 @@ const MatrixAcctRow: React.FC<{ isZh: boolean; a: MatrixAcctLite }> = ({ isZh, a
 const MatrixAccountSelect: React.FC<{
   isZh: boolean; accounts: MatrixAcctLite[]; value: string; onChange: (id: string) => void; onAddAccount: () => void;
 }> = ({ isZh, accounts, value, onChange, onAddAccount }) => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false); // 默认收起,点击「选择已连接账号」条才展开列表
+  const boxRef = useRef<HTMLDivElement>(null);
+  // 展开后点击别处 / 按 Esc 就收起(否则列表会一直挂着,看着像「一开始就展开了」)。
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
   if (accounts.length === 0) {
     return (
       <button type="button" onClick={onAddAccount}
@@ -3907,7 +3917,7 @@ const MatrixAccountSelect: React.FC<{
   }
   const sel = accounts.find((a) => a.id === value);
   return (
-    <div className="relative flex-1">
+    <div ref={boxRef} className="relative flex-1">
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-left flex items-center justify-between gap-2">
         {sel ? <MatrixAcctRow isZh={isZh} a={sel} /> : <span className="text-sm text-gray-400">{isZh ? '— 选择已连接账号 —' : '— pick a linked account —'}</span>}
@@ -3916,13 +3926,15 @@ const MatrixAccountSelect: React.FC<{
       {open && (
         <div className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl max-h-96 overflow-auto p-1">
           {accounts.map((a) => {
-            const disabled = a.status === 'login_required';
+            // 未连接的号不再置灰死掉,而是给一个「去连接」入口(点了跳「我的矩阵账号」扫码,口径同各列表向导)。
+            const needConnect = a.status === 'login_required';
             return (
-              <button key={a.id} type="button" disabled={disabled}
-                onClick={() => { if (disabled) return; onChange(a.id); setOpen(false); }}
-                title={disabled ? (isZh ? '该账号尚未连接,请先到「我的矩阵账号」扫码连接' : 'Not linked yet') : undefined}
-                className={`w-full text-left px-2 py-1.5 rounded-md ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-gray-100 dark:hover:bg-gray-700'} ${a.id === value ? 'bg-amber-500/10' : ''}`}>
-                <MatrixAcctRow isZh={isZh} a={a} />
+              <button key={a.id} type="button"
+                onClick={() => { setOpen(false); if (needConnect) { onAddAccount(); return; } onChange(a.id); }}
+                title={needConnect ? (isZh ? '该账号尚未连接,点此去「我的矩阵账号」扫码连接' : 'Not linked — click to connect') : undefined}
+                className={`w-full text-left px-2 py-1.5 rounded-md flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 ${a.id === value ? 'bg-amber-500/10' : ''}`}>
+                <span className="min-w-0 flex-1"><MatrixAcctRow isZh={isZh} a={a} /></span>
+                {needConnect && <span className="shrink-0 text-[11px] text-amber-500 underline decoration-dotted whitespace-nowrap">{isZh ? '去连接 →' : 'Connect →'}</span>}
               </button>
             );
           })}
