@@ -9,7 +9,7 @@
  *   Step 3 — 频率 + 摘要 + 条款
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
 
@@ -63,6 +63,12 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
     return accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id);
   });
   const toggle = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  // 账号加载好后剔除【幽灵 id】(已删除的号残留在 accountIds 里,查不到就不渲染却仍计数 → 计数虚高,用户实测)。
+  useEffect(() => {
+    if (accountsLoading || !accounts.length) return;
+    const live = new Set(accounts.map((a) => a.id));
+    setSelectedIds((prev) => { const next = prev.filter((id) => live.has(id)); return next.length === prev.length ? prev : next; });
+  }, [accounts, accountsLoading]);
 
   const rp = initialTask?.redditPost || {};
   const initSourceId = (() => {
