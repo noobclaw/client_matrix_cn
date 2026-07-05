@@ -4451,8 +4451,8 @@ export const HotspotVideoModal: React.FC<{
               </p>
               <Field label={isZh ? '热点源(可多选,榜单实时更新)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
                 <div className="grid grid-cols-2 gap-2">
-                  {/* 国内版隐藏「Web3 资讯」热源(HIDE_WEB3) */}
-                  {HOTSPOT_SOURCES.filter((s) => !(HIDE_WEB3 && s.id === 'web3')).map((s) => {
+                  {/* Web3 资讯是【信息源】不是 web3 平台功能:海外平台(TikTok/YouTube/X…)发片用得上,国内版不砍(2026-07-05 拍板)。 */}
+                  {HOTSPOT_SOURCES.map((s) => {
                     const on = !!sources[s.id];
                     const items = previews[s.id];
                     return (
@@ -5113,8 +5113,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       : '📋 Picking a hot list means the video is built straight from that ranking — no manual content. Each render pulls the list live, so scheduled tasks refresh daily.'}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    {/* 国内版隐藏「Web3 资讯」热榜(HIDE_WEB3);科技榜保留 */}
-                    {TEMPLATE_HOTLISTS.filter((h) => !(HIDE_WEB3 && h.catKey === 'web3')).map((h) => (
+                    {/* Web3 热榜是【信息源】:同热搜成片口径,国内版不砍(海外平台发片用得上,2026-07-05 拍板)。 */}
+                    {TEMPLATE_HOTLISTS.map((h) => (
                       <button key={h.name} type="button" onClick={() => void loadHotlist(h.name)}
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${hotlistName === h.name ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
                         <span>{h.emoji}</span><span className="dark:text-gray-200 truncate">{h.name}</span>
