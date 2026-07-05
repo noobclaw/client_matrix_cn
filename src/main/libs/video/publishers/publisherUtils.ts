@@ -63,6 +63,7 @@ export const PUBLISHER_ANCHOR_URL: Record<VideoPlatform, string> = {
   kuaishou:  'https://cp.kuaishou.com/article/publish/video',
   shipinhao: 'https://channels.weixin.qq.com/platform/post/create',
   toutiao:   'https://mp.toutiao.com/profile_v4/xigua/upload-video',
+  youtube:   'https://www.youtube.com/upload',
 };
 
 /**

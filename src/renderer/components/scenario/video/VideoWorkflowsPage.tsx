@@ -2038,8 +2038,8 @@ type GenMode = 'stock' | 'pure_ai';
 type OutputMode = 'local' | 'upload';
 // 9 个发布平台,跟 src/main/libs/video/publishers/types.VideoPlatform 严格对齐 ——
 // 改这一行必须同步改 publishers/types.ts,否则 pipeline 运行期收不到对应 platform id。
-// TikTok / YouTube 暂不支持视频发布,从可选平台里去掉(driver/枚举保留,以后支持再加回 UI)。
-type Platform = 'douyin' | 'xhs' | 'binance' | 'x' | 'tiktok' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao';
+// YouTube(2026-07-05 加,driver=backend/matrix/drivers/youtube.js,待真机验);IG/FB 视频待做。
+type Platform = 'douyin' | 'xhs' | 'binance' | 'x' | 'tiktok' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao' | 'youtube';
 // 顺序 = 展示顺序 = 发布顺序(改一处即可)。用户要求:抖音/小红书/快手【最前】;币安/推特/TikTok【最后】。
 const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: string }> = [
   { id: 'douyin',    zh: '抖音',     en: 'Douyin',      emoji: '🎵' },
@@ -2051,6 +2051,7 @@ const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: st
   { id: 'binance',   zh: '币安广场', en: 'Binance',     emoji: '🟡' },
   { id: 'x',         zh: '推特',     en: 'X / Twitter', emoji: '🐦' },
   { id: 'tiktok',    zh: 'TikTok',   en: 'TikTok',      emoji: '🎬' },
+  { id: 'youtube',   zh: 'YouTube',  en: 'YouTube',     emoji: '▶️' },
 ];
 // 新建任务默认勾选的平台(用户要求):抖音/小红书/快手/视频号/头条号/B站;币安/推特/TikTok 默认不勾。
 // 四个视频任务(ai/stock/hotspot/template)新建时都默认「发布到平台」+ 勾这 6 个;编辑老任务仍恢复保存值。
@@ -2534,7 +2535,7 @@ const VideoConfigModal: React.FC<{
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const init: Record<Platform, boolean> = {
       douyin: false, xhs: false, binance: false, x: false, tiktok: false,
-      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false,
+      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false, youtube: false,
     };
     const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
       ? ((editTask!.input as any).publishPlatforms as string[]) : null;
@@ -4992,7 +4993,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const init: Record<Platform, boolean> = {
       douyin: false, xhs: false, binance: false, x: false, tiktok: false,
-      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false,
+      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false, youtube: false,
     };
     const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
       ? ((editTask!.input as any).publishPlatforms as string[]) : null;
