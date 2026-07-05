@@ -126,6 +126,34 @@ function resolveCjkFont(): string | null {
   return null;
 }
 
+/**
+ * 按字幕文种挑字体:内置的是【中文】字体(思源黑体 SC / 得意黑,不含韩文 Hangul、日文假名)——
+ * 韩/日字幕用它会渲染成豆腐块(用户实测韩语字幕全乱码)。含 Hangul → 韩文系统字体;含假名 →
+ * 日文系统字体(也覆盖汉字)。纯中文/拉丁 → 返回 null,照用内置中文字体(不影响原有行为)。
+ * 找不到对应系统字体 → null(退回内置,至少中文/拉丁不豆腐)。真机上 macOS/Windows 都自带这些。
+ */
+function resolveScriptFont(sample: string): string | null {
+  const s = sample || '';
+  const hasHangul = /[가-힣ᄀ-ᇿ㄰-㆏]/.test(s);
+  const hasKana = /[぀-ゟ゠-ヿ]/.test(s);
+  if (!hasHangul && !hasKana) return null;
+  const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
+  const cands: string[] = [];
+  if (hasHangul) {
+    if (isMac) cands.push('/System/Library/Fonts/AppleSDGothicNeo.ttc', '/System/Library/Fonts/Supplemental/AppleGothic.ttf');
+    else if (isWin) cands.push('C:/Windows/Fonts/malgunbd.ttf', 'C:/Windows/Fonts/malgun.ttf', 'C:/Windows/Fonts/gulim.ttc');
+  }
+  if (hasKana) {
+    if (isMac) cands.push('/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc', '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc', '/System/Library/Fonts/Hiragino Sans GB.ttc');
+    else if (isWin) cands.push('C:/Windows/Fonts/YuGothB.ttc', 'C:/Windows/Fonts/YuGothM.ttc', 'C:/Windows/Fonts/meiryob.ttc', 'C:/Windows/Fonts/msgothic.ttc');
+  }
+  if (isMac) cands.push('/Library/Fonts/Arial Unicode.ttf', '/System/Library/Fonts/Supplemental/Arial Unicode.ttf');
+  else if (!isWin) cands.push('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc');
+  for (const p of cands) { try { if (fs.existsSync(p)) return p; } catch { /* ignore */ } }
+  return null;
+}
+
 /** 把一句话按 ~maxPerLine 个字符折行(中文友好)。 */
 function wrapSubtitle(text: string, maxPerLine = 14): string {
   const clean = text.replace(/\s+/g, ' ').trim();
@@ -604,7 +632,10 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
   // 优先用户选中的字体(style.fontFile),其次内置思源黑体(任何机器中文都不豆腐),
   // 都缺失才退回系统字体。
   let fontRel: string | null = null;
-  const fontSrc = resolveBundledFontByName(style.fontFile) ?? resolveBundledFont() ?? resolveCjkFont();
+  // 韩/日字幕:内置中文字体渲染成豆腐 → 先按字幕文种挑覆盖字体(见 resolveScriptFont);
+  //   纯中文/拉丁才照旧走用户选中字体 / 内置思源黑体 / 系统中文兜底。
+  const subSample = ((opts.cues && opts.cues.length ? opts.cues.map((c) => c.text || '') : opts.scenes.map((s) => s.subtitle || '')) || []).join('');
+  const fontSrc = resolveScriptFont(subSample) ?? resolveBundledFontByName(style.fontFile) ?? resolveBundledFont() ?? resolveCjkFont();
   if (fontSrc) {
     try {
       fontRel = `font${path.extname(fontSrc) || '.ttf'}`;
