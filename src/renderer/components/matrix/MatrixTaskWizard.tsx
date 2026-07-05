@@ -201,7 +201,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             {platform !== 'reddit' && (() => {
               const isFb = platform === 'facebook';
               const folCap = isFb ? 20 : FOLLOW_HARDCAP;
-              const folLabel = isFb ? (i18nService.currentLanguage === 'zh' ? '每次运行加好友数量' : 'Friend requests per run') : i18nService.t('wzEngageFollowLabel');
+              const folLabel = i18nService.t(isFb ? 'wzEngageAddFriendLabel' : 'wzEngageFollowLabel');
               return (
                 <RangeSlider label={folLabel} min={folMin} max={Math.min(folMax, folCap)} setMin={setFolMin} setMax={setFolMax} hardCap={folCap} hint={i18nService.t('wzEngageFollowHint').replace('{min}', String(folMin)).replace('{max}', String(Math.min(folMax, folCap))).replace('{cap}', String(folCap))} disabled={saving} />
               );
