@@ -15,6 +15,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { POST_LANGS, postLangLabel } from './postLangs';
 import Web3NewsSourcesPreview from './Web3NewsSourcesPreview';
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -30,7 +31,7 @@ export interface TweetPostWizardSave {
   frequency: string;
   mode: 'web3' | 'free';
   withImage: boolean;
-  language: 'zh' | 'en' | 'mixed';
+  language: string;
   isBlueV: boolean;
   autoPublish: boolean;
   references: Record<string, string>;   // 各号各自参考文案(仅 free 模式;可留空)
@@ -62,7 +63,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const tp = initialTask?.tweetPost || {};
   const [mode, setMode] = useState<'web3' | 'free'>(tp.mode === 'free' ? 'free' : 'web3');
   const [withImage, setWithImage] = useState<boolean>(tp.withImage !== false); // 默认配图开
-  const [language, setLanguage] = useState<'zh' | 'en' | 'mixed'>(tp.language || 'mixed');
+  const [language, setLanguage] = useState<string>(tp.language || 'mixed');
   const [isBlueV, setIsBlueV] = useState<boolean>(!!tp.isBlueV);
   const [autoPublish, setAutoPublish] = useState<boolean>(tp.autoPublish !== false); // 默认群发
   // 各号各自的参考文案(键=accountId,可留空)。
@@ -120,7 +121,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
-  const langLabel = (l: string) => (l === 'zh' ? i18nService.t('wzTweetLangZh') : l === 'en' ? i18nService.t('wzTweetLangEn') : i18nService.t('wzTweetLangMixed'));
+  const langLabel = (l: string) => postLangLabel(l, i18nService.currentLanguage === 'zh');
 
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
@@ -236,11 +237,9 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 {i18nService.t('wzTweetWritingLang')}</label>
-              <div className="flex gap-2 flex-wrap">
-                {(['mixed', 'zh', 'en'] as const).map((l) => (
-                  <button key={l} type="button" onClick={() => setLanguage(l)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${language === l ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'}`}>{langLabel(l)}</button>
-                ))}
-              </div>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40">
+                {POST_LANGS.map((l) => <option key={l.code} value={l.code}>{i18nService.currentLanguage === 'zh' ? l.zh : l.en}</option>)}
+              </select>
             </div>
 
             <div>

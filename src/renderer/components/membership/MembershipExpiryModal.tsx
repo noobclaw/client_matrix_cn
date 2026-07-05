@@ -56,7 +56,7 @@ export const MembershipExpiryModal: React.FC = () => {
   const renew = () => { close(); openWallet('subscription'); };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={close}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div
         className="w-[min(92vw,420px)] rounded-2xl p-6 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl"
         onClick={(e) => e.stopPropagation()}

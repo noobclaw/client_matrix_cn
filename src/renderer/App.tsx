@@ -61,7 +61,7 @@ const App: React.FC = () => {
   // 从「所有 AI 对话」列表点进某条对话时置 true:此时侧栏仍高亮「所有 AI 对话」、详情页左上显示返回按钮。
   const [coworkFromHistory, setCoworkFromHistory] = useState(false);
   // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
-  const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video' | undefined>(undefined);
+  const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit' | 'video' | undefined>(undefined);
   // ScenarioView 下钻到任务/运行记录详情时为 true:任务详情逻辑上属于「我的涨粉任务」,
   // 在「新建涨粉任务 / 涨粉运行记录」菜单下钻时,把左侧菜单高亮临时切到「我的涨粉任务」。
   const [scenarioInDetail, setScenarioInDetail] = useState(false);
@@ -967,7 +967,7 @@ const App: React.FC = () => {
   const handleShowInvite = () => setMainView('invite');
   // v6.x: 菜单拆分 ——「一键涨粉」(新建页)= 'scenarioCreate';「我的涨粉任务」(管理页)= 'quickuse'。
   // 「一键涨粉」create 页(可带平台,落到对应平台的新建 tab)。
-  const handleShowScenarioCreate = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video') => {
+  const handleShowScenarioCreate = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit' | 'video') => {
     setQuickUseInitialPlatform(platform);
     setMainView('scenarioCreate');
     setScenarioNavNonce((n) => n + 1);

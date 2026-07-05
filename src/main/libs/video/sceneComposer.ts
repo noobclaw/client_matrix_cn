@@ -377,11 +377,18 @@ const SCENE_SYSTEM = [
   '6. 按内容类型选最合适的原语组合:榜单→heroTitle+ranks;盘点要点→heroTitle+bullets;单一大数据→heroTitle+bigStat(+bullets);金句→quote;流程→heroTitle+steps。',
 ].join('\n');
 
-function buildSceneUser(dataText: string, title: string | undefined, brief: string | undefined, narrationOn: boolean, durationSec: number): string {
+function buildSceneUser(dataText: string, title: string | undefined, brief: string | undefined, narrationOn: boolean, durationSec: number, issues?: string[], forceLangName?: string): string {
   const parts: string[] = [];
   if (title) parts.push(`标题倾向:${title}`);
+  // 用户显式选了生成语言 → 画面所有文字强制该语言(内容是其它语言就翻译,数值/专有名词原样)。
+  if (forceLangName) parts.push(`输出语言(硬规则):画面上所有文字(标题/条目/标签/副文)一律用【${forceLangName}】书写;用户内容若是其它语言,请准确翻译过来;数值/百分比/货币符号与专有名词(币种代号、人名、品牌)保持原样。`);
   parts.push(`时长约 ${durationSec.toFixed(0)}s${narrationOn ? '(有配音,画面条目会随口播逐条揭示,条目别太多)' : '(纯视觉)'}`);
   if (brief && brief.trim()) parts.push(`【用户风格/重点要求(认真照做)】${brief.trim().slice(0, 300)}`);
+  // 上一版体检没过 → 把问题喂进来,让这版据此【精简条目 / 换更稳的原语 / 缩短文字】,重排一版一屏放得下的。
+  if (issues && issues.length) {
+    parts.push('【上一版排版有以下问题,请据此调整后重排:优先减少 block/条目数量、缩短文字、把长列表换成更少条目或图表,务必让内容一屏轻松放得下】');
+    issues.slice(0, 8).forEach((x, i) => parts.push(`${i + 1}. ${x}`));
+  }
   parts.push('用户内容(json):');
   parts.push(dataText.slice(0, 2200));
   return parts.join('\n');
@@ -448,6 +455,8 @@ export interface ComposeSceneInput {
   title?: string;
   brief?: string;
   lang: ContentLang;
+  /** 用户显式选的生成语言名(如 'Japanese'):画面上所有文字强制该语言(AI 翻译)。undefined = 跟内容语言。 */
+  forceLangName?: string;
   brandColor: string;
   accentColor: string;
   durationSec: number;
@@ -455,6 +464,8 @@ export interface ComposeSceneInput {
   captionsOn: boolean;
   /** 用户在向导里显式选的设计主题 id;'auto'/空 = 交给 AI/内容气质自动挑。 */
   themeId?: string;
+  /** 上一版体检问题(修订轮传入):让重排据此精简/换版式。 */
+  issues?: string[];
 }
 
 export interface ComposeSceneOutput {
@@ -487,7 +498,7 @@ export async function composeSceneFromAI(
     // 场景 JSON 体量小,直接用 flash(chat)最稳(支持 json_object,不吐思考链)。
     const { content, tokens, costUsd } = await callNoobclawChat(
       SCENE_SYSTEM,
-      buildSceneUser(input.dataText, input.title, input.brief, input.narrationOn, input.durationSec),
+      buildSceneUser(input.dataText, input.title, input.brief, input.narrationOn, input.durationSec, input.issues, input.forceLangName),
       { temperature: 0.7, maxTokens: 2600, model: 'noobclawai-chat', timeoutMs: 60_000 },
     );
     const scene = sanitizeScene(JSON.parse(extractJsonObject(content)));

@@ -5,7 +5,7 @@
  * (via a type-only import) and main can use it.
  */
 
-export type Platform = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video';
+export type Platform = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit' | 'video';
 
 export type WorkflowType =
   | 'viral_production'

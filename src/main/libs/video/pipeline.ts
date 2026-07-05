@@ -29,7 +29,7 @@ import { getUsedHotspots, markHotspotUsed } from './usedHotspotStore';
 import { fetchDouyinClips } from './hotspotDouyinSource';
 import { fetchTiktokClips } from './hotspotTiktokSource';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
-import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
+import { generateScript, generateSearchTerms, detectLang, type ContentLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, chargeHotspotImages, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
@@ -216,6 +216,9 @@ export interface VideoCreationInput {
    * Ken Burns(抄 MoneyPrinterTurbo)。下载失败/无匹配时自动降级到图片/文字卡。
    */
   useStockVideo?: boolean;
+  /** 口播稿语言(创作语言,ContentLang 码,如 'zh'/'zh-TW'/'en'/'ja'/'vi'…)。
+   *  空/'auto' = 维持原行为:按 文案→关键词→热点标题 自动探测。向导里与配音音色语种联动。 */
+  scriptLang?: string;
   /** edge-tts 音色,空 = 用配置默认(zh-CN-XiaoxiaoNeural)。 */
   voice?: string;
   /** 语速档(-50~+50,单位%),0/空 = 正常语速。 */
@@ -828,9 +831,14 @@ async function runVideoPipeline(
     const scriptMode: 'strict' | 'ai' = input.engine === 'hotspot'
       ? 'ai'
       : (input.scriptMode || (userText ? 'strict' : 'ai'));
-    // 内容语言:口播稿 + 素材搜索词都用它。规则(用户指定):有视频文案就按文案语言走,
-    // 否则按关键词语言。热搜成片按选中热点标题的语言。空白时退化为中文。
-    const contentLang = detectLang(userText || (input.keywords || []).join(' ') || (hotspotTopic?.title || ''));
+    // 内容语言:口播稿 + 素材搜索词都用它。用户在向导显式选了创作语言(scriptLang)且由 AI
+    // 写稿时用它;strict 逐字朗读模式下稿子就是用户原文,语言探测原文才对(选了语言也不生效,
+    // 避免「英文语言 + 中文原稿」错配)。无显式选择维持自动:有视频文案就按文案语言走,再按
+    // 关键词语言,热搜成片按选中热点标题的语言。空白时退化为中文。
+    const scriptLangSel = String(input.scriptLang || '').trim();
+    const contentLang: ContentLang = (scriptLangSel && scriptLangSel !== 'auto' && scriptMode === 'ai')
+      ? (scriptLangSel as ContentLang)
+      : detectLang(userText || (input.keywords || []).join(' ') || (hotspotTopic?.title || ''));
     // 本任务【写稿 + 搜索词】已扣的权威 USD 之和(含 reasoner ×3),供下面平台费预扣时
     // 按 videoCount 让服务端补收剩余 (count-1) 份 AI 费。AI 只调一次,各步累加进来。
     let aiCostUsd = 0;

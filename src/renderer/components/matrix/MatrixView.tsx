@@ -38,13 +38,13 @@ interface ItemResult { accountId: string; state: 'success' | 'failed' | 'skipped
 function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).map((x) => x.trim()).filter(Boolean); }
 
 // 对齐支持「互动涨粉」的平台(与新建页一致)。
-const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'binance', 'youtube', 'tiktok'];
-// 国内版(HIDE_WEB3):平台选择器里隐藏「币安广场」(web3),其余平台(含海外 推特/TikTok/YouTube)保留。
+const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'binance', 'youtube', 'tiktok', 'instagram', 'facebook', 'reddit'];
+// 国内版(HIDE_WEB3):平台选择器里隐藏「币安广场」(web3),其余平台(含海外 推特/TikTok/YouTube/IG/FB/Reddit)保留。
 const VISIBLE_PLATFORMS = HIDE_WEB3 ? PLATFORMS.filter((p) => p !== 'binance') : PLATFORMS;
 // 每个平台最多添加的账号数:客户端兜底 10,服务端 /api/matrix/config 的 maxAccountsPerPlatform 可覆盖(admin 调,不打包)。
 const MAX_ACCOUNTS_PER_PLATFORM_FALLBACK = 10;
 const PLAT_KEY: Record<string, string> = { douyin: 'platDouyin', xhs: 'platXhs', bilibili: 'platBilibili', kuaishou: 'platKuaishou', x: 'platX', binance: 'platBinance', shipinhao: 'platShipinhao', toutiao: 'platToutiao' };
-const platLabel = (p: string): string => PLAT_KEY[p] ? i18nService.t(PLAT_KEY[p]) : (p === 'tiktok' ? 'TikTok' : p === 'youtube' ? 'YouTube' : p);
+const platLabel = (p: string): string => PLAT_KEY[p] ? i18nService.t(PLAT_KEY[p]) : (p === 'tiktok' ? 'TikTok' : p === 'youtube' ? 'YouTube' : p === 'instagram' ? 'Instagram' : p === 'facebook' ? 'Facebook' : p === 'reddit' ? 'Reddit' : p);
 // 平台号的标签:平台名已以「号」结尾(视频号)就不再加「号」,否则拼「号」(抖音号/快手号…)。
 const platformIdLabel = (p: string): string => platLabel(p) + i18nService.t('mvIdSuffix');
 const LOGIN_URL: Record<string, string> = {
@@ -52,6 +52,7 @@ const LOGIN_URL: Record<string, string> = {
   kuaishou: 'https://www.kuaishou.com/', tiktok: 'https://www.tiktok.com/login', x: 'https://x.com/login',
   binance: 'https://www.binance.com/zh-CN/square', youtube: 'https://www.youtube.com/',
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
+  instagram: 'https://www.instagram.com/accounts/login/', facebook: 'https://www.facebook.com/login/', reddit: 'https://www.reddit.com/login/',
 };
 // 登录/读身份导航 URL:快手按场景分流(创作端登 cp.kuaishou.com,主站登 www);其它平台用 LOGIN_URL。
 const loginUrlFor = (platform: string, loginScope?: string): string => {
@@ -448,7 +449,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         try { await m.setAccountProxy({ id: r.account.id, proxy: proxyOut }); } catch { /* 代理存失败不挡建号 */ }
       }
       setShowAdd(false); setProxyMsg(null);
-      if (r?.ok) { await reload(); setNotice(i18nService.t('mvAccountCreated').replace('{name}', name)); if (thenLogin && r.account) promptScanLogin(r.account.id, platform, name, platform === 'kuaishou' ? newScope : undefined); }
+      // 建号后不再直接扫码,而是弹【连接方式选择】(扫码 / 导入 cookie),跟账号卡「连接账号」按钮一致。
+      if (r?.ok) { await reload(); setNotice(i18nService.t('mvAccountCreated').replace('{name}', name)); if (thenLogin && r.account) setConnectChoice({ accountId: r.account.id, plat: platform, displayName: name, loginScope: platform === 'kuaishou' ? newScope : undefined }); }
       else setNotice(i18nService.t('mvCreateFailed') + (r?.error || i18nService.t('mvIpcNoResponse')));
     };
     // 第 2 步配了代理 → 先校验(撞IP/连通),有问题给「仍然保存」;没配代理(走本机)直接建。
@@ -461,22 +463,29 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     }
     await doCreate(null);
   };
-  // 扫码登录二次确认:点「好的,我已知晓」才真正打开指纹浏览器导航到平台登录页(避免「一点就开浏览器」的突兀)。
-  const promptScanLogin = (accountId: string, plat: string, displayName: string, loginScope?: string) => {
+  // 「连接账号」统一入口:点开先弹窗选连接方式(扫码 / 导入 cookie),再走各自流程。持有待连接的账号信息。
+  const [connectChoice, setConnectChoice] = useState<{ accountId: string; plat: string; displayName: string; loginScope?: string } | null>(null);
+  // 导入 cookie 登录:海外号(Google/Apple 登录)、买来的 cookie 号——不在指纹内核里跑 OAuth,注入已登录 cookie(行业标准)。
+  const [cookieImport, setCookieImport] = useState<{ accountId: string; plat: string; displayName: string; loginScope?: string } | null>(null);
+  const [cookieText, setCookieText] = useState('');
+  const [cookieBusy, setCookieBusy] = useState(false);
+  const doCookieImport = async () => {
+    if (!cookieImport || cookieBusy) return;
+    if (!requireKernel()) return;
+    setCookieBusy(true);
+    try {
+      const r = await M()?.importCookieLogin?.({ accountId: cookieImport.accountId, cookiesRaw: cookieText, navUrl: loginUrlFor(cookieImport.plat, cookieImport.loginScope), kernelPath });
+      if (r?.ok) { setCookieImport(null); setCookieText(''); await reload(); setNotice((i18nService.currentLanguage === 'zh' ? '✅ cookie 导入成功:' : '✅ Cookie imported: ') + (cookieImport.displayName)); }
+      else setNotice((i18nService.currentLanguage === 'zh' ? '❌ 导入失败:' : '❌ Import failed: ') + (r?.error || ''));
+    } catch (e: any) { setNotice((i18nService.currentLanguage === 'zh' ? '❌ 导入异常:' : '❌ Import error: ') + (e?.message || String(e))); }
+    finally { setCookieBusy(false); }
+  };
+  // 扫码连接:直接开指纹浏览器导航到平台登录页(连接方式选择弹窗已确认过,不再二次弹「即将打开浏览器」)。
+  const promptScanLogin = async (accountId: string, plat: string, displayName: string, loginScope?: string) => {
     if (!requireLogin()) return;
-    const platName = platLabel(plat) || i18nService.t('mvThisPlatform');
-    const scopeName = plat === 'kuaishou' ? (loginScope === 'creator' ? i18nService.t('mvKsCreatorFull') : i18nService.t('mvKsMainFull')) : '';
-    setConfirmDlg({
-      title: i18nService.t('mvScanConnectTitle').replace('{platform}', platName).replace('{scope}', scopeName ? ' · ' + scopeName : ''),
-      body: i18nService.t('mvScanConnectBody').replace('{platform}', platName).replace('{scope}', scopeName ? scopeName : ''),
-      okText: i18nService.t('mvOpenBrowserLogin'),
-      onYes: async () => {
-        setConfirmDlg(null);
-        if (!requireKernel()) return;
-        setNotice(i18nService.t('mvOpeningBrowserFor').replace('{name}', displayName));
-        await M()?.openLogin({ accountId, kernelPath, loginUrl: loginUrlFor(plat, loginScope) });
-      },
-    });
+    if (!requireKernel()) return;
+    setNotice(i18nService.t('mvOpeningBrowserFor').replace('{name}', displayName));
+    await M()?.openLogin({ accountId, kernelPath, loginUrl: loginUrlFor(plat, loginScope) });
   };
   // 刷新信息:对任意账号拉起内核读 昵称/平台号/头像(已登录但没读过身份的号用这个)。
   const refreshIdentity = async (a: MatrixAccount) => {
@@ -805,9 +814,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <button onClick={() => openEdit(a)} className={`text-xs px-2.5 py-1 rounded-lg text-white ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{i18nService.t('mvEdit')}</button>
                       {a.status === 'login_required'
                         ? (<>
-                            {/* 尚未连接:只给「扫码连接」。它本身会开窗轮询登录态——若已在浏览器手动登录/扫码轮询超时,
-                                点它会立刻检测到并翻成已连接(不必真重扫),所以无需单独的「刷新信息」(那是给已连接的号刷身份用的)。 */}
-                            <button onClick={() => promptScanLogin(a.id, a.platform, a.displayName, a.loginScope)} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{i18nService.t('mvScanConnect')}</button>
+                            {/* 尚未连接:统一入口「连接账号」→ 弹窗选【扫码连接 / 导入 cookie】,各走各流程(把原来并排两颗按钮收成一个)。 */}
+                            <button onClick={() => setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope })} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{i18nService.currentLanguage === 'zh' ? '连接账号' : 'Connect account'}</button>
                           </>)
                         : (<>
                             {/* 已连接:读真实身份 / 断开(清登录,保留配置) */}
@@ -1058,13 +1066,72 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
       {/* 应用内确认弹窗(断开 / 移除)—— 不用 window.confirm(Tauri ACL 拦) */}
       {confirmDlg && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmDlg(null)}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div className="w-[34rem] max-w-full rounded-2xl p-7 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-lg font-semibold mb-3 dark:text-white">{confirmDlg.title}</div>
             <div className="text-sm text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">{confirmDlg.body}</div>
             <div className="flex justify-end gap-2.5">
               <button onClick={() => setConfirmDlg(null)} className="px-4 py-2 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvCancel')}</button>
               <button onClick={() => confirmDlg.onYes()} className={`px-4 py-2 text-sm rounded-lg text-white ${confirmDlg.danger ? 'bg-red-500 hover:bg-red-600' : 'bg-orange-500 hover:bg-orange-600'}`}>{confirmDlg.okText || i18nService.t('mvOk')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 「连接账号」方式选择弹窗:扫码连接 / 导入 cookie,点后关本弹窗并走各自流程。 */}
+      {connectChoice && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-base font-semibold mb-1 dark:text-white">🔗 {i18nService.currentLanguage === 'zh' ? '连接账号' : 'Connect account'} · {platLabel(connectChoice.plat)}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-4">{i18nService.currentLanguage === 'zh' ? '选择连接方式' : 'Choose a connection method'}</div>
+            <div className="grid grid-cols-1 gap-3">
+              {/* 扫码连接:开指纹浏览器扫码/手动登录,轮询转「已连接」。 */}
+              <button
+                onClick={() => { const c = connectChoice; setConnectChoice(null); promptScanLogin(c.accountId, c.plat, c.displayName, c.loginScope); }}
+                className="text-left rounded-xl border-2 border-violet-500 bg-violet-500/10 hover:bg-violet-500/15 px-4 py-3 ring-1 ring-violet-500/20 shadow-sm shadow-violet-500/10">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-semibold text-violet-600 dark:text-violet-400">📷 {i18nService.t('mvScanConnect')}</div>
+                  <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-violet-500 text-white font-medium">{i18nService.currentLanguage === 'zh' ? '推荐' : 'Recommended'}</span>
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{i18nService.currentLanguage === 'zh' ? '打开指纹浏览器,需要您完成登录。成功后状态会自动变「已连接」。' : 'Opens the fingerprint browser for you to log in. Status turns "Connected" automatically once done.'}</div>
+              </button>
+              {/* 导入 cookie:海外号(Google/Apple 登录,内核里 OAuth 走不通)、买来的 cookie 号走这条。 */}
+              <button
+                onClick={() => { const c = connectChoice; setConnectChoice(null); setCookieText(''); setCookieImport({ accountId: c.accountId, plat: c.plat, displayName: c.displayName, loginScope: c.loginScope }); }}
+                className="text-left rounded-xl border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-3">
+                <div className="text-sm font-semibold dark:text-gray-200">🍪 {i18nService.currentLanguage === 'zh' ? '导入 cookie' : 'Import cookie'}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{i18nService.currentLanguage === 'zh' ? '海外号(Google/Apple 登录)/ 买来的 cookie 号' : 'Google/Apple-login or bought accounts'}</div>
+              </button>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setConnectChoice(null)} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{i18nService.t('mvCancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 导入 cookie 登录弹窗 */}
+      {cookieImport && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-base font-semibold mb-1 dark:text-white">🍪 {i18nService.currentLanguage === 'zh' ? '导入 cookie 登录' : 'Import cookie login'} · {platLabel(cookieImport.plat)}</div>
+            {(() => {
+              const site = (loginUrlFor(cookieImport.plat, cookieImport.loginScope) || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '') || platLabel(cookieImport.plat);
+              const zh = i18nService.currentLanguage === 'zh';
+              return (
+                <div className="text-xs text-gray-600 dark:text-gray-300 mb-3 leading-relaxed rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 space-y-1">
+                  <div>{zh ? '① 给你的' : '① Install '}<strong>{zh ? '普通浏览器(Chrome/Edge)装扩展 ' : 'Cookie-Editor'}</strong>
+                    <a href={`https://chromewebstore.google.com/detail/cookie-editor/hlkenndednhfkekhgcdicdfddnkalmdm`} target="_blank" rel="noreferrer" className="text-violet-500 underline mx-0.5">Cookie-Editor</a>
+                    {zh ? '(Chrome 应用商店免费)' : ' from the Chrome Web Store'}</div>
+                  <div>{zh ? <>② 在那个浏览器打开 <strong>{site}</strong> 并<strong>登录好这个号</strong>(Google 一键登也行,普通浏览器能登)</> : <>② Open <strong>{site}</strong> there and <strong>log into this account</strong> (Google login works in a normal browser)</>}</div>
+                  <div>{zh ? <>③ 点扩展图标 → <strong>Export(导出)</strong> → 选 <strong>JSON</strong>(会自动复制)→ 粘到下面框里</> : <>③ Click the extension icon → <strong>Export</strong> → <strong>JSON</strong> (auto-copied) → paste below</>}</div>
+                </div>
+              );
+            })()}
+            <textarea value={cookieText} onChange={(e) => setCookieText(e.target.value)} disabled={cookieBusy} placeholder={'[{"name":"reddit_session","value":"...","domain":".reddit.com","path":"/","secure":true,...}, ...]'} rows={7} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40 resize-y" />
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button onClick={() => setCookieImport(null)} disabled={cookieBusy} className="px-4 py-2 text-sm rounded-lg border dark:border-white/15 border-black/15 disabled:opacity-50">{i18nService.t('mvCancel')}</button>
+              <button onClick={() => doCookieImport()} disabled={cookieBusy || !cookieText.trim()} className="px-4 py-2 text-sm rounded-lg text-white bg-violet-500 hover:bg-violet-600 disabled:opacity-50">{cookieBusy ? (i18nService.currentLanguage === 'zh' ? '导入中…' : 'Importing…') : (i18nService.currentLanguage === 'zh' ? '导入并验证' : 'Import & verify')}</button>
             </div>
           </div>
         </div>

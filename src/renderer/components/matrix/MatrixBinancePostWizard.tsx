@@ -15,6 +15,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import Web3NewsSourcesPreview from './Web3NewsSourcesPreview';
+import { POST_LANGS, postLangLabel } from './postLangs';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -28,7 +29,7 @@ export interface BinancePostWizardSave {
   concurrency: number;
   frequency: string;
   withImage: boolean;
-  language: 'zh' | 'en' | 'mixed';
+  language: string;
   autoPublish: boolean;
 }
 
@@ -57,7 +58,7 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
   // ── 发帖配置(全局) ──
   const bp = initialTask?.binancePost || {};
   const [withImage, setWithImage] = useState<boolean>(bp.withImage !== false); // 默认配图开
-  const [language, setLanguage] = useState<'zh' | 'en' | 'mixed'>(bp.language || 'mixed');
+  const [language, setLanguage] = useState<string>(bp.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(bp.autoPublish !== false); // 默认群发
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
@@ -99,7 +100,7 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
-  const langLabel = (l: string) => (l === 'zh' ? i18nService.t('wzBnPostLangZh') : l === 'en' ? i18nService.t('wzBnPostLangEn') : i18nService.t('wzBnPostLangMixed'));
+  const langLabel = (l: string) => postLangLabel(l, i18nService.currentLanguage === 'zh');
 
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
@@ -169,11 +170,9 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzBnPostLangLabel')}</label>
-              <div className="flex gap-2 flex-wrap">
-                {(['mixed', 'zh', 'en'] as const).map((l) => (
-                  <button key={l} type="button" onClick={() => setLanguage(l)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${language === l ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>{langLabel(l)}</button>
-                ))}
-              </div>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                {POST_LANGS.map((l) => <option key={l.code} value={l.code}>{i18nService.currentLanguage === 'zh' ? l.zh : l.en}</option>)}
+              </select>
             </div>
 
             <div>

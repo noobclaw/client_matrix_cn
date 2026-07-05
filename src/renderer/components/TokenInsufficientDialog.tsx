@@ -10,7 +10,7 @@ interface TokenInsufficientDialogProps {
 
 const TokenInsufficientDialog: React.FC<TokenInsufficientDialogProps> = ({ onConfirm, onCancel, onSubscribe, balance }) => {
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-sm mx-4 p-8 rounded-2xl border border-yellow-500/30 dark:bg-[#1a1a2e] bg-white shadow-2xl text-center" onClick={e => e.stopPropagation()}>
         <div className="w-16 h-16 mx-auto mb-4 rounded-2xl border border-yellow-500/40 bg-yellow-500/10 flex items-center justify-center">
           <span className="text-3xl">⚡</span>

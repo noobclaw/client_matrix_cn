@@ -312,6 +312,9 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     const isViralRewrite = task.type === 'viral_rewrite';
     const isTweetPost = task.type === 'x_post';
     const isBinancePost = task.type === 'binance_post';
+    const isFacebookPost = task.type === 'facebook_post';
+    const isRedditPost = task.type === 'reddit_post';
+    const isInstagramPost = task.type === 'instagram_post';
     const isBinanceRepost = task.type === 'binance_repost';
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
@@ -377,6 +380,24 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
+      : isFacebookPost
+      ? runBinancePostTask({
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.facebookPost as any,
+          concurrency: task.concurrency, kernelPath, signal: abort.signal,
+          onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
+        })
+      : isRedditPost
+      ? runBinancePostTask({
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.redditPost as any,
+          concurrency: task.concurrency, kernelPath, signal: abort.signal,
+          onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
+        })
+      : isInstagramPost
+      ? runBinancePostTask({
+          platform: task.platform, taskId: task.id, accountIds: runIds, config: task.instagramPost as any,
+          concurrency: task.concurrency, kernelPath, signal: abort.signal,
+          onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
+        })
       : isTweetPost
       ? runTweetPostTask({
           platform: task.platform, taskId: task.id, accountIds: runIds, config: task.tweetPost as any,
@@ -416,7 +437,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
         const totals: any = items.reduce((acc, it: any) => ({ like: acc.like + (it.counts?.like || 0), follow: acc.follow + (it.counts?.follow || 0), comment: acc.comment + (it.counts?.comment || 0) }), { like: 0, follow: 0, comment: 0 });
         // 非互动任务的完成维度:图文创作累计「发帖数」、视频下载累计「下载条数」。只给对应 type 加键,
         // 不污染 engage(否则累计/上次完成会多出 📤0/⬇️0)。
-        if (isImageText || isTweetPost || isBinancePost || isBinanceRepost) totals.post = items.reduce((s, it: any) => s + (it.counts?.post || 0), 0);
+        if (isImageText || isTweetPost || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost || isBinanceRepost) totals.post = items.reduce((s, it: any) => s + (it.counts?.post || 0), 0);
         if (isVideoDownload) totals.download = items.reduce((s, it: any) => s + (it.counts?.download || 0), 0);
         const cost = items.reduce((acc, it: any) => ({ credits: acc.credits + (it.chargedCredits || 0), usd: acc.usd + (it.chargedUsd || 0) }), { credits: 0, usd: 0 });
         addRun({ taskId: task.id, taskName: task.name, platform: task.platform, startedAt, finishedAt: Date.now(), success: report?.success ?? 0, failed: report?.failed ?? 0, skipped: report?.skipped ?? 0, totals, cost, items });
@@ -1482,6 +1503,53 @@ const server = http.createServer(async (req, res) => {
                 }
               })();
               return writeJSON(res, 200, { ok: true });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
+          case 'matrix:importCookieLogin': {
+            // 导入 cookie 登录:把外部导出的登录 cookie 灌进本号 profile → 导航验活体 → 读身份 → 关联。
+            //   海外 Google/Apple 登录号、买来的 cookie 号走这条(不在指纹内核里跑 OAuth,行业标准做法)。
+            try {
+              const { getAccount, setAccountStatus, accountBadgeLabel, platformKey, setAccountIdentity, findAccountByUid } = await import('./libs/matrix/accountManager');
+              const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, kernelSetCookies, kernelClearCookies } = await import('./libs/matrix/kernelPool');
+              const a = args[0] as any;
+              const acc = getAccount(a?.accountId);
+              if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              let cookies: any[] = [];
+              try { cookies = Array.isArray(a?.cookies) ? a.cookies : JSON.parse(String(a?.cookiesRaw || '[]')); }
+              catch { return writeJSON(res, 200, { ok: false, error: 'cookie 解析失败:请粘贴 Cookie-Editor 导出的 JSON 数组' }); }
+              if (!Array.isArray(cookies) || !cookies.length) return writeJSON(res, 200, { ok: false, error: 'cookie 为空或格式不对' });
+              const pk = platformKey(acc);
+              await launchKernel({
+                accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
+                userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
+                label: accountBadgeLabel(acc), skipLease: true,
+              });
+              const inj = await kernelSetCookies(acc.id, cookies);
+              try { await kernelNavigate(acc.id, a?.navUrl || 'about:blank'); } catch { /* ignore */ }
+              await new Promise((r) => setTimeout(r, 2500));
+              let ok = false;
+              try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = false; }
+              if (!ok) {
+                setAccountStatus(acc.id, 'login_required');
+                broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: `cookie 无效或非该平台登录态(注入 ${inj.set} 条/失败 ${inj.failed})。请确认导出的是该号在 ${pk} 已登录的 cookie` });
+                return writeJSON(res, 200, { ok: false, error: `cookie 未通过活体校验(注入 ${inj.set}/失败 ${inj.failed})` });
+              }
+              let ident: any = {};
+              try { ident = await kernelReadIdentity(acc.id, pk); } catch { /* 身份读取失败不影响登录 */ }
+              const dup = ident.uid ? findAccountByUid(pk, String(ident.uid), acc.id) : undefined;
+              if (dup) {
+                try { await kernelClearCookies(acc.id); } catch { /* ignore */ }
+                setAccountStatus(acc.id, 'login_required');
+                broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: `该账号已被「${dup.displayName}」关联,一个真实账号只能关联一个矩阵号` });
+                return writeJSON(res, 200, { ok: false, error: `该账号已被「${dup.displayName}」关联` });
+              }
+              setAccountStatus(acc.id, 'idle');
+              try { setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
+              try { const { probeAndSaveHealth } = await import('./libs/matrix/proxyBridge'); await probeAndSaveHealth(acc); } catch { /* ignore */ }
+              broadcastSSE('matrix:account', { id: acc.id, status: 'idle', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
+              return writeJSON(res, 200, { ok: true, account: getAccount(acc.id) });
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }

@@ -123,7 +123,7 @@ export interface ViralRewriteConfig {
 export interface TweetPostConfig {
   mode: 'web3' | 'free';         // 内容来源:web3 资讯流 / 按账号身份自由创作
   withImage: boolean;            // true=AI 生图配图,false=纯文字推
-  language: 'zh' | 'en' | 'mixed';
+  language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   isBlueV: boolean;              // 蓝V(X Premium)→ 字数自由(三档随机);普通号 ≤140 字
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
   references?: Record<string, string>; // 可选:各账号参考文案 { accountId: text }(仅 free 模式参考);空则按身份生成
@@ -137,8 +137,51 @@ export interface TweetPostConfig {
  */
 export interface BinancePostConfig {
   withImage: boolean;            // true=配图(源图优先→AI 生图),false=纯文字
-  language: 'zh' | 'en' | 'mixed';
+  language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
+}
+
+/**
+ * 「Facebook 自动发帖」(facebook_post)任务配置。同 binance_post 骨架(N 号各自 AI 原创一条图文 + 可选配图 → 发布),
+ * 但 FB 不是 web3 专场 → 数据源可选:sourceKind 'news'(web3 深度资讯)/ 'category'(hotspot 分类如 tech)/
+ * 'hot'(微博/抖音/知乎/百度/B站/雪球/海外热榜)。source=hot 模式的热榜名;catKey=category 模式的分类键(web3/tech)。
+ * 复用 binancePostRunner(runBinancePostTask 按 ${platform}_post 解析剧本 = facebook_post)。
+ */
+export interface FacebookPostConfig {
+  withImage: boolean;
+  language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
+  autoPublish: boolean;
+  sourceKind: 'news' | 'category' | 'hot';  // 数据源类型
+  source?: string;                          // hot 模式:热榜名(如 "微博热搜")
+  catKey?: string;                          // category 模式:分类键(web3 / tech)
+}
+
+/**
+ * 「Reddit 自动发帖」(reddit_post)任务配置。同 facebook_post 的可选数据源,但发布走 Reddit API(POST /api/submit,
+ * self/文字帖),且需指定目标 subreddit。无配图(Reddit 图片帖要 media lease 上传,二期)。
+ * 复用 binancePostRunner(scenarioId = reddit_post)。
+ */
+export interface RedditPostConfig {
+  language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
+  autoPublish: boolean;
+  sourceKind: 'news' | 'category' | 'hot';
+  source?: string;
+  catKey?: string;
+  subreddit: string;                        // 目标 subreddit(必填,不带 r/ 前缀也行)
+}
+
+/**
+ * 「Instagram 自动发帖」(instagram_post)任务配置。同 facebook_post 的可选数据源,但发布走 IG「新建帖子」
+ * 多步弹窗(上传图 → 下一步 → 写文案 → 分享)。**Instagram 网页帖必须带图** → withImage 恒 true(拿不到图判失败)。
+ * 复用 binancePostRunner(scenarioId = instagram_post)。
+ */
+export interface InstagramPostConfig {
+  withImage: boolean; // 恒 true(IG 帖必带图);保留字段与 facebook 对齐
+  language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
+  autoPublish: boolean;
+  sourceKind: 'news' | 'category' | 'hot';
+  source?: string;
+  catKey?: string;
 }
 
 /**
@@ -157,7 +200,7 @@ export interface BinanceRepostConfig {
   keyword?: string;              // 搜索词(选填;空则用采集号 account.keywords)
   material: 'image' | 'video';   // 搬运形态:图文 / 视频
   withImage: boolean;            // 图文模式恒配源图;视频模式此项保留兼容(一般 true)
-  language: 'zh' | 'en' | 'mixed'; // 仿写语言(mixed 跟随客户端)
+  language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts) // 仿写语言(mixed 跟随客户端)
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
   perRunCount?: number;          // 本轮目标条数;缺省=min(币安号数, 候选池数)。封顶见 runner
 }
@@ -169,7 +212,7 @@ export interface BinanceRepostConfig {
 // 自动发推 = x_post(N 个号各自按身份 AI 原创一条推文 + 可选配图 → 发到各自时间线,仅推特);
 // 币安广场自动发帖 = binance_post(N 个号各自抓 web3 资讯 AI 原创一条币安广场图文 + 可选配图 → 发币安广场,仅币安);
 // 币安广场批量搬运 = binance_repost(1 个采集号从源平台搜+下 N 条 → N 个币安号各领一条 AI 仿写 + 配图 → 发币安广场)。
-export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost';
+export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post';
 // 频率枚举对齐老客户端 DouyinConfigWizard(便于复用频率算法/文案)。
 export type MatrixTaskFrequency = 'once' | '30min' | '1h' | '3h' | '6h' | 'daily_random';
 
@@ -190,6 +233,9 @@ export interface MatrixTask {
   viralRewrite?: ViralRewriteConfig; // 仅 viral_rewrite 用:爆款仿写配置
   tweetPost?: TweetPostConfig;     // 仅 x_post 用:自动发推配置
   binancePost?: BinancePostConfig; // 仅 binance_post 用:币安广场自动发帖配置
+  facebookPost?: FacebookPostConfig; // 仅 facebook_post 用:Facebook 自动发帖配置(含数据源)
+  redditPost?: RedditPostConfig;   // 仅 reddit_post 用:Reddit 自动发帖配置(含数据源 + subreddit)
+  instagramPost?: InstagramPostConfig; // 仅 instagram_post 用:Instagram 自动发帖配置(含数据源,图必带)
   binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
   urls?: string[];                 // 仅 video_download 用:用户粘贴的待下载视频链接清单
   concurrency?: number;            // 同时开窗数(video_download 固定 1,单账号顺序下载)

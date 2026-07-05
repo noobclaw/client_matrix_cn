@@ -50,6 +50,9 @@ export interface TemplateOptions {
   /** 热榜数据源榜名(同 /api/web3/hot-search?sources=)。非空 = 出片时实时抓该榜前 N 条当内容,
    *  抓失败退回 dataText 快照。空 = 用 dataText。 */
   hotlistSource?: string;
+  /** 生成语言(ContentLang 码,如 'zh'/'zh-TW'/'en'/'ja'…):画面文字 + AI 口播稿都用该语言,
+   *  内容是其它语言时 AI 翻译过来。空/'auto' = 按 dataText+title 自动探测(老行为)。 */
+  lang?: string;
 }
 
 export interface TemplateData {
@@ -79,6 +82,9 @@ export interface TemplateDataInput {
   dataText: string;
   track?: string;
   lang: ContentLang;
+  /** 用户显式选了生成语言时传【语言名】(如 'Chinese (Traditional)'/'Japanese'):
+   *  items/标题/口播稿强制用该语言书写(内容是其它语言就翻译)。undefined = 保持用户内容语言(老行为)。 */
+  forceLangName?: string;
   /** 是否一并要求 AI 产口播稿(开了配音才要,省 token)。 */
   needVoiceScript?: boolean;
   /**
@@ -121,6 +127,16 @@ const SYSTEM_PROMPT_WITH_VOICE = [
   'H. voiceSegments.join(" ") 拼起来必须 == voiceScript(或仅相差空格)。**绝不在 segments 里添加 voiceScript 中没有的字**。',
   'I. 单页只有 1 条 item 时,segments[i] 也可以只有一两句话(自然就行,不强求字数均匀)。',
 ].join('\n');
+
+/** 口播稿 system prompt:默认中文;用户显式选了生成语言时把「中文」相关措辞替换成目标语言
+ *  (字数区间只对中文有意义,非自动时改按朗读时长把控)。 */
+function systemPromptWithVoice(forceLangName?: string): string {
+  if (!forceLangName) return SYSTEM_PROMPT_WITH_VOICE;
+  return SYSTEM_PROMPT_WITH_VOICE
+    .split('【自然流畅的中文短视频口播稿】').join(`【自然流畅的、用 ${forceLangName} 书写的短视频口播稿】`)
+    .split('(约 80-260 字)').join('(以朗读时长为准,不拘字数)')
+    .split('用中文标点(逗号、句号、顿号);不要英文标点').join(`标点遵循 ${forceLangName} 的标准书写规范`);
+}
 
 interface ChatResult { content: string; tokens: number; costUsd: number; }
 
@@ -287,13 +303,18 @@ function fallbackVoiceScript(items: TemplateItem[], title?: string): string {
  */
 export async function generateTemplateData(input: TemplateDataInput, systemPrompt?: string): Promise<TemplateDataResult> {
   const sys = systemPrompt
-    || (input.needVoiceScript ? SYSTEM_PROMPT_WITH_VOICE : SYSTEM_PROMPT_BASE);
+    || (input.needVoiceScript ? systemPromptWithVoice(input.forceLangName) : SYSTEM_PROMPT_BASE);
   try {
     const userParts: string[] = [];
     if (input.title) userParts.push(`标题倾向:${input.title}`);
     if (input.track) userParts.push(`赛道:${input.track}`);
+    // 用户显式选了生成语言 → 硬规则压倒 system 里的「保持用户内容的语言」;放 user message
+    // 是为了对 服务端可调的纯数据 prompt(templateDataSystemPrompt)同样生效。
+    if (input.forceLangName) {
+      userParts.push(`输出语言(硬规则,优先于「保持用户内容的语言」):title/subtitle、items 的 name/sub、以及 voiceScript/voiceSegments,一律用【${input.forceLangName}】书写;用户内容若是其它语言,请准确翻译过来。数值/百分比/货币符号/代码与专有名词(币种代号、人名、品牌)保持原样,绝不因翻译改动数据。`);
+    }
     if (input.needVoiceScript) {
-      userParts.push('需要 voiceScript:true(产中文口播稿)');
+      userParts.push(`需要 voiceScript:true(产${input.forceLangName ? ` ${input.forceLangName} ` : '中文'}口播稿)`);
       // 每次随机一种语气,塞到 user message,跟跨调用的「同一份数据 → 同一种口吻」对着干。
       //   不放 system prompt 是因为 system 是服务端可调的,改这事跟模板措辞无关;tone 是每次
       //   现 roll 的运行期行为,本该在 call site。

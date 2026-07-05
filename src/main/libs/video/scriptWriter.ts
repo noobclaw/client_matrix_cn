@@ -147,7 +147,9 @@ function targetCharCount(seconds: number): number {
  *   8 种视角覆盖常见短视频文案套路,大多互斥(不会同时出现「自嘲」+「数据驱动」)。
  */
 function pickNarrationAngle(lang: ContentLang): string {
-  const POOL: Record<ContentLang, string[]> = {
+  // 只备 zh/ja/ko/en 四套;其余语言码(zh-TW→zh,拉丁系→en)取近似池 —— 视角描述本身
+  // 是给 LLM 的指令,不必与产出语言一致。
+  const POOL: Partial<Record<ContentLang, string[]>> = {
     zh: [
       '反差对比视角(从一句反预期的事实切入,先抛悖论再揭原因)',
       '场景代入视角(用具体时间/地点/动作把观众拉进一个画面)',
@@ -189,12 +191,14 @@ function pickNarrationAngle(lang: ContentLang): string {
       'Direct-question angle (open with a question to the viewer, answer in the body)',
     ],
   };
-  const list = POOL[lang] || POOL.zh;
+  const list = POOL[lang] || (String(lang).startsWith('zh') ? POOL.zh! : POOL.en!);
   return list[Math.floor(Math.random() * list.length)];
 }
 
-/** 内容语言:决定口播稿 + 素材搜索词用哪种语言。 */
-export type ContentLang = 'zh' | 'ja' | 'ko' | 'en';
+/** 内容语言:决定口播稿 + 素材搜索词用哪种语言。
+ *  detectLang 只探测 zh/ja/ko/en 四种;其余码(zh-TW/id/vi/es/pt/fr)只能由用户在向导里
+ *  显式选择(input.scriptLang)传入 —— 选项与配音音色语种对齐(VOICE_GROUPS)。 */
+export type ContentLang = 'zh' | 'zh-TW' | 'ja' | 'ko' | 'en' | 'id' | 'vi' | 'es' | 'pt' | 'fr';
 
 /**
  * 轻量语言探测:按字符脚本判别。日文同时含汉字,故先查假名;韩文查谚文;
@@ -208,12 +212,18 @@ export function detectLang(text: string): ContentLang {
   return 'en';
 }
 
+/** 语言代码 → 给 LLM 用的英文语言名(供模板速生等外部消费方复用同一套名称)。 */
+export function contentLangName(l: ContentLang): string {
+  return langName(l);
+}
+
 /** 语言代码 → 给 LLM 用的英文语言名。 */
 function langName(l: ContentLang): string {
-  return l === 'zh' ? 'Chinese (Simplified)'
-    : l === 'ja' ? 'Japanese'
-    : l === 'ko' ? 'Korean'
-    : 'English';
+  const M: Record<string, string> = {
+    zh: 'Chinese (Simplified)', 'zh-TW': 'Chinese (Traditional)', ja: 'Japanese', ko: 'Korean',
+    en: 'English', id: 'Indonesian', vi: 'Vietnamese', es: 'Spanish', pt: 'Portuguese (Brazilian)', fr: 'French',
+  };
+  return M[l] || 'English';
 }
 
 export interface GenerateScriptInput {

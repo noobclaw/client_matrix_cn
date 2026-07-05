@@ -504,6 +504,7 @@ export function createTauriElectronShim(): typeof window.electron {
       setAccountKeywords: (args: unknown) => ipcInvoke('matrix:setAccountKeywords', args).then((r: any) => r ?? { ok: false }),
       removeAccount: (args: unknown) => ipcInvoke('matrix:removeAccount', args).then((r: any) => r ?? { ok: false }),
       openLogin: (args: unknown) => ipcInvoke('matrix:openLogin', args).then((r: any) => r ?? { ok: false }),
+      importCookieLogin: (args: unknown) => ipcInvoke('matrix:importCookieLogin', args).then((r: any) => r ?? { ok: false }),
       checkLogin: (args: unknown) => ipcInvoke('matrix:checkLogin', args).then((r: any) => r ?? { ok: false }),
       refreshIdentity: (args: unknown) => ipcInvoke('matrix:refreshIdentity', args).then((r: any) => r ?? { ok: false }),
       disconnectAccount: (args: unknown) => ipcInvoke('matrix:disconnectAccount', args).then((r: any) => r ?? { ok: false }),

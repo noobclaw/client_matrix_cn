@@ -25,10 +25,11 @@ import {
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
 } from './pipeline';
 import { generateTemplateData, detectTemplateLang, type ContentLang } from './templateHtmlWriter';
+import { contentLangName } from './scriptWriter';
 import { getVideoConfig } from './videoConfig';
 import { renderTemplate, pageSizeFor, calcPageCount, calcPageRanges, type TemplateSpec } from './templateLibrary';
 import { renderHtmlToVideo, resolveHeadlessBrowser, auditHtml } from './htmlVideoRenderer';
-import { generateFreeformScene, type FreeformResult } from './freeformWriter';
+import { generateFreeformScene, deterministicFallbackScene, type FreeformResult } from './freeformWriter';
 import { wrapTemplateHtml } from './templateAnim';
 import { loadFontFaceCss } from './fontAsset';
 import { loadGsapSource } from './gsapAsset';
@@ -97,8 +98,18 @@ async function ttsWithFallback(
 const HOTLIST_TOPN = 12;
 
 /**
+ * hotlistSource 里 Web3 资讯 / 科技不是 hot_topics 榜单,而是按 category 聚合(同热搜成片),
+ * 走 /api/video/hotspot/preview 取 items[catKey]。key 须跟向导 TEMPLATE_HOTLISTS 的 name 精确一致。
+ */
+const HOTLIST_CATEGORY_KEYS: Record<string, 'web3' | 'tech'> = {
+  'Web3 资讯': 'web3',
+  '科技 / AI': 'tech',
+};
+
+/**
  * 实时抓某个热榜前 N 条标题,拼成逐行文本当 dataText。走公开接口 /api/web3/hot-search
- * (无需鉴权,同 GlobalHotSearchPage)。失败/空 → null,调用方退回快照。绝不抛。
+ * (无需鉴权,同 GlobalHotSearchPage);Web3 资讯 / 科技走 /hotspot/preview 按 category 聚合。
+ * 失败/空 → null,调用方退回快照。绝不抛。
  */
 async function fetchHotlistText(source: string): Promise<string | null> {
   try {
@@ -106,6 +117,18 @@ async function fetchHotlistText(source: string): Promise<string | null> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
+      const catKey = HOTLIST_CATEGORY_KEYS[source];
+      if (catKey) {
+        const resp = await fetch(`${base}/api/video/hotspot/preview`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ perSource: HOTLIST_TOPN }), signal: ctrl.signal,
+        });
+        if (!resp.ok) return null;
+        const json: any = await resp.json();
+        const arr = Array.isArray(json?.items?.[catKey]) ? json.items[catKey] : [];
+        const items: string[] = arr.map((it: any) => String(it?.title || '').trim()).filter(Boolean).slice(0, HOTLIST_TOPN);
+        return items.length ? items.join('\n') : null;
+      }
       const resp = await fetch(`${base}/api/web3/hot-search?sources=${encodeURIComponent(source)}`, { signal: ctrl.signal });
       if (!resp.ok) return null;
       const json: any = await resp.json();
@@ -125,6 +148,8 @@ interface FreeformHtmlArgs {
   dataText: string;
   title?: string;
   lang: ContentLang;
+  /** 用户显式选的生成语言名(如 'Japanese'):画面文字强制该语言(AI 翻译)。undefined = 跟内容语言。 */
+  forceLangName?: string;
   brandColor: string;
   accentColor?: string;
   durationSec: number;
@@ -153,6 +178,26 @@ async function produceFreeformHtml(
   let prev: FreeformResult | null = null;
   let lastIssues: string[] = [];
   let lastHtml = '';
+  let safeHtml: string | null = null;   // 最近一版【结构化安全排版】HTML(物理上不重叠),末端保底用。
+  // 严重排版问题 = 交付即废片:重叠 / 超出画布 / 文字被裁 / 侵入字幕区 / 画面空白。
+  //   「内容推进太靠前 / 后半段静止 / 没有动画」属轻微瑕疵,可容忍(不重叠但推进略早,远好过重叠废片)。
+  const SEVERE = /重叠|超出画布|被裁|裁切|字幕区|空白/;
+  // 把一版排版结果包成完整可渲染 HTML(loop 与末端安全网共用)。
+  const wrap = (scene: FreeformResult): string => {
+    const useGsap = !!scene.setupScript && gsapAvailable;
+    return wrapTemplateHtml({
+      bodyHtml: scene.bodyHtml,
+      css: scene.css,
+      brandColor: args.brandColor,
+      durationSec: args.durationSec,
+      fps: args.fps,
+      captionCues: args.captionCues,
+      watermark: args.watermark,
+      fontFaceCss: loadFontFaceCss(),
+      gsapSource: useGsap ? gsapSource! : undefined,
+      setupScript: useGsap ? scene.setupScript : undefined,
+    });
+  };
   for (let attempt = 1; attempt <= MAX_FREEFORM_ATTEMPTS; attempt++) {
     tracker.progress(attempt === 1
       ? `🎨 AI 自由排版生成中${gsapAvailable ? '(GSAP 可用)' : ''}…`
@@ -161,6 +206,7 @@ async function produceFreeformHtml(
       dataText: args.dataText,
       title: args.title,
       lang: args.lang,
+      forceLangName: args.forceLangName,
       brandColor: args.brandColor,
       accentColor: args.accentColor,
       durationSec: args.durationSec,
@@ -174,29 +220,26 @@ async function produceFreeformHtml(
         : undefined,
     }, (m) => tracker.progress(m)); // 把模型尝试/超时/降级的细分进度透出来,别让用户对着一句话干等
     onCost(scene.tokens, scene.costUsd);
-    const useGsap = !!scene.setupScript && gsapAvailable;
-    const html = wrapTemplateHtml({
-      bodyHtml: scene.bodyHtml,
-      css: scene.css,
-      brandColor: args.brandColor,
-      durationSec: args.durationSec,
-      fps: args.fps,
-      captionCues: args.captionCues,
-      watermark: args.watermark,
-      fontFaceCss: loadFontFaceCss(),
-      gsapSource: useGsap ? gsapSource! : undefined,
-      setupScript: useGsap ? scene.setupScript : undefined,
-    });
+    const html = wrap(scene);
     lastHtml = html;
     tracker.progress('🔎 正在无头浏览器体检排版(抽帧检查溢出/重叠/动画/内容推进)…');
     const audit = await auditHtml(html, { narrationOn: args.narrationOn });
-    const modelTag = scene.source === 'fallback' ? '兜底版' : (scene.model === 'noobclawai-chat' ? 'flash 降级' : 'Pro');
+    const modelTag = scene.source === 'fallback' ? '兜底版' : scene.structured ? '结构化安全版' : (scene.model === 'noobclawai-chat' ? 'flash 降级' : 'Pro');
+    const hasSevere = audit.issues.some((x) => SEVERE.test(x));
+    // 结构化/兜底版物理上不重叠 → 只要无严重问题就记为「安全兜底版」,轮次耗尽时优先它。
+    if (scene.structured && !hasSevere) safeHtml = html;
     if (audit.ok) {
-      tracker.progress(`✅ 自由排版体检通过(第 ${attempt} 轮 · ${modelTag})${useGsap ? ' · GSAP' : ''}`);
+      tracker.progress(`✅ 自由排版体检通过(第 ${attempt} 轮 · ${modelTag})`);
       return html;
     }
     tracker.progress(`🔎 体检发现 ${audit.issues.length} 个问题:${audit.issues.slice(0, 3).join(' / ')}${audit.issues.length > 3 ? ' …' : ''}`);
-    // AI 整个挂了(两个模型都失败 → 走了纯代码兜底)→ 再循环也没意义,直接用兜底版出片。
+    // 结构化安全版只剩【轻微】瑕疵(内容推进/静止等,无重叠溢出)→ 直接采用:别为小瑕疵再耗轮次,
+    //   更别倒退回会重叠的原始整页 HTML。这正是过去「小瑕疵→切原始HTML→重叠废片」的病根。
+    if (scene.structured && !hasSevere) {
+      tracker.progress(`✅ 结构化安全排版采用(第 ${attempt} 轮 · 容忍 ${audit.issues.length} 个非严重项)`);
+      return html;
+    }
+    // AI 整个挂了(两个模型都失败 → 走了纯代码兜底)→ 再循环也没意义,兜底版本身不重叠,直接出片。
     // 把失败原因 log 出来(产物只看得到「又是绿条兜底」,看不到为什么 —— 靠这行定位是截断/解析/超时)。
     if (scene.source === 'fallback') {
       tracker.progress(`⚠️ AI 自由排版失败,采用纯代码兜底排版${scene.failReason ? ` · 原因:${scene.failReason}` : ''}`);
@@ -205,8 +248,23 @@ async function produceFreeformHtml(
     prev = scene;
     lastIssues = audit.issues;
   }
-  tracker.progress(`⚠️ 自由排版体检 ${MAX_FREEFORM_ATTEMPTS} 轮仍有小瑕疵,采用最后一版出片`);
-  return lastHtml;
+  // ── 轮次耗尽 ──【绝不交付带重叠/溢出的原始整页 HTML】:
+  //   末版无严重问题 → 用末版;否则优先记录的结构化安全版;都没有 → 产确定性兜底排版(永不重叠)。
+  if (!lastIssues.some((x) => SEVERE.test(x))) {
+    tracker.progress(`⚠️ 自由排版体检 ${MAX_FREEFORM_ATTEMPTS} 轮仍有小瑕疵(无严重项),采用最后一版出片`);
+    return lastHtml;
+  }
+  if (safeHtml) {
+    tracker.progress('⚠️ 末版仍有严重排版问题(重叠/溢出),改用结构化安全版出片');
+    return safeHtml;
+  }
+  tracker.progress('⚠️ 末版仍有严重排版问题,改用确定性兜底排版出片(保证不重叠)');
+  return wrap(deterministicFallbackScene({
+    dataText: args.dataText, title: args.title, lang: args.lang,
+    brandColor: args.brandColor, accentColor: args.accentColor || '#0ecb81',
+    durationSec: args.durationSec, narrationOn: args.narrationOn, captionsOn,
+    gsapAvailable,
+  }));
 }
 
 export async function runTemplatePipeline(
@@ -260,7 +318,13 @@ export async function runTemplatePipeline(
         tracker.progress(`⚠️ 实时榜单「${tpl.hotlistSource}」抓取失败,用已保存的快照`);
       }
     }
-    const lang = detectTemplateLang(`${dataText} ${tpl.title || ''}`);
+    // 生成语言:用户在向导显式选了(tpl.lang 非空非 auto)就用它,画面文字 + 口播稿都强制该语言
+    // (AI 负责翻译);否则按内容自动探测(老行为)。
+    const langSel = String(tpl.lang || '').trim();
+    const langExplicit = !!(langSel && langSel !== 'auto');
+    const lang: ContentLang = langExplicit ? (langSel as ContentLang) : detectTemplateLang(`${dataText} ${tpl.title || ''}`);
+    const forceLangName = langExplicit ? contentLangName(lang) : undefined;
+    if (langExplicit) tracker.progress(`🌐 生成语言:${forceLangName}(画面文字 + 口播稿)`);
     const wantNarration = tpl.narration === true;
     // 「AI 自由排版」:AI 写整页 HTML(freeformWriter + 体检闭环),不走固定模板渲染、不分页。
     const isFreeform = tpl.style === 'ai_freeform';
@@ -286,6 +350,7 @@ export async function runTemplatePipeline(
           // 编辑老任务时 input.track 可能还在,但生成不参考。
           dataText,
           lang,
+          forceLangName,
           needVoiceScript: wantNarration,
           // 开了配音才传 pageMeta(让 AI 按页切分 voiceSegments);纯视觉/自由排版不需要
           pageMeta: (wantNarration && !isFreeform) ? { pageCount: estPageCount, pageRanges } : undefined,
@@ -396,6 +461,7 @@ export async function runTemplatePipeline(
         dataText,
         title: data.title || tpl.title,
         lang,
+        forceLangName,
         brandColor,
         accentColor: tpl.accentColor,
         durationSec,

@@ -788,7 +788,7 @@ function humanizePlatformFromKey(key: string): string {
     const map: Record<string, string> = {
       douyin: '抖音', kuaishou: '快手', bilibili: '哔哩哔哩', xhs: '小红书', x: '推特',
       binance: '币安广场', youtube: 'YouTube', tiktok: 'TikTok', shipinhao: '视频号',
-      toutiao: '头条号', video: '视频创作',
+      toutiao: '头条号', instagram: 'Instagram', facebook: 'Facebook', reddit: 'Reddit', video: '视频创作',
     };
     return map[p] || p;
   }
@@ -811,6 +811,9 @@ function humanizePlatformFromKey(key: string): string {
   if (lc.indexOf('bilibili') >= 0) return '哔哩哔哩';
   if (lc.indexOf('channels.weixin') >= 0 || lc.indexOf('shipinhao') >= 0) return '视频号';
   if (lc.indexOf('toutiao') >= 0) return '头条号';
+  if (lc.indexOf('instagram') >= 0) return 'Instagram';
+  if (lc.indexOf('facebook') >= 0) return 'Facebook';
+  if (lc.indexOf('reddit') >= 0) return 'Reddit';
   if (key === 'tab:default') return '默认浏览器标签';
   return key;
 }

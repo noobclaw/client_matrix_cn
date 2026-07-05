@@ -23,6 +23,7 @@ const PLATFORM_HOME: Record<string, string> = {
   kuaishou: 'https://www.kuaishou.com/', tiktok: 'https://www.tiktok.com/', x: 'https://x.com/home',
   binance: 'https://www.binance.com/zh-CN/square', youtube: 'https://www.youtube.com/',
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
+  instagram: 'https://www.instagram.com/', facebook: 'https://www.facebook.com/', reddit: 'https://www.reddit.com/',
 };
 // 视频下载直链的 Referer(各平台 CDN 防盗链要求,给错会 403)。video_download 剧本走 downloadVideoToDisk 时按平台取。
 const DOWNLOAD_REFERER: Record<string, string> = {
@@ -56,6 +57,19 @@ export interface EngageQuota {
   daily_like_min?: number; daily_like_max?: number;
   daily_follow_min?: number; daily_follow_max?: number;
   daily_comment_min?: number; daily_comment_max?: number;
+  comment_lang?: string;            // 评论语言:'auto'|'zh'|'zh-TW'|'en'|'ja'|'ko'|'ru'|'fr'|'de'|'vi'(空/auto=跟帖子语言)
+}
+
+// 评论语言 code → AI 语言名(强制模式)。auto/空 → 不下发,剧本回落「跟帖子语言」。
+const COMMENT_LANG_NAME: Record<string, string> = {
+  zh: '简体中文 (Simplified Chinese)', 'zh-TW': '繁体中文 (Traditional Chinese)', en: '英文 (English)',
+  ja: '日语 (Japanese)', ko: '韩语 (Korean)', ru: '俄语 (Russian)', fr: '法语 (French)', de: '德语 (German)', vi: '越南语 (Vietnamese)',
+};
+function commentLangHint(code?: string): string | undefined {
+  if (!code || code === 'auto') return undefined;
+  const name = COMMENT_LANG_NAME[code];
+  if (!name) return undefined;
+  return `⚠️ 硬性规则(压倒一切):整条评论必须用【${name}】书写,只用这一种语言,第一个字符就是该语言,绝不混入其它语言。不管帖子/视频是什么语言,你都用 ${name} 回复。`;
 }
 
 export interface EngageTaskOptions {
@@ -339,6 +353,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
       daily_follow_min: q.daily_follow_min, daily_follow_max: q.daily_follow_max,
       daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
+      // 评论语言(强制模式;auto/空时不下发,剧本回落「跟帖子语言」)。各 *_auto_engage 剧本优先用它。
+      comment_language_hint: commentLangHint(q.comment_lang),
+      comment_lang: q.comment_lang || 'auto',
     };
 
     // 写评论等 AI 调用的扣费也累进「本次消耗」(与动作按次扣费相加,二者是不同的账,不重复)。

@@ -37,6 +37,9 @@ const PLATFORM_TO_MAIN_SUBPLATFORM: Record<LoginPlatform, string> = {
   bilibili:   'bilibili_main',
   shipinhao:  'shipinhao_main',
   toutiao:    'toutiao_main',
+  instagram:  'instagram_main',
+  facebook:   'facebook_main',
+  reddit:     'reddit_main',
 };
 
 const PLATFORM_TO_CREATOR_SUBPLATFORM: Partial<Record<LoginPlatform, string>> = {
@@ -63,7 +66,7 @@ export interface PlatformLoginStatus {
 // use PlatformLoginStatus.
 export type XhsLoginStatus = PlatformLoginStatus;
 
-export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao';
+export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit';
 
 const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   // (?<!creator\.) 排除 creator.xiaohongshu.com 子域 —— 用户只打开
@@ -105,6 +108,10 @@ const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   shipinhao: /channels\.weixin\.qq\.com/i,
   // 头条号后台 —— 创作 + 回复粉丝都在 mp.toutiao.com(区别于 www/so.toutiao.com)。
   toutiao: /mp\.toutiao\.com/i,
+  // Instagram / Facebook web 主站(海外,须 VPN)。
+  instagram: /instagram\.com/i,
+  facebook: /facebook\.com/i,
+  reddit: /reddit\.com/i,
 };
 
 const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
@@ -118,6 +125,9 @@ const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
   bilibili: 'bilibili_tab_not_reachable',
   shipinhao: 'shipinhao_tab_not_reachable',
   toutiao: 'toutiao_tab_not_reachable',
+  instagram: 'instagram_tab_not_reachable',
+  facebook: 'facebook_tab_not_reachable',
+  reddit: 'reddit_tab_not_reachable',
 };
 
 const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
@@ -131,6 +141,9 @@ const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
   bilibili: 'https://www.bilibili.com',
   shipinhao: 'https://channels.weixin.qq.com/platform',
   toutiao: 'https://mp.toutiao.com/',
+  instagram: 'https://www.instagram.com/',
+  facebook: 'https://www.facebook.com/',
+  reddit: 'https://www.reddit.com/',
 };
 
 /** v2.6+: chrome-extension tab-group label/color per platform.
@@ -158,6 +171,9 @@ export const PLATFORM_TAB_GROUPS: Record<LoginPlatform, { title: string; color: 
   bilibili:{ title: '🤖 Bilibili · NoobClaw',color: 'blue'   },
   shipinhao:{title: '🤖 视频号 · NoobClaw',  color: 'green'  },
   toutiao: { title: '🤖 头条号 · NoobClaw',  color: 'red'    },
+  instagram:{title: '🤖 Instagram · NoobClaw', color: 'pink' },
+  facebook: {title: '🤖 Facebook · NoobClaw',  color: 'blue' },
+  reddit:   {title: '🤖 Reddit · NoobClaw',    color: 'orange' },
 };
 
 /** Single source of truth for "which platform does this regex string target".
@@ -176,6 +192,9 @@ export function inferPlatformFromPattern(pattern: string | undefined): LoginPlat
   if (/bilibili/i.test(pattern)) return 'bilibili';
   if (/channels\.weixin\.qq\.com/i.test(pattern)) return 'shipinhao';
   if (/toutiao/i.test(pattern)) return 'toutiao';
+  if (/instagram/i.test(pattern)) return 'instagram';
+  if (/facebook/i.test(pattern)) return 'facebook';
+  if (/reddit/i.test(pattern)) return 'reddit';
   if (/twitter|x\\?\.com/i.test(pattern)) return 'x';
   return undefined;
 }

@@ -209,6 +209,24 @@ function taskConfigChips(task: Task): string[] {
     chips.push(`🌐 ${langShort(c.language)}`);
     chips.push(c.withImage !== false ? (i18nService.t('chipImage')) : (i18nService.t('chipTextOnly')));
     chips.push(pubChip(c.autoPublish !== false));
+  } else if (sid === 'facebook_post' && t.facebookPost) {
+    const c = t.facebookPost;
+    chips.push(`📰 ${c.source || (c.sourceKind === 'news' ? 'Web3' : c.sourceKind === 'category' ? (c.catKey || 'tech') : '热榜')}`);
+    chips.push(`🌐 ${langShort(c.language)}`);
+    chips.push(c.withImage !== false ? (i18nService.t('chipImage')) : (i18nService.t('chipTextOnly')));
+    chips.push(pubChip(c.autoPublish !== false));
+  } else if (sid === 'reddit_post' && t.redditPost) {
+    const c = t.redditPost;
+    chips.push(`r/${c.subreddit || '?'}`);
+    chips.push(`📰 ${c.source || (c.sourceKind === 'news' ? 'Web3' : c.sourceKind === 'category' ? (c.catKey || 'tech') : '热榜')}`);
+    chips.push(`🌐 ${langShort(c.language)}`);
+    chips.push(pubChip(c.autoPublish !== false));
+  } else if (sid === 'instagram_post' && t.instagramPost) {
+    const c = t.instagramPost;
+    chips.push(`📰 ${c.source || (c.sourceKind === 'news' ? 'Web3' : c.sourceKind === 'category' ? (c.catKey || 'tech') : '热榜')}`);
+    chips.push(`🌐 ${langShort(c.language)}`);
+    chips.push(i18nService.t('chipImage'));
+    chips.push(pubChip(c.autoPublish !== false));
   } else if (sid === 'x_post' && t.tweetPost) {
     const c = t.tweetPost;
     chips.push(c.mode === 'web3' ? (i18nService.t('chipWeb3News')) : (i18nService.t('chipFreeform')));
@@ -450,6 +468,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'x_auto_engage')                  return { icon: '🐦', k: 'scnXEngage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
                 if (sid === 'x_post')                         return { icon: '🐦', k: 'scnXPost', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'binance_post')                   return { icon: '📊', k: 'scnBnPost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                if (sid === 'facebook_post')                  return { icon: '👥', k: 'scnFbPost', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'reddit_post')                    return { icon: '🟠', k: 'scnRdPost', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if (sid === 'instagram_post')                 return { icon: '📷', k: 'scnIgPost', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (sid === 'binance_repost')                 return { icon: '♻️', k: 'scnBnRepost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                 if (sid === 'x_post_creator')                 return { icon: '📝', k: 'scnXPost', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'x_link_rewrite')                 return { icon: '✍️', k: 'scnXRewrite', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
@@ -707,7 +728,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                             return `⏰ ${scheduleLabel(task)} · ${cStr} ${i18nService.t('mtxArticlesRun')}`;
                           }
                           // 币安广场自动发帖 / 批量搬运:每号每轮 1 条,共 N 条/轮(N=账号数)。
-                          if (sid === 'binance_post' || sid === 'binance_repost') {
+                          if (sid === 'binance_post' || sid === 'facebook_post' || sid === 'reddit_post' || sid === 'instagram_post' || sid === 'binance_repost') {
                             const accN = Array.isArray(t.account_ids) ? t.account_ids.length : 1;
                             return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxPerAccountRound').replace('{n}', String(accN))}`;
                           }
@@ -774,6 +795,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid === 'xhs_viral_production_career' ||
                       sid === 'x_post' ||  // 矩阵自动发推:主动作 = post(发推),新任务无历史时兜底 ['post'] 不闪「赞」
                       sid === 'binance_post' ||  // 矩阵币安广场自动发帖:同 x_post,主动作 = post(发帖),不显示赞/关注/评论
+                      sid === 'facebook_post' ||  // 矩阵 Facebook 自动发帖:同上,主动作 = post(发帖)
+                      sid === 'reddit_post' ||  // 矩阵 Reddit 自动发帖:同上,主动作 = post(发帖)
+                      sid === 'instagram_post' ||  // 矩阵 Instagram 自动发帖:同上,主动作 = post(发帖)
                       sid === 'binance_repost'  // 矩阵币安广场批量搬运:同上,主动作 = post(发帖)
                     );
                     // v5.x+: engage scenarios are 3-pronged (like / comment /

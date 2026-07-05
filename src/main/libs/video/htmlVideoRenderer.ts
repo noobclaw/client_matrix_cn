@@ -505,9 +505,15 @@ const AUDIT_JS = `(function(){
       issues.push('元素超出画布: "'+ot.slice(0,16)+'" 位置['+Math.round(r.left)+','+Math.round(r.top)+'→'+Math.round(r.right)+','+Math.round(r.bottom)+'] 超出 1080x1920');
     }
     // 2) 文字被容器裁切(overflow hidden 把内容切了)
+    //    纵向容差必须与 data-fit 的 over() 一致(0.3×字号):line-height:1 的大数字/大标题,
+    //    其 line-box(含幽灵升降部)比可见字形高 ~20%,scrollHeight 天然比 clientHeight 高一截 ——
+    //    这是 data-fit 【故意容忍】的假溢出(数字无降部、字形居中,并未真被裁)。若这里只给 +4px,
+    //    就会把每个大数字/大标题误报「被裁切」(严重项),反而把不塌的结构化版打成废片。真裁切=多出
+    //    整行 ≈ 1.0×字号,远超 0.3× 容差,照样能抓到。横向仍收紧到 +4(粗体溢出个位像素)。
     var ov=cs(el);var ovs=(ov.overflow||'')+(ov.overflowX||'')+(ov.overflowY||'');
     if(/hidden|clip/.test(ovs)&&ot){
-      if(el.scrollWidth>el.clientWidth+4||el.scrollHeight>el.clientHeight+4){
+      var _fs=parseFloat(ov.fontSize)||40; var _vtol=Math.max(8,_fs*0.34);
+      if(el.scrollWidth>el.clientWidth+4||el.scrollHeight>el.clientHeight+_vtol){
         issues.push('文字被裁切: "'+ot.slice(0,16)+'" 内容'+el.scrollWidth+'x'+el.scrollHeight+'>容器'+el.clientWidth+'x'+el.clientHeight+'(放大容器或缩小字号/换行)');
       }
     }

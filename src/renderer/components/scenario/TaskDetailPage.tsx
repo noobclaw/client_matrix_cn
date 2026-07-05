@@ -765,6 +765,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       return { icon: '💬', label: i18nService.t('tdTypeXhsAutoEngage'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
     if (sid === 'binance_post')   return { icon: '📊', label: i18nService.t('tdTypeBinancePostCreator'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (sid === 'facebook_post')  return { icon: '👥', label: i18nService.t('tdTypeFacebookPost'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'reddit_post')    return { icon: '🟠', label: i18nService.t('tdTypeRedditPost'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'instagram_post') return { icon: '📷', label: i18nService.t('tdTypeInstagramPost'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (sid === 'binance_repost') return { icon: '♻️', label: i18nService.t('tdTypeBinanceBatchRepost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (isBinanceTask) return { icon: '🔶', label: i18nService.t('tdTypeBinancePost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (isXTask)       return { icon: '🐦', label: i18nService.t('tdTypeXTask'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
@@ -1597,6 +1600,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {i18nService.t('tdViralRewriteWord')}</span>;
                           if (sid === 'x_post') return <span className="text-gray-400 font-sans">🐦 {i18nService.t('tdTweetWord')}</span>;
                           if (sid === 'binance_post') return <span className="text-gray-400 font-sans">📊 {i18nService.t('tdPostWord')}</span>;
+                          if (sid === 'facebook_post') return <span className="text-gray-400 font-sans">👥 {i18nService.t('tdPostWord')}</span>;
+                          if (sid === 'reddit_post') return <span className="text-gray-400 font-sans">🟠 {i18nService.t('tdPostWord')}</span>;
+                          if (sid === 'instagram_post') return <span className="text-gray-400 font-sans">📷 {i18nService.t('tdPostWord')}</span>;
                           if (sid === 'binance_repost') return <span className="text-gray-400 font-sans">♻️ {i18nService.t('tdRepostWord')}</span>;
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
@@ -1842,7 +1848,7 @@ function formatActionBreakdown(
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
   // 币安广场自动发帖(矩阵版 binance_post):同 x_post,只产生「发帖数」,显示 📤 N 发帖,绝不显示赞/关注/评论。
-  if (sid === 'binance_post') {
+  if (sid === 'binance_post' || sid === 'facebook_post' || sid === 'reddit_post' || sid === 'instagram_post') {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }

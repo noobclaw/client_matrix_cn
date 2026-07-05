@@ -536,7 +536,12 @@ async function rewriteVideoCaption(
 ): Promise<{ ok: boolean; text?: string; reason?: string }> {
   const tpl = publishPack?.prompts?.rewriter;
   if (!tpl) return { ok: false, reason: 'no_rewriter_prompt' };
-  const langName = (String(language).toLowerCase() === 'en') ? '英文 (English)' : '中文 (Chinese)';
+  // 9 语言映射与 orchestrator 的 LANG_NAME 对齐;mixed/未知 → 中文(与 appLocale 兜底口径一致)。
+  const LANG_NAME: Record<string, string> = {
+    zh: '简体中文 (Simplified Chinese)', 'zh-tw': '繁体中文 (Traditional Chinese)', en: '英文 (English)',
+    ja: '日语 (Japanese)', ko: '韩语 (Korean)', ru: '俄语 (Russian)', fr: '法语 (French)', de: '德语 (German)', vi: '越南语 (Vietnamese)',
+  };
+  const langName = LANG_NAME[String(language || '').toLowerCase()] || '中文 (Chinese)';
   const min = 30, max = 180, target = 110;
   const prompt = String(tpl)
     .replace(/\{\{persona\}\}/g, persona || '币安广场用户,语气克制不喊单')

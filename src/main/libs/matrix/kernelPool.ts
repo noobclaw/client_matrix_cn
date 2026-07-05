@@ -915,6 +915,34 @@ export async function kernelClearCookies(accountId: string): Promise<void> {
   try { await send(s, 'Network.clearBrowserCookies', {}); } catch { /* ignore */ }
 }
 
+// ── 导入 cookie 登录:把外部(普通浏览器 Cookie-Editor 导出)的登录 cookie 灌进本号 profile ──
+//   行业标准做法:海外号(Google/Apple 登录)、买来的 cookie 号,不在指纹内核里跑 OAuth,而是注入已登录 cookie。
+//   cookie 项对齐 Cookie-Editor 导出格式({name,value,domain,path,secure,httpOnly,sameSite,expirationDate})。
+//   走 CDP Network.setCookie(与 checkKernelLogin 的 getAllCookies 同一套通道)。
+export async function kernelSetCookies(accountId: string, cookies: any[]): Promise<{ set: number; failed: number }> {
+  const s = await getPage(accountId);
+  let set = 0, failed = 0;
+  for (const c of (Array.isArray(cookies) ? cookies : [])) {
+    try {
+      const name = String((c && c.name) || '').trim();
+      if (!name) { failed++; continue; }
+      const p: any = { name, value: String((c && c.value) != null ? c.value : ''), path: (c && c.path) || '/', httpOnly: !!(c && c.httpOnly), secure: (c && c.secure) !== false };
+      const domain = String((c && c.domain) || '').trim();
+      if (domain) p.domain = domain; else if (c && c.url) p.url = c.url;
+      const ss = String((c && c.sameSite) || '').toLowerCase();
+      if (ss === 'no_restriction' || ss === 'none') p.sameSite = 'None';
+      else if (ss === 'lax') p.sameSite = 'Lax';
+      else if (ss === 'strict') p.sameSite = 'Strict';
+      if (typeof (c && c.expirationDate) === 'number') p.expires = c.expirationDate;
+      else if (typeof (c && c.expires) === 'number') p.expires = c.expires;
+      if (p.sameSite === 'None') p.secure = true; // SameSite=None 必须 Secure,否则被拒
+      const r = await send(s, 'Network.setCookie', p);
+      if (r && r.success === false) failed++; else set++;
+    } catch { failed++; }
+  }
+  return { set, failed };
+}
+
 // ── 登录态检测(读 cookie;httpOnly 也能经 CDP 读到,document.cookie 读不到) ──
 
 // 各平台「已登录」的标志性 cookie(命中任一即视为已登录)。2026-06-21 全平台真机 CDP 实测核对:
@@ -935,6 +963,12 @@ const LOGIN_COOKIES: Record<string, string[]> = {
   x: ['auth_token'],
   binance: ['logined', 'p20t'],                          // 新增(实测)
   youtube: ['SID', 'SAPISID', 'LOGIN_INFO'],             // 新增(实测)
+  // ⚠️ 待 VPN 真机确认(2026-07-03 加):IG 登录态标志 cookie = sessionid + ds_user_id(后者明文=uid);
+  //   FB = c_user(明文=uid)+ xs。海外平台,须 VPN 真机核对 cookie 名。
+  instagram: ['sessionid', 'ds_user_id'],
+  facebook: ['c_user', 'xs'],
+  // Reddit 登录态:reddit_session(会话)+ token_v2(新版 JWT)。任一在即过快筛;活体/身份用 /api/me.json 确认。
+  reddit: ['reddit_session', 'token_v2'],
 };
 
 /** 该号当前【是否真的登录】对应平台 —— 统一活体校验(发布/涨粉/保活都调它)。分层:
@@ -986,6 +1020,18 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
       // 币安广场:照抖音思路用【登录墙文字检测】+ 顶部 login/register CTA 双保险。未登录的广场登录墙才有这些文案/按钮;
       //   登录态是头像、看到的是 feed,没有。只在检到才判未登录,否则 "?" → 绝不误判好号。
       probe = '(function(){try{var t=(document.body&&document.body.innerText)||"";if(/Sign up to earn rewards|Join global crypto users|Discover real insights from verified|Log in to Binance|登录后即可|扫码登录/i.test(t))return "0";var ns=document.querySelectorAll("a,button,[role=button]");for(var i=0;i<ns.length;i++){var el=ns[i];var rc=el.getBoundingClientRect();if(!(rc.width>0&&rc.height>0))continue;if(rc.top<0||rc.top>200)continue;var hf=((el.getAttribute&&el.getAttribute("href"))||"").toLowerCase();var tx=(el.textContent||"").replace(/\\s+/g,"").toLowerCase();if(hf.indexOf("/login")>=0||hf.indexOf("/register")>=0)return "0";if(tx==="signup"||tx==="login"||tx==="登录"||tx==="注册")return "0";}return "?";}catch(e){return "?";}})()';
+    } else if (platform === 'instagram') {
+      // IG:【语言无关】判据(UI 随 locale 变,不能靠文字)—— 登录墙有 username 输入框 / 或重定向到 /accounts/login。
+      //   登录态没有登录表单。只判 0,否则 "?" 交回 cookie。待 VPN 真机确认正向标记(如导航头像)。
+      probe = '(function(){try{if(document.querySelector(\'input[name="username"]\')||/\\/accounts\\/login/.test(location.pathname))return "0";return "?";}catch(e){return "?";}})()';
+    } else if (platform === 'facebook') {
+      // FB(2026-07-03 真机验):登录墙有 email 输入框 / 重定向 /login → "0";登录态有 [role=navigation]
+      //   + c_user 明文 cookie → 明确 "1"(真机实测 onLogin:false/hasNav:true)。都不是则 "?"。语言无关。
+      probe = '(function(){try{if(document.querySelector(\'input[name="email"]\')||/\\/login/.test(location.pathname))return "0";if(document.querySelector(\'[role="navigation"]\')&&document.cookie.indexOf("c_user=")>=0)return "1";return "?";}catch(e){return "?";}})()';
+    } else if (platform === 'reddit') {
+      // Reddit:/api/me.json 是 cookie 鉴权的 JSON 接口(不需 oauth)。登录态返回 {data:{name,...}} 或 {name,...};
+      //   未登录返回空 / 无 name。最准,语言无关。异常落 "?" 交回 cookie 快筛。
+      probe = '(async function(){try{var r=await fetch("/api/me.json",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();var d=(j&&j.data)||j||{};if(d&&d.name)return "1";return "0";}catch(e){return "?";}})()';
     }
     if (probe) {
       try {
@@ -1049,9 +1095,20 @@ const IDENTITY_EXPR: Record<string, string> = {
   // YouTube:innertube account_menu 接口(和 YouTube 自家 JS 一样,SAPISID cookie 算 SAPISIDHASH 鉴权)。
   // activeAccountHeaderRenderer 里有 频道名(accountName)/handle(channelHandle,@xx)/头像;接口失败回落 masthead 头像。
   youtube: '(async function(){try{function gc(n){var m=document.cookie.match(new RegExp("(^|; )"+n+"=([^;]+)"));return m?decodeURIComponent(m[2]):null;}var cfg=(window.ytcfg&&ytcfg.data_)||{};var out={};var apiKey=cfg.INNERTUBE_API_KEY,ctx=cfg.INNERTUBE_CONTEXT;if(apiKey&&ctx){var origin="https://www.youtube.com";var hdr={"Content-Type":"application/json"};var sapisid=gc("SAPISID")||gc("__Secure-3PAPISID")||gc("__Secure-1PAPISID");if(sapisid){var t=Math.floor(Date.now()/1000);var buf=await crypto.subtle.digest("SHA-1",new TextEncoder().encode(t+" "+sapisid+" "+origin));var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0");}).join("");hdr["Authorization"]="SAPISIDHASH "+t+"_"+hex;hdr["X-Origin"]=origin;hdr["X-Goog-AuthUser"]="0";}var r=await fetch(origin+"/youtubei/v1/account/account_menu?prettyPrint=false",{method:"POST",credentials:"include",headers:hdr,body:JSON.stringify({context:ctx})});var j=await r.json();var acts=(j&&j.actions)||[],h=null;for(var i=0;i<acts.length;i++){var p=acts[i]&&acts[i].openPopupAction&&acts[i].openPopupAction.popup&&acts[i].openPopupAction.popup.multiPageMenuRenderer;if(p&&p.header&&p.header.activeAccountHeaderRenderer){h=p.header.activeAccountHeaderRenderer;break;}}if(h){out.nickname=(h.accountName&&h.accountName.simpleText)||null;out.displayId=(h.channelHandle&&h.channelHandle.simpleText)||null;var th=h.accountPhoto&&h.accountPhoto.thumbnails;out.avatar=(th&&th.length&&th[th.length-1].url)||null;}}if(!out.avatar){var img=document.querySelector("#avatar-btn img, button#avatar-btn img, ytd-topbar-menu-button-renderer img");out.avatar=(img&&img.src)||out.avatar||null;}return JSON.stringify(out);}catch(e){return "{}";}})()',
+  // ⚠️ TODO(VPN 真机调):IG/FB 昵称/头像的确切来源要登录态 DOM 才能定。uid 已由 UID_COOKIE 从明文
+  //   cookie 补(IG=ds_user_id、FB=c_user),所以即使这里抓不到昵称,账号也能建(uid 做去重键,昵称可手动改)。
+  //   下面是【best-effort 占位】:IG 从导航头像 img.alt / og:title 试,FB 从 og:title / 头像试;抓不到回 {}。
+  instagram: '(function(){try{var nick=null,av=null;var m=document.querySelector(\'meta[property="og:title"]\');if(m){nick=((m.getAttribute("content")||"").split("(")[0]||"").trim()||null;}var a=document.querySelector(\'header img\')||document.querySelector(\'nav img[alt]\');if(a)av=a.src||null;return JSON.stringify({nickname:nick,avatar:av});}catch(e){return "{}";}})()',
+  // FB(2026-07-03 真机验):uid=c_user 明文 cookie;昵称在【自己主页 profile.php?id=<c_user>】的 og:title(首页 feed
+  //   ogTitle 为 null,故靠 IDENTITY_SELF_URL 先跳主页再读),兜底 h1 / document.title(去掉"(N)"和"| Facebook");
+  //   头像=fbcdn 里 t1.30497-1(FB 头像路径)的 <image xlink:href>(首页/主页都有,与 rsrc.php UI 精灵、t39 帖图区分)。
+  facebook: '(function(){try{var uid=(document.cookie.match(/c_user=(\\d+)/)||[])[1]||null;var nick=null;var ogt=document.querySelector(\'meta[property="og:title"]\');if(ogt)nick=(ogt.getAttribute("content")||"").trim()||null;if(!nick){var h1=document.querySelector("h1");if(h1)nick=((h1.textContent||"").trim().slice(0,40))||null;}if(!nick){nick=((document.title||"").replace(/^\\(\\d+\\)\\s*/,"").replace(/\\s*[|\\-]\\s*Facebook.*$/i,"").trim())||null;}var av=null,ims=document.querySelectorAll("image");for(var i=0;i<ims.length;i++){var h=ims[i].getAttribute("xlink:href")||ims[i].getAttribute("href")||"";if(/t1\\.30497/.test(h)){av=h;break;}}return JSON.stringify({nickname:nick,uid:uid,displayId:uid,avatar:av});}catch(e){return "{}";}})()',
+  // Reddit:/api/me.json(cookie 鉴权)一把出 name(用户名)/ id(t2 uid)/ icon_img|snoovatar_img(头像)。
+  //   头像 URL 里的 &amp; 要还原成 &。displayId = u/<name>。同 xhs/B站 的「问接口」路子,最稳。
+  reddit: '(async function(){try{var r=await fetch("/api/me.json",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();var d=(j&&j.data)||j||{};if(!d.name)return "{}";var av=String(d.snoovatar_img||d.icon_img||"").replace(/&amp;/g,"&").split("?")[0];return JSON.stringify({nickname:d.name,displayId:"u/"+d.name,uid:d.id?("t2_"+d.id):d.name,avatar:av});}catch(e){return "{}";}})()',
 };
 // uid 在明文 cookie 里的平台(页面 expr 拿不到 uid 时,从 cookie 补)。
-const UID_COOKIE: Record<string, string> = { kuaishou: 'userId', toutiao: 'sso_uid_tt', bilibili: 'DedeUserID' };
+const UID_COOKIE: Record<string, string> = { kuaishou: 'userId', toutiao: 'sso_uid_tt', bilibili: 'DedeUserID', instagram: 'ds_user_id', facebook: 'c_user' };
 
 // 有些平台首页 feed 上【没有本人信息】(乱扫 nickname 会抓到推荐流里别人的号 → 见 reference 的血泪教训),
 // 必须先导航到「自己主页」再读身份。URL 用明文 cookie 里的 uid 拼。这是对齐抖音「在带本人 SSR 的页面读」
@@ -1059,6 +1116,8 @@ const UID_COOKIE: Record<string, string> = { kuaishou: 'userId', toutiao: 'sso_u
 // 快手 feed 不含本人 → 跳 profile/<uid>(cookie 有 uid);TikTok 首页 SSR 已空、昵称只在主页 DOM → 见 IDENTITY_NAV_HINT。
 const IDENTITY_SELF_URL: Record<string, (uid: string) => string> = {
   kuaishou: (uid) => `https://www.kuaishou.com/profile/${uid}`,
+  // FB 首页 feed 没本人昵称(og:title=null)→ 跳自己主页读(uid=c_user 明文 cookie)。真机验 2026-07-03。
+  facebook: (uid) => `https://www.facebook.com/profile.php?id=${uid}`,
 };
 
 // 同上,但「自己主页 URL」cookie 里没有、要【从当前页面读】出来(如 TikTok 的号在左侧导航栏链接里)。

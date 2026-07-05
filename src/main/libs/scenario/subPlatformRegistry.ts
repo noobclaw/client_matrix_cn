@@ -71,6 +71,9 @@ export const SUB_PLATFORM_REGISTRY: Record<string, SubPlatformMeta> = {
   // 所以只登记一个 *_main,不设 *_creator。
   shipinhao_main:   { label: '视频号',  emoji: '📱', domain: 'channels.weixin.qq.com' },
   toutiao_main:     { label: '头条号',  emoji: '📰', domain: 'mp.toutiao.com' },
+  instagram_main:   { label: 'IG',      emoji: '📸', domain: 'www.instagram.com' },
+  facebook_main:    { label: 'FB',      emoji: '👥', domain: 'www.facebook.com' },
+  reddit_main:      { label: 'Reddit',  emoji: '🟠', domain: 'www.reddit.com' },
   // 视频自动发布【专用复用窗口】—— 跟上面那些「一平台一子域一窗口」不同:video
   // publish 流程刻意把【所有勾选平台】塞进这一个 windowKey 的【同一个 tab】里,靠
   // navigate 串行切换上传页(douyin→xhs→tiktok…),避免 9 平台开 9 窗口爆炸。domain
@@ -128,6 +131,9 @@ const HOST_TO_SUB_PLATFORM: Array<[RegExp, string]> = [
   [/(\.|^)bilibili\.com$/i,        'bilibili_main'],
   [/^channels\.weixin\.qq\.com$/i, 'shipinhao_main'],
   [/(\.|^)toutiao\.com$/i,         'toutiao_main'],
+  [/(\.|^)instagram\.com$/i,       'instagram_main'],
+  [/(\.|^)facebook\.com$/i,        'facebook_main'],
+  [/(\.|^)reddit\.com$/i,          'reddit_main'],
 ];
 
 export function urlToSubPlatform(url: string | undefined | null): string | null {

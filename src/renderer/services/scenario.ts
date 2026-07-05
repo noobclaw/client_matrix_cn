@@ -162,19 +162,25 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const isViral = t?.type === 'viral_rewrite';
   const isTweet = t?.type === 'x_post';
   const isBinancePost = t?.type === 'binance_post';
+  const isFacebookPost = t?.type === 'facebook_post';
+  const isRedditPost = t?.type === 'reddit_post';
+  const isInstagramPost = t?.type === 'instagram_post';
   const isRepost = t?.type === 'binance_repost';
   const fn = t?.funnel || {};
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
   return {
     id: t.id,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
-    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? 'binance_repost' : (isTweet || isBinancePost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
-    track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isRepost ? 'binance_repost' : 'matrix',
-    // image_text / viral_rewrite / x_post / binance_post / binance_repost 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
+    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? 'binance_repost' : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
+    track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : 'matrix',
+    // image_text / viral_rewrite / x_post / binance_post / facebook_post / reddit_post / instagram_post / binance_repost 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     imageText: isImageText ? t.imageText : undefined,
     viralRewrite: isViral ? t.viralRewrite : undefined,
     tweetPost: isTweet ? t.tweetPost : undefined,
     binancePost: isBinancePost ? t.binancePost : undefined,
+    facebookPost: isFacebookPost ? t.facebookPost : undefined,
+    redditPost: isRedditPost ? t.redditPost : undefined,
+    instagramPost: isInstagramPost ? t.instagramPost : undefined,
     binanceRepost: isRepost ? t.binanceRepost : undefined,
     // viral_rewrite 也摊平 AI 风格/发布给详情页(它也走 AI 生图 + 发布)。
     ...(isViral && t.viralRewrite ? { ai_image_style: t.viralRewrite.aiImageStyle || '', auto_publish: !!t.viralRewrite.autoPublish, auto_upload: !!t.viralRewrite.autoPublish } : {}),
@@ -310,6 +316,51 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       accountIds,
       quota: {},
       binancePost: input.binancePost,
+      concurrency: accountIds.length,
+      frequency: input.run_interval || 'daily_random',
+      enabled: input.enabled !== false,
+    };
+  }
+  // Facebook 发帖任务(scenario_id = facebook_post):保持 type='facebook_post' + 透传 facebookPost,否则兜底会被改成 engage、数据源配置丢失。
+  if (input.scenario_id === 'facebook_post') {
+    return {
+      id,
+      platform: 'facebook',
+      type: 'facebook_post',
+      name: input.name || (accountIds.length ? `Facebook 发帖 · ${accountIds.length} 个号` : 'Facebook 发帖'),
+      accountIds,
+      quota: {},
+      facebookPost: input.facebookPost,
+      concurrency: accountIds.length,
+      frequency: input.run_interval || 'daily_random',
+      enabled: input.enabled !== false,
+    };
+  }
+  // Reddit 发帖任务(scenario_id = reddit_post):保持 type='reddit_post' + 透传 redditPost。
+  if (input.scenario_id === 'reddit_post') {
+    return {
+      id,
+      platform: 'reddit',
+      type: 'reddit_post',
+      name: input.name || (accountIds.length ? `Reddit 发帖 · ${accountIds.length} 个号` : 'Reddit 发帖'),
+      accountIds,
+      quota: {},
+      redditPost: input.redditPost,
+      concurrency: accountIds.length,
+      frequency: input.run_interval || 'daily_random',
+      enabled: input.enabled !== false,
+    };
+  }
+  // Instagram 发帖任务(scenario_id = instagram_post):保持 type='instagram_post' + 透传 instagramPost。
+  if (input.scenario_id === 'instagram_post') {
+    return {
+      id,
+      platform: 'instagram',
+      type: 'instagram_post',
+      name: input.name || (accountIds.length ? `Instagram 发帖 · ${accountIds.length} 个号` : 'Instagram 发帖'),
+      accountIds,
+      quota: {},
+      instagramPost: input.instagramPost,
       concurrency: accountIds.length,
       frequency: input.run_interval || 'daily_random',
       enabled: input.enabled !== false,

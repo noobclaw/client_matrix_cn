@@ -14,6 +14,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { POST_LANGS, postLangLabel } from './postLangs';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -47,7 +48,7 @@ export interface BinanceRepostWizardSave {
   sourceAccountId: string;
   material: 'image' | 'video';
   withImage: boolean;
-  language: 'zh' | 'en' | 'mixed';
+  language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
 }
 
@@ -77,7 +78,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
   const [sourcePlatform, setSourcePlatform] = useState<'xhs' | 'douyin' | 'tiktok' | 'x'>(br.sourcePlatform || firstEnabledSource(br.material || 'video'));
   const [sourceAccountId, setSourceAccountId] = useState<string>(br.sourceAccountId || '');
   const [withImage, setWithImage] = useState<boolean>(br.withImage !== false);
-  const [language, setLanguage] = useState<'zh' | 'en' | 'mixed'>(br.language || 'mixed');
+  const [language, setLanguage] = useState<string>(br.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(br.autoPublish !== false);
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
@@ -133,7 +134,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
     return m[runInterval] || runInterval;
   }, [runInterval]);
 
-  const langLabel = (l: string) => (l === 'zh' ? i18nService.t('wzBnRepostLangZh') : l === 'en' ? i18nService.t('wzBnRepostLangEn') : i18nService.t('wzBnRepostLangMixed'));
+  const langLabel = (l: string) => postLangLabel(l, i18nService.currentLanguage === 'zh');
   const srcAcc = sourceCandidates.find((a) => a.id === sourceAccountId);
 
   return (
@@ -263,11 +264,9 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🌐 {i18nService.t('wzBnRepostRewriteLangLabel')}</label>
-              <div className="flex gap-2 flex-wrap">
-                {(['mixed', 'zh', 'en'] as const).map((l) => (
-                  <button key={l} type="button" onClick={() => setLanguage(l)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${language === l ? 'border-amber-500 bg-amber-500/10 text-amber-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>{langLabel(l)}</button>
-                ))}
-              </div>
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                {POST_LANGS.map((l) => <option key={l.code} value={l.code}>{i18nService.currentLanguage === 'zh' ? l.zh : l.en}</option>)}
+              </select>
             </div>
             {material === 'image' && (
               <div>

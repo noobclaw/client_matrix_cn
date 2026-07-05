@@ -739,7 +739,7 @@ export const Web3View: React.FC<Web3ViewProps> = ({ isSidebarCollapsed, onToggle
 
       {/* Config Modal */}
       {modalPlatform && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={closeModal}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div
             className="w-full max-w-md rounded-2xl dark:bg-claude-darkSurface bg-white shadow-2xl flex flex-col"
             onClick={e => e.stopPropagation()}

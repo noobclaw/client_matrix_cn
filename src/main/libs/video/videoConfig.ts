@@ -89,7 +89,7 @@ export const DEFAULT_VIDEO_CONFIG: VideoPipelineConfig = {
     '4. 金句/语录:items 放一条 {"name":"金句正文","sub":"作者(可选)"}。',
     '5. 保持用户内容的语言;不要编造用户没给的数据。',
   ].join('\n'),
-  localeMap: { zh: 'zh-CN', ja: 'ja-JP', ko: 'ko-KR', en: 'en-US' },
+  localeMap: { zh: 'zh-CN', 'zh-TW': 'zh-TW', ja: 'ja-JP', ko: 'ko-KR', en: 'en-US', id: 'id-ID', vi: 'vi-VN', es: 'es-ES', pt: 'pt-BR', fr: 'fr-FR' },
   stockVideoSize: 'small',
   minVideoEdge: 720,
   minVideoSec: 2,

@@ -15,8 +15,8 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { shortId } from '../../../utils/shortId';
-import { i18nService } from '../../../services/i18n';
 import { HIDE_WEB3, cnyFromUsd } from '../../../buildFlags';
+import { i18nService } from '../../../services/i18n';
 import { CardActionRow } from '../CardActionRow';
 import { VideoLoginCheckModal } from './VideoLoginCheckModal';
 import { MATRIX_EDITION } from '../../../matrixEdition';
@@ -2071,8 +2071,15 @@ const VOICE_GROUPS: { groupZh: string; groupEn: string; voices: VoiceOpt[] }[] =
       { id: 'en-US-BrianNeural',   zh: 'Brian · 英文男声(轻快)',  en: 'Brian · EN male (bright)' },
     ],
   },
-  // —— 其他语种按【亚洲(韩) → 东南亚(印尼/越) → 拉美(西/葡) → 欧洲(法) → 中东(阿)】排,
+  // —— 其他语种按【亚洲(日/韩) → 东南亚(印尼/越) → 拉美(西/葡) → 欧洲(法) → 中东(阿)】排,
   //   按华人圈出海短视频 + Binance 重点市场用户密度递减。
+  {
+    groupZh: '日语', groupEn: 'Japanese',
+    voices: [
+      { id: 'ja-JP-NanamiNeural',  zh: '七海 · 日语女声', en: 'Nanami · JA female' },
+      { id: 'ja-JP-KeitaNeural',   zh: '圭太 · 日语男声', en: 'Keita · JA male' },
+    ],
+  },
   {
     groupZh: '韩语', groupEn: 'Korean',
     voices: [
@@ -2122,6 +2129,23 @@ const VOICE_GROUPS: { groupZh: string; groupEn: string; voices: VoiceOpt[] }[] =
       { id: 'ar-SA-HamedNeural',   zh: 'Hamed · 阿拉伯语男声',   en: 'Hamed · AR-SA male' },
     ],
   },
+];
+
+// 在线素材「创作语言」:决定 AI 口播稿(及字幕)语言;auto = 按文案/关键词自动探测(原行为)。
+// 码值 = 主进程 scriptWriter.ContentLang;选项只列有配音音色的语种(阿拉伯语 RTL 字幕未验,先不放)。
+// voicePrefixes 用于「选了语言后音色不匹配 → 自动切到该语种默认音色」的联动。
+const SCRIPT_LANGS: { code: string; zh: string; en: string; voicePrefixes: string[]; defaultVoice: string }[] = [
+  { code: 'auto',  zh: '自动(按文案/关键词)', en: 'Auto (detect)', voicePrefixes: [], defaultVoice: '' },
+  { code: 'zh',    zh: '简体中文', en: 'Chinese (Simplified)',  voicePrefixes: ['zh-'], defaultVoice: 'zh-CN-YunjianNeural' },
+  { code: 'zh-TW', zh: '繁體中文', en: 'Chinese (Traditional)', voicePrefixes: ['zh-TW', 'zh-HK'], defaultVoice: 'zh-TW-HsiaoChenNeural' },
+  { code: 'en',    zh: 'English',  en: 'English',    voicePrefixes: ['en-'], defaultVoice: 'en-US-JennyNeural' },
+  { code: 'ja',    zh: '日本語',   en: 'Japanese',   voicePrefixes: ['ja-'], defaultVoice: 'ja-JP-NanamiNeural' },
+  { code: 'ko',    zh: '한국어',   en: 'Korean',     voicePrefixes: ['ko-'], defaultVoice: 'ko-KR-SunHiNeural' },
+  { code: 'id',    zh: 'Bahasa Indonesia', en: 'Indonesian', voicePrefixes: ['id-'], defaultVoice: 'id-ID-GadisNeural' },
+  { code: 'vi',    zh: 'Tiếng Việt', en: 'Vietnamese', voicePrefixes: ['vi-'], defaultVoice: 'vi-VN-HoaiMyNeural' },
+  { code: 'es',    zh: 'Español',  en: 'Spanish',    voicePrefixes: ['es-'], defaultVoice: 'es-MX-DaliaNeural' },
+  { code: 'pt',    zh: 'Português', en: 'Portuguese', voicePrefixes: ['pt-'], defaultVoice: 'pt-BR-FranciscaNeural' },
+  { code: 'fr',    zh: 'Français', en: 'French',     voicePrefixes: ['fr-'], defaultVoice: 'fr-FR-DeniseNeural' },
 ];
 
 // 本地内置背景音乐(随包 bundle 在 resources/bgm/,来源 MoneyPrinterTurbo 免版税曲库)。
@@ -2362,8 +2386,18 @@ const VideoConfigModal: React.FC<{
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
 
-  // 步骤 3:音频(音色 / 语速 / 背景音乐 / BGM 音量)
+  // 步骤 3:音频(创作语言 / 音色 / 语速 / 背景音乐 / BGM 音量)
+  // 创作语言(仅在线素材/本地素材模式):决定 AI 口播稿语言;'auto' = 按文案/关键词探测(老行为,老任务无此字段也走它)。
+  const [scriptLang, setScriptLang] = useState<string>(editTask?.input.scriptLang || 'auto');
   const [voice, setVoice] = useState<string>(editTask?.input.voice || 'zh-CN-YunjianNeural');
+  // 选定语言后,若当前音色语种不匹配 → 自动切到该语言默认音色(仍可手动改回)。
+  const pickScriptLang = (code: string) => {
+    setScriptLang(code);
+    const opt = SCRIPT_LANGS.find((l) => l.code === code);
+    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) {
+      setVoice(opt.defaultVoice);
+    }
+  };
   const [voiceRate, setVoiceRate] = useState<number>(editTask?.input.voiceRate ?? 0);
   // BGM 默认选中第 1 首内置曲目(新建任务);编辑老任务时沿用其已存值(空也保留空)。
   const [bgmPath, setBgmPath] = useState<string>(
@@ -2618,6 +2652,8 @@ const VideoConfigModal: React.FC<{
     targetSeconds: mode === 'pure_ai' ? Math.min(targetSeconds, AI_MAX_SECONDS) : targetSeconds,
     // 在线来源 = 搜在线素材库(收平台费);本地/AI = 不搜在线。AI 的钱在服务端逐片段扣。
     useStockVideo: mode === 'stock' && materialSource === 'stock',
+    // 创作语言:仅 stock 模式生效;'auto' 不传 = 主进程按文案/关键词探测(老行为)。
+    scriptLang: mode === 'stock' && scriptLang !== 'auto' ? scriptLang : undefined,
     voice,
     voiceRate,
     // Seedance(pure_ai):默认纯画面(关旁白 + 不烧字幕);用户在「音频」步开了「AI 配音」
@@ -3214,6 +3250,28 @@ const VideoConfigModal: React.FC<{
                     <p className="mt-1.5 text-xs text-gray-400">{isZh ? '纯画面只需(选填)挑首背景音乐,下一步直接出片。' : 'Visual-only: optionally pick BGM, then output.'}</p>
                   )}
                 </Field>
+              )}
+
+              {/* 创作语言 —— 仅在线/本地素材模式(决定 AI 口播稿语言;纯 AI 暂不放,Seedance 线另议)。
+                  逐字朗读(strict)模式稿子就是用户原文,选语言不生效 → 禁用并说明。 */}
+              {mode === 'stock' && (
+              <Field
+                label={isZh ? '创作语言' : 'Script language'}
+                hint={scriptMode === 'strict'
+                  ? (isZh ? '逐字朗读模式:按你文案的原文语言,此项不生效' : 'Verbatim mode follows your script text; this has no effect')
+                  : (isZh ? '决定 AI 口播稿和字幕的语言' : 'Language of the AI narration & subtitles')}
+              >
+                <select
+                  value={scriptLang}
+                  onChange={(e) => pickScriptLang(e.target.value)}
+                  disabled={scriptMode === 'strict'}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 disabled:opacity-50"
+                >
+                  {SCRIPT_LANGS.map((l) => (
+                    <option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>
+                  ))}
+                </select>
+              </Field>
               )}
 
               {/* 配音音色 + 语速 —— 普通模式恒显示;Seedance 仅在开了「AI 配音」时显示 */}
@@ -4017,10 +4075,12 @@ const THEME_OPTIONS: Array<{ id: string; zh: string; en: string }> = [
   { id: 'midnight', zh: '🌌 暗色科技 · web3', en: '🌌 Midnight · web3' },
 ];
 
-// 模板速生「热榜做数据源」可选榜单 —— name 同时是 /api/web3/hot-search?sources= 的参数,
+// 模板速生「热榜做数据源」可选榜单 —— 无 catKey 的 name 同时是 /api/web3/hot-search?sources= 的参数,
 // 必须跟后端 HOT_SOURCE_ORDER / GlobalHotSearchPage TAB_GROUPS 的名字【精确一致】
 // (注意:不是 HOTSPOT_SOURCES 的 zh,后者把 Google/YouTube 写成「Google 趋势/YouTube 热门」对不上)。
-const TEMPLATE_HOTLISTS: Array<{ name: string; emoji: string }> = [
+// Web3 资讯 / 科技 —— 不是 hot_topics 榜单,而是按 category 聚合(同热搜成片),catKey 标记走
+// /api/video/hotspot/preview 取(items[catKey]),name 仅作展示。
+const TEMPLATE_HOTLISTS: Array<{ name: string; emoji: string; catKey?: 'web3' | 'tech' }> = [
   { name: '抖音热搜', emoji: '🎵' },
   { name: 'B站热搜', emoji: '📺' },
   { name: '微博热搜', emoji: '🔥' },
@@ -4031,6 +4091,8 @@ const TEMPLATE_HOTLISTS: Array<{ name: string; emoji: string }> = [
   { name: 'Reddit', emoji: '👽' },
   { name: 'Google Trends', emoji: '📊' },
   { name: 'YouTube Trending', emoji: '▶️' },
+  { name: 'Web3 资讯', emoji: '🌐', catKey: 'web3' },
+  { name: '科技 / AI', emoji: '🤖', catKey: 'tech' },
 ];
 /** 「热榜做数据源」取前 N 条标题拼成 dataText。 */
 const TEMPLATE_HOTLIST_TOPN = 12;
@@ -4353,7 +4415,7 @@ export const HotspotVideoModal: React.FC<{
   const isLongJitter = runInterval === '3h' || runInterval === '6h';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" />
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur flex items-start justify-between">
@@ -4737,13 +4799,26 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const loadHotlist = async (name: string) => {
     setHotlistName(name); setHotlistItems([]); setHotlistError(''); setHotlistLoading(true);
     try {
-      const resp = await fetch(`${getBackendApiUrl()}/api/web3/hot-search?sources=${encodeURIComponent(name)}`);
-      if (!resp.ok) throw new Error('http ' + resp.status);
-      const json: any = await resp.json();
-      const src = Array.isArray(json?.sources)
-        ? (json.sources.find((s: any) => s?.source === name) || json.sources[0]) : null;
-      const items: string[] = Array.isArray(src?.items)
-        ? src.items.map((it: any) => String(it?.title || '').trim()).filter(Boolean).slice(0, TEMPLATE_HOTLIST_TOPN) : [];
+      const catKey = TEMPLATE_HOTLISTS.find((h) => h.name === name)?.catKey;
+      let items: string[];
+      if (catKey) {
+        // Web3 资讯 / 科技:按 category 聚合(非 hot_topics 榜单),复用热搜成片的 /hotspot/preview。
+        const resp = await fetch(`${getBackendApiUrl()}/api/video/hotspot/preview`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perSource: TEMPLATE_HOTLIST_TOPN }),
+        });
+        if (!resp.ok) throw new Error('http ' + resp.status);
+        const json: any = await resp.json();
+        const arr = Array.isArray(json?.items?.[catKey]) ? json.items[catKey] : [];
+        items = arr.map((it: any) => String(it?.title || '').trim()).filter(Boolean).slice(0, TEMPLATE_HOTLIST_TOPN);
+      } else {
+        const resp = await fetch(`${getBackendApiUrl()}/api/web3/hot-search?sources=${encodeURIComponent(name)}`);
+        if (!resp.ok) throw new Error('http ' + resp.status);
+        const json: any = await resp.json();
+        const src = Array.isArray(json?.sources)
+          ? (json.sources.find((s: any) => s?.source === name) || json.sources[0]) : null;
+        items = Array.isArray(src?.items)
+          ? src.items.map((it: any) => String(it?.title || '').trim()).filter(Boolean).slice(0, TEMPLATE_HOTLIST_TOPN) : [];
+      }
       if (!items.length) throw new Error('empty');
       setHotlistItems(items);
     } catch {
@@ -4757,6 +4832,15 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   // 编辑:保留任务现有设置(et?.narration === true 才认为开过)。
   const [narration, setNarration] = useState<boolean>(isEdit ? et?.narration === true : true);
   const [voice, setVoice] = useState<string>(et?.voice || editTask?.input?.voice || 'zh-CN-YunjianNeural');
+  // 生成语言:画面文字 + AI 口播稿都用它('auto' = 按内容探测,老行为)。选定后音色语种不匹配 → 自动切默认音色。
+  const [tplLang, setTplLang] = useState<string>(et?.lang || 'auto');
+  const pickTplLang = (code: string) => {
+    setTplLang(code);
+    const opt = SCRIPT_LANGS.find((l) => l.code === code);
+    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) {
+      setVoice(opt.defaultVoice);
+    }
+  };
   const [voiceRate, setVoiceRate] = useState<number>(typeof et?.voiceRate === 'number' ? et.voiceRate : 0);
   const [voiceScript, setVoiceScript] = useState<string>(et?.voiceScript || '');
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? et?.subtitleEnabled !== false : true);
@@ -4915,6 +4999,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           // 热榜数据源:存榜名 → 出片时主进程实时抓最新榜单(定时任务天天更新);
           // dataText 同时存了选榜时的快照,实时抓失败时兜底。
           hotlistSource: dataSourceMode === 'hotlist' && hotlistName ? hotlistName : undefined,
+          // 生成语言:'auto' 不传 = 主进程按内容探测(老行为)。
+          lang: tplLang !== 'auto' ? tplLang : undefined,
         },
       };
       const schedule: VideoSchedule = { runInterval };
@@ -5027,7 +5113,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       : '📋 Picking a hot list means the video is built straight from that ranking — no manual content. Each render pulls the list live, so scheduled tasks refresh daily.'}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    {TEMPLATE_HOTLISTS.map((h) => (
+                    {/* 国内版隐藏「Web3 资讯」热榜(HIDE_WEB3);科技榜保留 */}
+                    {TEMPLATE_HOTLISTS.filter((h) => !(HIDE_WEB3 && h.catKey === 'web3')).map((h) => (
                       <button key={h.name} type="button" onClick={() => void loadHotlist(h.name)}
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${hotlistName === h.name ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
                         <span>{h.emoji}</span><span className="dark:text-gray-200 truncate">{h.name}</span>
@@ -5076,6 +5163,18 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           )}
           {step === 2 && (
             <>
+              {/* 生成语言:画面文字 + AI 口播稿都用它(纯视觉也影响画面文字),所以放在配音开关外面。 */}
+              <Field label={isZh ? '生成语言' : 'Output language'} hint={isZh ? '画面文字和 AI 口播稿都用该语言;内容是其它语言时 AI 自动翻译。自动 = 跟你给的内容' : 'Page text & AI narration language; AI translates if the content differs. Auto = follow your content'}>
+                <select
+                  value={tplLang}
+                  onChange={(e) => pickTplLang(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white"
+                >
+                  {SCRIPT_LANGS.map((l) => (
+                    <option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>
+                  ))}
+                </select>
+              </Field>
               <Field label={isZh ? 'AI 配音 + 字幕' : 'AI voice-over + subs'} hint={isZh ? '开了会按你的数据 AI 写口播稿、念出来、烧字幕。关 = 纯视觉。' : 'On: AI writes a script, narrates, and burns subs.'}>
                 <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
                   <span className="text-sm dark:text-gray-200">{isZh ? '生成配音 + 字幕' : 'Generate voice-over + subs'}</span>

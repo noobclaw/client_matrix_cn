@@ -166,6 +166,13 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
       track: acc.track || '',
       keywords: accKeywords,
     };
+    // facebook_post / reddit_post 复用本 runner:cfg 带数据源字段(binance 无 → orchestrator 默认 news)。
+    if ((cfg as any).sourceKind) {
+      task.source_kind = (cfg as any).sourceKind;
+      task.source = (cfg as any).source || '';
+      task.cat_key = (cfg as any).catKey || '';
+    }
+    if ((cfg as any).subreddit) task.subreddit = (cfg as any).subreddit; // reddit_post 目标 subreddit
 
     const onAiCost = (credits: number, usd: number) => {
       chargedCredits += credits; chargedUsd += usd;
@@ -335,7 +342,7 @@ export async function runBinancePostTask(opts: BinancePostTaskOptions): Promise<
   const pack = await fetchPack(scenarioId);
   if (!pack || !pack.orchestrator) {
     // 后端剧本拉取失败(未部署 / 网络 / 超时)→ 每个号都广播原因,便于定位。
-    const reason = `❌ 后端币安发帖剧本(${scenarioId})拉取失败:可能后端未部署该剧本,或网络/VPN 不通 ${baseUrl()}。本次跳过`;
+    const reason = `❌ 后端发帖剧本(${scenarioId})拉取失败:可能后端未部署该剧本,或网络/VPN 不通 ${baseUrl()}。本次跳过`;
     coworkLog('ERROR', 'binancePostRunner', 'fetch pack returned null', { scenarioId, base: baseUrl() });
     for (const id of opts.accountIds) {
       opts.onLog?.(id, reason);

@@ -23,7 +23,9 @@ const FUNNEL_PROB_DEFAULT = 50;
 // 禁「引流」词过滤 —— 这三家此处不暴露引流,避免用户配了却不生效的误导(后续按需各自后端接入)。
 const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube']);
 
-type WizardStep = 1 | 2 | 3;
+type WizardStep = 1 | 2 | 3 | 4;
+// 步骤:1 选账号 / 2 点赞+关注 / 3 评论(数量+语言+引流,单独一步免拥挤) / 4 频率+条款。
+const TOTAL_STEPS = 4;
 
 export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
@@ -42,6 +44,8 @@ interface Props {
 const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
+  // 评论语言选择器只给【海外平台 + 币安广场】;中文平台(抖音/小红书/B站/快手/视频号/头条)不显示(默认跟帖子语言)。
+  const overseasEngage = ['x', 'tiktok', 'youtube', 'binance', 'facebook', 'reddit', 'instagram'].includes(String(platform || ''));
 
   // 任务名不让用户填(对齐旧版):内部按平台+账号数自动命名。
   // 默认勾选所有「可用」账号(配了关键词 + 未封);编辑时用任务已存的账号。
@@ -75,6 +79,8 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   );
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
+  // 评论语言:auto(跟帖子语言)+ 9 种 UI 语言;强制模式。默认 auto。
+  const [commentLang, setCommentLang] = useState<string>(initialTask?.quota?.comment_lang || 'auto');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
   const allTermsAccepted = termsAccepted.every(Boolean);
   const [saving, setSaving] = useState(false);
@@ -87,8 +93,9 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selected.size >= 1, reason: i18nService.t('wzEngageErrSelectAccount') },
-    2: totalMaxActions === 0 ? { ok: false, reason: i18nService.t('wzEngageErrConfigAction') } : { ok: true },
-    3: { ok: allTermsAccepted, reason: i18nService.t('wzEngageErrAcceptTerms') },
+    2: { ok: true }, // 点赞+关注:可全 0(只评论也行),校验放到评论那步保证「至少配一种动作」
+    3: totalMaxActions === 0 ? { ok: false, reason: i18nService.t('wzEngageErrConfigAction') } : { ok: true },
+    4: { ok: allTermsAccepted, reason: i18nService.t('wzEngageErrAcceptTerms') },
   };
 
   const handleSave = async () => {
@@ -101,7 +108,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         accountIds: [...selected],
         concurrency: selected.size,   // 选几个号就同时开几个窗(runner 内部有安全上限兜底)
         frequency: runInterval,
-        quota: { daily_like_min: likeMin, daily_like_max: likeMax, daily_follow_min: folMin, daily_follow_max: folMax, daily_comment_min: cmtMin, daily_comment_max: cmtMax },
+        quota: { daily_like_min: likeMin, daily_like_max: likeMax, daily_follow_min: folMin, daily_follow_max: folMax, daily_comment_min: cmtMin, daily_comment_max: cmtMax, comment_lang: commentLang },
         // 引流:评论时按概率把引流文案融进 AI 评论。留空/平台不支持 → funnel_probability=0 → 视作未配,纯 AI 评论。
         funnel: (funnelSupported && hasFunnel) ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb } : { funnel_phrase: '', funnel_probability: 0 },
       });
@@ -120,7 +127,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="text-base font-semibold dark:text-white">🎶 {editing ? i18nService.t('wzEngageTitleEdit').replace('{platform}', platformLabel) : i18nService.t('wzEngageTitleCreate').replace('{platform}', platformLabel)}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">{i18nService.t('wzEngageStepCounter').replace('{n}', String(step))}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">{i18nService.t('wzEngageStepCounter').replace('{n}', String(step)).replace('{total}', String(TOTAL_STEPS))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -185,7 +192,39 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
           <>
             <RangeSlider label={i18nService.t('wzEngageLikeLabel')} min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} hardCap={LIKE_HARDCAP} hint={i18nService.t('wzEngageLikeHint').replace('{min}', String(likeMin)).replace('{max}', String(likeMax)).replace('{cap}', String(LIKE_HARDCAP))} disabled={saving} />
             <RangeSlider label={i18nService.t('wzEngageFollowLabel')} min={folMin} max={folMax} setMin={setFolMin} setMax={setFolMax} hardCap={FOLLOW_HARDCAP} hint={i18nService.t('wzEngageFollowHint').replace('{min}', String(folMin)).replace('{max}', String(folMax)).replace('{cap}', String(FOLLOW_HARDCAP))} disabled={saving} />
+
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
+              <div className="font-semibold">{i18nService.t('wzEngageSafetyTitle')}</div>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>{i18nService.t('wzEngageSafetyTip1')}</li>
+                <li>{i18nService.t('wzEngageSafetyTip2')}</li>
+              </ul>
+            </div>
+          </>
+        )}
+
+        {/* Step 3:评论(数量 + 语言 + 引流)单独一步 —— 一页放不下,拆出来。 */}
+        {step === 3 && (
+          <>
             <RangeSlider label={i18nService.t('wzEngageCommentLabel')} min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax} hardCap={COMMENT_HARDCAP} hint={i18nService.t('wzEngageCommentHint').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax)).replace('{cap}', String(COMMENT_HARDCAP))} disabled={saving} />
+
+            {/* 评论语言(评论 max>0 且海外平台才显示):auto=跟帖子语言;选具体语言=强制用该语言写评论。中文平台不显示。 */}
+            {cmtMax > 0 && overseasEngage && (
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                  {i18nService.currentLanguage === 'zh' ? '评论语言' : 'Comment language'}
+                  <span className="text-xs text-gray-400 font-normal ml-1">{i18nService.currentLanguage === 'zh' ? '选具体语言=强制用它写;自动=跟帖子语言' : 'a specific language forces it; Auto follows the post'}</span>
+                </label>
+                <select value={commentLang} onChange={(e) => setCommentLang(e.target.value)} disabled={saving} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                  {[
+                    { code: 'auto', label: i18nService.currentLanguage === 'zh' ? '自动(跟帖子语言)' : 'Auto (follow post)' },
+                    { code: 'zh', label: '简体中文' }, { code: 'zh-TW', label: '繁體中文' }, { code: 'en', label: 'English' },
+                    { code: 'ja', label: '日本語' }, { code: 'ko', label: '한국어' }, { code: 'ru', label: 'Русский' },
+                    { code: 'fr', label: 'Français' }, { code: 'de', label: 'Deutsch' }, { code: 'vi', label: 'Tiếng Việt' },
+                  ].map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* 引流(评论 max>0 且平台支持时显示):评论时 AI 按概率把引流文案自然融进评论。留空=纯 AI 评论,老任务不受影响。 */}
             {showFunnel && (
@@ -223,18 +262,10 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                 </div>
               </div>
             )}
-
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
-              <div className="font-semibold">{i18nService.t('wzEngageSafetyTitle')}</div>
-              <ul className="list-disc list-inside space-y-0.5">
-                <li>{i18nService.t('wzEngageSafetyTip1')}</li>
-                <li>{i18nService.t('wzEngageSafetyTip2')}</li>
-              </ul>
-            </div>
           </>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzEngageRunIntervalLabel')}</label>
@@ -282,7 +313,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzEngageCancel')}</button>
         <div className="flex-1" />
         {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzEngagePrev')}</button>}
-        {step < 3 ? (
+        {step < TOTAL_STEPS ? (
           <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{i18nService.t('wzEngageNext')}</button>
         ) : (
           <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{saving ? i18nService.t('wzEngageSaving') : (editing ? i18nService.t('wzEngageSaveEdit') : i18nService.t('wzEngageCreate'))}</button>
