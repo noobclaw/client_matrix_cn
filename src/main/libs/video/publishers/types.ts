@@ -33,7 +33,9 @@ export type VideoPlatform =
   | 'kuaishou'    // 快手(cp.kuaishou.com)
   | 'shipinhao'   // 视频号(channels.weixin.qq.com)
   | 'toutiao'     // 头条号(mp.toutiao.com)
-  | 'youtube';    // YouTube(youtube.com/upload → Studio)
+  | 'youtube'     // YouTube(youtube.com/upload → Studio)
+  | 'instagram'   // Instagram(创建帖子弹窗,视频=Reel)
+  | 'facebook';   // Facebook(创建帖子弹窗,视频帖)
 
 /** 平台展示用元信息(UI 勾选项 + 日志 label)。 */
 export interface VideoPlatformMeta {
@@ -55,6 +57,8 @@ export const VIDEO_PLATFORMS: VideoPlatformMeta[] = [
   { id: 'shipinhao', zh: '视频号',   en: 'Channels',  emoji: '🟢' },
   { id: 'toutiao',   zh: '头条号',   en: 'Toutiao',   emoji: '🟠' },
   { id: 'youtube',   zh: 'YouTube',  en: 'YouTube',   emoji: '▶️' },
+  { id: 'instagram', zh: 'Instagram', en: 'Instagram', emoji: '📷' },
+  { id: 'facebook',  zh: 'Facebook', en: 'Facebook',  emoji: '👥' },
 ];
 
 /** 登录状态。driver.checkLogin 的返回。 */
