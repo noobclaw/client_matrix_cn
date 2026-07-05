@@ -66,8 +66,9 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
 
   // ── 引流概率 ──
   const [funnelProb, setFunnelProb] = useState<number>(
-    typeof (initialTask as any)?.funnel_probability === 'number'
-      ? Math.max(FUNNEL_PROB_MIN, Math.min(FUNNEL_PROB_MAX, (initialTask as any).funnel_probability))
+    // 没配过引流(保存 0)时回落 50% 默认,不夹成 Math.max(1,0)=1(编辑后补引流语会显示 1%,用户实测)。
+    typeof (initialTask as any)?.funnel_probability === 'number' && (initialTask as any).funnel_probability >= FUNNEL_PROB_MIN
+      ? Math.min(FUNNEL_PROB_MAX, (initialTask as any).funnel_probability)
       : FUNNEL_PROB_DEFAULT
   );
 

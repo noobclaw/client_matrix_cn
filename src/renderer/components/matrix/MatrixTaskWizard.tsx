@@ -75,8 +75,10 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const [funnelPhrase, setFunnelPhrase] = useState<string>(String(initialTask?.funnel?.funnel_phrase || ''));
   const hasFunnel = funnelPhrase.trim().length > 0;
   const [funnelProb, setFunnelProb] = useState<number>(
-    typeof initialTask?.funnel?.funnel_probability === 'number'
-      ? Math.max(FUNNEL_PROB_MIN, Math.min(FUNNEL_PROB_MAX, initialTask.funnel.funnel_probability))
+    // 只在保存过【真实概率(≥ MIN)】时回填;老任务没配引流保存的是 0 →
+    //   原来 Math.max(1,0)=1 会让「编辑后补引流语」默认成 1% → 改成回落 50% 默认(用户实测)。
+    typeof initialTask?.funnel?.funnel_probability === 'number' && initialTask.funnel.funnel_probability >= FUNNEL_PROB_MIN
+      ? Math.min(FUNNEL_PROB_MAX, initialTask.funnel.funnel_probability)
       : FUNNEL_PROB_DEFAULT
   );
 
