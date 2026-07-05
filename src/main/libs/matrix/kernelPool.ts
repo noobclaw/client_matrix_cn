@@ -955,7 +955,7 @@ const LOGIN_COOKIES: Record<string, string[]> = {
   xhs: ['web_session'],
   bilibili: ['SESSDATA', 'DedeUserID'],
   shipinhao: ['sessionid', 'wxuin'],
-  kuaishou: ['userId', 'kuaishou.server.webday7_st'],   // 主站 www.kuaishou.com(⚠️ 实测:是 webday7_st 不是 web_st)
+  kuaishou: ['kuaishou.server.webday7_st'],   // 主站 www.kuaishou.com 登录令牌(⚠️ 只认 webday7_st:userId 游客也有、登出后残留会误放行)
   // 快手创作者中心 cp.kuaishou.com:独立登录态(主站登录不覆盖,实测)。cp 专属会话令牌。
   kuaishou_creator: ['kuaishou.web.cp.api_st'],
   toutiao: ['sessionid', 'sso_uid_tt'],
@@ -1009,8 +1009,8 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
       // social-auto-upload:creator.douyin.com 上传页未登录有「手机号登录/扫码登录」文字。登录着的页面没有。
       probe = '(function(){try{var t=(document.body&&document.body.innerText)||"";if(/手机号登录|扫码登录|验证码登录|二维码登录|登录后即可/.test(t))return "0";return "?";}catch(e){return "?";}})()';
     } else if (platform === 'kuaishou' || platform === 'kuaishou_creator') {
-      // social-auto-upload:cp.kuaishou.com 未登录落到带「机构服务」的落地页;补登录弹窗文字。
-      probe = '(function(){try{var t=(document.body&&document.body.innerText)||"";if(/机构服务/.test(t)||/扫码登录|手机号登录/.test(t))return "0";return "?";}catch(e){return "?";}})()';
+      // 未登录判据:创作端 cp 落到「机构服务」;主站 www.kuaishou.com 登出显「立即登录/登录即可享受」(真机实测,原来漏了主站 → 误判已登录空搜)。
+      probe = '(function(){try{var t=(document.body&&document.body.innerText)||"";if(/机构服务/.test(t)||/扫码登录|手机号登录|立即登录|登录即可享受|登录后即可享受|登录发现更多/.test(t))return "0";return "?";}catch(e){return "?";}})()';
     } else if (platform === 'shipinhao') {
       // social-auto-upload:channels 发表页未登录有「扫码登录」,登录态有「发表视频」。
       //   视频号是 wujie 重前端、跳登录页慢 → 靠调用方【先强制等 20s 让页面加载/跳转完】再查(见 runMatrixPublish),
