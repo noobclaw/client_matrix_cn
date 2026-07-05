@@ -348,12 +348,19 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       : (PLATFORM_HOME[opts.platform] || 'https://www.douyin.com/');
     if (opts.signal?.aborted) { try { closeKernel(accountId, { force: true }); } catch { /* ignore */ } return { accountId, state: 'skipped', reason: 'aborted' }; }
     await kernelNavigate(accountId, navUrl);
-    await abortableSleep(2000, opts.signal);
+    // 登录判定【前多等一会】:很多平台(WAF 站 / 重 SPA)导航后要几秒才跳到登录页 / 渲染出登录态,
+    //   等太短会赶在跳转前判 → 误判(登出的当已登录 / 登录的当失效)。给 4.5s 让页面跳转+渲染稳。
+    await abortableSleep(4500, opts.signal);
     if (opts.signal?.aborted) { try { closeKernel(accountId, { force: true }); } catch { /* ignore */ } return { accountId, state: 'skipped', reason: 'aborted' }; }
 
     // 跑前登录态检查:cookie 过期 / 没关联 → 跳过该号 + 标「需关联」(其它号照跑),不空转。
     let loggedIn = true;
     try { loggedIn = await checkKernelLogin(accountId, loginKey); } catch { loggedIn = true; } // 读失败不误杀
+    // 首判「未登录」可能是页面还没跳转/渲染完就判了 → 再等 4s 复判一次,给慢页面第二次机会,绝不过早判死好号(铁律)。
+    if (!loggedIn && !opts.signal?.aborted) {
+      await abortableSleep(4000, opts.signal);
+      try { loggedIn = await checkKernelLogin(accountId, loginKey); } catch { loggedIn = true; }
+    }
     if (!loggedIn) {
       setAccountStatus(accountId, 'login_required');
       log('⚠️ 登录态失效/未关联,弹窗扫码重连(其它号照跑)');
