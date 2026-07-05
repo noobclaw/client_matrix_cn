@@ -2534,7 +2534,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
   return (
     <div
       className="fixed inset-0 z-50 modal-backdrop flex items-center justify-center"
-      onClick={onClose}
+      
     >
       <div
         className="relative flex w-[900px] h-[80vh] rounded-2xl dark:border-claude-darkBorder border-claude-border border shadow-modal overflow-hidden modal-content"

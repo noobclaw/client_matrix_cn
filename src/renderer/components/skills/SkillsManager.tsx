@@ -1095,7 +1095,7 @@ const SkillsManager: React.FC = () => {
       {selectedMarketplaceSkill && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => setSelectedMarketplaceSkill(null)}
+          
         >
           <div
             className="w-full max-w-md mx-4 rounded-2xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border shadow-2xl p-6"
@@ -1187,7 +1187,7 @@ const SkillsManager: React.FC = () => {
       {selectedSkill && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => setSelectedSkill(null)}
+          
         >
           <div
             className="w-full max-w-md mx-4 rounded-2xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border shadow-2xl p-6"
@@ -1310,7 +1310,7 @@ const SkillsManager: React.FC = () => {
       {skillPendingDelete && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={handleCancelDeleteSkill}
+          
         >
           <div
             className="w-full max-w-sm mx-4 rounded-2xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border shadow-2xl p-5"
@@ -1352,7 +1352,7 @@ const SkillsManager: React.FC = () => {
       {isGithubImportOpen && createPortal(
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => setIsGithubImportOpen(false)}
+          
         >
           <div
             className="w-full max-w-md mx-4 rounded-2xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border shadow-2xl p-6"

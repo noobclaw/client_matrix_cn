@@ -318,8 +318,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
 
       {/* v4.28: 任务上限弹窗 —— 跟 Binance / XHS 页面同款 */}
       {maxTasksModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          onClick={() => setMaxTasksModalOpen(false)}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}>
             <div className="px-6 pt-6 pb-2 text-center">

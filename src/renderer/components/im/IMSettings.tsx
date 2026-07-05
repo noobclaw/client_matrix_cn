@@ -1015,7 +1015,6 @@ const IMSettings: React.FC = () => {
         {connectivityModalPlatform && (
           <div
             className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
-            onClick={() => setConnectivityModalPlatform(null)}
           >
             <div
               className="w-full max-w-2xl dark:bg-claude-darkSurface bg-claude-surface rounded-2xl shadow-modal border dark:border-claude-darkBorder border-claude-border overflow-hidden"

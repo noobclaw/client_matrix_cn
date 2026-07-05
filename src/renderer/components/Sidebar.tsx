@@ -541,7 +541,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {showBatchDeleteConfirm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setShowBatchDeleteConfirm(false)}
+          
         >
           <div
             className="w-full max-w-sm mx-4 dark:bg-claude-darkSurface bg-claude-surface rounded-2xl shadow-xl overflow-hidden"
