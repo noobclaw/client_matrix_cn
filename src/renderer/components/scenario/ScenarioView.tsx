@@ -1245,10 +1245,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
   const tasksForPlatform = useMemo(() => {
     if (!Array.isArray(tasks)) return [];
-    // 矩阵任务自带 platform 字段,直接按它过滤 —— 不能走 scenario 注册表 byId 映射:FB/Reddit/Instagram
-    //   等新平台的 engage/post 剧本不在客户端 scenarios 注册表里 → byId 映射不到 → 任务被过滤【看不见】,
+    // 矩阵任务优先按 t.platform 过滤(mxTaskToScenario 已透传)—— 不能只走 scenario 注册表 byId 映射:
+    //   FB/Reddit/Instagram 等新平台的剧本不在客户端 scenarios 注册表里 → byId 映射不到 → 任务【看不见】,
     //   而 hasDupTask 按 t.platform 又能查到 → 报「已有任务却看不见、也创建不了」(用户实测)。
-    if (matrixMode) return tasks.filter((t) => (t as any).platform === currentPlatform);
+    //   同时保留 byId 兜底:platform 字段缺失的旧任务行仍按 scenario_id 归位,不能全部隐身(用户实测回归)。
+    if (matrixMode) {
+      const byId = new Map((Array.isArray(scenarios) ? scenarios : []).map(s => [s.id, s]));
+      return tasks.filter((t) => ((t as any).platform || byId.get(t.scenario_id)?.platform) === currentPlatform);
+    }
     if (!Array.isArray(scenarios)) return [];
     const byId = new Map(scenarios.map(s => [s.id, s]));
     return tasks.filter(t => byId.get(t.scenario_id)?.platform === currentPlatform);

@@ -170,6 +170,9 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
   return {
     id: t.id,
+    // 任务真实 platform 必须透传:ScenarioView 矩阵模式按 t.platform 过滤 tab(FB/Reddit/Ins 剧本
+    //   不在客户端注册表里,scenario_id 映射不到)。之前没带 → 过滤后所有任务全部隐身(用户实测)。
+    platform: t.platform,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
     scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? 'binance_repost' : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
     track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : 'matrix',
@@ -619,7 +622,9 @@ class ScenarioService {
   async listTasksFor(platform: ScenarioPlatform): Promise<Task[]> {
     const [tasks, scenarios] = await Promise.all([this.listTasks(), this.listScenarios()]);
     const scenarioById = new Map(scenarios.map(s => [s.id, s]));
-    return tasks.filter(t => scenarioById.get(t.scenario_id)?.platform === platform);
+    // 矩阵任务行自带 platform(mxTaskToScenario 透传),优先用它 —— FB/Reddit/Ins 剧本不在注册表,
+    // 只按注册表映射会把这些任务滤没;registry 兜底照顾缺 platform 的行。
+    return tasks.filter(t => (((t as any).platform) || scenarioById.get(t.scenario_id)?.platform) === platform);
   }
 
   async getTask(id: string): Promise<Task | null> {
