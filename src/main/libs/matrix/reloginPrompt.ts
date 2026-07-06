@@ -29,6 +29,8 @@ const LOGIN_URL: Record<string, string> = {
   kuaishou: 'https://www.kuaishou.com/', tiktok: 'https://www.tiktok.com/login', x: 'https://x.com/login',
   binance: 'https://www.binance.com/zh-CN/square', youtube: 'https://www.youtube.com/',
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
+  // 海外发帖/互动三平台(原来漏了 → 登录失效弹重连窗却导航不到登录页,用户看着像卡住)。
+  instagram: 'https://www.instagram.com/accounts/login/', facebook: 'https://www.facebook.com/login/', reddit: 'https://www.reddit.com/login/',
 };
 export function loginUrlFor(platform: string, loginScope?: string): string {
   if (platform === 'kuaishou') return loginScope === 'creator' ? 'https://cp.kuaishou.com/profile' : 'https://www.kuaishou.com/';
