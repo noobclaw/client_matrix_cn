@@ -229,7 +229,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   if (!task) return { ok: false, error: 'task_not_found' };
   // engage(互动涨粉)+ reply_fan(自动回复粉丝评论)都由 engageRunner 跑(共用内核/登录/进度链路,
   // 仅剧本与 task 字段不同)。其它类型未支持。
-  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost') return { ok: false, error: 'unsupported_task_type' };
+  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post') return { ok: false, error: 'unsupported_task_type' };
   const platform = task.platform;
   if (runningPlatforms.has(platform)) return { ok: false, error: 'another_task_running' };       // 同平台已在跑
   if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return { ok: false, error: 'concurrency_full' }; // 并发已满

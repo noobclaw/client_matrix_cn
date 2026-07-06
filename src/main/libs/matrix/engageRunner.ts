@@ -317,7 +317,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   await abortableSleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000), opts.signal); // 错峰(可中断:停止立即结束)
   if (opts.signal?.aborted) { log('🛑 已停止'); return { accountId, state: 'skipped', reason: 'aborted' }; }
 
-  const counts = { like: 0, follow: 0, comment: 0 };
+  // 计数键必须覆盖所有 driver 会调 addActionCount 的动作,否则被下面的 `type in counts` 白名单丢弃。
+  // 全集(grep backend/matrix/scenarios):like/follow/comment/download/post/note。漏 download → 视频下载记录恒 0。
+  const counts = { like: 0, follow: 0, comment: 0, download: 0, post: 0, note: 0 };
   let chargedCredits = 0; // 该号本次累计扣费(积分),每笔互动动作扣费后累加
   let chargedUsd = 0;     // 同上,美元(后端按 token_price_per_million 算好)
   const history = engageHistoryFor(accountId);

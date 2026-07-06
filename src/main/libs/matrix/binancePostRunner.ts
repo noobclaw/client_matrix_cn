@@ -44,9 +44,13 @@ function randInt(min: number, max: number): number {
   const lo = Math.min(min, max), hi = Math.max(min, max);
   return lo + Math.floor(Math.random() * (hi - lo + 1));
 }
-// 发帖在币安广场操作(主站登录态即覆盖)。
+// 发帖登录态校验主页。binance 走广场;FB/Reddit/IG 复用本 runner(sidecar 路由),
+// 各自导航自家主页做登录预检(对齐 engageRunner PLATFORM_HOME),否则全落币安广场→判据失败拿失效号空跑。
 const BINANCE_LOGIN_HOME: Record<string, string> = {
   binance: 'https://www.binance.com/square',
+  facebook: 'https://www.facebook.com/',
+  reddit: 'https://www.reddit.com/',
+  instagram: 'https://www.instagram.com/',
 };
 
 export interface BinancePostTaskOptions {

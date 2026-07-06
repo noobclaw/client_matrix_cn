@@ -530,14 +530,14 @@ function sendNoWait(s: KernelSession, method: string, params: Record<string, unk
   try { s.pageWs?.send(JSON.stringify({ id: s.msgId++, method, params })); } catch { /* ignore */ }
 }
 
-function send(s: KernelSession, method: string, params: Record<string, unknown> = {}): Promise<any> {
+function send(s: KernelSession, method: string, params: Record<string, unknown> = {}, timeoutMs = 30000): Promise<any> {
   const id = s.msgId++;
   return new Promise((resolve, reject) => {
     if (!s.pageWs || s.pageWs.readyState !== WebSocket.OPEN) {
       reject(new Error(`CDP not connected: ${method}`));
       return;
     }
-    const timer = setTimeout(() => { s.pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 30000);
+    const timer = setTimeout(() => { s.pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, timeoutMs > 0 ? timeoutMs : 30000);
     s.pending.set(id, {
       resolve: (d) => { clearTimeout(timer); resolve(d); },
       reject: (e) => { clearTimeout(timer); reject(e); },
@@ -557,9 +557,9 @@ export async function kernelNavigate(accountId: string, url: string): Promise<vo
   await sleep(1000);
 }
 
-export async function kernelEval(accountId: string, expression: string): Promise<any> {
+export async function kernelEval(accountId: string, expression: string, timeoutMs?: number): Promise<any> {
   const s = await getPage(accountId);
-  const r = await send(s, 'Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+  const r = await send(s, 'Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, timeoutMs);
   return r?.result?.value;
 }
 
@@ -613,7 +613,7 @@ async function injectExecutor(accountId: string): Promise<boolean> {
 }
 
 /** 执行页面类命令:确保 __nbExec 在位 → window.__nbExec(command, params)。返回执行器结果对象。 */
-export async function kernelExec(accountId: string, command: string, params: any): Promise<any> {
+export async function kernelExec(accountId: string, command: string, params: any, timeoutMs?: number): Promise<any> {
   let present = false;
   try { present = await kernelEval(accountId, "typeof window.__nbExec==='function'"); } catch { present = false; }
   if (!present) {
@@ -621,7 +621,7 @@ export async function kernelExec(accountId: string, command: string, params: any
     if (!ok) return { ok: false, error: 'executor_unavailable(后端 /api/matrix/command-executor 未就绪?)' };
   }
   const expr = 'window.__nbExec(' + JSON.stringify(command) + ',' + JSON.stringify(params || {}) + ')';
-  return await kernelEval(accountId, expr);
+  return await kernelEval(accountId, expr, timeoutMs);
 }
 
 // 可信按键(CDP Input.dispatchKeyEvent;比 JS 合成 KeyboardEvent 的 isTrusted=false 强)。

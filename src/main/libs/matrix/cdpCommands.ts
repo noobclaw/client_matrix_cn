@@ -22,7 +22,7 @@ export async function matrixCmd(
   accountId: string,
   command: string,
   params: any,
-  _timeoutMs?: number,
+  timeoutMs?: number,
 ): Promise<any> {
   switch (command) {
     // ── 特权命令:原生 CDP(执行器在页面里做不了 / 需要 isTrusted)──
@@ -30,7 +30,7 @@ export async function matrixCmd(
     // 任意求值(剧本收集 video_id / 读 DOM 等):CDP Runtime.evaluate 默认主世界,且不受
     // 页面 CSP 'unsafe-eval' 限制(不走 new Function)。
     case 'cdp_eval': {
-      const value = await kernelEval(accountId, String(params?.expression || ''));
+      const value = await kernelEval(accountId, String(params?.expression || ''), timeoutMs);
       return { ok: true, value };
     }
     // 任意 JS:扩展版用 new Function(code) 会被严 CSP 站拦;这里包成 IIFE 直接 CDP 求值绕开。
@@ -43,7 +43,7 @@ export async function matrixCmd(
     case 'javascript': {
       const code = String(params?.code || '');
       const body = code.trim().charAt(0) === '(' ? 'return (' + code + '\n)' : code;
-      const value = await kernelEval(accountId, '(function(){' + body + '\n})()');
+      const value = await kernelEval(accountId, '(function(){' + body + '\n})()', timeoutMs);
       return { ok: true, result: value, value };
     }
     // 可信按键(CDP Input.dispatchKeyEvent,isTrusted=true):搜索框 Enter 提交等。
@@ -82,7 +82,7 @@ export async function matrixCmd(
         + `if(${JSON.stringify(String(params?.responseType || 'text'))}==='base64'){var ab=await r.arrayBuffer();var by=new Uint8Array(ab),bin='';for(var i=0;i<by.length;i++)bin+=String.fromCharCode(by[i]);return JSON.stringify({ok:true,status:st,body:btoa(bin),encoding:'base64',byteLength:by.length});}`
         + `var t=await r.text();var b;try{b=JSON.parse(t);}catch(e){b=t;}return JSON.stringify({ok:true,status:st,body:b});`
         + `}catch(e){return JSON.stringify({ok:false,error:String(e&&e.message||e)});}})()`;
-      try { const raw = await kernelEval(accountId, expr); return JSON.parse(String(raw || '{}')); }
+      try { const raw = await kernelEval(accountId, expr, timeoutMs); return JSON.parse(String(raw || '{}')); }
       catch (e: any) { return { ok: false, error: 'main_world_fetch_failed:' + String(e?.message || e).slice(0, 80) }; }
     }
     // 整页导航(CDP Page.navigate):取材 driver 搜索/进详情页要用;执行器在页面里做不了真导航。
@@ -209,6 +209,6 @@ export async function matrixCmd(
     //   editor_insert_text / editor_paste_text / click_with_text / scroll /
     //   scroll_to / get_text / get_value / hover / wait_for / click …
     default:
-      return await kernelExec(accountId, command, params || {});
+      return await kernelExec(accountId, command, params || {}, timeoutMs);
   }
 }
