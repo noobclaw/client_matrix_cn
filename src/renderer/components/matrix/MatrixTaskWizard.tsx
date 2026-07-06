@@ -295,7 +295,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
               <div className="font-semibold dark:text-gray-200 mb-1">{i18nService.t('wzEngageSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzEngageSummaryAccounts')} value={i18nService.t('wzEngageSummaryAccountsValue').replace('{n}', String(selected.size))} />
               <SummaryRow label={i18nService.t('wzEngageSummaryLikes')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(likeMin)).replace('{max}', String(likeMax))} />
-              <SummaryRow label={i18nService.t('wzEngageSummaryFollows')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(folMin)).replace('{max}', String(folMax))} />
+              <SummaryRow label={i18nService.t(platform === 'facebook' ? 'wzEngageSummaryAddFriends' : 'wzEngageSummaryFollows')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(folMin)).replace('{max}', String(folMax))} />
               <SummaryRow label={i18nService.t('wzEngageSummaryComments')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax))} />
               {showFunnel && <SummaryRow label={i18nService.t('wzEngageSummaryFunnel')} value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzEngageSummaryFunnelEmpty')} />}
               <SummaryRow label={i18nService.t('wzEngageSummaryConcurrency')} value={i18nService.t('wzEngageSummaryConcurrencyValue').replace('{n}', String(selected.size))} />

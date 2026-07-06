@@ -1069,7 +1069,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (view.kind === 'task_detail') {
       const t = tasks.find(t => t.id === view.task_id);
       const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
-      const p = s?.platform;
+      // 优先用任务自带 platform:发帖类 scenario(facebook_post/reddit_post/instagram_post 等)
+      //   常不在 scenarios 快照里 → s=null → 原来落到下面 'xhs' 兜底,FB 任务返回错跳小红书 tab。
+      const p = (t as any)?.platform || s?.platform;
       // v2.4.61: 漏了 'binance' — 进币安任务详情然后返回会跳回小红书 tab
       // v6.x:  漏了 'video' — 翻译二创(scenario.platform='video')详情返回也会掉小红书 tab
       if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube' || (p as string) === 'facebook' || (p as string) === 'reddit' || (p as string) === 'instagram' || p === 'video') return p as PlatformId;
@@ -1446,7 +1448,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => openMatrixWizard(currentPlatform)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-500 text-white text-sm font-bold hover:bg-violet-600 shadow-sm shadow-violet-500/25 transition-all active:scale-95"
               >
-                🎯 {i18nService.t('svStartCreate')}
+                🎯 {i18nService.t('svStartEngage')}
               </button>
               <button
                 type="button"
