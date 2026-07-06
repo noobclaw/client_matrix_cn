@@ -18,6 +18,7 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { launchKernel, kernelNavigate, closeKernel, checkKernelLogin, NO_KERNEL_ERROR } from './kernelPool';
+import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
@@ -307,10 +308,12 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
     coworkLog('ERROR', 'tweetPost', `[${accountId}] threw: ${String(e?.stack || e?.message || e).slice(0, 300)}`);
     return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'tweetpost_threw:' + String(e?.message || e).slice(0, 140) };
   } finally {
-    // 完成后留 20s 让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
+    // 完成后留时间让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
+    // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
+    const holdMs = inspectHoldMs(finished?.error);
     if (!opts.signal?.aborted) {
       await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, 20000);
+        const t = setTimeout(resolve, holdMs);
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
       });
     }

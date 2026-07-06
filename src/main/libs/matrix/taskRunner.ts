@@ -12,6 +12,7 @@
 import { coworkLog } from '../coworkLogger';
 import type { VideoPlatform, PublishInput } from '../video/publishers/types';
 import { launchKernel, kernelNavigate, checkKernelLogin, closeKernel, NO_KERNEL_ERROR } from './kernelPool';
+import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { runMatrixDriver } from './driverCtx';
 import {
@@ -86,6 +87,7 @@ async function runOne(
   // 错峰:每号启动前随机停一下,避免齐刷刷一起开窗(行为关联信号)。
   await sleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000));
 
+  let closeReason: string | undefined;   // 收口给 finally 判是否撞墙(此函数走 driver,无 finished 闭包)
   try {
     setAccountStatus(accountId, 'running');
     log('启动指纹内核');
@@ -132,16 +134,19 @@ async function runOne(
     }
     // 限流类失败可在此识别 reason 关键字升级为 limited(MVP 先一律 idle)。
     setAccountStatus(accountId, 'idle');
+    closeReason = r.reason;
     return { accountId, state: 'failed', reason: r.reason };
   } catch (e: any) {
     setAccountStatus(accountId, 'idle');
     return { accountId, state: 'failed', reason: 'runner_threw:' + String(e?.message || e).slice(0, 120) };
   } finally {
-    // 完成后留 20s 让用户检查浏览器里的结果再关窗(有 signal 时点「停止」立即关、不等)。
+    // 完成后留时间让用户检查浏览器里的结果再关窗(有 signal 时点「停止」立即关、不等)。
+    // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
     const _sig: AbortSignal | undefined = (opts as any).signal;
+    const holdMs = inspectHoldMs(closeReason);
     if (!_sig?.aborted) {
       await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, 20000);
+        const t = setTimeout(resolve, holdMs);
         try { _sig?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
       });
     }

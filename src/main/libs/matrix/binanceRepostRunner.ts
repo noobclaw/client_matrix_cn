@@ -21,6 +21,7 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { launchKernel, kernelNavigate, closeKernel, checkKernelLogin, NO_KERNEL_ERROR } from './kernelPool';
+import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { matrixCmd } from './cdpCommands';
 import { runMatrixDriver, runMatrixDouyinSearch } from './driverCtx';
@@ -522,8 +523,10 @@ async function publishOne(
     coworkLog('ERROR', 'binanceRepost', `[${accountId}] threw: ${String(e?.stack || e?.message || e).slice(0, 300)}`);
     return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'repost_threw:' + String(e?.message || e).slice(0, 140) };
   } finally {
+    // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
+    const holdMs = inspectHoldMs(finished?.error);
     if (!opts.signal?.aborted) {
-      await new Promise<void>((resolve) => { const t = setTimeout(resolve, 20000); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
+      await new Promise<void>((resolve) => { const t = setTimeout(resolve, holdMs); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
     }
     try { closeKernel(accountId); } catch { /* ignore */ }
   }
@@ -578,6 +581,7 @@ async function publishVideoOne(
   const counts = { like: 0, follow: 0, comment: 0, post: 0 };
   let chargedCredits = 0, chargedUsd = 0;
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
+  let closeReason: string | undefined;   // 收口给 finally 判是否撞墙(此函数走 driver,无 finished 闭包)
 
   try {
     setAccountStatus(accountId, 'running');
@@ -620,7 +624,7 @@ async function publishVideoOne(
     // 复用 binance.js 发布 driver:导航币安广场 → 视频 inline modal 上传 + 写正文 + 发文。
     log('📤 上传视频到币安广场(复用发布 driver)…');
     const r = await runMatrixDriver(accountId, 'binance' as any, { videoPath: candidate.video_path, description: cap.text } as any, (m) => log(m));
-    if (!r || !r.ok) { setAccountStatus(accountId, 'idle'); log('❌ 视频发布失败:' + (r?.reason || 'unknown')); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: r?.reason || 'driver_failed' }; }
+    if (!r || !r.ok) { closeReason = r?.reason; setAccountStatus(accountId, 'idle'); log('❌ 视频发布失败:' + (r?.reason || 'unknown')); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: r?.reason || 'driver_failed' }; }
 
     counts.post += 1;
     log('✅ 视频已发布');
@@ -635,8 +639,10 @@ async function publishVideoOne(
     coworkLog('ERROR', 'binanceRepost', `[${accountId}] video threw: ${String(e?.stack || e?.message || e).slice(0, 300)}`);
     return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'repost_video_threw:' + String(e?.message || e).slice(0, 120) };
   } finally {
+    // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
+    const holdMs = inspectHoldMs(closeReason);
     if (!opts.signal?.aborted) {
-      await new Promise<void>((resolve) => { const t = setTimeout(resolve, 20000); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
+      await new Promise<void>((resolve) => { const t = setTimeout(resolve, holdMs); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
     }
     try { closeKernel(accountId); } catch { /* ignore */ }
   }
