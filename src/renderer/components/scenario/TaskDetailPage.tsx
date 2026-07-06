@@ -308,7 +308,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     ? i18nService.t('tdToutiao')
                     : (scenario?.platform as any) === 'video'
                       ? i18nService.t('tdVideoRemix')
-                      : i18nService.t('tdXiaohongshu');
+                      : ((scenario?.platform as any) === 'instagram' || task.scenario_id?.startsWith('instagram_'))
+                        ? 'Instagram'
+                        : ((scenario?.platform as any) === 'facebook' || task.scenario_id?.startsWith('facebook_'))
+                          ? 'Facebook'
+                          : ((scenario?.platform as any) === 'reddit' || task.scenario_id?.startsWith('reddit_'))
+                            ? 'Reddit'
+                            : i18nService.t('tdXiaohongshu');
   const STEP_LABELS = STEP_LABELS_ZH;
   // Pick step names by scenario id first (Twitter has 3 distinct flavors),
   // then fall back to the legacy isAutoReply branch for XHS.
@@ -707,6 +713,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if ((scenario?.platform as any) === 'shipinhao') return { icon: '📱', label: i18nService.t('tdShipinhao') };
     if ((scenario?.platform as any) === 'toutiao') return { icon: '📰', label: i18nService.t('tdToutiao') };
     if ((scenario?.platform as any) === 'video') return { icon: '🎬', label: i18nService.t('tdVideoRemix') };
+    if ((scenario?.platform as any) === 'instagram' || task.scenario_id?.startsWith('instagram_')) return { icon: '📷', label: 'Instagram' };
+    if ((scenario?.platform as any) === 'facebook' || task.scenario_id?.startsWith('facebook_')) return { icon: '👥', label: 'Facebook' };
+    if ((scenario?.platform as any) === 'reddit' || task.scenario_id?.startsWith('reddit_')) return { icon: '🟠', label: 'Reddit' };
     return { icon: '🤖', label: scenario?.platform || '' };
   })();
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
@@ -870,8 +879,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {/* 矩阵号:展示账号数(各账号自有赛道/关键词/人设),不显示「赛道: matrix」+ 空关键词 */}
                   {isMatrix && (() => {
                     // 每个账号自有赛道/人设/关键词 → 列出来(可滚动,30 个也放得下)。
-                    const PL: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: '推特', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
-                    const EM: Record<string, string> = { douyin: '🎵', xhs: '📕', bilibili: '📺', kuaishou: '⚡', tiktok: '🎬', x: '🐦', binance: '🟡', youtube: '▶️', shipinhao: '🟢', toutiao: '🟠' };
+                    const PL: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: '推特', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条', instagram: 'Instagram', facebook: 'Facebook', reddit: 'Reddit' };
+                    const EM: Record<string, string> = { douyin: '🎵', xhs: '📕', bilibili: '📺', kuaishou: '⚡', tiktok: '🎬', x: '🐦', binance: '🟡', youtube: '▶️', shipinhao: '🟢', toutiao: '🟠', instagram: '📷', facebook: '👥', reddit: '🟠' };
                     const idLabel = (p: string) => { const l = PL[p] || ''; return l ? (l.endsWith('号') ? l : l + '号') : ''; };
                     const accMap = new Map<string, any>(acctDetails.map((a: any) => [a.id, a]));
                     const accs = matrixAccountIds.map((id) => accMap.get(id)).filter(Boolean);
@@ -959,6 +968,45 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       {(task.persona || '').trim()}
                     </div>
                   )}
+                  {/* IG / FB / Reddit 发帖任务:数据源 / 语言 / subreddit / 发布方式(对齐各自 wizard 的 SummaryRow)。
+                      这三个新加平台之前详情页没有专属配置渲染 → 用户填的数据源/语言/subreddit 全不显示,只剩账号块+人设。
+                      字段名 wizard 存驼峰(sourceKind/catKey/subreddit/autoPublish),backend 读 snake — 两种都兜底读。 */}
+                  {(task.scenario_id === 'instagram_post' || task.scenario_id === 'facebook_post' || task.scenario_id === 'reddit_post') && (() => {
+                    const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
+                    const t = task as any;
+                    const sk = t.sourceKind ?? t.source_kind ?? 'news';
+                    const src = String(t.source ?? '').trim();
+                    const catKey = String(t.catKey ?? t.cat_key ?? '').trim();
+                    const lang = String(t.language ?? 'mixed');
+                    const sub = String(t.subreddit ?? '').trim();
+                    const autoPub = (t.autoPublish ?? t.auto_upload ?? t.auto_publish) !== false;
+                    const sourceLabel = sk === 'news'
+                      ? (isZh ? 'Web3 资讯' : 'Web3 News')
+                      : sk === 'category'
+                        ? (catKey === 'tech' ? (isZh ? '科技 / AI' : 'Tech / AI') : (catKey || (isZh ? '分类' : 'Category')))
+                        : (src || (isZh ? '热榜' : 'Hotlist'));
+                    const LANG_LABEL: Record<string, string> = { mixed: isZh ? '跟随源语言' : 'Follow source', zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
+                    return (
+                      <div className="space-y-1 pl-1 pt-1 border-t border-gray-200 dark:border-gray-800 mt-1.5">
+                        {task.scenario_id === 'reddit_post' && (
+                          <div className="text-xs text-gray-600 dark:text-gray-300">
+                            <span className="text-gray-500">{isZh ? '目标版块' : 'Subreddit'}:</span>{' '}
+                            {sub ? `r/${sub}` : <span className="text-amber-500">{isZh ? '未设置' : 'Not set'}</span>}
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                          <span className="text-gray-500">{isZh ? '数据源' : 'Source'}:</span> {sourceLabel}
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                          <span className="text-gray-500">{isZh ? '语言' : 'Language'}:</span> {LANG_LABEL[lang] || lang}
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                          <span className="text-gray-500">{isZh ? '发布' : 'Publish'}:</span>{' '}
+                          {autoPub ? (isZh ? '自动发布' : 'Auto-publish') : (isZh ? '仅生成' : 'Draft only')}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {isImageTextTask && sourceSegments.length > 0 && (
                     <div className="space-y-1.5 pl-1">
                       {sourceSegments.map((s, i) => (
@@ -1328,7 +1376,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {(() => {
                     const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = { like: i18nService.t('tdLblLike'), follow: i18nService.t('tdLblFollow'), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+                    const labels = { like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
                     // v6.x: 回复粉丝评论(xhs/douyin)= 「已回复评论数」+「文章进度 当前/总」,
                     //   不是「N/target 评论」。评论纯累计(无 target),文章扫描后才知道总数
@@ -1948,7 +1996,7 @@ function formatActionBreakdown(
       return ia - ib;
     });
   if (keys.length === 0) return '-';
-  const labels = { like: i18nService.t('tdLblLike'), follow: i18nService.t('tdLblFollow'), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+  const labels = { like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
   return keys.map(k => {
     const icon = ICONS[k] || '·';
     const label = (labels as any)[k] || k;
