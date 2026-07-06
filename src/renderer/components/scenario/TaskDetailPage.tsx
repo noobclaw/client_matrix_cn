@@ -21,37 +21,12 @@ import type { ScenarioRunProgress } from '../../types/scenario';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { FALLBACK_IMAGE_STYLES } from '../../services/imageStyles';
+import { TRACK_META, trackDisplayName, trackIcon } from '../../services/trackNames';
 
 // v4.28.x: 之前只放了 XHS tracks,Twitter / Binance 的 web3_* track 没法在
 // detail 页面被翻译,会回落到原始 ID(如 'web3_alpha'),用户看到「人设: web3_alpha」。
 // MyTasksPage 列表那边的 TRACK_ICONS 是全的所以没问题,这里补齐 web3 系列保持一致。
-const TRACK_NAMES: Record<string, string> = {
-  // Twitter / Binance (web3) tracks
-  web3_alpha: '🎯 Web3 · Alpha 猎人',
-  web3_defi: '🏛️ Web3 · DeFi 用户',
-  web3_meme: '🎪 Web3 · Meme 文化',
-  web3_builder: '🛠️ Web3 · 建设者',
-  web3_zh_kol: '📢 Web3 · 通用 KOL',
-  // XHS tracks
-  career_side_hustle: '💼 副业 · 打工人赚钱',
-  indie_dev: '👩‍💻 独立开发 · 程序员记录',
-  personal_finance: '💰 理财 · 记账攻略',
-  travel: '✈️ 旅行 · 攻略分享',
-  food: '🍲 美食 · 探店做饭',
-  outfit: '👗 穿搭 · 风格分享',
-  beauty: '💄 美妆 · 产品测评',
-  fitness: '💪 健身 · 减脂日记',
-  reading: '📚 读书 · 书单笔记',
-  parenting: '🧸 育儿 · 亲子日常',
-  exam_prep: '🎓 考研 · 备考党',
-  pets: '🐱 宠物 · 猫狗日常',
-  home_decor: '🏠 家居 · 小屋布置',
-  study_method: '🏆 学习 · 效率工具',
-  career_growth: '🎯 职场 · 升级打怪',
-  emotional_wellness: '🧘 情感 · 心理疗愈',
-  photography: '📷 摄影 · 日常记录',
-  crafts: '🎨 手工 · DIY',
-};
+// 赛道名映射已抽到 services/trackNames.ts(9 语统一,含 icon)。用 trackDisplayName / trackIcon。
 
 function formatRelative(ts: number | null | undefined): string {
   if (!ts) return i18nService.t('tdNotRunYet');
@@ -695,7 +670,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     await onChanged();
   };
 
-  const trackName = TRACK_NAMES[task.track] || task.track || task.scenario_id;
+  const trackName = TRACK_META[task.track]
+    ? `${trackIcon(task.track)} ${trackDisplayName(task.track, i18nService.currentLanguage)}`
+    : (task.track || task.scenario_id);
 
   // ── Render ──
 

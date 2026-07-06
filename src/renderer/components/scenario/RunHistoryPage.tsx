@@ -18,6 +18,7 @@ import { i18nService } from '../../services/i18n';
 import { HIDE_WEB3, cnyFromUsd } from '../../buildFlags';
 import { friendlyRunError } from '../../services/runErrorMessage';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
+import { TRACK_META, trackDisplayName } from '../../services/trackNames';
 
 interface RunRecord {
   id: string;
@@ -35,27 +36,7 @@ interface RunRecord {
 
 // Same lookup as MyTasksPage so XHS records show "💼 副业" instead of
 // the generic scenario name. Twitter web3 tracks + XHS niche tracks.
-const TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
-  web3_alpha: { icon: '🎯', name_zh: 'Web3 · Alpha 猎人' },
-  web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
-  web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
-  web3_builder: { icon: '🛠️', name_zh: 'Web3 · 建设者' },
-  web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 通用 KOL' },
-  career_side_hustle: { icon: '💼', name_zh: '副业 · 打工人赚钱' },
-  indie_dev: { icon: '👩‍💻', name_zh: '独立开发 · 程序员记录' },
-  personal_finance: { icon: '💰', name_zh: '理财 · 记账攻略' },
-  travel: { icon: '✈️', name_zh: '旅行 · 攻略分享' },
-  food: { icon: '🍲', name_zh: '美食 · 探店做饭' },
-  outfit: { icon: '👗', name_zh: '穿搭 · 风格分享' },
-  beauty: { icon: '💄', name_zh: '美妆 · 产品测评' },
-  fitness: { icon: '💪', name_zh: '健身 · 减脂日记' },
-  reading: { icon: '📚', name_zh: '读书 · 书单笔记' },
-  parenting: { icon: '🧸', name_zh: '育儿 · 亲子日常' },
-  exam_prep: { icon: '🎓', name_zh: '考研 · 备考党' },
-  pets: { icon: '🐱', name_zh: '宠物 · 猫狗日常' },
-  home_decor: { icon: '🏠', name_zh: '家居 · 小屋布置' },
-  study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
-};
+// 赛道名映射已抽到 services/trackNames.ts(9 语统一)。用 TRACK_META / trackDisplayName。
 
 function typeLabelForRecord(rec: RunRecord): { icon: string; label: string; color: string } {
   const sid = rec.scenario_snapshot.id;
@@ -293,12 +274,12 @@ export const RunHistoryPage: React.FC<Props> = ({
             {pagedRecords.map(rec => {
               const sc = rec.scenario_snapshot;
               const trackId = (rec.task_snapshot && rec.task_snapshot.track) || '';
-              const trackInfo = TRACK_ICONS[trackId];
+              const trackInfo = TRACK_META[trackId];
               const typeBadge = typeLabelForRecord(rec);
               // Display name: prefer track (matches MyTasksPage), fall back to
               // generic scenario name, then to id.
               const displayName = trackInfo
-                ? trackInfo.name_zh
+                ? trackDisplayName(trackId, i18nService.currentLanguage)
                 : ((isZh ? sc.name_zh : sc.name_en) || sc.id);
               const displayIcon = trackInfo?.icon || sc.icon || '🤖';
               const duration = rec.finished_at

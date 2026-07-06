@@ -19,6 +19,7 @@ import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { HIDE_WEB3, cnyFromUsd } from '../../buildFlags';
 import { scenarioService } from '../../services/scenario';
+import { TRACK_META, trackDisplayName } from '../../services/trackNames';
 
 interface Props {
   recordId: string;
@@ -152,31 +153,10 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     : (sc.platform || '');
   // Same TRACK_ICONS + type-badge logic as MyTasksPage / RunHistoryPage so
   // the detail page header matches the row the user clicked on. Inlined
-  // (not imported) to keep this component self-contained — they're tiny.
-  const TRACK_ICONS_INLINE: Record<string, { icon: string; name_zh: string }> = {
-    web3_alpha: { icon: '🎯', name_zh: 'Web3 · Alpha 猎人' },
-    web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
-    web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
-    web3_builder: { icon: '🛠️', name_zh: 'Web3 · 建设者' },
-    web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 通用 KOL' },
-    career_side_hustle: { icon: '💼', name_zh: '副业 · 打工人赚钱' },
-    indie_dev: { icon: '👩‍💻', name_zh: '独立开发 · 程序员记录' },
-    personal_finance: { icon: '💰', name_zh: '理财 · 记账攻略' },
-    travel: { icon: '✈️', name_zh: '旅行 · 攻略分享' },
-    food: { icon: '🍲', name_zh: '美食 · 探店做饭' },
-    outfit: { icon: '👗', name_zh: '穿搭 · 风格分享' },
-    beauty: { icon: '💄', name_zh: '美妆 · 产品测评' },
-    fitness: { icon: '💪', name_zh: '健身 · 减脂日记' },
-    reading: { icon: '📚', name_zh: '读书 · 书单笔记' },
-    parenting: { icon: '🧸', name_zh: '育儿 · 亲子日常' },
-    exam_prep: { icon: '🎓', name_zh: '考研 · 备考党' },
-    pets: { icon: '🐱', name_zh: '宠物 · 猫狗日常' },
-    home_decor: { icon: '🏠', name_zh: '家居 · 小屋布置' },
-    study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
-  };
+  // 赛道名映射见 services/trackNames.ts(9 语统一)。
   const trackId = (rec.task_snapshot && rec.task_snapshot.track) || '';
-  const trackInfo = TRACK_ICONS_INLINE[trackId];
-  const taskName = trackInfo ? trackInfo.name_zh : ((isZh ? sc.name_zh : sc.name_en) || sc.id);
+  const trackInfo = TRACK_META[trackId];
+  const taskName = trackInfo ? trackDisplayName(trackId, i18nService.currentLanguage) : ((isZh ? sc.name_zh : sc.name_en) || sc.id);
   const taskIcon = trackInfo?.icon || sc.icon || '🤖';
   // Type label
   const typeBadge = (() => {

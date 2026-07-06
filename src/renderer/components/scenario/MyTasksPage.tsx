@@ -20,6 +20,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
+import { TRACK_META, trackDisplayName } from '../../services/trackNames';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
 
 interface Props {
@@ -110,31 +111,7 @@ function localizePersonaPrefix(text: string, isZh: boolean): string {
     .replace(/^偏好[：:]\s*/, 'Preferences: ');
 }
 
-const TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
-  // Twitter (web3) tracks
-  web3_alpha: { icon: '🎯', name_zh: 'Web3 · Alpha 猎人' },
-  web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
-  web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
-  web3_builder: { icon: '🛠️', name_zh: 'Web3 · 建设者' },
-  web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 通用 KOL' },
-  // XHS tracks (mirrored from ConfigWizard's TRACK_PRESETS so the task list
-  // can show the user's chosen track name instead of falling back to the
-  // generic scenario name like "小红书自动回复")
-  career_side_hustle: { icon: '💼', name_zh: '副业 · 打工人赚钱' },
-  indie_dev: { icon: '👩‍💻', name_zh: '独立开发 · 程序员记录' },
-  personal_finance: { icon: '💰', name_zh: '理财 · 记账攻略' },
-  travel: { icon: '✈️', name_zh: '旅行 · 攻略分享' },
-  food: { icon: '🍲', name_zh: '美食 · 探店做饭' },
-  outfit: { icon: '👗', name_zh: '穿搭 · 风格分享' },
-  beauty: { icon: '💄', name_zh: '美妆 · 产品测评' },
-  fitness: { icon: '💪', name_zh: '健身 · 减脂日记' },
-  reading: { icon: '📚', name_zh: '读书 · 书单笔记' },
-  parenting: { icon: '🧸', name_zh: '育儿 · 亲子日常' },
-  exam_prep: { icon: '🎓', name_zh: '考研 · 备考党' },
-  pets: { icon: '🐱', name_zh: '宠物 · 猫狗日常' },
-  home_decor: { icon: '🏠', name_zh: '家居 · 小屋布置' },
-  study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
-};
+// 赛道名映射已抽到 services/trackNames.ts(9 语统一,4 处渲染点共用)。用 TRACK_META / trackDisplayName。
 
 function scheduleLabel(task: Task): string {
   // v6.x: 列表卡片频次文案跟 TaskDetailPage intervalMap (line ~1059) 严格对齐 —
@@ -536,12 +513,12 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 return { icon: '🔥', k: 'scnXhsViral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name
-              const track = TRACK_ICONS[task.track];
+              const track = TRACK_META[task.track];
               const subTitle = (() => {
                 if (isVideoDownload) return i18nService.t('subVideoLinks');
                 if (isLinkRewriteTwitter) return i18nService.t('subManualTweet');
                 if (isXhsLinkMode) return i18nService.t('subManualXhs');
-                if (track) return track.name_zh;
+                if (track) return trackDisplayName(task.track, i18nService.currentLanguage);
                 // scenario 快照常缺发帖类新平台(facebook_post/reddit_post/instagram_post 等)→ 落 scenario_id
                 // 会显示原始英文 id(用户实拍「facebook_post」)。改用已翻译的类型徽章名兜底,任何 UI 语言都可读。
                 return scenario?.name_zh || i18nService.t(typeLabel.k);
