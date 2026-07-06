@@ -61,8 +61,19 @@ function platformMeta(platformId: string): { icon: string; label: string } {
   if (platformId === 'bilibili') return { icon: '📺', label: i18nService.t('platBilibili') };
   if (platformId === 'shipinhao') return { icon: '📱', label: i18nService.t('platShipinhao') };
   if (platformId === 'toutiao')  return { icon: '📰', label: i18nService.t('platToutiao') };
+  if (platformId === 'facebook') return { icon: '👥', label: 'Facebook' };
+  if (platformId === 'reddit')   return { icon: '🟠', label: 'Reddit' };
+  if (platformId === 'instagram') return { icon: '📷', label: 'Instagram' };
   if (platformId === 'video')    return { icon: '🎬', label: i18nService.t('platVideo') };
   return { icon: '🤖', label: platformId };
+}
+
+// scenario 快照常缺发帖类新平台(facebook_post/reddit_post/instagram_post 等)→ scenario.platform
+// 为 undefined 时,从 scenario_id 头段推平台,别再兜底成 'xhs'(会误显「📕 小红书」平台徽章)。
+const KNOWN_PLATFORM_TOKENS = ['xhs', 'x', 'binance', 'douyin', 'tiktok', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'youtube', 'facebook', 'reddit', 'instagram'];
+function platformFromScenarioId(sid: string | undefined): string | undefined {
+  const first = String(sid || '').split('_')[0];
+  return KNOWN_PLATFORM_TOKENS.includes(first) ? first : undefined;
 }
 
 // Per-platform growth-tutorial doc URL. Mirrors the two language sites the
@@ -400,7 +411,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
           <div className="space-y-3">
             {sortedTasks.map(task => {
               const scenario = scenarioById.get(task.scenario_id);
-              const platformId = scenario?.platform || 'xhs';
+              // scenario.platform 缺失(发帖类新平台快照常缺)→ 从 scenario_id 推,最后才兜底 'xhs'。
+              const platformId = scenario?.platform || platformFromScenarioId(task.scenario_id) || 'xhs';
               const platMeta = platformMeta(platformId);
               const isRunning = runningTaskIds.has(task.id);
               // Type badge per scenario id (Twitter has 3 distinct ones,
@@ -488,7 +500,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 // workflow_type='auto_reply' fall into the XHS branch and get
                 // tagged 小红书 · 互动涨粉 (bug observed in 2.4.56). Platform-
                 // first guard fixes it.
-                const plat = scenario?.platform;
+                const plat = scenario?.platform || platformFromScenarioId(sid);
                 if ((scenario?.workflow_type as any) === 'auto_reply') {
                   if (plat === 'binance') return { icon: '💬', k: 'scnBnEngage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
                   if ((plat as any) === 'youtube') return { icon: '💬', k: 'scnYtEngage', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
