@@ -60,7 +60,7 @@ const SYSTEM_PROMPT = [
   '1. publishTitle:钩人标题,≤24 字。用悬念/反差/利益点/数字钩子抓人(例:「3 个币今天集体爆拉,第 2 个没人料到」)。不要平铺直叙复述内容。',
   '2. publishCaption:正文,2-4 句,60-140 字。开头一句钩子,中间点一下看点,结尾一句引导互动(如「关注我每天追行情」「评论区说说你看好哪个」)。可用 1-3 个 emoji 提升点击,但别堆砌。',
   '3. hashtags:3-6 个,跟内容强相关的【平台真实存在的热门话题词】。不带 # 号(后端按平台自己加)。每个 ≤12 字。',
-  '4. 语言:跟视频内容同语言(中文内容→中文文案)。',
+  '4. 语言:**严格用「用户消息里指定的目标输出语言」书写全部字段**(publishTitle / publishCaption / hashtags),即使视频概要是别的语言,也要写成目标语言(例:目标语言 English 时,即便概要是中文,也输出全英文的标题/正文/hashtag)。下面示例仅示范风格与格式,语言一律以用户指定的目标语言为准。',
   '5. **绝不复述视频里的完整内容/口播稿**,文案是「预告片」不是「全文」。',
   '6. JSON only,无 markdown 围栏,无解释。',
   '',
@@ -74,6 +74,21 @@ const SYSTEM_PROMPT = [
   '  "hashtags": ["加密货币", "币圈", "行情分析", "狗狗币", "每日行情"]',
   '}',
 ].join('\n');
+
+// 目标输出语言标签(注入 AI prompt + 兜底文案按语言出)。覆盖 ContentLang 全 10 语。
+// 「创作语言」既决定口播稿/字幕,也必须决定发布标题/介绍/hashtag —— 这份表让发布文案真正跟着走。
+const PUB_LANG_LABEL: Record<string, string> = {
+  zh: '简体中文 (Simplified Chinese)',
+  'zh-TW': '繁體中文 (Traditional Chinese)',
+  ja: '日本語 (Japanese)',
+  ko: '한국어 (Korean)',
+  en: 'English',
+  id: 'Bahasa Indonesia (Indonesian)',
+  vi: 'Tiếng Việt (Vietnamese)',
+  es: 'Español (Spanish)',
+  pt: 'Português (Portuguese)',
+  fr: 'Français (French)',
+};
 
 /** 从夹带文字/围栏的输出里抠第一个 JSON 对象。 */
 function extractJsonObject(raw: string): string {
@@ -125,6 +140,8 @@ export async function generatePublishCaption(input: PublishCaptionInput): Promis
   if (!summary) return null;
 
   const userParts: string[] = [];
+  const targetLangLabel = PUB_LANG_LABEL[String(input.lang)] || PUB_LANG_LABEL.zh;
+  userParts.push(`# 目标输出语言:${targetLangLabel} —— publishTitle / publishCaption / hashtags 三个字段全部必须用这个语言书写,无论下面视频概要是什么语言。`);
   userParts.push('# 视频内容概要(据此写钩人文案,不要照抄):');
   userParts.push(summary.slice(0, 600));
   if (input.title) userParts.push(`\n# 视频标题参考:${input.title}`);
@@ -224,14 +241,23 @@ export async function resolvePublishCaption(input: ResolveCaptionInput): Promise
   const kwTags = (input.keywords || []).filter(Boolean).slice(0, 6);
   // 兜底文案【绝不用口播稿原文 / 视频标题首句】(用户要求:发布文案不能跟口播稿一样)——
   // 改用关键词 + 通用引导钩子。AI 正常生成时不走这里;只有 AI 失败 / 不发布才用到。
-  const zh = (input.lang || 'zh') === 'zh';
   const kwHead = kwTags[0] || '';
-  const fbTitle = input.userTitle?.trim()
-    || (zh ? (kwHead ? `${kwHead}｜完整版在视频里 👀` : '完整内容,都在视频里 👀')
-           : (kwHead ? `${kwHead} — full clip inside 👀` : 'Full clip inside 👀'));
-  const fbDesc = input.userCaption?.trim()
-    || (zh ? '完整内容都在视频里,觉得有用就关注我,每天持续更新~'
-           : 'Full story is in the clip — follow for daily updates.');
+  // 兜底文案也按创作语言出(不再只有中/英两档)——AI 失败时选了日语/越南语也不会掉回英文。
+  const FB: Record<string, { sfx: string; gen: string; desc: string }> = {
+    zh:      { sfx: '｜完整版在视频里 👀', gen: '完整内容,都在视频里 👀', desc: '完整内容都在视频里,觉得有用就关注我,每天持续更新~' },
+    'zh-TW': { sfx: '｜完整版在影片裡 👀', gen: '完整內容,都在影片裡 👀', desc: '完整內容都在影片裡,覺得有用就追蹤我,每天持續更新~' },
+    ja:      { sfx: '｜続きは動画で 👀', gen: '続きは動画でチェック 👀', desc: '詳しくは動画で。役に立ったらフォローしてね、毎日更新中~' },
+    ko:      { sfx: ' | 전체는 영상에서 👀', gen: '전체 내용은 영상에서 👀', desc: '자세한 내용은 영상에서. 도움이 됐다면 팔로우, 매일 업데이트~' },
+    en:      { sfx: ' — full clip inside 👀', gen: 'Full clip inside 👀', desc: 'Full story is in the clip — follow for daily updates.' },
+    id:      { sfx: ' — selengkapnya di video 👀', gen: 'Selengkapnya di video 👀', desc: 'Cerita lengkapnya ada di video — follow untuk update harian.' },
+    vi:      { sfx: ' — xem đầy đủ trong video 👀', gen: 'Xem đầy đủ trong video 👀', desc: 'Nội dung đầy đủ có trong video — theo dõi để cập nhật mỗi ngày.' },
+    es:      { sfx: ' — todo en el video 👀', gen: 'Todo está en el video 👀', desc: 'La historia completa está en el video — sígueme para novedades cada día.' },
+    pt:      { sfx: ' — tudo no vídeo 👀', gen: 'Tudo está no vídeo 👀', desc: 'A história completa está no vídeo — siga para novidades diárias.' },
+    fr:      { sfx: ' — tout est dans la vidéo 👀', gen: 'Tout est dans la vidéo 👀', desc: "Toute l'histoire est dans la vidéo — abonne-toi pour du contenu quotidien." },
+  };
+  const fb = FB[String(input.lang)] || FB.zh;
+  const fbTitle = input.userTitle?.trim() || (kwHead ? `${kwHead}${fb.sfx}` : fb.gen);
+  const fbDesc = input.userCaption?.trim() || fb.desc;
 
   // 不发布 → 不浪费 AI,返兜底(下游也不会真用)。
   if (!input.wantPublish) {
