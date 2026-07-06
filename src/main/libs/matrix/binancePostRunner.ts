@@ -52,6 +52,10 @@ const BINANCE_LOGIN_HOME: Record<string, string> = {
   reddit: 'https://www.reddit.com/',
   instagram: 'https://www.instagram.com/',
 };
+// 日志用平台名 —— 本 runner 服务 4 个平台,提示语不能写死「币安」(用户实拍:IG 任务弹「币安登录态失效」)。
+const PLATFORM_LABEL: Record<string, string> = {
+  binance: '币安广场', facebook: 'Facebook', reddit: 'Reddit', instagram: 'Instagram',
+};
 
 export interface BinancePostTaskOptions {
   platform: string;                 // 目前 binance
@@ -155,14 +159,14 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
       label: accountBadgeLabel(acc),
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
-    // 发帖在币安广场 —— 先导航币安广场首页校验登录态(对齐 feedback_matrix_task_login_precheck)。
+    // 先导航到本平台首页校验登录态(对齐 feedback_matrix_task_login_precheck)。
     await kernelNavigate(accountId, BINANCE_LOGIN_HOME[opts.platform] || BINANCE_LOGIN_HOME.binance);
     await sleep(2500);
     let loggedIn = true;
     try { loggedIn = await checkKernelLogin(accountId, platformKey(acc)); } catch { loggedIn = true; }
     if (!loggedIn) {
       setAccountStatus(accountId, 'login_required');
-      log('⚠️ 币安登录态失效/未关联,弹窗扫码重连(其它号照跑)');
+      log(`⚠️ ${PLATFORM_LABEL[opts.platform] || opts.platform}登录态失效/未关联,弹窗扫码重连(其它号照跑)`);
       if (!opts.signal?.aborted) { try { await promptReloginForExpiredAccount(accountId); } catch { /* ignore */ } }
       return { accountId, state: 'skipped', reason: 'login_expired' };
     }
