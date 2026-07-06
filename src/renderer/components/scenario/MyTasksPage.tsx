@@ -542,7 +542,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (isLinkRewriteTwitter) return i18nService.t('subManualTweet');
                 if (isXhsLinkMode) return i18nService.t('subManualXhs');
                 if (track) return track.name_zh;
-                return scenario?.name_zh || task.scenario_id;
+                // scenario 快照常缺发帖类新平台(facebook_post/reddit_post/instagram_post 等)→ 落 scenario_id
+                // 会显示原始英文 id(用户实拍「facebook_post」)。改用已翻译的类型徽章名兜底,任何 UI 语言都可读。
+                return scenario?.name_zh || i18nService.t(typeLabel.k);
               })();
               const subIcon = track?.icon || (isVideoDownload ? '⬇️' : (isXhsLinkMode || isLinkRewriteTwitter ? '🔗' : scenario?.icon || '🔥'));
               const personaSnippet = (task.persona || '').trim().split('\n')[0].slice(0, 80);
