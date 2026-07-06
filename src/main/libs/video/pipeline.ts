@@ -2222,9 +2222,14 @@ async function runVideoPipeline(
         keywords: userText ? undefined : input.keywords,
         track: userText ? undefined : input.track,
         lang: contentLang,
-        // 热搜成片:发布标题直接用热搜原标题(userTitle 优先、AI 不覆盖);正文/标签仍 AI 生成。
-        //   用户在向导自填了 publishTitle 则更优先。
-        userTitle: input.publishTitle || (input.engine === 'hotspot' ? hotspotTopic?.title : undefined),
+        // 热搜成片:发布标题默认用热搜原标题(userTitle 优先、AI 不覆盖);正文/标签仍 AI 生成。
+        //   ⚠️ 但热搜原标题是中文,当创作语言选了外语(「中文热点讲给海外看」出海玩法)时,再用
+        //   中文标题就自相矛盾 → 只有创作语言是中文(zh/zh-TW,含 auto 检测到中文热点)时才用原标题;
+        //   选了外语则不塞 userTitle,让 AI 按目标语言生成钩人标题。用户在向导自填 publishTitle 最优先。
+        userTitle: input.publishTitle
+          || (input.engine === 'hotspot' && (contentLang === 'zh' || contentLang === 'zh-TW')
+            ? hotspotTopic?.title
+            : undefined),
         userCaption: input.publishCaption,
         userTags: input.hashtags,
         onLog: (m: string) => tracker.progress(m),
