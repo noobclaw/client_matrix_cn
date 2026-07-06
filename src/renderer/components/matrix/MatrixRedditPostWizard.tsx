@@ -89,10 +89,12 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const selSource = SOURCE_OPTIONS.find((s) => s.id === sourceId) || SOURCE_OPTIONS[0];
-  const subOk = /^[A-Za-z0-9_]{2,21}$/.test(subreddit.trim());
+  // subreddit 选填(2026-07-06 用户要求):留空 = 发到账号自己的个人主页(u_用户名,无版块门槛);填了才校验格式。
+  const subTrim = subreddit.trim();
+  const subOk = subTrim === '' || /^[A-Za-z0-9_]{2,21}$/.test(subTrim);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selectedIds.length > 0, reason: T('请至少选择一个账号', 'Select at least one account') },
-    2: { ok: subOk, reason: T('请填写有效的 subreddit(2-21 位字母数字下划线,不带 r/)', 'Enter a valid subreddit (2-21 chars, no r/)') },
+    2: { ok: subOk, reason: T('subreddit 格式不对(2-21 位字母数字下划线,不带 r/;留空=发自己主页)', 'Invalid subreddit (2-21 chars, no r/; empty = own profile)') },
     3: { ok: allTermsAccepted, reason: T('请勾选同意条款', 'Please accept the terms') },
   };
 
@@ -104,11 +106,11 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || T(`Reddit 发帖 · r/${subreddit}`, `Reddit Post · r/${subreddit}`),
+        name: initialTask?.name || T(`Reddit 发帖 · ${subTrim ? `r/${subTrim}` : '个人主页'}`, `Reddit Post · ${subTrim ? `r/${subTrim}` : 'Profile'}`),
         accountIds: selectedIds, concurrency: selectedIds.length, frequency: runInterval,
         language, autoPublish,
         sourceKind: selSource.kind, source: selSource.source, catKey: selSource.catKey,
-        subreddit: subreddit.trim(),
+        subreddit: subTrim,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || T('保存失败', 'Save failed'));
@@ -182,12 +184,12 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {step === 2 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('目标 subreddit', 'Target subreddit')}<span className="text-red-500 ml-0.5">*</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('目标 subreddit', 'Target subreddit')}<span className="text-xs text-gray-400 font-normal ml-1">{T('选填,留空发自己主页', 'optional; empty = own profile')}</span></label>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400 text-sm">r/</span>
                 <input value={subreddit} onChange={(e) => setSubreddit(e.target.value.replace(/^\/?r\//i, '').trim())} placeholder={T('例如 technology', 'e.g. technology')} className={`flex-1 px-3 py-2 rounded-lg text-sm bg-white dark:bg-gray-800 border ${subreddit && !subOk ? 'border-red-500' : 'border-gray-300 dark:border-gray-700'} dark:text-white focus:outline-none focus:border-orange-500`} />
               </div>
-              <div className="text-[11px] text-gray-400 mt-1">{T('发到这个 subreddit;账号需满足该版发帖门槛(karma / 账号年龄 / 需先加入)。', 'Posts here; your account must meet the subreddit posting rules (karma / age / must join first).')}</div>
+              <div className="text-[11px] text-gray-400 mt-1">{T('填了发到该版块(账号需满足其发帖门槛 karma/账号年龄/需先加入);留空发到账号自己的个人主页(u/用户名),无门槛但曝光主要来自粉丝。', "If set, posts to that subreddit (account must meet its rules); if empty, posts to the account's own profile (no gate, reach is mostly followers).")}</div>
             </div>
 
             <div>
@@ -227,7 +229,7 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">{T('确认', 'Summary')}</div>
               <SummaryRow label={T('账号', 'Accounts')} value={T(`${selectedIds.length} 个`, `${selectedIds.length}`)} />
-              <SummaryRow label={'subreddit'} value={`r/${subreddit}`} />
+              <SummaryRow label={'subreddit'} value={subTrim ? `r/${subTrim}` : T('个人主页', 'Own profile')} />
               <SummaryRow label={T('数据源', 'Source')} value={isZh ? selSource.zh : selSource.en} />
               <SummaryRow label={T('语言', 'Language')} value={langLabel(language)} />
               <SummaryRow label={T('发布', 'Publish')} value={autoPublish ? T('自动发布', 'Auto') : T('仅生成', 'Draft')} />

@@ -968,7 +968,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         {task.scenario_id === 'reddit_post' && (
                           <div className="text-xs text-gray-600 dark:text-gray-300">
                             <span className="text-gray-500">{isZh ? '目标版块' : 'Subreddit'}:</span>{' '}
-                            {sub ? `r/${sub}` : <span className="text-amber-500">{isZh ? '未设置' : 'Not set'}</span>}
+                            {sub ? `r/${sub}` : (isZh ? '个人主页' : 'Own profile')}
                           </div>
                         )}
                         <div className="text-xs text-gray-600 dark:text-gray-300">

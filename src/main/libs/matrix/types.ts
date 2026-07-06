@@ -167,7 +167,7 @@ export interface RedditPostConfig {
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
-  subreddit: string;                        // 目标 subreddit(必填,不带 r/ 前缀也行)
+  subreddit: string;                        // 目标 subreddit(选填,不带 r/ 前缀也行;空 = 发到账号自己的个人主页 u_用户名)
 }
 
 /**
