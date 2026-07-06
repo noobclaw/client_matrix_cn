@@ -2055,9 +2055,10 @@ const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: st
   { id: 'instagram', zh: 'Instagram', en: 'Instagram',  emoji: '📷' },
   { id: 'facebook',  zh: 'Facebook', en: 'Facebook',    emoji: '👥' },
 ];
-// 新建任务默认勾选的平台(用户要求):抖音/小红书/快手/视频号/头条号/B站;币安/推特/TikTok 默认不勾。
-// 四个视频任务(ai/stock/hotspot/template)新建时都默认「发布到平台」+ 勾这 6 个;编辑老任务仍恢复保存值。
-const DEFAULT_PUBLISH_PLATFORMS: Platform[] = ['douyin', 'xhs', 'kuaishou', 'shipinhao', 'toutiao', 'bilibili'];
+// 新建任务默认勾选【所有】发布平台(用户要求 2026-07-06):国内 6 家 + 币安/推特/TikTok/YouTube/IG/FB 全默认勾。
+// 四个视频任务(ai/stock/hotspot/template)新建都默认「发布到平台」+ 勾全部;没登录/没号的平台发布时自动跳过、
+// 不影响其它。编辑老任务仍恢复保存值。用 map 动态取全集 —— 以后 PUBLISH_PLATFORMS 加平台会自动含进默认。
+const DEFAULT_PUBLISH_PLATFORMS: Platform[] = PUBLISH_PLATFORMS.map((p) => p.id);
 
 const SCRIPT_MAX = 800;
 // 严格模式:视频文案逐字朗读,直接决定时长 → 必填且不少于此字数。
