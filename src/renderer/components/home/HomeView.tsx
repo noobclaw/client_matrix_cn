@@ -6,6 +6,7 @@ import ComposeIcon from '../icons/ComposeIcon';
 import TickerMarquee from '../cowork/TickerMarquee';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { WalletBadge } from '../common/WalletBadge';
+import { HIDE_WEB3 } from '../../buildFlags';
 
 export interface HomeViewProps {
   isSidebarCollapsed?: boolean;
@@ -147,7 +148,8 @@ const HomeView: React.FC<HomeViewProps> = ({
                 ['📰', i18nService.t('hvPlatformToutiao')],
                 ['🎵', 'TikTok'],
                 ['▶️', 'YouTube'],
-                ['🔶', i18nService.t('hvPlatformBinance')],
+                // 国内版隐藏「币安广场」平台标签(HIDE_WEB3)
+                ...(HIDE_WEB3 ? [] : [['🔶', i18nService.t('hvPlatformBinance')]]),
               ].map(([icon, label]) => (
                 <span
                   key={label}
