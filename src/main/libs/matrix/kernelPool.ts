@@ -984,12 +984,14 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
     const s = await getPage(accountId);
     let cookies: any[] = [];
     try { const r = await send(s, 'Network.getAllCookies', {}); cookies = r?.cookies || []; } catch { /* fallback below */ }
-    if (!cookies.length) { const r2 = await send(s, 'Network.getCookies', {}); cookies = r2?.cookies || []; }
+    if (!cookies.length) { try { const r2 = await send(s, 'Network.getCookies', {}); cookies = r2?.cookies || []; } catch { /* keep empty — see guard below */ } }
     const names = new Set<string>(cookies.map((c: any) => String(c.name)));
     const need = LOGIN_COOKIES[platform] || [];
     // ① cookie 快筛(binance 例外:重 WAF、session cookie 名多变,登录着也常没 logined/p20t → 硬卡会误判过期。
     //    币安改成【不卡 cookie,交给下面 DOM/localStorage 正向判据】,绝不因 cookie 名对不上误杀好号)。
-    if (platform !== 'binance' && !need.some((n) => names.has(n))) return false;
+    // ⚠️ cookies 读【空】≠ 没登录:CDP 抖动/页面未附着时 getAllCookies/getCookies 都可能空手而归,
+    //    此时跳过快筛、交给 ②/③ 正向判据兜——把「读失败」当「未登录」正是批量误标过期的元凶之一。
+    if (platform !== 'binance' && cookies.length > 0 && !need.some((n) => names.has(n))) return false;
     // ② 活体判定:对齐成熟开源 social-auto-upload(导航到创作/上传页 → 检测登录墙标记)。
     //   【铁律:只在检到「明确未登录」证据(登录墙文字/元素、或接口明说未登录)时才判未登录;否则一律 "?" 交回 ③/cookie
     //    → 绝不把登录着的好号误判过期】。有官方 isLogin 接口的(小红书/B站)用接口最准;其余用 social-auto-upload 的 DOM 标记。

@@ -42,14 +42,20 @@ export async function runKeepAliveSweep(): Promise<void> {
   try {
     const now = Date.now();
     const due = listAccounts().filter((a) =>
-      a.status === 'idle'
-      && !getSession(a.id)                                  // 没有活跃内核会话 = 当前没在被用
-      && (now - (a.lastAliveAt || 0)) > ALIVE_THRESHOLD_MS, // 超 3 天没活跃
+      !getSession(a.id)                                     // 没有活跃内核会话 = 当前没在被用
+      && (
+        // idle 且超 3 天没活跃 → 常规保活续期
+        (a.status === 'idle' && (now - (a.lastAliveAt || 0)) > ALIVE_THRESHOLD_MS)
+        // login_required → 每轮都复验(误标自愈)。runner 预检单次误判(慢代理/导航失败/CDP 抖动)
+        // 标红后,原来没有任何机制再查一遍 → 好号永久红(用户实测「好多号显示过期、点开却登录着」)。
+        // 复验成功走 markAccountAlive → login_required 翻回 idle;真过期的复验仍失败,保持红,无副作用。
+        || a.status === 'login_required'
+      ),
     );
     for (const acc of due) {
       // 串行期间状态/占用可能变 → 临用前再确认一次。
       const cur = getAccount(acc.id);
-      if (!cur || cur.status !== 'idle' || getSession(acc.id)) continue;
+      if (!cur || (cur.status !== 'idle' && cur.status !== 'login_required') || getSession(acc.id)) continue;
       await keepAliveOne(acc.id);
       await sleep(8000 + Math.floor(Math.random() * 7000)); // 抖动 8~15s,别形成机器人式规律
     }

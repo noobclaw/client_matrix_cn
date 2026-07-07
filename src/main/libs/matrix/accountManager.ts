@@ -174,6 +174,10 @@ export function markAccountAlive(id: string): void {
   if (!a) return;
   a.lastAliveAt = Date.now();
   persist();
+  // 刚确认登录有效 → 若此前被【瞬时误判】标成 login_required(页面没加载完/慢代理/WAF 挑战等),翻回 idle,
+  // 别让红「过期」一直挂到手动重连。之前 keepAlive 复验成功只更 lastAliveAt 不清状态 → 好号一旦被误标就永久红,
+  // 用户实测「好多号显示过期、点开却登录着」。只翻 login_required 这一种,不动 running/banned/limited。
+  if (a.status === 'login_required') setAccountStatus(id, 'idle');
 }
 
 // ── 本机出口 IP(无代理号的真实公网出口)──

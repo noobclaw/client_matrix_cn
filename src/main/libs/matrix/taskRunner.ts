@@ -62,12 +62,17 @@ export interface MatrixTaskReport {
 
 /** 发前登录检查:导航创作者中心 → 统一活体校验 checkKernelLogin(cookie 快筛 + 接口/跳转,见 kernelPool)。 */
 async function checkLogin(accountId: string, platform: string, anchor: string): Promise<boolean> {
+  // 导航失败(慢代理/内核繁忙)≠ 未登录 —— 继续在当前页做活体判定;判定本身抛异常同样不判过期
+  // (铁律:只有明确证据才标 login_required;真没登录的话 driver 发布时还会撞登录墙,届时再标不迟)。
+  // 之前 navigate 一抖就 return false → 好号被标过期 + 弹二维码窗,正是「好多号显示过期、点开却登录着」的来源之一。
   try {
     await kernelNavigate(accountId, anchor);
     await sleep(2000);
+  } catch { /* ignore — 用当前页继续判定 */ }
+  try {
     return await checkKernelLogin(accountId, platform);
   } catch {
-    return false;
+    return true;
   }
 }
 
