@@ -228,6 +228,37 @@ class NoobClawAuthService {
     this.notify();
   }
 
+  // ── Password-account auth (username/email + password) ──
+  // Native in-app login that bypasses the website + Web3Auth entirely: one
+  // POST to the backend, then the exact same post-auth path as the deep link
+  // (setAuthFromWebsite). walletAddress in the response is the account's
+  // 19-digit numeric UID; the username rides in the socialEmail slot so every
+  // existing "provenance under the address" UI renders it without changes.
+  async passwordAuth(
+    kind: 'login' | 'register',
+    body: Record<string, string>,
+  ): Promise<{ ok: boolean; message?: string }> {
+    try {
+      let mac = '';
+      try { mac = (await window.electron?.noobclaw?.getMacAddress()) || ''; } catch { /* ignore */ }
+      const payload: Record<string, string> = { ...body };
+      if (mac) payload.macAddress = mac;
+      const res = await fetch(`${this.backendUrl}/api/auth/${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok || !data.token || !data.walletAddress) {
+        return { ok: false, message: (data && (data.message || data.error)) || `HTTP ${res.status}` };
+      }
+      this.setAuthFromWebsite(data.token, data.walletAddress, data.username || body.username || body.account || '', 'password');
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : 'network error' };
+    }
+  }
+
   // Report device MAC address to backend
   private async reportDeviceInfo(token: string) {
     try {

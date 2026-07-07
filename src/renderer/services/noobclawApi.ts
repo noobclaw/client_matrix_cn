@@ -254,6 +254,21 @@ class NoobClawApiService {
     }
   }
 
+  /** 绑定/更新链上收款钱包(payout_wallet)。账密账号绑定后 USDT 佣金/平台代币
+   *  的历史待发会在下一个批次自动补发;钱包账号也可改(收款与登录钱包解耦)。 */
+  async setPayoutWallet(wallet: string): Promise<{ success?: boolean; payoutWallet?: string; error?: string } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/payout-wallet`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      });
+      return res.json();
+    } catch {
+      return null;
+    }
+  }
+
   /** 原子化核销卡密,成功后积分秒到账。 */
   async redeemCode(code: string): Promise<{ ok?: boolean; credits?: number; face_value_rmb?: number; balance_after?: number; product_type?: string; plan_code?: string; plan_period?: string; error?: string; message?: string } | null> {
     try {

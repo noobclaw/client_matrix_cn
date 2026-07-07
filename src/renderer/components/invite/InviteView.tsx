@@ -630,7 +630,12 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 {authState.avatarUrl
                   ? <img src={authState.avatarUrl} alt="" className="w-full h-full object-cover" />
                   : <span className="text-white text-sm font-bold">
-                      {(authState.walletAddress || '').slice(2, 4).toUpperCase()}
+                      {/* Password accounts: walletAddress is a numeric UID (no 0x),
+                          prefer the username initials, else strip the 0x prefix. */}
+                      {((authState.socialProvider === 'password' && authState.socialEmail)
+                        ? authState.socialEmail
+                        : (authState.walletAddress || '').replace(/^0x/, '')
+                      ).slice(0, 2).toUpperCase()}
                     </span>}
               </div>
               {/* main col */}

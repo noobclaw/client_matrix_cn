@@ -27,6 +27,50 @@ interface WalletViewProps {
 
 const ORDER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
+// 账密账号:绑定链上收款钱包(users.payout_wallet)。未绑定时 USDT 佣金 /
+// 平台代币只挂账不发放(留在待发),绑定后下一个发放批次自动补发历史累计。
+// 钱包登录的账号不渲染这块 —— 他们的 payout 已在迁移时自动等于登录地址。
+// 国内版 HIDE_WEB3 下整块隐藏(CN 佣金走 CNY 提现,与链上钱包无关)。
+const PayoutWalletRow: React.FC<{ current: string | null; onSaved?: (wallet: string) => void }> = ({ current, onSaved }) => {
+  const [value, setValue] = useState(current || '');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => { setValue(current || ''); }, [current]);
+  const save = async () => {
+    const v = value.trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(v)) { setMsg({ ok: false, text: i18nService.t('payoutWalletInvalid') }); return; }
+    setSaving(true); setMsg(null);
+    const res = await noobClawApi.setPayoutWallet(v);
+    setSaving(false);
+    if (res && res.success) {
+      setMsg({ ok: true, text: i18nService.t('payoutWalletSaved') });
+      // Sync the parent's profile state + localStorage cache so re-entering
+      // the page doesn't briefly show the pre-save value from readCachedProfile.
+      onSaved?.(v);
+    } else {
+      setMsg({ ok: false, text: (res && (res as any).error) || i18nService.t('pwErrGeneric') });
+    }
+  };
+  return (
+    <div className="mt-2 p-2.5 rounded-lg border dark:border-claude-darkBorder border-claude-border">
+      <div className="text-xs font-medium dark:text-claude-darkText text-claude-text mb-1">{i18nService.t('payoutWalletTitle')}</div>
+      <div className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-2">{i18nService.t('payoutWalletDesc')}</div>
+      <div className="flex items-center gap-2">
+        <input
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          placeholder="0x..."
+          className="flex-1 px-2 py-1.5 rounded-md text-xs font-mono dark:bg-white/5 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 focus:outline-none focus:border-green-500/50"
+        />
+        <button onClick={save} disabled={saving} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-60">
+          {i18nService.t('save')}
+        </button>
+      </div>
+      {msg && <p className={`text-[11px] mt-1 ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>}
+    </div>
+  );
+};
+
 function formatCountdown(ms: number): string {
   if (ms <= 0) return '0:00:00';
   const totalSec = Math.floor(ms / 1000);
@@ -1455,7 +1499,14 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   <img src={authState.avatarUrl} alt="" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-                    <span className="text-white text-lg font-bold">{walletAddr.slice(2, 4).toUpperCase()}</span>
+                    {/* Password accounts: walletAddr is a numeric UID (no 0x prefix),
+                        so slice(2,4) would show arbitrary digits — prefer the
+                        username's first letters, else strip the 0x. */}
+                    <span className="text-white text-lg font-bold">{(
+                      (authState.socialProvider === 'password' && authState.socialEmail)
+                        ? authState.socialEmail
+                        : walletAddr.replace(/^0x/, '')
+                    ).slice(0, 2).toUpperCase()}</span>
                   </div>
                 )}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -1537,6 +1588,18 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
                   <span className="truncate">{authState.socialEmail}</span>
                 </div>
+              )}
+              {/* 账密账号:绑定收款钱包(profile 由 /api/user/profile 带回
+                  account_type / payout_wallet 两个新字段)。CN 版 HIDE_WEB3 隐藏。 */}
+              {!HIDE_WEB3 && (profile as any)?.account_type === 'password' && (
+                <PayoutWalletRow
+                  current={((profile as any)?.payout_wallet as string) || null}
+                  onSaved={(w) => {
+                    const next = { ...(profile as any), payout_wallet: w };
+                    setProfile(next);
+                    if (authState.walletAddress) writeCachedProfile(authState.walletAddress, next);
+                  }}
+                />
               )}
               {avatarError && <p className="text-xs text-red-400 mt-1">{avatarError}</p>}
             </div>

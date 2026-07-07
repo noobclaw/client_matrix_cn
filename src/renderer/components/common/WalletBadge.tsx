@@ -82,7 +82,11 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
       {!HIDE_WEB3 && <img src="bsc.svg" alt="BSC" className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} />}
       {!compact && (
         <span className={`${txt} font-mono dark:text-claude-darkText text-claude-text`}>
-          {formatAddr(authState.walletAddress)}
+          {/* Password accounts: walletAddress is a numeric UID — show the
+              username (carried in socialEmail) instead of truncated digits. */}
+          {authState.socialProvider === 'password' && authState.socialEmail
+            ? authState.socialEmail
+            : formatAddr(authState.walletAddress)}
         </span>
       )}
 
