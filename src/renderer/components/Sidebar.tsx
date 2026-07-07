@@ -178,7 +178,10 @@ const Sidebar: React.FC<SidebarProps> = ({
             <img src="logo.png" alt="logo" className="w-6 h-6 rounded-lg" />
             <div className="flex flex-col justify-center leading-none gap-0.5">
               <span className="font-bold text-sm dark:text-claude-darkText text-claude-text tracking-wide whitespace-nowrap">{i18nService.t('appBrand')}</span>
-              {null}
+              {/* 国内版品牌第二行小字「中文版」(HIDE_WEB3);之前被留成 {null} 漏掉了 */}
+              {HIDE_WEB3 && (
+                <span className="text-[10px] font-medium leading-none dark:text-claude-darkTextSecondary text-claude-textSecondary tracking-wide whitespace-nowrap">中文版</span>
+              )}
             </div>
             {updateBadge}
           </div>
