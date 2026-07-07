@@ -32,7 +32,7 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
     if (tab === 'login') {
       if (!account.trim() || !password) { setErr(t('pwErrRequired')); return; }
     } else {
-      if (!/^[a-z0-9_]{4,20}$/.test(username.trim().toLowerCase())) { setErr(t('pwErrUsername')); return; }
+      if (!/^[a-z0-9_]{4,32}$/.test(username.trim().toLowerCase())) { setErr(t('pwErrUsername')); return; }
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErr(t('pwErrEmail')); return; }
       if (password.length < 8) { setErr(t('pwErrPassword')); return; }
       if (password !== confirm) { setErr(t('pwErrMismatch')); return; }
@@ -109,20 +109,20 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
         {tab === 'login' ? (
           <div className="text-left">
             <input className={inputCls} value={account} onChange={e => setAccount(e.target.value)} onKeyDown={onEnter}
-              placeholder={t('pwAccountLabel')} autoComplete="username" />
+              placeholder={t('pwAccountLabel')} autoComplete="username" maxLength={255} required />
             <input className={inputCls} type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={onEnter}
-              placeholder={t('pwPasswordLabel')} autoComplete="current-password" />
+              placeholder={t('pwPasswordLabel')} autoComplete="current-password" maxLength={72} required />
           </div>
         ) : (
           <div className="text-left">
             <input className={inputCls} value={username} onChange={e => setUsername(e.target.value)}
-              placeholder={t('pwUsernameLabel')} autoComplete="username" />
+              placeholder={t('pwUsernameLabel')} autoComplete="username" maxLength={32} required />
             <input className={inputCls} type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder={t('pwEmailLabel')} autoComplete="email" />
+              placeholder={t('pwEmailLabel')} autoComplete="email" maxLength={255} required />
             <input className={inputCls} type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder={t('pwPasswordNewLabel')} autoComplete="new-password" />
+              placeholder={t('pwPasswordNewLabel')} autoComplete="new-password" maxLength={72} required />
             <input className={inputCls} type="password" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={onEnter}
-              placeholder={t('pwConfirmLabel')} autoComplete="new-password" />
+              placeholder={t('pwConfirmLabel')} autoComplete="new-password" maxLength={72} required />
           </div>
         )}
 
