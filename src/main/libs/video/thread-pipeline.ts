@@ -29,7 +29,7 @@ import {
 import { getVideoConfig, type VideoPipelineConfig } from './videoConfig';
 import { resolveHeadlessBrowser } from './htmlVideoRenderer';
 import {
-  ThreadSession, pickRedditPost, fetchRedditComments, captureThreadCards,
+  ThreadSession, pickRedditPost, fetchRedditComments, captureThreadCards, waitForRedditReady,
   type RedditPost, type RedditComment,
 } from './threadProvider';
 import { synthesize, getVoiceFallbacks, getLastTtsError } from './tts';
@@ -357,6 +357,9 @@ export async function runThreadPipeline(
     tracker.progress(`🌐 启动无头浏览器连 Reddit(需要 VPN/代理可达)…`);
     await session.launch(W, H);
     await session.goto('https://www.reddit.com/', 2000);
+    // 等 JS challenge 自动过、shreddit 真正挂载(用户机器上验证页可能要跑几秒;
+    // 没就绪也继续 —— 选帖有页面 DOM 兜底,日志里能看出卡在哪)。
+    await waitForRedditReady(session, (m) => tracker.progress(m));
     const usedIds = getUsedHotspots(input.taskId || '');
     const post = await pickRedditPost(session, {
       subreddits,
@@ -371,7 +374,7 @@ export async function runThreadPipeline(
     }
     tracker.progress(`📌 选中 r/${post.subreddit}「${post.title.slice(0, 80)}」· 👍${post.score} · 💬${post.numComments}`);
     throwIfAborted(signal);
-    const rawComments = await fetchRedditComments(session, post, 24);
+    const rawComments = await fetchRedditComments(session, post, 24, (m) => tracker.progress(m));
     if (rawComments.length < 2) {
       const err = '爆帖成片:该帖拉不到足够的可用评论(过滤后 <2 条),请重试换一帖';
       tracker.fail('pick', err);

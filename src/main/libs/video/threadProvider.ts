@@ -211,8 +211,33 @@ export class ThreadSession {
 
 // ── 选帖 ─────────────────────────────────────────────────────────────────
 
-/** 页面上下文 fetch 某 subreddit 的 hot.json(须先 goto reddit.com 使 same-origin)。 */
-async function fetchSubredditHot(session: ThreadSession, subreddit: string): Promise<RedditPost[]> {
+/**
+ * 等 Reddit 真正就绪:goto 后页面可能还停在 JS challenge(「Please wait for verification」,
+ * 自动提交后才跳真页)。轮询到 25s:标题不再是挑战页 + shreddit 应用挂载 = 就绪。
+ * 不就绪也不抛(返回 false),让后续抓取带着诊断继续 —— 用户日志能看出卡在哪一环。
+ */
+export async function waitForRedditReady(session: ThreadSession, onLog?: (m: string) => void): Promise<boolean> {
+  const deadline = Date.now() + 25_000;
+  let lastTitle = '';
+  while (Date.now() < deadline) {
+    try {
+      const st = await session.evalJson<{ title: string; app: boolean }>(
+        `({ title: String(document.title || ''), app: !!document.querySelector('shreddit-app, faceplate-app, [id^="AppRouter"]') })`);
+      lastTitle = st?.title || '';
+      const challenged = /verification|just a moment|attention required|access denied|blocked/i.test(lastTitle);
+      if (!challenged && (st?.app || /reddit/i.test(lastTitle))) {
+        onLog?.(`🌐 Reddit 已连上(${lastTitle.slice(0, 40)})`);
+        return true;
+      }
+    } catch { /* 页面导航中 eval 会瞬时失败,继续等 */ }
+    await sleep(1000);
+  }
+  onLog?.(`⚠️ Reddit 页面 25s 未就绪(当前标题:「${lastTitle.slice(0, 60) || '空白'}」)。大概率是 VPN/代理没接管无头浏览器 —— 请确认 VPN 开启且为全局/TUN 或系统代理模式,然后重跑。`);
+  return false;
+}
+
+/** 页面上下文 fetch 某 subreddit 的 hot.json(须先 goto reddit.com 使 same-origin)。失败带原因返回。 */
+async function fetchSubredditHot(session: ThreadSession, subreddit: string): Promise<{ posts: RedditPost[]; err?: string }> {
   const expr = `fetch('https://www.reddit.com/r/${encodeURIComponent(subreddit)}/hot.json?limit=25&raw_json=1', {credentials:'omit'})
     .then(r => r.ok ? r.json() : Promise.reject(new Error('http '+r.status)))
     .then(j => (j && j.data && Array.isArray(j.data.children) ? j.data.children : [])
@@ -226,9 +251,38 @@ async function fetchSubredditHot(session: ThreadSession, subreddit: string): Pro
       })))`;
   try {
     const posts = await session.evalJson<RedditPost[]>(expr);
-    return Array.isArray(posts) ? posts : [];
-  } catch {
-    return [];
+    return { posts: Array.isArray(posts) ? posts : [] };
+  } catch (e) {
+    return { posts: [], err: String((e as Error)?.message || e) };
+  }
+}
+
+/**
+ * DOM 兜底:.json 被封/挑战没过时,直接开 r/<sub>/hot/ 页面读 <shreddit-post> 元素属性。
+ * 页面能渲染就一定有这些属性(shreddit 列表页每帖一个 custom element,属性含
+ * id/post-title/score/comment-count/permalink)。selftext 拿不到(过滤屏蔽词时只看标题)。
+ */
+async function fetchSubredditHotViaDom(session: ThreadSession, subreddit: string): Promise<{ posts: RedditPost[]; err?: string }> {
+  try {
+    await session.goto(`https://www.reddit.com/r/${encodeURIComponent(subreddit)}/hot/`, 3000);
+    const posts = await session.evalJson<RedditPost[]>(`(function(){
+      return Array.from(document.querySelectorAll('shreddit-post')).slice(0, 25).map(function(el){
+        return {
+          id: String(el.getAttribute('id') || '').replace(/^t3_/, ''),
+          subreddit: ${JSON.stringify(subreddit)},
+          title: String(el.getAttribute('post-title') || ''),
+          selftext: '',
+          author: String(el.getAttribute('author') || ''),
+          score: Number(el.getAttribute('score')) || 0,
+          numComments: Number(el.getAttribute('comment-count')) || 0,
+          permalink: String(el.getAttribute('permalink') || ''),
+          over18: el.hasAttribute('nsfw'),
+        };
+      }).filter(function(p){ return p.id && p.title && p.permalink; });
+    })()`);
+    return { posts: Array.isArray(posts) ? posts : [] };
+  } catch (e) {
+    return { posts: [], err: String((e as Error)?.message || e) };
   }
 }
 
@@ -254,8 +308,17 @@ export async function pickRedditPost(session: ThreadSession, opts: PickPostOptio
 
   const pool: RedditPost[] = [];
   for (const sub of opts.subreddits) {
-    const posts = await fetchSubredditHot(session, sub);
-    opts.onLog?.(`📥 r/${sub} 拉到 ${posts.length} 条热帖`);
+    // 先 .json(快、字段全);拉不到 → 带原因日志 + DOM 兜底(页面能开就能读)。
+    const viaJson = await fetchSubredditHot(session, sub);
+    let posts = viaJson.posts;
+    if (posts.length === 0) {
+      opts.onLog?.(`📥 r/${sub} 接口拉到 0 条${viaJson.err ? `(原因:${viaJson.err.slice(0, 90)})` : ''},改从页面读取…`);
+      const viaDom = await fetchSubredditHotViaDom(session, sub);
+      posts = viaDom.posts;
+      opts.onLog?.(`📥 r/${sub} 页面读取 ${posts.length} 条热帖${viaDom.err ? `(${viaDom.err.slice(0, 70)})` : ''}`);
+    } else {
+      opts.onLog?.(`📥 r/${sub} 拉到 ${posts.length} 条热帖`);
+    }
     pool.push(...posts);
     await sleep(600); // 温和限速,别像爬虫
   }
@@ -291,6 +354,7 @@ export async function fetchRedditComments(
   session: ThreadSession,
   post: RedditPost,
   want: number,
+  onLog?: (m: string) => void,
 ): Promise<RedditComment[]> {
   const expr = `fetch('https://www.reddit.com${post.permalink.replace(/'/g, '')}.json?sort=top&limit=80&raw_json=1', {credentials:'omit'})
     .then(r => r.ok ? r.json() : Promise.reject(new Error('http '+r.status)))
@@ -306,10 +370,16 @@ export async function fetchRedditComments(
   let raw: RedditComment[] = [];
   try {
     raw = await session.evalJson<RedditComment[]>(expr);
-  } catch {
-    return [];
+  } catch (e) {
+    onLog?.(`📥 评论接口失败(${String((e as Error)?.message || e).slice(0, 80)}),改从帖子页读取…`);
+    raw = await fetchRedditCommentsViaDom(session, post, onLog);
   }
   if (!Array.isArray(raw)) return [];
+  return filterComments(raw, want);
+}
+
+/** 评论过滤(json/DOM 两条路共用):剔坏项、剥 URL、长度 10~500。 */
+function filterComments(raw: RedditComment[], want: number): RedditComment[] {
   const out: RedditComment[] = [];
   for (const c of raw) {
     if (!c.id || !c.author || c.author === '[deleted]') continue;
@@ -321,6 +391,28 @@ export async function fetchRedditComments(
     if (out.length >= want) break;
   }
   return out;
+}
+
+/** DOM 兜底:开帖子页读顶层 <shreddit-comment depth="0"> 的作者/赞数/正文。 */
+async function fetchRedditCommentsViaDom(session: ThreadSession, post: RedditPost, onLog?: (m: string) => void): Promise<RedditComment[]> {
+  try {
+    await session.goto(`https://www.reddit.com${post.permalink}?sort=top`, 3500);
+    const raw = await session.evalJson<RedditComment[]>(`(function(){
+      return Array.from(document.querySelectorAll('shreddit-comment[depth="0"]')).slice(0, 40).map(function(el){
+        const body = el.querySelector('div[slot="comment"]');
+        return {
+          id: String(el.getAttribute('thingid') || '').replace(/^t1_/, ''),
+          author: String(el.getAttribute('author') || ''),
+          body: body ? String(body.textContent || '').trim() : '',
+          score: Number(el.getAttribute('score')) || 0,
+        };
+      }).filter(function(c){ return c.id && c.body; });
+    })()`);
+    return Array.isArray(raw) ? raw : [];
+  } catch (e) {
+    onLog?.(`⚠️ 帖子页评论读取也失败(${String((e as Error)?.message || e).slice(0, 80)})`);
+    return [];
+  }
 }
 
 // ── 真截图 ───────────────────────────────────────────────────────────────
