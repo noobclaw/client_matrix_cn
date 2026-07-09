@@ -13,6 +13,7 @@
 import React from 'react';
 import { i18nService } from '../../services/i18n';
 import { useCountUp } from '../../hooks/useCountUp';
+import { profitSharePct } from '../../services/profitShare';
 
 interface PartnerInfo {
   is_partner: boolean;
@@ -92,7 +93,8 @@ const SPARK_POSITIONS = [
 
 export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
   const visual = (partner.tier && TIER_VISUAL[partner.tier]) || DEFAULT_VISUAL;
-  const animatedRate = useCountUp(partner.rate_pct);
+  // 展示「净利润分成」口径(profitSharePct 映射),实际计费费率 rate_pct 不变。
+  const animatedRate = useCountUp(profitSharePct(partner.rate_pct));
   const colorLight = shiftColor(visual.color, 60);
   const colorDark = shiftColor(visual.color, -60);
 

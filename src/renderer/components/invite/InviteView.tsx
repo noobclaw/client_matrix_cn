@@ -6,6 +6,7 @@ import { noobClawApi } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
 import { useCountUp } from '../../hooks/useCountUp';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
+import { profitSharePct } from '../../services/profitShare';
 import { buildInviteShareMessage } from '../../utils/shareMessage';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
@@ -799,10 +800,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                         💰 USDT {i18nService.t('ivUsdtRealCash')}
                       </div>
                       <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
-                        {/* Partner-aware rate: if the logged-in wallet is a partner,
-                            substitute their personal rate_pct for the default 10%. */}
+                        {/* Partner-aware rate,展示「净利润分成」口径(profitSharePct 映射,
+                            实际计费费率不变):非合伙人 50%,合伙人按档 60~95%。 */}
                         {(() => {
-                          const rate = profile?.partner?.is_partner ? profile.partner.rate_pct : 10;
+                          const rate = profitSharePct(profile?.partner?.is_partner ? profile.partner.rate_pct : null);
                           return i18nService.t('ivUsdtRebateDesc').replace('{rate}', String(rate));
                         })()}
                       </div>

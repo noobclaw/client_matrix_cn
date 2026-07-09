@@ -14,6 +14,7 @@
 import React from 'react';
 import { i18nService } from '../../services/i18n';
 import { getWebsiteUrl } from '../../services/endpoints';
+import { DEFAULT_PROFIT_SHARE_PCT } from '../../services/profitShare';
 
 interface PartnerApplyCardProps {
   /** v6.x: compact 模式 — InviteView 在 social-login 用户那边把这卡片缩成
@@ -23,10 +24,10 @@ interface PartnerApplyCardProps {
 }
 
 const PartnerApplyCard: React.FC<PartnerApplyCardProps> = ({ compact = false }) => {
-  // 默认返佣比例 10% — 跟 InviteView 其它地方的硬编码 default 保持一致;
-  // 真改值时一起搜 "10%" 改。Backend 那边 system_config.rebate_pool_pct 是
-  // 真值,这里只是展示卡片不参与实际计算。
-  const defaultRate = 10;
+  // 默认展示「净利润分成 50%」(profitShare.ts 的展示口径)。Backend 那边
+  // system_config.rebate_pool_pct(充值额的 10%)才是真值,这里只是展示卡片
+  // 不参与实际计算。
+  const defaultRate = DEFAULT_PROFIT_SHARE_PCT;
 
   const handleApply = () => {
     // 走外部浏览器。URL 用 ?page=partner-apply 查询串而不是 #page-partner-apply
