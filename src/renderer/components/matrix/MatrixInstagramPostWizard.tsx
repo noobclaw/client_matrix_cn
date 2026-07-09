@@ -31,6 +31,7 @@ export interface InstagramPostWizardSave {
   autoPublish: boolean;
   // 多选数据源(运行时每轮随机挑 1 个取题);旧单选字段同步写第一个选中源,兼容未更新的生产 orchestrator。
   sources: PostSourceSel[];
+  sourceTrackMatch: boolean;   // 仅账号赛道相关(默认开)
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
@@ -71,6 +72,7 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
   // 多选:新任务默认 Web3;老任务(单选字段)映射成单元素数组。
   const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(ip, 'web3'));
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(ip.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
   const [language, setLanguage] = useState<string>(ip.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(ip.autoPublish !== false);
 
@@ -101,6 +103,7 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
         frequency: runInterval,
         withImage: true, language, autoPublish,
         sources: selSources,
+        sourceTrackMatch,
         // 旧单选字段 = 第一个选中源(生产 orchestrator 未更新前照跑)。
         sourceKind: firstSource.kind,
         source: firstSource.source,
@@ -187,6 +190,10 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
                 ))}
               </div>
               <div className="text-[11px] text-gray-400 mt-1.5">{T('Web3=深度资讯(带摘要+原图);其余为热榜/分类标题当选题(海外源须英文号 + VPN)', 'Web3 = deep news (summary + image); others use trending titles as topics (overseas sources need EN account + VPN)')}</div>
+              <label className="flex items-start gap-2 mt-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="checkbox" checked={sourceTrackMatch} onChange={(e) => setSourceTrackMatch(e.target.checked)} className="mt-0.5 h-4 w-4 accent-pink-500 shrink-0" />
+                <span className="leading-relaxed">{T('仅选用与账号赛道相关的内容', 'Only topics matching each account’s niche')}<span className="text-gray-400 font-normal">{T('(每个号只从自己赛道的热点/资讯里取题;某轮无相关则按赛道自由创作)', ' (each account picks topics from its own niche; falls back to free creation when none match)')}</span></span>
+              </label>
             </div>
 
             <div>

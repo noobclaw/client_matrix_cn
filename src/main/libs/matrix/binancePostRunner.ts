@@ -23,6 +23,7 @@ import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
+import { trackIdFromGroup } from './trackPresets';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 import { getNoobClawAuthToken } from '../claudeSettings';
 import type { EngageItemResult, EngageReport } from './engageRunner';
@@ -194,6 +195,8 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
     // 多选数据源(新任务):orchestrator 每轮从 task.sources 随机挑 1 个;旧 orchestrator 忽略此字段,
     // 走上面的单选字段(向导已把第一个选中源写回单选字段兜底)。
     if (Array.isArray((cfg as any).sources) && (cfg as any).sources.length) task.sources = (cfg as any).sources;
+    // 「仅账号赛道相关」(默认开):FB/IG/Reddit 有数据源 → 传本号赛道 id,取材按 track 过滤;binance(无 sourceKind)/关开关则空。
+    if ((cfg as any).sourceKind && (cfg as any).sourceTrackMatch !== false) task.track_id = trackIdFromGroup(acc.group);
     if ((cfg as any).subreddit) task.subreddit = (cfg as any).subreddit; // reddit_post 目标 subreddit
 
     const onAiCost = (credits: number, usd: number) => {

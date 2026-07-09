@@ -108,6 +108,7 @@ export interface PostSourceSel {
 export interface ImageTextConfig {
   contentSource?: 'reference' | 'sources'; // 缺省 'reference'(老任务无此字段=老行为)
   sources?: PostSourceSel[];               // 仅 contentSource='sources':多选数据源
+  sourceTrackMatch?: boolean;              // 数据源模式:仅取账号赛道相关的选题(缺省 true)
   useRealPhotos: boolean;        // 配图方式【全局】:false=AI 生图,true=网络图(按账号关键词搜实景图)
   imageCount: number;            // 每篇配图张数 2-6
   dailyCount: number;            // 每号每轮生成几篇 1-50
@@ -139,6 +140,7 @@ export interface ViralRewriteConfig {
 export interface TweetPostConfig {
   mode: 'web3' | 'free';         // 内容来源:'web3'=数据源选题(历史字段名保留)/ 'free'=按账号身份自由创作
   sources?: PostSourceSel[];     // 数据源模式的多选源(每轮随机挑 1 个取题;老任务无此字段=仅 web3 资讯)
+  sourceTrackMatch?: boolean;    // 数据源模式:仅取账号赛道相关的选题(缺省 true)
   withImage: boolean;            // true=AI 生图配图,false=纯文字推
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   isBlueV: boolean;              // 蓝V(X Premium)→ 字数自由(三档随机);普通号 ≤140 字
@@ -169,6 +171,7 @@ export interface FacebookPostConfig {
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
   sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
+  sourceTrackMatch?: boolean;               // 仅取账号赛道相关的选题(缺省 true)
   sourceKind: 'news' | 'category' | 'hot';  // 数据源类型(旧单选字段=第一个选中源,兼容旧 orchestrator)
   source?: string;                          // hot 模式:热榜名(如 "微博热搜")
   catKey?: string;                          // category 模式:分类键(web3 / tech)
@@ -183,6 +186,7 @@ export interface RedditPostConfig {
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
   sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
+  sourceTrackMatch?: boolean;               // 仅取账号赛道相关的选题(缺省 true)
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
@@ -199,6 +203,7 @@ export interface InstagramPostConfig {
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
   sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
+  sourceTrackMatch?: boolean;               // 仅取账号赛道相关的选题(缺省 true)
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;

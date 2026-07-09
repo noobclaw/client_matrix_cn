@@ -22,6 +22,7 @@ import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
+import { trackIdFromGroup } from './trackPresets';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 import { getNoobClawAuthToken } from '../claudeSettings';
 import type { EngageItemResult, EngageReport } from './engageRunner';
@@ -168,11 +169,15 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
     // reference 取本号参考文案(仅 free 模式有意义,可空)。
     const ref = cfg.references?.[accountId];
     const accKeywords = Array.isArray(acc.keywords) ? acc.keywords.filter((k) => String(k || '').trim()) : [];
+    const useDataSources = cfg.mode !== 'free';
+    // 「仅账号赛道相关」(默认开):数据源模式下把本号赛道 id 传 orchestrator,取材按 track 过滤;空/关则不过滤。
+    const trackId = (useDataSources && cfg.sourceTrackMatch !== false) ? trackIdFromGroup(acc.group) : '';
     const task: any = {
       id: accountId,
       mode: cfg.mode === 'free' ? 'free' : 'web3',
       // 数据源模式的多选源(orchestrator 每轮随机挑 1 个取题;老任务无 sources=仅 web3 资讯,行为不变)。
       sources: Array.isArray(cfg.sources) ? cfg.sources : [],
+      track_id: trackId,
       with_image: !!cfg.withImage,
       language: cfg.language || 'mixed',
       is_blue_v: !!cfg.isBlueV,

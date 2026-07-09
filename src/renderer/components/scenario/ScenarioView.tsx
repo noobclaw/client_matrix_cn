@@ -560,6 +560,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       // 内容来源:'reference'(参考文案,老行为)/ 'sources'(数据源选题,多选源每轮随机挑一条)。
       contentSource: input.contentSource,
       sources: input.sources,
+      sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       // 视频号/头条网络图:抖音下图号(runner 据此启抖音内核串行搜图);其它平台/AI生图为 undefined。
       imageDownloadAccountId: input.imageDownloadAccountId,
     };
@@ -618,6 +619,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const tweetPost = {
       mode: input.mode,
       sources: input.sources,   // 数据源模式的多选源(每轮随机挑 1 个取题)
+      sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       withImage: input.withImage,
       language: input.language,
       isBlueV: input.isBlueV,
@@ -737,6 +739,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
       sources: input.sources,   // 多选源(每轮随机挑 1 个);旧单选字段=第一个选中源,兼容旧 orchestrator
+      sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       sourceKind: input.sourceKind,
       source: input.source,
       catKey: input.catKey,
@@ -796,6 +799,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
       sources: input.sources,   // 多选源(每轮随机挑 1 个);旧单选字段=第一个选中源,兼容旧 orchestrator
+      sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       sourceKind: input.sourceKind,
       source: input.source,
       catKey: input.catKey,
@@ -857,6 +861,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
       sources: input.sources,   // 多选源(每轮随机挑 1 个);旧单选字段=第一个选中源,兼容旧 orchestrator
+      sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       sourceKind: input.sourceKind,
       source: input.source,
       catKey: input.catKey,

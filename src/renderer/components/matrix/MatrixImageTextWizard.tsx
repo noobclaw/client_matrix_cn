@@ -36,6 +36,7 @@ export interface ImageTextWizardSave {
   // 'sources'=选数据源(每轮从选中源里随机挑一条最新热点/资讯当选题,AI 围绕它创作)。
   contentSource: 'reference' | 'sources';
   sources: PostSourceSel[];             // 仅 sources 模式:多选数据源
+  sourceTrackMatch: boolean;            // 仅 sources 模式:仅账号赛道相关(默认开)
   useRealPhotos: boolean;
   imageCount: number;
   aiImageStyle: string;
@@ -109,6 +110,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [contentSource, setContentSource] = useState<'reference' | 'sources'>(it.contentSource === 'sources' ? 'sources' : 'reference');
   const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(it, 'weibo'));
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(it.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
@@ -154,6 +156,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         frequency: runInterval,
         contentSource,
         sources: contentSource === 'sources' ? selsFromSourceIds(sourceIds) : [],
+        sourceTrackMatch,
         useRealPhotos,
         imageCount,
         aiImageStyle,
@@ -290,6 +293,10 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                     ))}
                   </div>
                   <div className="text-[11px] text-gray-400 mt-1.5">{T('AI 围绕选题、按各号赛道/人设视角创作,内容互不相同(海外源标题为英文,成稿仍按平台语言)', 'AI writes around the topic from each account’s persona; overseas source titles are English, output follows platform language')}</div>
+                  <label className="flex items-start gap-2 mt-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={sourceTrackMatch} onChange={(e) => setSourceTrackMatch(e.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-500 shrink-0" />
+                    <span className="leading-relaxed">{T('仅选用与账号赛道相关的内容', 'Only topics matching each account’s niche')}<span className="text-gray-400 font-normal">{T('(每个号只从自己赛道的热点里取题;某轮无相关则按赛道自由创作)', ' (each account picks from its own niche; falls back to free creation when none match)')}</span></span>
+                  </label>
                 </div>
                 <MatrixSourcesPreview sourceIds={sourceIds} isZh={isZh} />
               </div>

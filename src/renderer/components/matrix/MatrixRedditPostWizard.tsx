@@ -27,6 +27,7 @@ export interface RedditPostWizardSave {
   autoPublish: boolean;
   // 多选数据源(运行时每轮随机挑 1 个取题);旧单选字段同步写第一个选中源,兼容未更新的生产 orchestrator。
   sources: PostSourceSel[];
+  sourceTrackMatch: boolean;   // 仅账号赛道相关(默认开)
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
@@ -71,6 +72,7 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
   // 多选:新任务默认 Web3;老任务(单选字段)映射成单元素数组。
   const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(rp, 'web3'));
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(rp.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
   const [subreddit, setSubreddit] = useState<string>(String(rp.subreddit || '').replace(/^\/?r\//i, ''));
   const [language, setLanguage] = useState<string>(rp.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(rp.autoPublish !== false);
@@ -106,6 +108,7 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
         accountIds: selectedIds, concurrency: selectedIds.length, frequency: runInterval,
         language, autoPublish,
         sources: selSources,
+        sourceTrackMatch,
         // 旧单选字段 = 第一个选中源(生产 orchestrator 未更新前照跑)。
         sourceKind: firstSource.kind, source: firstSource.source, catKey: firstSource.catKey,
         subreddit: subTrim,
@@ -195,6 +198,10 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
               <div className="grid grid-cols-3 gap-2">
                 {SOURCE_OPTIONS.map((s) => (<button key={s.id} type="button" onClick={() => toggleSource(s.id)} className={bigBtn(sourceIds.includes(s.id))}><span className="mr-1">{s.emoji}</span>{isZh ? s.zh : s.en}</button>))}
               </div>
+              <label className="flex items-start gap-2 mt-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="checkbox" checked={sourceTrackMatch} onChange={(e) => setSourceTrackMatch(e.target.checked)} className="mt-0.5 h-4 w-4 accent-orange-500 shrink-0" />
+                <span className="leading-relaxed">{T('仅选用与账号赛道相关的内容', 'Only topics matching each account’s niche')}<span className="text-gray-400 font-normal">{T('(每个号只从自己赛道的热点/资讯里取题;某轮无相关则按赛道自由创作)', ' (each account picks topics from its own niche; falls back to free creation when none match)')}</span></span>
+              </label>
             </div>
 
             <div>

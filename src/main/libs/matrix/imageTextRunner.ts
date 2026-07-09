@@ -28,6 +28,7 @@ import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { matrixCmd } from './cdpCommands';
 import { getAccount, setAccountStatus, appendDerivedKeywords, effectiveKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
+import { trackIdFromGroup } from './trackPresets';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 import { getNoobClawAuthToken } from '../claudeSettings';
 import type { EngageItemResult, EngageReport } from './engageRunner';
@@ -212,11 +213,14 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
     //   'reference'(缺省)=老行为。
     const useSources = cfg.contentSource === 'sources' && Array.isArray(cfg.sources) && cfg.sources.length > 0;
     const ref = useSources ? undefined : cfg.references?.[accountId];
+    // 「仅账号赛道相关」(默认开):把本号赛道 id 传给 orchestrator,取材时按 track 过滤;空 id 或关开关则不过滤。
+    const trackId = (useSources && cfg.sourceTrackMatch !== false) ? trackIdFromGroup(acc.group) : '';
     const task: any = {
       id: accountId,
       source_segments: referenceToSegments(ref),
       content_source: useSources ? 'sources' : 'reference',
       sources: useSources ? cfg.sources : [],
+      track_id: trackId,
       track: acc.track || '',
       persona: acc.persona || '',
       keywords: accKeywords,

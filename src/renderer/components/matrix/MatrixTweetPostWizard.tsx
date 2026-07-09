@@ -32,6 +32,7 @@ export interface TweetPostWizardSave {
   frequency: string;
   mode: 'web3' | 'free';                // 'web3' = 数据源选题模式(历史字段名保留兼容);'free' = 自由创作
   sources: PostSourceSel[];             // 数据源模式的多选源(每轮随机挑 1 个取题;老任务无此字段=仅 web3 资讯)
+  sourceTrackMatch: boolean;            // 数据源模式:仅账号赛道相关(默认开)
   withImage: boolean;
   language: string;
   isBlueV: boolean;
@@ -73,6 +74,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
   // 数据源多选(仅数据源模式用):老任务只有 mode='web3' 无 sources → 回填 ['web3'](与旧行为一致)。
   const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(tp, 'web3'));
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(tp.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
   const [withImage, setWithImage] = useState<boolean>(tp.withImage !== false); // 默认配图开
   const [language, setLanguage] = useState<string>(tp.language || 'mixed');
   const [isBlueV, setIsBlueV] = useState<boolean>(!!tp.isBlueV);
@@ -119,6 +121,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
         frequency: runInterval,
         mode,
         sources: mode === 'web3' ? selsFromSourceIds(sourceIds) : [],
+        sourceTrackMatch,
         withImage,
         language,
         isBlueV,
@@ -248,6 +251,10 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
                     ))}
                   </div>
                   <div className="text-[11px] text-gray-400 mt-1.5">{isZh ? 'Web3=深度资讯(带摘要+原图);其余为热榜/分类标题当选题' : 'Web3 = deep news (summary + image); others use trending titles as topics'}</div>
+                  <label className="flex items-start gap-2 mt-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={sourceTrackMatch} onChange={(e) => setSourceTrackMatch(e.target.checked)} className="mt-0.5 h-4 w-4 accent-sky-500 shrink-0" />
+                    <span className="leading-relaxed">{isZh ? '仅选用与账号赛道相关的内容' : 'Only topics matching each account’s niche'}<span className="text-gray-400 font-normal">{isZh ? '(每个号只从自己赛道的热点/资讯里取题;某轮无相关则按赛道自由创作)' : ' (each account picks from its own niche; falls back to free creation when none match)'}</span></span>
+                  </label>
                 </div>
                 <MatrixSourcesPreview sourceIds={sourceIds} isZh={isZh} />
               </div>
