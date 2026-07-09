@@ -53,7 +53,8 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   //   像真人一样刷视频完成点赞/评论/关注。走 quota.engage_mode 透传(全链已贯通);
   //   未配关键词的账号后端剧本也会自动进入该模式(兜底)。
   const bingeSupported = ['douyin', 'kuaishou', 'tiktok'].includes(String(platform || ''));
-  const [bingeMode, setBingeModeRaw] = useState<boolean>(initialTask?.quota?.engage_mode === 'binge');
+  // 新建任务默认「刷剧模式」;编辑已有任务按存的 engage_mode 回填(老任务无该字段=关键词筛选模式)。
+  const [bingeMode, setBingeModeRaw] = useState<boolean>(initialTask ? initialTask?.quota?.engage_mode === 'binge' : true);
 
   // 任务名不让用户填(对齐旧版):内部按平台+账号数自动命名。
   // 默认勾选所有「可用」账号(配了关键词 + 未封);编辑时用任务已存的账号。
@@ -152,19 +153,36 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
         {step === 1 && (
           <>
-            {bingeSupported && (
-              <label className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${bingeMode ? 'border-violet-500/50 bg-violet-500/5' : 'border-gray-200 dark:border-gray-700 hover:border-violet-500/30'}`}>
-                <input type="checkbox" checked={bingeMode} onChange={(e) => setBingeMode(e.target.checked)} disabled={saving} className="h-4 w-4 accent-violet-500 mt-0.5 shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium dark:text-gray-200">📺 {i18nService.currentLanguage === 'zh' ? '刷剧模式' : 'Binge mode'}</div>
-                  <div className="text-[11px] text-gray-400 leading-relaxed mt-0.5">
-                    {i18nService.currentLanguage === 'zh'
-                      ? '开启后无视关键词:AI 在账号自己的推荐流里像真人一样刷短视频,随机点赞/评论/关注,看完上滑下一条。适合养号提活跃;要精准吸引某赛道粉丝请关闭它用关键词搜索。未配关键词的账号会自动按此模式运行。'
-                      : 'Ignores keywords: AI binge-watches the account\'s own recommendation feed like a real user — random likes/comments/follows, then swipes to the next video. Great for warming up accounts; turn it off for keyword-targeted growth. Accounts without keywords run in this mode automatically.'}
-                  </div>
+            {bingeSupported && (() => {
+              const zh = i18nService.currentLanguage === 'zh';
+              const opts = [
+                { on: true, icon: '📺', title: zh ? '刷剧模式' : 'Binge mode',
+                  desc: zh
+                    ? '在账号自己的推荐流里像真人一样刷短视频,并在与账号赛道关键词匹配的视频下方随机点赞/评论/关注,更贴合推荐算法、精准找到受众粉丝。'
+                    : 'Binge-watches the account\'s own recommendation feed like a real user, and likes/comments/follows on videos matching the account niche keywords — rides the recommendation algorithm to reach the right audience.' },
+                { on: false, icon: '🔍', title: zh ? '关键词筛选模式' : 'Keyword search mode',
+                  desc: zh
+                    ? '通过赛道关键词搜索,找到匹配合适的视频进行随机点赞/评论/关注互动,覆盖范围更大,适合增长探索。'
+                    : 'Searches by niche keywords, finds matching videos and randomly likes/comments/follows — wider reach, good for growth exploration.' },
+              ];
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {opts.map((o) => {
+                    const active = bingeMode === o.on;
+                    return (
+                      <button key={String(o.on)} type="button" disabled={saving} onClick={() => setBingeMode(o.on)}
+                        className={`text-left rounded-xl border px-4 py-3 transition-colors ${active ? 'border-violet-500 bg-violet-500/5 ring-1 ring-violet-500/40' : 'border-gray-200 dark:border-gray-700 hover:border-violet-500/40'} ${saving ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-3.5 w-3.5 rounded-full border shrink-0 ${active ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`} />
+                          <span className="text-sm font-medium dark:text-gray-200">{o.icon} {o.title}</span>
+                        </div>
+                        <div className="text-[11px] text-gray-400 leading-relaxed mt-1">{o.desc}</div>
+                      </button>
+                    );
+                  })}
                 </div>
-              </label>
-            )}
+              );
+            })()}
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
                 {i18nService.t('wzEngageSelectAccounts').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzEngageSelectAccountsHint').replace('{n}', String(selected.size))}</span>
