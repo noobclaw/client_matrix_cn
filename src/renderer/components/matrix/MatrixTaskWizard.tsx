@@ -49,6 +49,12 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   // 评论语言选择器只给【海外平台 + 币安广场】;中文平台(抖音/小红书/B站/快手/视频号/头条)不显示(默认跟帖子语言)。
   const overseasEngage = ['x', 'tiktok', 'youtube', 'binance', 'facebook', 'reddit', 'instagram'].includes(String(platform || ''));
 
+  // 📺 刷剧模式(仅抖音互动):无视关键词,AI 在账号自己的推荐流(沉浸式播放器)里
+  //   像真人一样刷视频完成点赞/评论/关注。走 quota.engage_mode 透传(全链已贯通);
+  //   未配关键词的账号后端剧本也会自动进入该模式(兜底)。
+  const bingeSupported = ['douyin', 'kuaishou', 'tiktok'].includes(String(platform || ''));
+  const [bingeMode, setBingeModeRaw] = useState<boolean>(initialTask?.quota?.engage_mode === 'binge');
+
   // 任务名不让用户填(对齐旧版):内部按平台+账号数自动命名。
   // 默认勾选所有「可用」账号(配了关键词 + 未封);编辑时用任务已存的账号。
   const [selected, setSelected] = useState<Set<string>>(() => {
@@ -56,6 +62,12 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
     return new Set(accounts.filter((a) => a.keywords && a.keywords.length && a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
   });
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // 关掉刷剧模式时:无关键词账号在「关键词搜索」下不可用,从已选里剔除 —— 否则保存后
+  //   engage_mode='' 但后端 bingeCapable 仍会因关键词为空自动进 binge,与"关掉刷剧"的意图相悖。
+  const setBingeMode = (on: boolean) => {
+    setBingeModeRaw(on);
+    if (!on) setSelected((prev) => new Set([...prev].filter((id) => { const a = accounts.find((x) => x.id === id); return !!(a && a.keywords && a.keywords.length); })));
+  };
 
   const q = initialTask?.quota || {};
   const [likeMin, setLikeMinRaw] = useState<number>(typeof q.daily_like_min === 'number' ? q.daily_like_min : 3);
@@ -113,7 +125,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         concurrency: selected.size,   // 选几个号就同时开几个窗(runner 内部有安全上限兜底)
         frequency: runInterval,
         // Reddit 无关注玩法 → 强制 follow=0(即使有老值也清零),隐藏了滑块也不落库脏数据。
-        quota: { daily_like_min: likeMin, daily_like_max: likeMax, daily_follow_min: platform === 'reddit' ? 0 : folMin, daily_follow_max: platform === 'reddit' ? 0 : folMax, daily_comment_min: cmtMin, daily_comment_max: cmtMax, comment_lang: commentLang },
+        quota: { daily_like_min: likeMin, daily_like_max: likeMax, daily_follow_min: platform === 'reddit' ? 0 : folMin, daily_follow_max: platform === 'reddit' ? 0 : folMax, daily_comment_min: cmtMin, daily_comment_max: cmtMax, comment_lang: commentLang, engage_mode: (bingeSupported && bingeMode) ? 'binge' : '' },
         // 引流:评论时按概率把引流文案融进 AI 评论。留空/平台不支持 → funnel_probability=0 → 视作未配,纯 AI 评论。
         funnel: (funnelSupported && hasFunnel) ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb } : { funnel_phrase: '', funnel_probability: 0 },
       });
@@ -140,6 +152,19 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
         {step === 1 && (
           <>
+            {bingeSupported && (
+              <label className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${bingeMode ? 'border-violet-500/50 bg-violet-500/5' : 'border-gray-200 dark:border-gray-700 hover:border-violet-500/30'}`}>
+                <input type="checkbox" checked={bingeMode} onChange={(e) => setBingeMode(e.target.checked)} disabled={saving} className="h-4 w-4 accent-violet-500 mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium dark:text-gray-200">📺 {i18nService.currentLanguage === 'zh' ? '刷剧模式' : 'Binge mode'}</div>
+                  <div className="text-[11px] text-gray-400 leading-relaxed mt-0.5">
+                    {i18nService.currentLanguage === 'zh'
+                      ? '开启后无视关键词:AI 在账号自己的推荐流里像真人一样刷短视频,随机点赞/评论/关注,看完上滑下一条。适合养号提活跃;要精准吸引某赛道粉丝请关闭它用关键词搜索。未配关键词的账号会自动按此模式运行。'
+                      : 'Ignores keywords: AI binge-watches the account\'s own recommendation feed like a real user — random likes/comments/follows, then swipes to the next video. Great for warming up accounts; turn it off for keyword-targeted growth. Accounts without keywords run in this mode automatically.'}
+                  </div>
+                </div>
+              </label>
+            )}
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
                 {i18nService.t('wzEngageSelectAccounts').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzEngageSelectAccountsHint').replace('{n}', String(selected.size))}</span>
@@ -161,9 +186,11 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                 {accounts.map((a) => {
                   const hasKw = !!(a.keywords && a.keywords.length);
                   // 未连接(login_required)/已封 → 不可选(置灰);还要配了关键词。
+                  // 刷剧模式(抖音)开启时不需要关键词 — 无关键词账号也可选,提示改为推荐流互动。
+                  const bingeOk = bingeSupported && bingeMode;
                   const linked = a.status !== 'login_required' && a.status !== 'banned';
-                  const ready = hasKw && linked;
-                  const reason = a.status === 'banned' ? i18nService.t('wzEngageReasonBanned') : a.status === 'login_required' ? i18nService.t('wzEngageReasonNotConnected') : !hasKw ? i18nService.t('wzEngageReasonNoKeywords') : '';
+                  const ready = (hasKw || bingeOk) && linked;
+                  const reason = a.status === 'banned' ? i18nService.t('wzEngageReasonBanned') : a.status === 'login_required' ? i18nService.t('wzEngageReasonNotConnected') : !hasKw ? (bingeOk ? (i18nService.currentLanguage === 'zh' ? '无关键词 · 推荐流互动' : 'no keywords · feed mode') : i18nService.t('wzEngageReasonNoKeywords')) : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>

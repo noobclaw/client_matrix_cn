@@ -69,6 +69,9 @@ export interface EngageQuota {
   daily_follow_min?: number; daily_follow_max?: number;
   daily_comment_min?: number; daily_comment_max?: number;
   comment_lang?: string;            // 评论语言:'auto'|'zh'|'zh-TW'|'en'|'ja'|'ko'|'ru'|'fr'|'de'|'vi'(空/auto=跟帖子语言)
+  // 刷剧模式(仅抖音 engage):'binge'=无视关键词,在账号自己的推荐流里沉浸式刷视频互动。
+  // 走 quota 通道透传(wizard→taskStore→sidecar 全链已贯通,零新管道);关键词为空时剧本也会自动进入。
+  engage_mode?: '' | 'binge';
 }
 
 // 评论语言 code → AI 语言名(强制模式)。auto/空 → 不下发,剧本回落「跟帖子语言」。
@@ -92,6 +95,9 @@ export interface EngageTaskOptions {
   // (抖音创作者中心评论管理,不需关键词、无配额、有引流尾巴);'video_download'=视频无水印下载
   // (单账号,粘贴多个链接逐个下载,不需关键词、无配额)。缺省 'engage' 兼容旧调用。
   taskType?: 'engage' | 'reply_fan' | 'video_download';
+  // 刷剧模式(仅抖音 engage):'binge'=无视关键词,在账号自己的推荐流里沉浸式刷视频互动。
+  // 关键词为空时后端剧本也会自动进入 binge(兜底),此字段是向导显式开关的透传。
+  engageMode?: 'search' | 'binge';
   scenarioId?: string;             // 显式指定后端剧本 id(reply_fan→*_reply_fans_comment / video_download→*_video_download);缺省按平台推
   funnel?: { funnel_phrase?: string; funnel_probability?: number }; // 引流尾巴配置:reply_fan 走后端剧本;engage 由 makeAiCall 对 comment_composer 融入
   urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
@@ -312,7 +318,15 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   //   reply_fan(回复粉丝评论)对象是自己作品下的粉丝评论,也不按关键词搜 → 同样豁免。
   //   其它平台(抖音/小红书等按关键词搜的互动)才要。漏掉豁免 → 账号没关键词被静默拦掉、无日志。
   const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.platform !== 'binance';
-  if (needsKeywords && (!acc.keywords || acc.keywords.length === 0)) { log('❌ 跳过:未配置关键词(到「我的矩阵账号」编辑里添加)'); return { accountId, state: 'skipped', reason: 'no_keywords' }; }
+  // 抖音/快手/TikTok 互动支持「刷剧模式」(binge):显式开启 or 关键词为空时,后端剧本走推荐流沉浸式互动,不需要关键词。
+  const bingeCapable = ['douyin', 'kuaishou', 'tiktok'].includes(opts.platform) && (opts.taskType === 'engage' || !opts.taskType);
+  if (needsKeywords && (!acc.keywords || acc.keywords.length === 0)) {
+    if (bingeCapable) {
+      log('📺 未配置关键词 → 刷剧模式:在账号自己的推荐流里刷视频互动');
+    } else {
+      log('❌ 跳过:未配置关键词(到「我的矩阵账号」编辑里添加)'); return { accountId, state: 'skipped', reason: 'no_keywords' };
+    }
+  }
   if (acc.status === 'banned' || acc.status === 'limited') { log('❌ 跳过:账号状态为 ' + acc.status); return { accountId, state: 'skipped', reason: 'account_' + acc.status }; }
 
   await abortableSleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000), opts.signal); // 错峰(可中断:停止立即结束)
@@ -398,6 +412,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       // 评论语言(强制模式;auto/空时不下发,剧本回落「跟帖子语言」)。各 *_auto_engage 剧本优先用它。
       comment_language_hint: commentLangHint(q.comment_lang),
       comment_lang: q.comment_lang || 'auto',
+      // 刷剧模式透传(抖音 engage 专用;剧本在关键词为空时也会自动进入 binge)
+      engage_mode: opts.engageMode || (opts.quota as any)?.engage_mode || '',
     };
 
     // 写评论等 AI 调用的扣费也累进「本次消耗」(与动作按次扣费相加,二者是不同的账,不重复)。
