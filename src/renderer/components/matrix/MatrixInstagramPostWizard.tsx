@@ -15,6 +15,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
+import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -28,27 +29,15 @@ export interface InstagramPostWizardSave {
   withImage: boolean;   // 恒 true(IG 帖必带图)
   language: string;
   autoPublish: boolean;
+  // 多选数据源(运行时每轮随机挑 1 个取题);旧单选字段同步写第一个选中源,兼容未更新的生产 orchestrator。
+  sources: PostSourceSel[];
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
 }
 
-interface SourceOption { id: string; kind: 'news' | 'category' | 'hot'; source?: string; catKey?: string; zh: string; en: string; emoji: string }
-// 数据源清单(hot 模式的 source 必须与后端 /api/web3/hot-search 的 source 名一致)。
-const SOURCE_OPTIONS: SourceOption[] = [
-  { id: 'web3', kind: 'news', zh: 'Web3 资讯(深度)', en: 'Web3 News (deep)', emoji: '🌐' },
-  { id: 'tech', kind: 'category', catKey: 'tech', zh: '科技 / AI', en: 'Tech / AI', emoji: '🤖' },
-  { id: 'weibo', kind: 'hot', source: '微博热搜', zh: '微博热搜', en: 'Weibo', emoji: '🔥' },
-  { id: 'douyin', kind: 'hot', source: '抖音热搜', zh: '抖音热搜', en: 'Douyin', emoji: '🎵' },
-  { id: 'zhihu', kind: 'hot', source: '知乎热榜', zh: '知乎热榜', en: 'Zhihu', emoji: '💭' },
-  { id: 'baidu', kind: 'hot', source: '百度热搜', zh: '百度热搜', en: 'Baidu', emoji: '🔍' },
-  { id: 'bilibili', kind: 'hot', source: 'B站热搜', zh: 'B站热搜', en: 'Bilibili', emoji: '📺' },
-  { id: 'xueqiu', kind: 'hot', source: '雪球热门股', zh: '雪球热门股', en: 'Xueqiu', emoji: '📈' },
-  { id: 'hackernews', kind: 'hot', source: 'Hacker News', zh: 'Hacker News', en: 'Hacker News', emoji: '🟠' },
-  { id: 'reddit', kind: 'hot', source: 'Reddit', zh: 'Reddit', en: 'Reddit', emoji: '👽' },
-  { id: 'googletrends', kind: 'hot', source: 'Google 趋势', zh: 'Google 趋势', en: 'Google Trends', emoji: '📊' },
-  { id: 'youtube', kind: 'hot', source: 'YouTube 热门', zh: 'YouTube 热门', en: 'YouTube', emoji: '▶️' },
-];
+// 数据源清单抽到 postSources.ts 共享(hot 的 source 名必须与后端 /api/web3/hot-search 一致)。
+const SOURCE_OPTIONS = POST_SOURCE_OPTIONS;
 
 interface Props {
   platformLabel: string;
@@ -79,13 +68,9 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
   }, [accounts, accountsLoading]);
 
   const ip = initialTask?.instagramPost || {};
-  const initSourceId = (() => {
-    if (ip.sourceKind === 'news') return 'web3';
-    if (ip.sourceKind === 'category') return SOURCE_OPTIONS.find((s) => s.kind === 'category' && s.catKey === ip.catKey)?.id || 'tech';
-    if (ip.sourceKind === 'hot') return SOURCE_OPTIONS.find((s) => s.kind === 'hot' && s.source === ip.source)?.id || 'weibo';
-    return 'web3';
-  })();
-  const [sourceId, setSourceId] = useState<string>(initSourceId);
+  // 多选:新任务默认 Web3;老任务(单选字段)映射成单元素数组。
+  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(ip, 'web3'));
+  const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [language, setLanguage] = useState<string>(ip.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(ip.autoPublish !== false);
 
@@ -95,10 +80,11 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const selSource = SOURCE_OPTIONS.find((s) => s.id === sourceId) || SOURCE_OPTIONS[0];
+  const selSources = selsFromSourceIds(sourceIds);
+  const firstSource = selSources[0] || { kind: 'news' as const };
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selectedIds.length > 0, reason: T('请至少选择一个账号', 'Select at least one account') },
-    2: { ok: true },
+    2: { ok: sourceIds.length > 0, reason: T('请至少选择一个数据源', 'Select at least one data source') },
     3: { ok: allTermsAccepted, reason: T('请勾选同意条款', 'Please accept the terms') },
   };
 
@@ -114,9 +100,11 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
         concurrency: selectedIds.length,
         frequency: runInterval,
         withImage: true, language, autoPublish,
-        sourceKind: selSource.kind,
-        source: selSource.source,
-        catKey: selSource.catKey,
+        sources: selSources,
+        // 旧单选字段 = 第一个选中源(生产 orchestrator 未更新前照跑)。
+        sourceKind: firstSource.kind,
+        source: firstSource.source,
+        catKey: firstSource.catKey,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || T('保存失败', 'Save failed'));
@@ -190,15 +178,15 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
         {step === 2 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('数据源', 'Data source')}<span className="text-xs text-gray-400 font-normal ml-1">{T('从哪取热点/资讯来写', 'where to source topics')}</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('数据源', 'Data source')}<span className="text-xs text-gray-400 font-normal ml-1">{T('可多选,每轮从选中源里随机挑一个取题', 'multi-select; each run picks one at random')}{sourceIds.length ? T(` · 已选 ${sourceIds.length} 个`, ` · ${sourceIds.length} selected`) : ''}</span></label>
               <div className="grid grid-cols-3 gap-2">
                 {SOURCE_OPTIONS.map((s) => (
-                  <button key={s.id} type="button" onClick={() => setSourceId(s.id)} className={bigBtn(sourceId === s.id)}>
+                  <button key={s.id} type="button" onClick={() => toggleSource(s.id)} className={bigBtn(sourceIds.includes(s.id))}>
                     <span className="mr-1">{s.emoji}</span>{isZh ? s.zh : s.en}
                   </button>
                 ))}
               </div>
-              <div className="text-[11px] text-gray-400 mt-1.5">{selSource.kind === 'news' ? T('Web3 深度资讯(带摘要+原图)', 'Deep web3 news (summary + image)') : selSource.kind === 'category' ? T('按分类聚合的热点标题', 'Category-aggregated trending titles') : T('热搜榜标题当选题(海外源须英文号 + VPN)', 'Trending board titles (overseas sources need EN account + VPN)')}</div>
+              <div className="text-[11px] text-gray-400 mt-1.5">{T('Web3=深度资讯(带摘要+原图);其余为热榜/分类标题当选题(海外源须英文号 + VPN)', 'Web3 = deep news (summary + image); others use trending titles as topics (overseas sources need EN account + VPN)')}</div>
             </div>
 
             <div>
@@ -235,7 +223,7 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">{T('确认', 'Summary')}</div>
               <SummaryRow label={T('账号', 'Accounts')} value={T(`${selectedIds.length} 个`, `${selectedIds.length}`)} />
-              <SummaryRow label={T('数据源', 'Source')} value={isZh ? selSource.zh : selSource.en} />
+              <SummaryRow label={T('数据源', 'Source')} value={sourceIdsLabel(sourceIds, isZh)} />
               <SummaryRow label={T('语言', 'Language')} value={langLabel(language)} />
               <SummaryRow label={T('配图', 'Image')} value={T('恒配图(必带)', 'Always (required)')} />
               <SummaryRow label={T('发布', 'Publish')} value={autoPublish ? T('自动发布', 'Auto') : T('仅生成', 'Draft')} />

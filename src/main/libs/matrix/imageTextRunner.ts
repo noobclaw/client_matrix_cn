@@ -208,10 +208,15 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
 
     // 本号 task —— source_segments=本号参考文案(可选);real_photo_keywords=本号关键词(各号不同→不撞图);
     // track/persona/keywords 沿用账号已配身份;配图方式/张数/篇数/风格/发布走全局 config。
-    const ref = cfg.references?.[accountId];
+    // 内容来源:'sources'=数据源选题模式 → 不带参考文案,把多选源传给 orchestrator(每轮随机挑一条最新内容当种子);
+    //   'reference'(缺省)=老行为。
+    const useSources = cfg.contentSource === 'sources' && Array.isArray(cfg.sources) && cfg.sources.length > 0;
+    const ref = useSources ? undefined : cfg.references?.[accountId];
     const task: any = {
       id: accountId,
       source_segments: referenceToSegments(ref),
+      content_source: useSources ? 'sources' : 'reference',
+      sources: useSources ? cfg.sources : [],
       track: acc.track || '',
       persona: acc.persona || '',
       keywords: accKeywords,

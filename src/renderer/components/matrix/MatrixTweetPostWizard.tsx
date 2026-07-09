@@ -16,7 +16,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
-import Web3NewsSourcesPreview from './Web3NewsSourcesPreview';
+import MatrixSourcesPreview from './MatrixSourcesPreview';
+import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -29,7 +30,8 @@ export interface TweetPostWizardSave {
   accountIds: string[];
   concurrency: number;
   frequency: string;
-  mode: 'web3' | 'free';
+  mode: 'web3' | 'free';                // 'web3' = 数据源选题模式(历史字段名保留兼容);'free' = 自由创作
+  sources: PostSourceSel[];             // 数据源模式的多选源(每轮随机挑 1 个取题;老任务无此字段=仅 web3 资讯)
   withImage: boolean;
   language: string;
   isBlueV: boolean;
@@ -68,6 +70,9 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
   // ── 发推配置(全局) ──
   const tp = initialTask?.tweetPost || {};
   const [mode, setMode] = useState<'web3' | 'free'>(tp.mode === 'free' ? 'free' : 'web3');
+  // 数据源多选(仅数据源模式用):老任务只有 mode='web3' 无 sources → 回填 ['web3'](与旧行为一致)。
+  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(tp, 'web3'));
+  const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [withImage, setWithImage] = useState<boolean>(tp.withImage !== false); // 默认配图开
   const [language, setLanguage] = useState<string>(tp.language || 'mixed');
   const [isBlueV, setIsBlueV] = useState<boolean>(!!tp.isBlueV);
@@ -87,11 +92,13 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, mode, withImage, language, references, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, mode, sourceIds, withImage, language, references, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selectedIds.length > 0, reason: i18nService.t('wzTweetErrSelectAccount') },
-    2: { ok: true },
+    2: mode === 'web3'
+      ? { ok: sourceIds.length > 0, reason: isZh ? '请至少选择一个数据源' : 'Select at least one data source' }
+      : { ok: true },
     3: { ok: true },
     4: { ok: allTermsAccepted, reason: i18nService.t('wzTweetErrAcceptTerms') },
   };
@@ -102,7 +109,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
     if (selectedIds.length === 0) { setSaveError(canAdvance[1].reason || ''); return; }
     setSaving(true);
     try {
-      // 只保留选中号、非空的参考文案(web3 模式不传参考文案)。
+      // 只保留选中号、非空的参考文案(数据源模式不传参考文案)。
       const refsOut: Record<string, string> = {};
       if (mode === 'free') { for (const id of selectedIds) { const v = (references[id] || '').trim(); if (v) refsOut[id] = v; } }
       await onSave({
@@ -111,6 +118,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
         concurrency: selectedIds.length,
         frequency: runInterval,
         mode,
+        sources: mode === 'web3' ? selsFromSourceIds(sourceIds) : [],
         withImage,
         language,
         isBlueV,
@@ -198,7 +206,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🧠 {i18nService.t('wzTweetContentSource')}<span className="text-xs text-gray-400 font-normal ml-1">· {i18nService.t('wzTweetContentSourceHint')}</span></label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setMode('web3')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${mode === 'web3' ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'}`}>
-                  📰 {i18nService.t('wzTweetModeWeb3')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzTweetModeWeb3Desc')}</div>
+                  📊 {isZh ? '数据源选题' : 'Data sources'}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{isZh ? '从所选源的最新信息里挑选题,AI 深度创作' : 'Pick topics from selected sources, AI writes in depth'}</div>
                 </button>
                 <button type="button" onClick={() => setMode('free')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${mode === 'free' ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'}`}>
                   ✍️ {i18nService.t('wzTweetModeFree')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzTweetModeFreeDesc')}</div>
@@ -230,10 +238,18 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
             {mode === 'web3' && (
               <div className="space-y-2.5">
-                <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-sky-500/20 bg-sky-500/5 text-sky-700 dark:text-sky-300">
-                  📰 {i18nService.t('wzTweetWeb3InfoA')}<strong>{i18nService.t('wzTweetWeb3InfoStrong')}</strong>{i18nService.t('wzTweetWeb3InfoB')}
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">📊 {isZh ? '数据源' : 'Data sources'}<span className="text-xs text-gray-400 font-normal ml-1">· {isZh ? '可多选,每轮从选中源里随机挑一个取题' : 'multi-select; each run picks one at random'}{sourceIds.length ? (isZh ? ` · 已选 ${sourceIds.length} 个` : ` · ${sourceIds.length} selected`) : ''}</span></label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {POST_SOURCE_OPTIONS.map((s) => (
+                      <button key={s.id} type="button" onClick={() => toggleSource(s.id)} className={`px-3 py-2 rounded-lg text-sm border text-left transition-colors ${sourceIds.includes(s.id) ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'}`}>
+                        <span className="mr-1">{s.emoji}</span>{isZh ? s.zh : s.en}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-1.5">{isZh ? 'Web3=深度资讯(带摘要+原图);其余为热榜/分类标题当选题' : 'Web3 = deep news (summary + image); others use trending titles as topics'}</div>
                 </div>
-                <Web3NewsSourcesPreview isZh={isZh} />
+                <MatrixSourcesPreview sourceIds={sourceIds} isZh={isZh} />
               </div>
             )}
           </>
@@ -313,7 +329,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzTweetSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzTweetSummaryAccounts')} value={i18nService.t('wzTweetSummaryAccountsVal').replace('{n}', String(selectedIds.length))} />
-              <SummaryRow label={i18nService.t('wzTweetSummaryContentSource')} value={mode === 'web3' ? i18nService.t('wzTweetModeWeb3') : i18nService.t('wzTweetModeFree')} />
+              <SummaryRow label={i18nService.t('wzTweetSummaryContentSource')} value={mode === 'web3' ? (isZh ? `数据源选题(${sourceIdsLabel(sourceIds, true)})` : `Data sources (${sourceIdsLabel(sourceIds, false)})`) : i18nService.t('wzTweetModeFree')} />
               <SummaryRow label={i18nService.t('wzTweetSummaryLang')} value={langLabel(language)} />
               <SummaryRow label={i18nService.t('wzTweetSummaryAccountType')} value={isBlueV ? i18nService.t('wzTweetSummaryBlueV') : i18nService.t('wzTweetSummaryNormal')} />
               <SummaryRow label={i18nService.t('wzTweetSummaryImage')} value={withImage ? i18nService.t('wzTweetSummaryImageOn') : i18nService.t('wzTweetTextOnly')} />

@@ -191,6 +191,9 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
       task.source = (cfg as any).source || '';
       task.cat_key = (cfg as any).catKey || '';
     }
+    // 多选数据源(新任务):orchestrator 每轮从 task.sources 随机挑 1 个;旧 orchestrator 忽略此字段,
+    // 走上面的单选字段(向导已把第一个选中源写回单选字段兜底)。
+    if (Array.isArray((cfg as any).sources) && (cfg as any).sources.length) task.sources = (cfg as any).sources;
     if ((cfg as any).subreddit) task.subreddit = (cfg as any).subreddit; // reddit_post 目标 subreddit
 
     const onAiCost = (credits: number, usd: number) => {

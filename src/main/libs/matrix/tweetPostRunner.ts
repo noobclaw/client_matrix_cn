@@ -171,6 +171,8 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
     const task: any = {
       id: accountId,
       mode: cfg.mode === 'free' ? 'free' : 'web3',
+      // 数据源模式的多选源(orchestrator 每轮随机挑 1 个取题;老任务无 sources=仅 web3 资讯,行为不变)。
+      sources: Array.isArray(cfg.sources) ? cfg.sources : [],
       with_image: !!cfg.withImage,
       language: cfg.language || 'mixed',
       is_blue_v: !!cfg.isBlueV,

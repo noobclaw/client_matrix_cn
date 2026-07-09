@@ -12,6 +12,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
+import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -24,23 +25,19 @@ export interface RedditPostWizardSave {
   frequency: string;
   language: string;
   autoPublish: boolean;
+  // 多选数据源(运行时每轮随机挑 1 个取题);旧单选字段同步写第一个选中源,兼容未更新的生产 orchestrator。
+  sources: PostSourceSel[];
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
   subreddit: string;
 }
 
-interface SourceOption { id: string; kind: 'news' | 'category' | 'hot'; source?: string; catKey?: string; zh: string; en: string; emoji: string }
-const SOURCE_OPTIONS: SourceOption[] = [
-  { id: 'web3', kind: 'news', zh: 'Web3 资讯(深度)', en: 'Web3 News (deep)', emoji: '🌐' },
-  { id: 'tech', kind: 'category', catKey: 'tech', zh: '科技 / AI', en: 'Tech / AI', emoji: '🤖' },
-  { id: 'hackernews', kind: 'hot', source: 'Hacker News', zh: 'Hacker News', en: 'Hacker News', emoji: '🟠' },
-  { id: 'reddit', kind: 'hot', source: 'Reddit', zh: 'Reddit 热门', en: 'Reddit', emoji: '👽' },
-  { id: 'googletrends', kind: 'hot', source: 'Google 趋势', zh: 'Google 趋势', en: 'Google Trends', emoji: '📊' },
-  { id: 'youtube', kind: 'hot', source: 'YouTube 热门', zh: 'YouTube 热门', en: 'YouTube', emoji: '▶️' },
-  { id: 'weibo', kind: 'hot', source: '微博热搜', zh: '微博热搜', en: 'Weibo', emoji: '🔥' },
-  { id: 'zhihu', kind: 'hot', source: '知乎热榜', zh: '知乎热榜', en: 'Zhihu', emoji: '💭' },
-];
+// Reddit 面向海外受众,只放海外源在前的子集(清单本体共享自 postSources.ts)。
+const REDDIT_SOURCE_IDS = ['web3', 'tech', 'hackernews', 'reddit', 'googletrends', 'youtube', 'weibo', 'zhihu'];
+const SOURCE_OPTIONS = REDDIT_SOURCE_IDS
+  .map((id) => POST_SOURCE_OPTIONS.find((s) => s.id === id))
+  .filter((s): s is NonNullable<typeof s> => !!s);
 
 interface Props {
   platformLabel: string;
@@ -71,13 +68,9 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
   }, [accounts, accountsLoading]);
 
   const rp = initialTask?.redditPost || {};
-  const initSourceId = (() => {
-    if (rp.sourceKind === 'news') return 'web3';
-    if (rp.sourceKind === 'category') return SOURCE_OPTIONS.find((s) => s.kind === 'category' && s.catKey === rp.catKey)?.id || 'tech';
-    if (rp.sourceKind === 'hot') return SOURCE_OPTIONS.find((s) => s.kind === 'hot' && s.source === rp.source)?.id || 'hackernews';
-    return 'web3';
-  })();
-  const [sourceId, setSourceId] = useState<string>(initSourceId);
+  // 多选:新任务默认 Web3;老任务(单选字段)映射成单元素数组。
+  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(rp, 'web3'));
+  const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [subreddit, setSubreddit] = useState<string>(String(rp.subreddit || '').replace(/^\/?r\//i, ''));
   const [language, setLanguage] = useState<string>(rp.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(rp.autoPublish !== false);
@@ -88,13 +81,16 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const selSource = SOURCE_OPTIONS.find((s) => s.id === sourceId) || SOURCE_OPTIONS[0];
+  const selSources = selsFromSourceIds(sourceIds);
+  const firstSource = selSources[0] || { kind: 'news' as const };
   // subreddit 选填(2026-07-06 用户要求):留空 = 发到账号自己的个人主页(u_用户名,无版块门槛);填了才校验格式。
   const subTrim = subreddit.trim();
   const subOk = subTrim === '' || /^[A-Za-z0-9_]{2,21}$/.test(subTrim);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selectedIds.length > 0, reason: T('请至少选择一个账号', 'Select at least one account') },
-    2: { ok: subOk, reason: T('subreddit 格式不对(2-21 位字母数字下划线,不带 r/;留空=发自己主页)', 'Invalid subreddit (2-21 chars, no r/; empty = own profile)') },
+    2: !subOk
+      ? { ok: false, reason: T('subreddit 格式不对(2-21 位字母数字下划线,不带 r/;留空=发自己主页)', 'Invalid subreddit (2-21 chars, no r/; empty = own profile)') }
+      : { ok: sourceIds.length > 0, reason: T('请至少选择一个数据源', 'Select at least one data source') },
     3: { ok: allTermsAccepted, reason: T('请勾选同意条款', 'Please accept the terms') },
   };
 
@@ -109,7 +105,9 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
         name: initialTask?.name || T(`Reddit 发帖 · ${subTrim ? `r/${subTrim}` : '个人主页'}`, `Reddit Post · ${subTrim ? `r/${subTrim}` : 'Profile'}`),
         accountIds: selectedIds, concurrency: selectedIds.length, frequency: runInterval,
         language, autoPublish,
-        sourceKind: selSource.kind, source: selSource.source, catKey: selSource.catKey,
+        sources: selSources,
+        // 旧单选字段 = 第一个选中源(生产 orchestrator 未更新前照跑)。
+        sourceKind: firstSource.kind, source: firstSource.source, catKey: firstSource.catKey,
         subreddit: subTrim,
       });
     } catch (err) {
@@ -193,9 +191,9 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
             </div>
 
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('数据源', 'Data source')}<span className="text-xs text-gray-400 font-normal ml-1">{T('从哪取热点/资讯来写', 'where to source topics')}</span></label>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('数据源', 'Data source')}<span className="text-xs text-gray-400 font-normal ml-1">{T('可多选,每轮从选中源里随机挑一个取题', 'multi-select; each run picks one at random')}{sourceIds.length ? T(` · 已选 ${sourceIds.length} 个`, ` · ${sourceIds.length} selected`) : ''}</span></label>
               <div className="grid grid-cols-3 gap-2">
-                {SOURCE_OPTIONS.map((s) => (<button key={s.id} type="button" onClick={() => setSourceId(s.id)} className={bigBtn(sourceId === s.id)}><span className="mr-1">{s.emoji}</span>{isZh ? s.zh : s.en}</button>))}
+                {SOURCE_OPTIONS.map((s) => (<button key={s.id} type="button" onClick={() => toggleSource(s.id)} className={bigBtn(sourceIds.includes(s.id))}><span className="mr-1">{s.emoji}</span>{isZh ? s.zh : s.en}</button>))}
               </div>
             </div>
 
@@ -230,7 +228,7 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
               <div className="font-semibold dark:text-gray-200 mb-1">{T('确认', 'Summary')}</div>
               <SummaryRow label={T('账号', 'Accounts')} value={T(`${selectedIds.length} 个`, `${selectedIds.length}`)} />
               <SummaryRow label={'subreddit'} value={subTrim ? `r/${subTrim}` : T('个人主页', 'Own profile')} />
-              <SummaryRow label={T('数据源', 'Source')} value={isZh ? selSource.zh : selSource.en} />
+              <SummaryRow label={T('数据源', 'Source')} value={sourceIdsLabel(sourceIds, isZh)} />
               <SummaryRow label={T('语言', 'Language')} value={langLabel(language)} />
               <SummaryRow label={T('发布', 'Publish')} value={autoPublish ? T('自动发布', 'Auto') : T('仅生成', 'Draft')} />
               <SummaryRow label={T('频率', 'Frequency')} value={intervalLabel} />

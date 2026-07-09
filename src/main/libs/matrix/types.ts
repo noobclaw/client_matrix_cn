@@ -87,11 +87,27 @@ export interface ReplyFanConfig {
 }
 
 /**
+ * 发帖/图文类任务共用的「数据源」项(向导多选存数组,orchestrator 每轮随机挑 1 个取题)。
+ *   kind='news'     → /api/scenario/fresh-news(web3 深度资讯)
+ *   kind='category' → /api/video/hotspot/preview 的 items[catKey](web3 / tech)
+ *   kind='hot'      → /api/web3/hot-search?sources=<source>(热搜榜,source 名与后端一致)
+ */
+export interface PostSourceSel {
+  kind: 'news' | 'category' | 'hot';
+  source?: string;
+  catKey?: string;
+}
+
+/**
  * 「图文创作」(image_text)任务配置。N 个号各自按身份(赛道/人设/关键词,沿用账号已有配置)
  * + 可选参考文案 + 维度化创意引擎 → AI 生成各异内容,配图全局二选一(AI生图 / 网络图按本号关键词搜),
  * 发到各自创作者中心。配图方式/张数/篇数全局统一,参考文案可按号填(选填)。
+ * 内容来源二选一(contentSource):'reference'=参考文案(老行为,缺省);'sources'=数据源选题
+ * (sources 多选,orchestrator 每轮随机挑一条最新热点/资讯当创作种子)。
  */
 export interface ImageTextConfig {
+  contentSource?: 'reference' | 'sources'; // 缺省 'reference'(老任务无此字段=老行为)
+  sources?: PostSourceSel[];               // 仅 contentSource='sources':多选数据源
   useRealPhotos: boolean;        // 配图方式【全局】:false=AI 生图,true=网络图(按账号关键词搜实景图)
   imageCount: number;            // 每篇配图张数 2-6
   dailyCount: number;            // 每号每轮生成几篇 1-50
@@ -121,7 +137,8 @@ export interface ViralRewriteConfig {
  * 配图可选(withImage→AI 生图附到推文);语言 zh/en/mixed(mixed 跟随客户端语言)。
  */
 export interface TweetPostConfig {
-  mode: 'web3' | 'free';         // 内容来源:web3 资讯流 / 按账号身份自由创作
+  mode: 'web3' | 'free';         // 内容来源:'web3'=数据源选题(历史字段名保留)/ 'free'=按账号身份自由创作
+  sources?: PostSourceSel[];     // 数据源模式的多选源(每轮随机挑 1 个取题;老任务无此字段=仅 web3 资讯)
   withImage: boolean;            // true=AI 生图配图,false=纯文字推
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   isBlueV: boolean;              // 蓝V(X Premium)→ 字数自由(三档随机);普通号 ≤140 字
@@ -151,7 +168,8 @@ export interface FacebookPostConfig {
   withImage: boolean;
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
-  sourceKind: 'news' | 'category' | 'hot';  // 数据源类型
+  sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
+  sourceKind: 'news' | 'category' | 'hot';  // 数据源类型(旧单选字段=第一个选中源,兼容旧 orchestrator)
   source?: string;                          // hot 模式:热榜名(如 "微博热搜")
   catKey?: string;                          // category 模式:分类键(web3 / tech)
 }
@@ -164,6 +182,7 @@ export interface FacebookPostConfig {
 export interface RedditPostConfig {
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
+  sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
@@ -179,6 +198,7 @@ export interface InstagramPostConfig {
   withImage: boolean; // 恒 true(IG 帖必带图);保留字段与 facebook 对齐
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
+  sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
