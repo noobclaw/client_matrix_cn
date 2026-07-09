@@ -1,3 +1,5 @@
+> **[NoobClaw](https://noobclaw.com)** — AI matrix follower-growth engine · [Skills](https://noobclaw.com/skills/) · [Guides](https://noobclaw.com/guides/) · [Blog](https://noobclaw.com/blog/)
+
 # NoobClaw — The world's first plug-and-play Web3 AI assistant!
 
 <p align="center">
