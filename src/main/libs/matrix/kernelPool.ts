@@ -563,6 +563,24 @@ export async function kernelEval(accountId: string, expression: string, timeoutM
   return r?.result?.value;
 }
 
+/**
+ * 区域截图(CDP Page.captureScreenshot):按【文档绝对坐标】裁一块返回 base64 PNG。
+ * clip.scale=2 让输出是 2x 像素密度(截图卡缩进 1080 宽成片仍锐)。captureBeyondViewport
+ * 免滚动拼接。爆帖成片的 reddit_search driver 靠它逐卡截帖子/评论。
+ */
+export async function kernelScreenshot(
+  accountId: string,
+  clip?: { x: number; y: number; width: number; height: number; scale?: number },
+): Promise<string> {
+  const s = await getPage(accountId);
+  const params: any = { format: 'png', captureBeyondViewport: true };
+  if (clip && Number.isFinite(clip.x) && Number.isFinite(clip.width)) {
+    params.clip = { x: clip.x, y: clip.y, width: clip.width, height: clip.height, scale: clip.scale || 1 };
+  }
+  const r = await send(s, 'Page.captureScreenshot', params, 30_000);
+  return String(r?.data || '');
+}
+
 /** 把该号窗口的页面提到前台(登录过期提醒:让用户一眼看到要重扫的那个窗口)。非关键,失败忽略。 */
 export async function kernelBringToFront(accountId: string): Promise<void> {
   try { const s = await getPage(accountId); await send(s, 'Page.bringToFront'); } catch { /* 非关键 */ }

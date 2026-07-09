@@ -349,38 +349,57 @@ export async function runThreadPipeline(
   let refundOnExit = false;
   const session = new ThreadSession();
 
+  // 矩阵内核取材(生产主路):选帖/评论/截图跑在 Reddit 矩阵账号的指纹内核里,逻辑在
+  // 服务端下发的 reddit_search driver(热更新)。拿不到账号/内核 → 回落无头 Chrome 路径。
+  let kernelAccountId = '';
+
   try {
     // ── STEP 1:选帖 + 拉评论 ─────────────────────────────────────────────
     throwIfAborted(signal);
     tracker.start('pick', `输出目录:${taskDir}`);
     const vcfg = await getVideoConfig();
-    tracker.progress(`🌐 启动无头浏览器连 Reddit(需要 VPN/代理可达)…`);
-    await session.launch(W, H);
-    await session.goto('https://www.reddit.com/', 2000);
-    // 等 JS challenge 自动过、shreddit 真正挂载(用户机器上验证页可能要跑几秒;
-    // 没就绪也继续 —— 选帖有页面 DOM 兜底,日志里能看出卡在哪)。
-    await waitForRedditReady(session, (m) => tracker.progress(m));
+    const { acquireRedditKernel, pickThreadViaKernel, captureCardsViaKernel } = require('./threadProvider');
+    kernelAccountId = await acquireRedditKernel(input.threadMaterialAccountId, (m: string) => tracker.progress(m));
     const usedIds = getUsedHotspots(input.taskId || '');
-    const post = await pickRedditPost(session, {
-      subreddits,
-      excludeIds: usedIds,
-      minComments: 20,
-      onLog: (m) => tracker.progress(m),
-    });
-    if (!post) {
-      const err = '爆帖成片:选不到可用帖子(检查 VPN 是否可达 reddit.com,或所选版块暂无合格热帖)';
-      tracker.fail('pick', err);
-      return { ok: false, error: err };
+    let post: RedditPost | null = null;
+    let rawComments: RedditComment[] = [];
+    if (kernelAccountId) {
+      const r = await pickThreadViaKernel(kernelAccountId, {
+        subreddits, excludeIds: usedIds, minComments: 20, wantComments: 24,
+        onLog: (m: string) => tracker.progress(m),
+      });
+      if (r) { post = r.post; rawComments = r.comments; }
     }
-    tracker.progress(`📌 选中 r/${post.subreddit}「${post.title.slice(0, 80)}」· 👍${post.score} · 💬${post.numComments}`);
-    throwIfAborted(signal);
-    const rawComments = await fetchRedditComments(session, post, 24, (m) => tracker.progress(m));
+    if (!post) {
+      // 无头 Chrome 兜底(没有 Reddit 矩阵账号 / 内核路径失败)。
+      if (kernelAccountId) tracker.progress('⚠️ 内核取材未成,回落无头浏览器再试…');
+      tracker.progress(`🌐 启动无头浏览器连 Reddit(需要 VPN/代理可达)…`);
+      await session.launch(W, H);
+      await session.goto('https://www.reddit.com/', 2000);
+      // 等 JS challenge 自动过、shreddit 真正挂载;没就绪也继续(选帖有页面 DOM 兜底)。
+      await waitForRedditReady(session, (m) => tracker.progress(m));
+      post = await pickRedditPost(session, {
+        subreddits,
+        excludeIds: usedIds,
+        minComments: 20,
+        onLog: (m) => tracker.progress(m),
+      });
+      if (!post) {
+        const err = '爆帖成片:选不到可用帖子(检查 VPN 是否可达 reddit.com,或所选版块暂无合格热帖)';
+        tracker.fail('pick', err);
+        return { ok: false, error: err };
+      }
+      tracker.progress(`📌 选中 r/${post.subreddit}「${post.title.slice(0, 80)}」· 👍${post.score} · 💬${post.numComments}`);
+      throwIfAborted(signal);
+      rawComments = await fetchRedditComments(session, post, 24, (m) => tracker.progress(m));
+      kernelAccountId = ''; // 后续截图也走无头路径
+    }
     if (rawComments.length < 2) {
       const err = '爆帖成片:该帖拉不到足够的可用评论(过滤后 <2 条),请重试换一帖';
       tracker.fail('pick', err);
       return { ok: false, error: err };
     }
-    tracker.done('pick', `✅ 选帖完成 · 候选评论 ${rawComments.length} 条`);
+    tracker.done('pick', `✅ 选帖完成 · 候选评论 ${rawComments.length} 条${kernelAccountId ? ' · 指纹内核' : ''}`);
 
     // 批次目录加帖子标题后缀,方便肉眼区分(照 hotspot 的做法;此刻 runDir 还没写过成片)
     try {
@@ -444,15 +463,18 @@ export async function runThreadPipeline(
     throwIfAborted(signal);
     tracker.start('cards', '📸 打开帖子页,替换文字并逐卡截图…');
     const pickedComments = rawComments.filter((c) => segs.some((s) => s.key === c.id));
-    const captured = await captureThreadCards(session, {
+    const captureOpts = {
       post,
       comments: pickedComments,
       translatedTitle: lang !== 'en' ? trTitle : undefined,
       translatedBodies: lang !== 'en' ? trBodies : undefined,
       outDir: assetDir,
-      onLog: (m) => tracker.progress(m),
+      onLog: (m: string) => tracker.progress(m),
       signal,
-    });
+    };
+    const captured = kernelAccountId
+      ? await captureCardsViaKernel(kernelAccountId, captureOpts)
+      : await captureThreadCards(session, captureOpts);
     if (!captured.titlePng) {
       const err = `爆帖成片:标题卡截图失败(Reddit 页面结构可能变了)。诊断:${captured.diag.slice(0, 3).join(' | ') || '无'}`;
       tracker.fail('cards', err);
@@ -479,8 +501,12 @@ export async function runThreadPipeline(
     }
     const totalSec = Math.max(3, cursor - GAP_SEC + 0.6); // 尾留白 0.6s
     tracker.done('cards', `✅ 卡片就绪 ${alive.length}/${segs.length} · 成片约 ${Math.round(totalSec)}s`);
-    // 截图用完就关浏览器,别占着资源陪跑 ffmpeg
+    // 截图用完就关浏览器/内核,别占着资源陪跑 ffmpeg
     await session.close().catch(() => { /* 已关 */ });
+    if (kernelAccountId) {
+      try { require('../matrix/kernelPool').closeKernel(kernelAccountId, { force: true }); } catch { /* ignore */ }
+      kernelAccountId = '';
+    }
 
     // 口播文案存档(对齐 stock 的「文案.txt」)
     try {
@@ -628,6 +654,9 @@ export async function runThreadPipeline(
     return { ok: false, error: msg };
   } finally {
     await session.close().catch(() => { /* 已关 */ });
+    if (kernelAccountId) {
+      try { require('../matrix/kernelPool').closeKernel(kernelAccountId, { force: true }); } catch { /* ignore */ }
+    }
     if (refundOnExit && chargeId) {
       try {
         const refunded = await refundMode1Video(chargeId);

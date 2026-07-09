@@ -16,7 +16,7 @@ import os from 'os';
 import path from 'path';
 import http from 'http';
 import https from 'https';
-import { kernelEval, kernelExec, kernelKeypress, kernelClick, kernelWheel, kernelNavigate, kernelInsertText, kernelSetFileInput } from './kernelPool';
+import { kernelEval, kernelExec, kernelKeypress, kernelClick, kernelWheel, kernelNavigate, kernelInsertText, kernelSetFileInput, kernelScreenshot } from './kernelPool';
 
 export async function matrixCmd(
   accountId: string,
@@ -84,6 +84,17 @@ export async function matrixCmd(
         + `}catch(e){return JSON.stringify({ok:false,error:String(e&&e.message||e)});}})()`;
       try { const raw = await kernelEval(accountId, expr, timeoutMs); return JSON.parse(String(raw || '{}')); }
       catch (e: any) { return { ok: false, error: 'main_world_fetch_failed:' + String(e?.message || e).slice(0, 80) }; }
+    }
+    // 区域截图(CDP Page.captureScreenshot):文档绝对坐标裁块 → base64 PNG(scale=2 出 2x)。
+    // 爆帖成片 reddit_search driver 截帖子/评论卡用。返回 { ok, base64 }。
+    case 'cdp_screenshot': {
+      try {
+        const clip = (Number.isFinite(Number(params?.x)) && Number.isFinite(Number(params?.width)))
+          ? { x: Number(params.x), y: Number(params.y) || 0, width: Number(params.width), height: Number(params.height) || 100, scale: Number(params?.scale) || 1 }
+          : undefined;
+        const base64 = await kernelScreenshot(accountId, clip);
+        return base64 ? { ok: true, base64 } : { ok: false, error: 'empty_screenshot' };
+      } catch (e: any) { return { ok: false, error: String(e?.message || e).slice(0, 80) }; }
     }
     // 整页导航(CDP Page.navigate):取材 driver 搜索/进详情页要用;执行器在页面里做不了真导航。
     case 'navigate': {

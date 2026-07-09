@@ -1,4 +1,4 @@
-/**
+﻿/**
  * videoCreation service — 渲染端对 window.electron.video 的薄封装。
  *
  * 「多平台视频创作」功能的所有重活(拆句、TTS 配音、下载/裁剪素材、
@@ -99,6 +99,8 @@ export interface VideoCreationInput {
   threadBgSource?: 'douyin' | 'youtube';
   /** engine==='thread':背景选择('random' 或服务端清单里的背景/搜索词 id)。 */
   threadBgChoice?: string;
+  /** engine==='thread'(矩阵):Reddit 取材账号 id(用该号指纹内核抓帖+截图;空 = 自动选/无头兜底)。 */
+  threadMaterialAccountId?: string;
   /** AI 引擎分辨率档:'480p' | '720p'(默认) | '1080p'(越高越清越贵)。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */

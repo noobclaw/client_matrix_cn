@@ -257,6 +257,37 @@ export async function runMatrixTiktokSearch(
 }
 
 /**
+ * 在指定账号的指纹内核里跑【Reddit 取材】driver(reddit_search)—— 爆帖成片用。
+ * 两种 mode 由 input.mode 区分('pick' 选帖+拉评论 / 'capture' 文字替换+逐卡截图),
+ * 返回值原样透传(driver 自己定义结构,{ ok, reason?, diag?, ... })。
+ * 绝不抛 —— 失败归一成 { ok:false, reason }。选帖/截图 selector 全在服务端脚本里,热更新不打包。
+ */
+export async function runMatrixRedditThread(
+  accountId: string,
+  input: Record<string, unknown>,
+  onLog: (msg: string) => void,
+): Promise<any> {
+  try {
+    const drivers = await fetchMatrixDrivers();
+    const code = drivers?.['reddit_search'];
+    if (!code) return { ok: false, reason: 'no_matrix_driver:reddit_search(后端 /api/matrix/drivers 未下发)' };
+    let fn: (ctx: any) => Promise<any>;
+    try { fn = new AsyncFunction('ctx', code) as (ctx: any) => Promise<any>; }
+    catch (e: any) { return { ok: false, reason: 'compile_failed:' + String(e?.message || e).slice(0, 80) }; }
+    const ctx = {
+      input,
+      cmd: (command: string, params: any, timeoutMs?: number) => matrixCmd(accountId, command, params, timeoutMs),
+      sleep,
+      log: (m: string) => { try { onLog(m); } catch { /* ignore */ } },
+    };
+    const ret: any = await fn(ctx);
+    return ret && typeof ret === 'object' ? ret : { ok: false, reason: 'bad_return:' + JSON.stringify(ret).slice(0, 60) };
+  } catch (e: any) {
+    return { ok: false, reason: 'reddit_driver_threw:' + String(e?.message || e).slice(0, 120) };
+  }
+}
+
+/**
  * 在指定账号的指纹内核里跑该平台的发布 driver。
  * 流程:导航到创作者中心 anchor → 拉矩阵 driver 脚本 → 同契约 ctx 执行。
  * 绝不抛,归一成 PublishResult。

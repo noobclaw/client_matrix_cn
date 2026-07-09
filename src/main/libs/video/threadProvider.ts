@@ -572,3 +572,101 @@ export async function captureThreadCards(session: ThreadSession, opts: CaptureCa
   if (diag.length) opts.onLog?.(`🩺 截图诊断: ${diag.slice(0, 5).join(' | ')}${diag.length > 5 ? ` …共${diag.length}条` : ''}`);
   return { titlePng, commentPngs, diag };
 }
+
+// ── 矩阵内核路径(生产主路)───────────────────────────────────────────────
+// 选帖/评论/截图逻辑全在服务端下发的 reddit_search driver 里(热更新,Reddit 改版不打包);
+// 这里只负责:选一个 Reddit 矩阵账号起指纹内核 → 跑 driver → 把截图 base64 落成 PNG。
+// 没有 Reddit 账号 / driver 缺失时,调用方回落上面的无头 Chrome 路径。
+
+/**
+ * 起一个可用的 Reddit 矩阵账号内核,返回 accountId(失败返 ''')。
+ * 与抖音取材不同:Reddit 公开帖不登录也能看,登录校验失败【不换号不拦截】,只记日志
+ * (带 cookie 更抗风控,但没登录态照样能跑)。用完由调用方 closeKernel(force)。
+ */
+export async function acquireRedditKernel(
+  preferredAccountId: string | undefined,
+  onLog: (m: string) => void,
+): Promise<string> {
+  // 懒加载矩阵模块(避免顶层循环依赖;模块缺失时 require 抛错 → 返 '' 走无头路径)。
+  let mods: any;
+  try {
+    mods = {
+      ...require('../matrix/accountManager'),
+      ...require('../matrix/kernelPool'),
+    };
+  } catch { return ''; }
+  const { accountsByPlatform, accountBadgeLabel, launchKernel, kernelNavigate, checkKernelLogin } = mods;
+  const usable = (accountsByPlatform('reddit') as any[]).filter((a) => a.status !== 'banned' && a.status !== 'limited');
+  if (usable.length === 0) return '';
+  let ordered = usable;
+  if (preferredAccountId) {
+    const pref = usable.find((a) => a.id === preferredAccountId);
+    ordered = pref ? [pref, ...usable.filter((a) => a.id !== preferredAccountId)] : usable;
+  }
+  for (const cand of ordered) {
+    try {
+      await launchKernel({ accountId: cand.id, kernelVersion: cand.kernelVersion, userDataDir: cand.userDataDir, fingerprint: cand.fingerprint, proxy: cand.proxy, label: accountBadgeLabel(cand) });
+    } catch { onLog(`   「${cand.displayName}」内核启动失败,换下一个…`); continue; }
+    try { await kernelNavigate(cand.id, 'https://www.reddit.com/'); await sleep(2500); } catch { /* driver 里还会导航 */ }
+    let loggedIn = false;
+    try { loggedIn = await checkKernelLogin(cand.id, 'reddit'); } catch { /* 读失败不拦 */ }
+    onLog(`🧬 用 Reddit 账号「${cand.displayName}」的指纹浏览器取材${loggedIn ? '' : '(未检出登录态,公开帖仍可抓)'}`);
+    return cand.id;
+  }
+  return '';
+}
+
+/** 内核路径选帖+拉评论(driver mode=pick)。失败返回 null 并把 reason 打进日志。 */
+export async function pickThreadViaKernel(
+  accountId: string,
+  opts: PickPostOptions & { wantComments?: number },
+): Promise<{ post: RedditPost; comments: RedditComment[] } | null> {
+  const { runMatrixRedditThread } = require('../matrix/driverCtx');
+  const r = await runMatrixRedditThread(accountId, {
+    mode: 'pick',
+    subreddits: opts.subreddits,
+    excludeIds: opts.excludeIds || [],
+    minComments: opts.minComments ?? 20,
+    wantComments: opts.wantComments ?? 24,
+  }, (m: string) => opts.onLog?.(m));
+  if (!r || r.ok !== true || !r.post || !Array.isArray(r.comments)) {
+    opts.onLog?.(`⚠️ Reddit 取材脚本未选到帖子${r?.reason ? `(${String(r.reason).slice(0, 100)})` : ''}`);
+    if (r?.diag?.errors?.length) opts.onLog?.(`🩺 脚本诊断:${(r.diag.errors as string[]).slice(0, 3).join(' | ')}`);
+    return null;
+  }
+  return { post: r.post as RedditPost, comments: r.comments as RedditComment[] };
+}
+
+/** 内核路径截图(driver mode=capture):driver 返回 base64,这里落成 PNG,契约同 captureThreadCards。 */
+export async function captureCardsViaKernel(
+  accountId: string,
+  opts: CaptureCardsOptions,
+): Promise<CapturedCards> {
+  const { runMatrixRedditThread } = require('../matrix/driverCtx');
+  fs.mkdirSync(opts.outDir, { recursive: true });
+  const r = await runMatrixRedditThread(accountId, {
+    mode: 'capture',
+    permalink: opts.post.permalink,
+    translatedTitle: opts.translatedTitle,
+    commentIds: opts.comments.map((c) => c.id),
+    translatedBodies: opts.translatedBodies || {},
+  }, (m: string) => opts.onLog?.(m));
+  const diag: string[] = Array.isArray(r?.diag?.errors) ? (r.diag.errors as string[]) : [];
+  if (r?.reason) diag.unshift(String(r.reason));
+  let titlePng: string | null = null;
+  if (typeof r?.titleB64 === 'string' && r.titleB64.length > 100) {
+    titlePng = path.join(opts.outDir, 'card-title.png');
+    fs.writeFileSync(titlePng, Buffer.from(r.titleB64, 'base64'));
+  }
+  const commentPngs = new Map<string, string>();
+  if (r?.cards && typeof r.cards === 'object') {
+    for (const [id, b64] of Object.entries(r.cards as Record<string, string>)) {
+      if (typeof b64 !== 'string' || b64.length < 100) continue;
+      const p = path.join(opts.outDir, `card-${id}.png`);
+      fs.writeFileSync(p, Buffer.from(b64, 'base64'));
+      commentPngs.set(id, p);
+    }
+  }
+  if (diag.length) opts.onLog?.(`🩺 截图诊断: ${diag.slice(0, 4).join(' | ')}`);
+  return { titlePng, commentPngs, diag };
+}

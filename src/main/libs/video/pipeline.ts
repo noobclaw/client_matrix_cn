@@ -1,4 +1,4 @@
-/**
+﻿/**
  * pipeline — 本地出片总编排(一期 路线 A:文案 → 配音 → 画面 → 字幕 → 合成 mp4)。
  *
  * 流程:
@@ -184,6 +184,8 @@ export interface VideoCreationInput {
   threadBgSource?: 'douyin' | 'youtube';
   /** engine==='thread':背景选择('random' 或服务端清单里的背景/搜索词 id)。 */
   threadBgChoice?: string;
+  /** engine==='thread'(矩阵):Reddit 取材账号 id(用该号指纹内核抓帖+截图;空 = 自动选/无头兜底)。 */
+  threadMaterialAccountId?: string;
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些

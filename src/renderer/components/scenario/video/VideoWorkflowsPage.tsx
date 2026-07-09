@@ -5039,6 +5039,9 @@ export const ThreadVideoModal: React.FC<{
     })();
     return () => { alive = false; };
   }, []);
+  // 取材账号(矩阵,选填):用该 Reddit 号的指纹内核抓帖+截图(带登录 cookie 抗风控);
+  // 不选 = 自动挑一个可用 Reddit 号,一个都没有则回落无头浏览器(需 VPN)。
+  const [materialAccountId, setMaterialAccountId] = useState<string>(ei.threadMaterialAccountId || '');
   const [outputMode, setOutputMode] = useState<OutputMode>(
     !editTask ? 'upload'
       : (Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local'));
@@ -5102,6 +5105,7 @@ export const ThreadVideoModal: React.FC<{
     threadLang: lang,
     threadBgSource: bgSource,
     threadBgChoice: bgChoice,
+    threadMaterialAccountId: materialAccountId || undefined,
     referenceImages: [],
     aspect: '9:16',
     publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
@@ -5250,6 +5254,21 @@ export const ThreadVideoModal: React.FC<{
                   placeholder={isZh ? '如:AskMen, antiwork' : 'e.g. AskMen, antiwork'}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50" />
               </Field>
+              {matrixMode && (
+                <Field label={isZh ? '取材账号(选填)' : 'Source account (optional)'}
+                  hint={isZh ? '用该 Reddit 号的指纹浏览器抓帖+截图' : 'fetch & screenshot via this account kernel'}>
+                  <MatrixAccountSelect
+                    isZh={isZh}
+                    accounts={accountsFor('reddit')}
+                    value={materialAccountId}
+                    onChange={(id) => setMaterialAccountId(id)}
+                    onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: 'reddit' } })); onClose(); }}
+                  />
+                  <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    {isZh ? '不选 = 自动挑一个可用 Reddit 号;一个都没有则用无头浏览器(需 VPN 可达 Reddit)。' : 'Empty = auto-pick a linked Reddit account; none = headless browser (VPN required).'}
+                  </p>
+                </Field>
+              )}
             </>
           )}
 
