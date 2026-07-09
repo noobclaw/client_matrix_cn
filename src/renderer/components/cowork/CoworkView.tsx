@@ -11,6 +11,7 @@ import { i18nService } from '../../services/i18n';
 import { noobClawAuth, type AuthState } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
+import { profitSharePct } from '../../services/profitShare';
 import { configService } from '../../services/config';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import CoworkSessionDetail from './CoworkSessionDetail';
@@ -516,7 +517,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
                 {i18nService.t('partnerRebateRate') || i18nService.t('cvRebateRateLabel')}
                 <span className="ml-1 font-bold tabular-nums" style={{ color: 'var(--invite-partner-color)' }}>
-                  {Math.round(partnerInfo.rate_pct)}%
+                  {/* 展示「净利润分成」口径(实际计费费率 rate_pct 不变) */}
+                  {profitSharePct(partnerInfo.rate_pct)}%
                 </span>
                 <span className="ml-1 opacity-70">
                   {i18nService.t('cvRebateByDeposit')}
