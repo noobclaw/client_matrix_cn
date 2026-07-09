@@ -44,6 +44,15 @@ export interface VideoPipelineConfig {
   postSubmitWaitMs: number;
   /** 发布:运行时某平台未登录,反复探测等多久(ms),超时跳过该平台(本条不补传)。服务端可调。 */
   loginWaitMs: number;
+  /** 爆帖成片:YouTube 游戏录屏背景库(yt-dlp 按需下载缓存)。 */
+  threadBgVideos: Array<{ id: string; label: string; url: string; credit: string }>;
+  /** 爆帖成片:抖音背景搜索词(国内用户背景从抖音搜竖屏录屏)。 */
+  threadBgDouyinTerms: Array<{ id: string; label: string; term: string }>;
+  /** 爆帖成片:yt-dlp 单文件二进制下载地址(win/mac)。 */
+  threadYtdlpUrlWin: string;
+  threadYtdlpUrlMac: string;
+  /** 爆帖成片:subreddit 预设(向导多选,cat 分组 qa/story/tech)。 */
+  threadSubredditPresets: Array<{ id: string; label: string; cat: string }>;
 }
 
 /** 内置默认 = 历史硬编码行为。服务端拉不到时全靠这份兜底,保证离线也能跑。 */
@@ -98,6 +107,40 @@ export const DEFAULT_VIDEO_CONFIG: VideoPipelineConfig = {
   maxSearchTerms: 12,
   postSubmitWaitMs: 120_000,
   loginWaitMs: 180_000,
+  // ⚠️ 与 backend routes/video.ts 的 DEFAULT_VIDEO_CONFIG 同源(离线兜底用)。
+  threadBgVideos: [
+    { id: 'minecraft',     label: 'Minecraft 跑酷',   url: 'https://www.youtube.com/watch?v=n_Dv4JMiwK8', credit: 'bbswitzer' },
+    { id: 'minecraft-2',   label: 'Minecraft 跑酷 2', url: 'https://www.youtube.com/watch?v=Pt5_GSKIWQM', credit: 'Itslpsn' },
+    { id: 'gta',           label: 'GTA 特技赛',       url: 'https://www.youtube.com/watch?v=qGa9kWREOnE', credit: 'Achy Gaming' },
+    { id: 'motor-gta',     label: 'GTA 摩托跑酷',     url: 'https://www.youtube.com/watch?v=vw5L4xCPy9Q', credit: 'Achy Gaming' },
+    { id: 'rocket-league', label: '火箭联盟',         url: 'https://www.youtube.com/watch?v=2X9QGY__0II', credit: 'Orbital Gameplay' },
+    { id: 'csgo-surf',     label: 'CSGO 滑翔',        url: 'https://www.youtube.com/watch?v=E-8JlyO59Io', credit: 'Aki' },
+    { id: 'cluster-truck', label: 'Cluster Truck',    url: 'https://www.youtube.com/watch?v=uVKxtdMgJVU', credit: 'No Copyright Gameplay' },
+    { id: 'multiversus',   label: 'MultiVersus',      url: 'https://www.youtube.com/watch?v=66oK1Mktz6g', credit: 'MKIceAndFire' },
+    { id: 'fall-guys',     label: 'Fall Guys',        url: 'https://www.youtube.com/watch?v=oGSsgACIc6Q', credit: 'Throneful' },
+    { id: 'steep',         label: 'Steep 滑雪',       url: 'https://www.youtube.com/watch?v=EnGiQrWBrko', credit: 'joel' },
+  ],
+  threadBgDouyinTerms: [
+    { id: 'mc-parkour',    label: '我的世界跑酷', term: '我的世界跑酷 录屏' },
+    { id: 'subway',        label: '地铁跑酷',     term: '地铁跑酷 高分' },
+    { id: 'mini-parkour',  label: '迷你世界跑酷', term: '迷你世界跑酷' },
+    { id: 'racing',        label: '赛车漂移',     term: '赛车漂移 手游录屏' },
+    { id: 'gta-stunt',     label: 'GTA 特技',     term: 'gta 特技跑酷' },
+  ],
+  threadYtdlpUrlWin: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
+  threadYtdlpUrlMac: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
+  threadSubredditPresets: [
+    { id: 'AskReddit',        label: '问答 AskReddit',        cat: 'qa' },
+    { id: 'Showerthoughts',   label: '脑洞 Showerthoughts',   cat: 'qa' },
+    { id: 'NoStupidQuestions',label: '提问 NoStupidQuestions', cat: 'qa' },
+    { id: 'AmItheAsshole',    label: '判案 AITA',             cat: 'story' },
+    { id: 'tifu',             label: '闯祸 TIFU',             cat: 'story' },
+    { id: 'ProRevenge',       label: '复仇 ProRevenge',       cat: 'story' },
+    { id: 'MaliciousCompliance', label: '恶意服从',           cat: 'story' },
+    { id: 'confession',       label: '忏悔 Confession',       cat: 'story' },
+    { id: 'technology',       label: '科技 Technology',       cat: 'tech' },
+    { id: 'todayilearned',    label: '涨知识 TIL',            cat: 'tech' },
+  ],
 };
 
 function apiBase(): string {
@@ -124,6 +167,9 @@ function num(v: any, fallback: number): number {
 }
 function str(v: any, fallback: string): string {
   return typeof v === 'string' && v.trim() ? v : fallback;
+}
+function arr<T>(v: any, fallback: T[]): T[] {
+  return Array.isArray(v) && v.length > 0 ? (v as T[]) : fallback;
 }
 
 /**
@@ -158,6 +204,11 @@ export async function getVideoConfig(): Promise<VideoPipelineConfig> {
       maxSearchTerms: num(c?.maxSearchTerms, d.maxSearchTerms),
       postSubmitWaitMs: num(c?.postSubmitWaitMs, d.postSubmitWaitMs),
       loginWaitMs: num(c?.loginWaitMs, d.loginWaitMs),
+      threadBgVideos: arr(c?.threadBgVideos, d.threadBgVideos),
+      threadBgDouyinTerms: arr(c?.threadBgDouyinTerms, d.threadBgDouyinTerms),
+      threadYtdlpUrlWin: str(c?.threadYtdlpUrlWin, d.threadYtdlpUrlWin),
+      threadYtdlpUrlMac: str(c?.threadYtdlpUrlMac, d.threadYtdlpUrlMac),
+      threadSubredditPresets: arr(c?.threadSubredditPresets, d.threadSubredditPresets),
     };
     cache = { at: Date.now(), cfg };
     return cfg;
