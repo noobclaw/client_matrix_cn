@@ -49,10 +49,14 @@ const THREAD_STEPS = [
 
 const W = 1080;
 const H = 1920;
-/** 卡片在画面里的显示宽(px)。截图是 2x DPI,缩到 940 仍然锐。 */
-const CARD_W = 940;
-/** 卡片显示高上限:超高长评论截图别顶穿画面。 */
-const CARD_MAX_H = 1600;
+/** 卡片显示宽(px)。RedditVideoMakerBot 原版是 45%(final_video.py:268),但那套渲染尺度下
+ *  照搬到竖屏太小、手机上字读不清。真机比对后取 0.62:字醒目、卡片干净(操作栏已在 driver
+ *  隐藏),上下仍露出游戏画面 —— 兼顾"小卡浮在背景"的品类灵魂与移动端可读性。不用 80%+(文字墙)。 */
+const CARD_W = Math.round(W * 0.62); // ≈670
+/** 卡片显示高上限:随宽等比缩小,超高长评论按此钳制不顶穿画面。 */
+const CARD_MAX_H = Math.round(H * 0.7); // ≈1344
+/** 卡片叠加不透明度(照 bot opacity=0.9,略提到 0.92):微透和游戏背景柔和融合,不生硬。 */
+const CARD_OPACITY = 0.92;
 /** 段间静音(秒),对齐 bot 的 silence_duration=0.3。 */
 const GAP_SEC = 0.3;
 
@@ -280,7 +284,9 @@ async function composeThreadVideo(opts: {
     scaleArgs.push(dispH > CARD_MAX_H ? `scale=-2:${CARD_MAX_H}` : `scale=${CARD_W}:-2`);
   }
   cards.forEach((c, i) => {
-    parts.push(`[${2 + i}:v]${scaleArgs[i]}[c${i}]`);
+    // 缩到显示宽 + 整卡半透明(format=rgba 保 alpha,colorchannelmixer aa 压全局不透明度)。
+    // 照 bot 的 colorchannelmixer=aa=opacity,让卡片跟游戏背景柔和融合而非实心糊上去。
+    parts.push(`[${2 + i}:v]${scaleArgs[i]},format=rgba,colorchannelmixer=aa=${CARD_OPACITY}[c${i}]`);
   });
   let cur = '[0:v]';
   cards.forEach((c, i) => {
