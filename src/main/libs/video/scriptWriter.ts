@@ -39,8 +39,9 @@ interface ChatResult {
 /**
  * 调 DeepSeek 代理。jsonMode=true 时传 response_format=json_object —— prompt
  * 必须含 "json" 字眼(DeepSeek 文档硬要求,否则会无限输出空白卡死)。
+ * (export 给 thread-pipeline 的翻译改写复用;签名/行为不变。)
  */
-async function callDeepSeek(
+export async function callDeepSeek(
   systemPrompt: string,
   userMessage: string,
   jsonMode: boolean,
@@ -361,7 +362,7 @@ export interface SearchTermsContext {
  * reasoner 不支持 response_format=json_object,可能把 JSON 包在 ```json``` 或推理段落里,
  * 这里先剥围栏、再截取首个 {...} 平衡块,保证 chat(本就纯 JSON)与 reasoner 都能解析。
  */
-function extractJsonObject(raw: string): string {
+export function extractJsonObject(raw: string): string {
   let t = (raw || '').trim();
   // 剥 ```json ... ``` / ``` ... ``` 围栏
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);

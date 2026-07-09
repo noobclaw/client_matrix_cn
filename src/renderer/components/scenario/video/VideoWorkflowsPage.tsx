@@ -138,7 +138,16 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ matrixMo
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && (
+        {editingTask && editingTask.input?.engine === 'thread' && (
+          <ThreadVideoModal
+            isZh={isZh}
+            matrixMode={matrixMode}
+            editTask={editingTask}
+            onClose={() => setEditTaskId(null)}
+            onSaved={() => setEditTaskId(null)}
+          />
+        )}
+        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && (
           <VideoConfigModal
             isZh={isZh}
             matrixMode={matrixMode}
@@ -935,6 +944,21 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       </div>
     );
   }
+  // 爆帖成片:帖子源/语言/时长/配音/背景/发布(赛道/人设/关键词对它无意义)。
+  if (input.engine === 'thread') {
+    const subs = ((input.threadSubreddits as string[] | undefined) || []).map((s) => `r/${s}`).join('、') || '-';
+    return (
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+        <Row label={`🧵 ${isZh ? '帖子源' : 'Subreddits'}`}>{subs}</Row>
+        <Row label={`🌏 ${isZh ? '创作语言' : 'Language'}`}>{threadLangLabel(input.threadLang, isZh)}</Row>
+        <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
+        <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
+        <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{voiceDisplayLabel(input.voice, isZh)}</Row>
+        <Row label={`🎮 ${isZh ? '背景' : 'Background'}`}>{threadBgLabel(input, isZh)}</Row>
+        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
+      </div>
+    );
+  }
   // 其它 engine(stock / pure_ai / 本地素材)走老的赛道/人设/关键词/文案布局。
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
@@ -1001,6 +1025,25 @@ function publishSummary(input: VideoCreationInput, isZh: boolean): string {
 function voiceDisplayLabel(voiceId: string | undefined, isZh: boolean): string {
   const v = VOICE_GROUPS.flatMap((g) => g.voices).find((x) => x.id === voiceId);
   return v ? (isZh ? v.zh : v.en) : (voiceId || (isZh ? '默认音色' : 'Default'));
+}
+
+/** 爆帖成片:创作语言标签。 */
+function threadLangLabel(lang: string | undefined, isZh: boolean): string {
+  switch (lang) {
+    case 'en': return isZh ? '英文原声(不翻译)' : 'English (original)';
+    case 'ja': return '日本語';
+    case 'ko': return '한국어';
+    default: return isZh ? '中文(AI 翻译改写)' : 'Chinese (AI rewrite)';
+  }
+}
+
+/** 爆帖成片:背景摘要(来源 + 选择)。 */
+function threadBgLabel(input: VideoCreationInput, isZh: boolean): string {
+  const src = input.threadBgSource === 'youtube' ? (isZh ? 'YouTube 游戏录屏' : 'YouTube gameplay') : (isZh ? '抖音游戏录屏' : 'Douyin gameplay');
+  const choice = input.threadBgChoice && input.threadBgChoice !== 'random'
+    ? input.threadBgChoice
+    : (isZh ? '随机' : 'random');
+  return `${src} · ${choice}`;
 }
 
 /** 热搜成片「每次运行条数」标签:min===max → "N 条/次";否则 "min-max 条/次(随机)"。 */
@@ -1070,6 +1113,21 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         {scriptLangDisplay(input.scriptLang, isZh) && <div>🌐 {isZh ? '创作语言' : 'Language'}：{scriptLangDisplay(input.scriptLang, isZh)}</div>}
         <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceLabel}{subTag}</div>
         <div>🎞️ {isZh ? '画面' : 'Visuals'}：{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '智能混剪' : 'Smart remix') : (isZh ? '智能配图(抖音图文/TikTok)' : 'Smart images (Douyin/TikTok)')}</div>
+        <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
+      </>
+    );
+  }
+  // 爆帖成片:帖子源/语言/时长/配音/背景/发布(扁平文本版,任务详情页用)。
+  if (input.engine === 'thread') {
+    const subs = ((input.threadSubreddits as string[] | undefined) || []).map((x) => `r/${x}`).join('、') || '-';
+    return (
+      <>
+        <div className="break-words">🧵 {isZh ? '帖子源' : 'Subreddits'}：{subs}</div>
+        <div>🌏 {isZh ? '创作语言' : 'Language'}：{threadLangLabel(input.threadLang, isZh)}</div>
+        <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
+        <div>🔢 {isZh ? '每次条数' : 'Per run'}：{hotspotCountLabel(input, isZh)}</div>
+        <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceDisplayLabel(input.voice, isZh)}</div>
+        <div>🎮 {isZh ? '背景' : 'Background'}：{threadBgLabel(input, isZh)}</div>
         <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
       </>
     );
@@ -1813,6 +1871,7 @@ const VideoCreateFlow: React.FC<{
   const [stockOpen, setStockOpen] = useState(false);       // 在线素材 → VideoConfigModal forcedMode=stock
   const [templateOpen, setTemplateOpen] = useState(false); // 模板速生 → TemplateSpeedModal
   const [hotspotOpen, setHotspotOpen] = useState(false);   // 热搜成片 → HotspotVideoModal
+  const [threadOpen, setThreadOpen] = useState(false);     // 爆帖成片 → ThreadVideoModal
   // 热搜成片仅简体/繁体中文显示(数据源是中文热榜;韩/日/英先不支持)。繁体也走中文文案。
   const isZhHot = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
@@ -1864,6 +1923,13 @@ const VideoCreateFlow: React.FC<{
           costZh={`单条约 ${feeZh}(写稿/联网/配图/合成)`} costEn={`~${feeEn} per clip (script / web / footage / compose)`}
           btnZh="🔥 开始创作 →" btnEn="🔥 Start →" />
         )}
+        <VideoScenarioEntryCard isZh={isZh} accent="orange" icon="🧵" onOpen={openWithLogin(() => setThreadOpen(true))} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 爆帖成片" tagEn="AI Auto · Viral Threads"
+          titleZh="爆帖成片 · 海外神帖神评" titleEn="Viral Threads · Reddit Stories"
+          descZh="自动挑 Reddit 高赞神帖,真实帖子+神评截图卡叠在游戏跑酷背景上逐条朗读,AI 翻译改写成你的创作语言 —— 海外爆火的 Reddit Stories 形态一键复刻(需 VPN 可达 Reddit)。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="Auto-picks a top-voted Reddit thread, overlays real post & comment screenshot cards on gameplay footage and reads them aloud — the proven Reddit Stories format, one click (VPN required for Reddit). Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
+          costZh={`单条约 ${feeZh}(选帖/翻译/截图/合成)`} costEn={`~${feeEn} per clip (pick / translate / shots / compose)`}
+          btnZh="🧵 开始创作 →" btnEn="🧵 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={openWithLogin(() => setCinemaOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
@@ -1917,6 +1983,9 @@ const VideoCreateFlow: React.FC<{
       )}
       {hotspotOpen && (
         <HotspotVideoModal isZh={isZhHot} matrixMode={matrixMode} onClose={() => setHotspotOpen(false)} onCreated={onCreated} />
+      )}
+      {threadOpen && (
+        <ThreadVideoModal isZh={isZh} matrixMode={matrixMode} onClose={() => setThreadOpen(false)} onCreated={onCreated} />
       )}
     </div>
   );
@@ -4086,11 +4155,12 @@ const ENTRY_ACCENTS: Record<string, { tag: string; dot: string; border: string; 
   sky:     { tag: 'text-sky-500',     dot: 'bg-sky-500',     border: 'border-sky-500/30',     glow: 'bg-sky-500/10',     btn: 'bg-sky-500 hover:bg-sky-600 shadow-sky-500/25' },
   fuchsia: { tag: 'text-fuchsia-500', dot: 'bg-fuchsia-500', border: 'border-fuchsia-500/30', glow: 'bg-fuchsia-500/10', btn: 'bg-fuchsia-500 hover:bg-fuchsia-600 shadow-fuchsia-500/25' },
   violet:  { tag: 'text-violet-500',  dot: 'bg-violet-500',  border: 'border-violet-500/30',  glow: 'bg-violet-500/10',  btn: 'bg-violet-500 hover:bg-violet-600 shadow-violet-500/25' },
+  orange:  { tag: 'text-orange-500',  dot: 'bg-orange-500',  border: 'border-orange-500/30',  glow: 'bg-orange-500/10',  btn: 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/25' },
 };
 const VideoScenarioEntryCard: React.FC<{
   isZh: boolean; onOpen: () => void; onGoTasks?: () => void; icon: string;
   tagZh: string; tagEn: string; titleZh: string; titleEn: string; descZh: string; descEn: string;
-  btnZh: string; btnEn: string; costZh?: string; costEn?: string; accent?: 'rose' | 'sky' | 'fuchsia' | 'violet';
+  btnZh: string; btnEn: string; costZh?: string; costEn?: string; accent?: 'rose' | 'sky' | 'fuchsia' | 'violet' | 'orange';
 }> = ({ isZh, onOpen, onGoTasks, icon, tagZh, tagEn, titleZh, titleEn, descZh, descEn, btnZh, btnEn, costZh, costEn, accent = 'rose' }) => {
   const A = ENTRY_ACCENTS[accent];
   return (
@@ -4850,6 +4920,534 @@ export const HotspotVideoModal: React.FC<{
               <button onClick={onSubmitClick} disabled={submitting}
                 className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
                 {submitting ? (isZh ? '创建中…' : 'Creating…') : isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🔥 ${isZh ? '创建任务' : 'Create'}`}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showLoginCheck && (
+          <VideoLoginCheckModal
+            platforms={selectedPlatformIds}
+            onCancel={() => setShowLoginCheck(false)}
+            onConfirmed={() => { setShowLoginCheck(false); void doCreate(); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── 爆帖成片(engine==='thread'):Reddit 神帖神评 → 截图卡 + 游戏录屏背景 ──────
+
+// subreddit 预设(与 backend thread_subreddit_presets 默认清单同源)。def = 新建默认勾选。
+const THREAD_SUBREDDITS: Array<{ id: string; zh: string; en: string; emoji: string; def: boolean }> = [
+  { id: 'AskReddit',           zh: '问答 AskReddit',       en: 'AskReddit',           emoji: '💬', def: true },
+  { id: 'AmItheAsshole',       zh: '判案 AITA',            en: 'AmItheAsshole',       emoji: '⚖️', def: true },
+  { id: 'tifu',                zh: '闯祸 TIFU',            en: 'TIFU',                emoji: '🤦', def: true },
+  { id: 'Showerthoughts',      zh: '脑洞 Showerthoughts',  en: 'Showerthoughts',      emoji: '🚿', def: true },
+  { id: 'NoStupidQuestions',   zh: '提问 NoStupidQuestions', en: 'NoStupidQuestions', emoji: '❓', def: false },
+  { id: 'ProRevenge',          zh: '复仇 ProRevenge',      en: 'ProRevenge',          emoji: '😈', def: false },
+  { id: 'MaliciousCompliance', zh: '恶意服从',             en: 'MaliciousCompliance', emoji: '📋', def: false },
+  { id: 'confession',          zh: '忏悔 Confession',      en: 'Confession',          emoji: '🙏', def: false },
+  { id: 'technology',          zh: '科技 Technology',      en: 'Technology',          emoji: '🤖', def: false },
+  { id: 'todayilearned',       zh: '涨知识 TIL',           en: 'TodayILearned',       emoji: '💡', def: false },
+];
+
+// 背景清单(与 backend thread_bg_videos / thread_bg_douyin_terms 默认同源,向导只存 id;
+// pipeline 出片时按服务端下发清单解析,admin 换 URL 不用发版)。
+const THREAD_BG_YT: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'minecraft',     zh: 'Minecraft 跑酷',   en: 'Minecraft Parkour' },
+  { id: 'minecraft-2',   zh: 'Minecraft 跑酷 2', en: 'Minecraft Parkour 2' },
+  { id: 'gta',           zh: 'GTA 特技赛',       en: 'GTA Stunt Race' },
+  { id: 'motor-gta',     zh: 'GTA 摩托跑酷',     en: 'GTA Bike Parkour' },
+  { id: 'rocket-league', zh: '火箭联盟',         en: 'Rocket League' },
+  { id: 'csgo-surf',     zh: 'CSGO 滑翔',        en: 'CSGO Surf' },
+  { id: 'cluster-truck', zh: 'Cluster Truck',    en: 'Cluster Truck' },
+  { id: 'multiversus',   zh: 'MultiVersus',      en: 'MultiVersus' },
+  { id: 'fall-guys',     zh: 'Fall Guys',        en: 'Fall Guys' },
+  { id: 'steep',         zh: 'Steep 滑雪',       en: 'Steep' },
+];
+const THREAD_BG_DY: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'mc-parkour',   zh: '我的世界跑酷', en: 'Minecraft Parkour' },
+  { id: 'subway',       zh: '地铁跑酷',     en: 'Subway Surfers' },
+  { id: 'mini-parkour', zh: '迷你世界跑酷', en: 'Mini World Parkour' },
+  { id: 'racing',       zh: '赛车漂移',     en: 'Racing Drift' },
+  { id: 'gta-stunt',    zh: 'GTA 特技',     en: 'GTA Stunts' },
+];
+
+// 创作语言(v1 支持 4 语;'en' = 原声不翻译)+ 各语言默认音色(与 thread-pipeline 同表)。
+const THREAD_LANGS: Array<{ id: 'zh' | 'en' | 'ja' | 'ko'; zh: string; en: string }> = [
+  { id: 'zh', zh: '🇨🇳 中文(AI 翻译改写)', en: '🇨🇳 Chinese (AI rewrite)' },
+  { id: 'en', zh: '🇺🇸 英文原声(不翻译)', en: '🇺🇸 English (original)' },
+  { id: 'ja', zh: '🇯🇵 日本語(AI 翻訳)',   en: '🇯🇵 Japanese (AI rewrite)' },
+  { id: 'ko', zh: '🇰🇷 한국어(AI 번역)',    en: '🇰🇷 Korean (AI rewrite)' },
+];
+const THREAD_LANG_VOICE: Record<'zh' | 'en' | 'ja' | 'ko', string> = {
+  zh: 'zh-CN-YunjianNeural', en: 'en-US-GuyNeural', ja: 'ja-JP-KeitaNeural', ko: 'ko-KR-InJoonNeural',
+};
+
+// 每次运行条数封顶:爆帖成片每条要开无头浏览器抓帖+截图,比热搜重,封 20 条防跑一天。
+const THREAD_COUNT_CAP = 20;
+
+export const ThreadVideoModal: React.FC<{
+  isZh: boolean;
+  matrixMode?: boolean;
+  onClose: () => void;
+  onCreated?: (id: string) => void;
+  editTask?: any;
+  onSaved?: () => void;
+}> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+  const isEdit = !!editTask;
+  const ei = editTask?.input || {};
+  const [title] = useState<string>(editTask?.title || '');
+  const [subs, setSubs] = useState<Record<string, boolean>>(() => {
+    const saved: string[] = Array.isArray(ei.threadSubreddits) && ei.threadSubreddits.length
+      ? ei.threadSubreddits
+      : THREAD_SUBREDDITS.filter((s) => s.def).map((s) => s.id);
+    const init: Record<string, boolean> = {};
+    THREAD_SUBREDDITS.forEach((s) => { init[s.id] = saved.includes(s.id); });
+    return init;
+  });
+  // 预设之外用户手填的 subreddit(编辑态回填不在预设里的那些)。
+  const [customSubs, setCustomSubs] = useState<string>(() => {
+    const saved: string[] = Array.isArray(ei.threadSubreddits) ? ei.threadSubreddits : [];
+    return saved.filter((s: string) => !THREAD_SUBREDDITS.some((p) => p.id === s)).join(', ');
+  });
+  const [lang, setLang] = useState<'zh' | 'en' | 'ja' | 'ko'>(
+    (['zh', 'en', 'ja', 'ko'] as const).includes(ei.threadLang) ? ei.threadLang : (isZh ? 'zh' : 'en'));
+  const [targetSeconds, setTargetSeconds] = useState<number>(ei.targetSeconds ?? 60);
+  // 背景:国内默认抖音通道(界面中文),海外默认 YouTube;编辑沿用已存值。
+  const [bgSource, setBgSource] = useState<'douyin' | 'youtube'>(
+    ei.threadBgSource === 'youtube' ? 'youtube' : ei.threadBgSource === 'douyin' ? 'douyin' : (isZh ? 'douyin' : 'youtube'));
+  const [bgChoice, setBgChoice] = useState<string>(ei.threadBgChoice || 'random');
+  const [voice, setVoice] = useState<string>(ei.voice || THREAD_LANG_VOICE[isZh ? 'zh' : 'en']);
+  const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
+  const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
+  const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${REMOTE_BGM_MANIFEST_URL}?t=${Date.now()}`);
+        if (!resp.ok) return;
+        const json: any = await resp.json();
+        const arr: any[] = Array.isArray(json) ? json : json?.tracks;
+        if (!alive || !Array.isArray(arr)) return;
+        setRemoteBgm(arr.filter((x) => x && typeof x.url === 'string' && x.url)
+          .map((x) => ({ id: String(x.id || x.url), zh: String(x.zh || x.title || x.name || '云端音乐'), en: String(x.en || x.title || x.name || 'Cloud track'), url: String(x.url) })));
+      } catch { /* 清单未上线 / 网络失败:静默 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const [outputMode, setOutputMode] = useState<OutputMode>(
+    !editTask ? 'upload'
+      : (Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local'));
+  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
+    const saved: string[] = Array.isArray(ei.publishPlatforms) ? ei.publishPlatforms : [];
+    const init = {} as Record<Platform, boolean>;
+    const base: string[] = !editTask ? DEFAULT_PUBLISH_PLATFORMS : saved;
+    PUBLISH_PLATFORMS.forEach((p) => { init[p.id] = base.includes(p.id); });
+    return init;
+  });
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>(
+    editTask?.runInterval && editTask.runInterval !== 'daily' ? editTask.runInterval : 'daily_random');
+  const [count, setCount] = useState<number>(Math.max(1, Math.min(THREAD_COUNT_CAP, Math.round(ei.videoCount ?? ei.videoCountMax ?? ei.videoCountMin ?? 1))));
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+  // 校验提示 5s 后自动消失,不一直挂在那(对齐矩阵 hotspot 向导)。
+  useEffect(() => { if (!err) return; const t = setTimeout(() => setErr(''), 5000); return () => clearTimeout(t); }, [err]);
+  const [showLoginCheck, setShowLoginCheck] = useState(false);
+  // 步骤:1帖子源 2内容(语言/时长/背景) 3配音 4出片后+频率 5发布(平台+账号)。
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const PUBLISH_STEP = 5 as const;
+  const MAX_STEP = 5;
+
+  const [fee, setFee] = useState<{ min: number; max: number }>({ min: 0.02, max: 0.1 });
+  useEffect(() => { fetchVideoFeeRange().then(setFee).catch(() => { /* 兜底 */ }); }, []);
+
+  const selectedSubs = [
+    ...THREAD_SUBREDDITS.filter((s) => subs[s.id]).map((s) => s.id),
+    ...customSubs.split(/[,\s，、]+/).map((s) => s.replace(/^r\//i, '').trim()).filter(Boolean),
+  ];
+  const selectedPlatformIds = PUBLISH_PLATFORMS.map((m) => m.id).filter((p) => platforms[p]);
+  const voiceInGroups = VOICE_GROUPS.some((g) => g.voices.some((v) => v.id === voice));
+
+  // ── 矩阵号:每个发布平台选一个账号(平台→accountId),发布走该号指纹内核 CDP(照抄 hotspot)。 ──
+  const [matrixAccounts, setMatrixAccounts] = useState<MatrixAcctLite[]>([]);
+  const [accountByPlatform, setAccountByPlatform] = useState<Record<string, string>>(
+    () => (matrixMode && editTask?.input?.publishAccounts && typeof editTask.input.publishAccounts === 'object' ? { ...editTask.input.publishAccounts } : {}),
+  );
+  useEffect(() => {
+    if (!matrixMode) return;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await (window as any).electron?.matrix?.listAccounts?.();
+        const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+        if (alive) setMatrixAccounts(accs.map((a) => ({ id: a.id, platform: a.platform, displayName: a.displayName, status: a.status, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar, loginScope: a.loginScope })));
+      } catch { if (alive) setMatrixAccounts([]); }
+    })();
+    return () => { alive = false; };
+  }, [matrixMode]);
+  const accountsFor = (platform: string) => matrixAccounts.filter((a) => a.platform === platform && (platform !== 'kuaishou' || (a as any).loginScope === 'creator'));
+  const matrixAccountsReady = !matrixMode || outputMode !== 'upload'
+    || selectedPlatformIds.every((p) => !!accountByPlatform[p] && accountsFor(p).some((a) => a.id === accountByPlatform[p] && a.status !== 'login_required'));
+
+  const buildTitle = () => (title.trim() || (isZh ? '爆帖成片' : 'Viral Thread Video'));
+  const buildInput = (): VideoCreationInput => ({
+    persona: '', track: '', keywords: [], script: '', scriptMode: 'ai',
+    engine: 'thread',
+    threadSource: 'reddit',
+    threadSubreddits: selectedSubs,
+    threadLang: lang,
+    threadBgSource: bgSource,
+    threadBgChoice: bgChoice,
+    referenceImages: [],
+    aspect: '9:16',
+    publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
+    // 矩阵号:每个发布平台选定的账号(平台→accountId),发布时按号走 CDP。仅取已勾平台的映射。
+    publishAccounts: matrixMode && outputMode === 'upload'
+      ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => [p, accountByPlatform[p]]))
+      : undefined,
+    publishAccountNames: matrixMode && outputMode === 'upload'
+      ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => { const a = matrixAccounts.find((x) => x.id === accountByPlatform[p]); return [p, a ? (a.nickname || a.displayName) : accountByPlatform[p]]; }))
+      : undefined,
+    targetSeconds,
+    useStockVideo: false,
+    subtitleEnabled: false,   // 卡片本身就是字,不烧字幕
+    bgmPath,
+    voice,
+    voiceRate,
+    videoCountMin: count,
+    videoCountMax: count,
+    videoCount: count,
+  } as VideoCreationInput);
+
+  const doCreate = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setErr('');
+    try {
+      const input = buildInput();
+      const schedule: VideoSchedule = { runInterval };
+      if (isEdit && editTask) {
+        const ok = videoTaskStore.updateTask(editTask.id, input, buildTitle(), schedule);
+        if (!ok) { setErr(isZh ? '任务正在运行,无法编辑。' : 'Task running, cannot edit.'); return; }
+        onSaved?.();
+        return;
+      }
+      if (!(await videoQueue.canCreate())) {
+        setErr(isZh
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+          : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.`);
+        return;
+      }
+      const id = videoTaskStore.createTask(input, buildTitle(), schedule);
+      onCreated?.(id);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onSubmitClick = () => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (selectedSubs.length === 0) { setStep(1); setErr(isZh ? '请至少勾选一个帖子源' : 'Pick at least one subreddit'); return; }
+    // 矩阵号:发布按账号走指纹内核 CDP → 不弹扩展登录校验框,但每个勾选平台必须选好号。
+    if (matrixMode) {
+      if (outputMode === 'upload' && !matrixAccountsReady) {
+        setStep(PUBLISH_STEP);
+        setErr(isZh ? '请为每个发布平台选择一个账号(没有账号的平台请先去「我的矩阵账号」添加)' : 'Pick an account for each platform first');
+        return;
+      }
+      void doCreate();
+      return;
+    }
+    if (outputMode === 'upload' && selectedPlatformIds.length > 0) { setErr(''); setShowLoginCheck(true); return; }
+    void doCreate();
+  };
+
+  const goNext = () => {
+    if (step === 1 && selectedSubs.length === 0) { setErr(isZh ? '请至少勾选一个帖子源' : 'Pick at least one subreddit'); return; }
+    if (step === PUBLISH_STEP && outputMode === 'upload' && selectedPlatformIds.length === 0) {
+      setErr(isZh ? '已选「上传到各大平台」,请至少勾选一个平台(或回上一步改「仅存本地」)' : 'Pick at least one platform, or switch to "Local only"');
+      return;
+    }
+    if (matrixMode && step === PUBLISH_STEP && outputMode === 'upload' && !matrixAccountsReady) {
+      setErr(isZh ? '请为每个发布平台选择一个账号' : 'Pick an account for each platform');
+      return;
+    }
+    setErr('');
+    setStep((s) => (s < MAX_STEP ? ((s + 1) as 1 | 2 | 3 | 4 | 5) : s));
+  };
+  const goBack = () => {
+    setErr('');
+    if (step === 1) { onClose(); return; }
+    setStep((s) => ((s - 1) as 1 | 2 | 3 | 4 | 5));
+  };
+
+  const DUR = [45, 60, 90, 120];
+  const FREQ_OPTS: { v: VideoRunInterval; zh: string; en: string }[] = [
+    { v: 'once', zh: '不重复', en: 'Once' },
+    { v: '30min', zh: '每 30 分钟', en: 'Every 30min' },
+    { v: '1h', zh: '每小时', en: 'Hourly' },
+    { v: '3h', zh: '每 3 小时', en: 'Every 3h' },
+    { v: '6h', zh: '每 6 小时', en: 'Every 6h' },
+    { v: 'daily_random', zh: '每日随机时间', en: 'Daily (random time)' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
+              <span>🧵</span>{isZh ? (isEdit ? '编辑 · 爆帖成片' : '爆帖成片') : (isEdit ? 'Edit · Viral Threads' : 'Viral Threads')}
+            </h3>
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '帖子源' : 'Subreddits'} />
+              <div className={`h-px w-3 ${step > 1 ? 'bg-orange-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '内容' : 'Content'} />
+              <div className={`h-px w-3 ${step > 2 ? 'bg-orange-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '配音' : 'Audio'} />
+              <div className={`h-px w-3 ${step > 3 ? 'bg-orange-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '出片后' : 'Output'} />
+              <div className={`h-px w-3 ${step > 4 ? 'bg-orange-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={5} active={step === 5} done={false} label={isZh ? '发布' : 'Publish'} />
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {/* ── Step 1:帖子源 ── */}
+          {step === 1 && (
+            <>
+              <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400 bg-orange-50 dark:bg-orange-500/10 rounded-lg px-3 py-2">
+                {isZh
+                  ? '每次运行从勾选的 Reddit 版块热帖里随机挑 1 条高赞神帖,真实帖子+神评截图卡叠在游戏录屏背景上逐条朗读 —— 海外爆火的 Reddit Stories 形态。⚠️ 需要 VPN 可达 reddit.com。'
+                  : 'Each run picks one top-voted thread from your chosen subreddits and overlays real post & comment screenshots on gameplay footage, read aloud — the proven Reddit Stories format. ⚠️ Requires access to reddit.com.'}
+              </p>
+              <Field label={isZh ? '帖子源(可多选)' : 'Subreddits (multi)'} hint={isZh ? '从勾选版块的热帖随机选题' : 'random pick from hot posts'}>
+                <div className="grid grid-cols-2 gap-2">
+                  {THREAD_SUBREDDITS.map((s) => {
+                    const on = !!subs[s.id];
+                    return (
+                      <button key={s.id} type="button"
+                        onClick={() => setSubs((p) => ({ ...p, [s.id]: !p[s.id] }))}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-left transition-all ${
+                          on ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-orange-300'}`}>
+                        <span>{s.emoji}</span>
+                        <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
+                        {on && <span className="text-orange-500">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+              <Field label={isZh ? '自定义版块(选填)' : 'Custom subreddits (optional)'} hint={isZh ? '逗号分隔,不带 r/' : 'comma separated, no r/'}>
+                <input value={customSubs} onChange={(e) => setCustomSubs(e.target.value)}
+                  placeholder={isZh ? '如:AskMen, antiwork' : 'e.g. AskMen, antiwork'}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50" />
+              </Field>
+            </>
+          )}
+
+          {/* ── Step 2:内容(创作语言 + 时长 + 背景) ── */}
+          {step === 2 && (
+            <>
+              <Field label={isZh ? '创作语言' : 'Language'} hint={isZh ? '卡片文字 + 配音都用它' : 'cards & voice-over'}>
+                <div className="grid grid-cols-2 gap-2">
+                  {THREAD_LANGS.map((l) => (
+                    <button key={l.id} type="button"
+                      onClick={() => { setLang(l.id); setVoice(THREAD_LANG_VOICE[l.id]); }}
+                      className={`px-3 py-2 rounded-lg border text-sm text-left ${lang === l.id ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10 font-semibold text-orange-700 dark:text-orange-400' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
+                      {isZh ? l.zh : l.en}
+                    </button>
+                  ))}
+                </div>
+                {lang !== 'en' && (
+                  <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    {isZh ? '💡 AI 会把帖子和神评翻译改写得口语地道,截图卡上的文字也会替换成译文(样式/赞数保持 Reddit 原样)。' : '💡 AI rewrites the thread into your language; card text is replaced in-place (Reddit look preserved).'}
+                  </p>
+                )}
+              </Field>
+              <Field label={isZh ? '目标时长' : 'Target length'} hint={isZh ? '按时长自动决定读几条神评' : 'controls how many comments'}>
+                <div className="flex flex-wrap gap-2">
+                  {DUR.map((d) => (
+                    <button key={d} type="button" onClick={() => setTargetSeconds(d)}
+                      className={`px-3 py-1.5 rounded-lg text-sm border ${targetSeconds === d ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>{d}s</button>
+                  ))}
+                </div>
+              </Field>
+              <Field label={isZh ? '游戏录屏背景' : 'Gameplay background'}>
+                <div className="flex gap-2 mb-2">
+                  {([
+                    { v: 'douyin', zh: '🎵 抖音搜录屏', en: '🎵 Douyin', deszh: '国内可用 · 搜竖屏游戏录屏下载,首次较慢' },
+                    { v: 'youtube', zh: '▶️ YouTube 长视频', en: '▶️ YouTube', deszh: '需 VPN · 免版权 gameplay 长视频随机裁段' },
+                  ] as const).map((m) => (
+                    <button key={m.v} type="button" onClick={() => { setBgSource(m.v); setBgChoice('random'); }}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left ${bgSource === m.v ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
+                      <div>{isZh ? m.zh : m.en}</div>
+                      {isZh && <div className="text-[11px] font-normal text-gray-500 dark:text-gray-400 mt-0.5">{m.deszh}</div>}
+                    </button>
+                  ))}
+                </div>
+                <select value={bgChoice} onChange={(e) => setBgChoice(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
+                  <option value="random">{isZh ? '🎲 每次随机' : '🎲 Random each run'}</option>
+                  {(bgSource === 'douyin' ? THREAD_BG_DY : THREAD_BG_YT).map((b) => (
+                    <option key={b.id} value={b.id}>{isZh ? b.zh : b.en}</option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                  {isZh ? '背景只下载一次、之后复用缓存。画面无关但一直在动,是这个形态的完播率秘诀。' : 'Downloaded once then cached. Meaningless motion keeps eyes engaged — the retention trick of this format.'}
+                </p>
+              </Field>
+            </>
+          )}
+
+          {/* ── Step 3:配音 + 背景音乐 ── */}
+          {step === 3 && (
+            <>
+              <Field label={isZh ? '配音音色' : 'Voice'}>
+                <select value={voice} onChange={(e) => setVoice(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
+                  {!voiceInGroups && <option value={voice}>{voice}</option>}
+                  {VOICE_GROUPS.map((g) => (
+                    <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                      {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+                    </optgroup>
+                  ))}
+                </select>
+                <div className="flex gap-2 mt-2">
+                  {RATE_OPTIONS.map((r) => (
+                    <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-orange-500 bg-orange-500/10 text-orange-600 dark:text-orange-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                      {isZh ? r.zh : r.en}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'}>
+                <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
+                  <option value="">{isZh ? '无背景音乐' : 'None'}</option>
+                  {bgmPath.startsWith(REMOTE_BGM_PREFIX) && !remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath) && (
+                    <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
+                  )}
+                  <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                    {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
+                  </optgroup>
+                  {remoteBgm.length > 0 && (
+                    <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
+                      {remoteBgm.map((b) => (<option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>))}
+                    </optgroup>
+                  )}
+                </select>
+              </Field>
+            </>
+          )}
+
+          {/* ── Step 4:出片后(本地/上传)+ 运行频率 + 每次条数 ── */}
+          {step === 4 && (
+            <>
+              <OutputModeToggle isZh={isZh} outputMode={outputMode} setOutputMode={setOutputMode} />
+              <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
+                <div className="grid grid-cols-3 gap-2">
+                  {FREQ_OPTS.map((o) => (
+                    <button key={o.v} type="button" onClick={() => setRunInterval(o.v)}
+                      className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${runInterval === o.v ? 'border-orange-500 bg-orange-500/10 text-orange-600 dark:text-orange-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-orange-300'}`}>
+                      {isZh ? o.zh : o.en}
+                    </button>
+                  ))}
+                </div>
+                {runInterval === 'daily_random' && (
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人' : '✨ Recommended — daily at a randomized time'}</p>
+                )}
+                {runInterval !== 'once' && (
+                  <p className="mt-2 text-[11px] text-orange-500">{isZh ? '⚠️ 定时到点自动出片并扣费,请保证余额充足 + 应用保持开启 + VPN 在线。' : '⚠️ Scheduled runs auto-bill — keep balance, app and VPN running.'}</p>
+                )}
+              </Field>
+              <Field label={isZh ? `每次运行条数(1-${THREAD_COUNT_CAP})` : `Videos per run (1-${THREAD_COUNT_CAP})`}>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                  {isZh ? '固定生成' : 'Generate'} <span className="font-semibold text-orange-500">{count}</span> {isZh ? '条' : 'videos'}
+                </div>
+                <input type="range" min={1} max={THREAD_COUNT_CAP} value={count}
+                  onChange={(e) => setCount(parseInt(e.target.value, 10))}
+                  className="w-full accent-orange-500 cursor-pointer" />
+                <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                  {isZh
+                    ? `每次运行固定出 ${count} 条 · 每条独立选帖 · 按条计费(每条约 $${fee.min}~$${fee.max})`
+                    : `${count} per run · each its own thread · billed per video (~$${fee.min}-${fee.max} each)`}
+                </p>
+              </Field>
+            </>
+          )}
+
+          {/* ── Step 5:发布平台 + 发布账号(矩阵:平台与账号同一步,照抄 hotspot)── */}
+          {step === PUBLISH_STEP && (
+            <PublishPlatformPicker
+              isZh={isZh}
+              outputMode={outputMode}
+              platforms={platforms}
+              togglePlatform={(p) => setPlatforms((pp) => ({ ...pp, [p]: !pp[p] }))}
+            >
+              {matrixMode && outputMode === 'upload' && selectedPlatformIds.length > 0 && (
+                <div className="mt-4">
+                  <Field
+                    label={isZh ? '发布账号' : 'Publish accounts'}
+                    hint={isZh ? '每个平台选一个矩阵账号,出片后用该号的指纹浏览器上传' : 'one matrix account per platform'}
+                  >
+                    <div className="space-y-2.5">
+                      {selectedPlatformIds.map((pid) => {
+                        const meta = PUBLISH_PLATFORMS.find((m) => m.id === pid);
+                        const label = meta ? `${meta.emoji} ${isZh ? meta.zh : meta.en}` : pid;
+                        const accs = accountsFor(pid);
+                        return (
+                          <div key={pid} className="flex items-center gap-3">
+                            <div className="w-24 shrink-0 text-sm font-medium dark:text-gray-200">{label}</div>
+                            <MatrixAccountSelect
+                              isZh={isZh}
+                              accounts={accs}
+                              value={accountByPlatform[pid] || ''}
+                              onChange={(id) => setAccountByPlatform((m) => ({ ...m, [pid]: id }))}
+                              onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: pid } })); onClose(); }}
+                            />
+                          </div>
+                        );
+                      })}
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-1">
+                        {isZh ? '每个平台必须选一个【已连接】账号;未连接的已置灰不可选,选好才能创建。发布时用该号的指纹浏览器上传。' : 'Each platform needs a LINKED account (unlinked ones are greyed out). Published via that account\'s fingerprint browser.'}
+                      </p>
+                    </div>
+                  </Field>
+                </div>
+              )}
+            </PublishPlatformPicker>
+          )}
+        </div>
+
+        {/* 底部固定区:校验提示钉在按钮正上方(对齐矩阵 hotspot 向导)。 */}
+        <div className="sticky bottom-0 px-6 py-3.5 border-t dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
+          {err && (
+            <p className="mb-2.5 rounded-lg border border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-600 dark:text-rose-400">
+              {err}
+            </p>
+          )}
+          <div className="flex gap-3">
+            <button onClick={goBack} className="px-4 py-2.5 rounded-lg text-sm border dark:border-gray-700 dark:text-gray-300">
+              {step === 1 ? (isZh ? '取消' : 'Cancel') : (isZh ? '上一步' : 'Back')}
+            </button>
+            {step < MAX_STEP ? (
+              <button onClick={goNext}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-orange-500 text-white hover:bg-orange-600">
+                {isZh ? '下一步' : 'Next'}
+              </button>
+            ) : (
+              <button onClick={onSubmitClick} disabled={submitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-50">
+                {submitting ? (isZh ? '创建中…' : 'Creating…') : isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🧵 ${isZh ? '创建任务' : 'Create'}`}
               </button>
             )}
           </div>

@@ -46,6 +46,7 @@ export function videoTypeLabel(engine: string | undefined): string {
     case 'stock': return '在线素材';
     case 'ai': return 'AI 成片';
     case 'template': return '模板速生';
+    case 'thread': return '爆帖成片';
     default: return '视频创作';
   }
 }

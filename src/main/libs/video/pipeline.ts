@@ -36,6 +36,7 @@ import { resolveBgmPath } from './bgm';
 import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, type SeedanceSceneSpec } from './seedanceProvider';
 import type { TemplateOptions } from './templateHtmlWriter';
 import { runTemplatePipeline } from './template-pipeline';
+import { runThreadPipeline } from './thread-pipeline';
 import { generateStoryboardAnchor } from './storyboardAnchor';
 import { resolvePublishCaption } from './publishCaptionWriter';
 import { setCurrentVideoTask, clearCurrentVideoTask, videoTypeLabel } from './videoRunWindow';
@@ -160,7 +161,7 @@ export interface VideoCreationInput {
    *                      参考图(≤2)做风格/人设统一;失败镜降级到参考图静帧/邻镜。
    *                      走服务端代理(/api/video/seedance/*),逐片段计费 + 失败退款。
    */
-  engine?: 'stock' | 'ai' | 'template' | 'hotspot';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread';
   /** AI 引擎分辨率档(成本敏感):'480p'|'720p'(默认)|'1080p'。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
@@ -173,6 +174,16 @@ export interface VideoCreationInput {
   /** engine==='hotspot' 素材来源:'image'(默认,Serper 配图 Ken Burns)|
    *  'douyin'(按标题搜抖音、下无水印视频混剪 + 底部黑条盖原字幕 + 配音)。 */
   hotspotMaterialSource?: 'image' | 'douyin';
+  /** engine==='thread'(爆帖成片)专属。内容源,v1 只有 'reddit'(字段留给以后加贴吧/虎扑等)。 */
+  threadSource?: 'reddit';
+  /** engine==='thread':勾选的 subreddit(如 ['AskReddit','tifu'])。 */
+  threadSubreddits?: string[];
+  /** engine==='thread':创作语言(卡片文字 + 口播都用它;'en' = 原声不翻译)。默认 zh。 */
+  threadLang?: 'zh' | 'en' | 'ja' | 'ko';
+  /** engine==='thread':游戏录屏背景来源。'douyin'(默认,国内可用)| 'youtube'(需 VPN)。 */
+  threadBgSource?: 'douyin' | 'youtube';
+  /** engine==='thread':背景选择('random' 或服务端清单里的背景/搜索词 id)。 */
+  threadBgChoice?: string;
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -558,10 +569,11 @@ export async function generateVideoBatch(
   let batch = 1;
   if (inp.engine === 'stock') {
     batch = clampCount(inp.videoCount, 100);
-  } else if (inp.engine === 'hotspot') {
+  } else if (inp.engine === 'hotspot' || inp.engine === 'thread') {
     // 兜底 videoCount:老任务(早期向导只存 videoCount、没存 min/max)也要正确出 N 条 ——
     //   否则 videoCountMin=undefined → clampCount=1 → batch=1,出现「卡片显示 N 条、实际只跑 1 条」。
     //   UI 标签(hotspotCountLabel)用 `videoCountMin ?? videoCount` 兜底,执行侧必须对齐同一口径。
+    //   爆帖成片(thread)同口径:每条独立选帖,batch 由 [min,max] 随机。
     const lo = clampCount(inp.videoCountMin ?? inp.videoCount, 100);
     const hi = Math.max(lo, clampCount(inp.videoCountMax ?? inp.videoCount, 100));
     batch = lo + Math.floor(Math.random() * (hi - lo + 1));
@@ -679,6 +691,8 @@ async function runVideoPipeline(
   // engine==='template'(模板速生):AI 现编动效 HTML → 逐帧渲染 → 编码。完全独立的
   // 流水线(template-pipeline.ts),早分流出去,不与 stock/ai 共用下面的步骤。
   if (input.engine === 'template') return runTemplatePipeline(input, emit, signal);
+  // engine==='thread'(爆帖成片):Reddit 神帖截图卡 + 游戏录屏背景。同样独立流水线早分流。
+  if (input.engine === 'thread') return runThreadPipeline(input, emit, signal);
 
   const jobId = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const tracker = new ProgressTracker(jobId, emit);
