@@ -477,6 +477,15 @@ export function createTauriElectronShim(): typeof window.electron {
           .slice(0, Math.max(1, Math.min(Number(max) || 8, 30)));
         return validatePickedMedia(paths, 'video');
       },
+      // 本地混剪:文件夹选择走 Tauri 原生弹窗;扫描(fs)走 sidecar IPC(shim 端没有 fs)。
+      pickLocalFolder: async () => {
+        const selected = await tauriDialogOpen({ directory: true, multiple: false, title: '选择本地素材文件夹' });
+        const dir = typeof selected === 'string' ? selected : (Array.isArray(selected) ? selected[0] : '');
+        if (!dir) return null;
+        const scan: any = await ipcInvoke('video:scanLocalFolder', dir).catch(() => null);
+        return { dir, videoCount: Number(scan?.videoCount) || 0, imageCount: Number(scan?.imageCount) || 0 };
+      },
+      scanLocalFolder: (dir: string) => ipcInvoke('video:scanLocalFolder', dir).then((r: any) => r ?? { videoCount: 0, imageCount: 0 }),
       pickAudio: async () => {
         const filters = [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'] }];
         const selected = await tauriDialogOpen({ directory: false, multiple: false, filters, title: '选择背景音乐' });

@@ -1310,6 +1310,17 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, '');
             }
           }
+          case 'video:scanLocalFolder': {
+            // 本地混剪:Tauri 下文件夹选择走渲染端原生弹窗,选完由这里扫顶层文件数
+            // (视频/图片各多少),向导据此展示"找到 N 个"并定素材形态。
+            try {
+              const { scanLocalMediaFolder } = await import('./libs/video/pipeline');
+              const media = scanLocalMediaFolder(String(args[0] || ''));
+              return writeJSON(res, 200, { videoCount: media.videos.length, imageCount: media.images.length });
+            } catch {
+              return writeJSON(res, 200, { videoCount: 0, imageCount: 0 });
+            }
+          }
           case 'video:resolveBgmPath': {
             // 返回该 BGM 所在【目录】(不下载、不要求文件已存在),供「打开文件夹」直接打开,
             // 让用户自己进去双击试听。builtin→内置目录;remote→缓存目录;上传→文件目录。

@@ -161,7 +161,7 @@ export interface VideoCreationInput {
    *                      参考图(≤2)做风格/人设统一;失败镜降级到参考图静帧/邻镜。
    *                      走服务端代理(/api/video/seedance/*),逐片段计费 + 失败退款。
    */
-  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix';
   /** AI 引擎分辨率档(成本敏感):'480p'|'720p'(默认)|'1080p'。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
@@ -186,6 +186,10 @@ export interface VideoCreationInput {
   threadBgChoice?: string;
   /** engine==='thread'(矩阵):Reddit 取材账号 id(用该号指纹内核抓帖+截图;空 = 自动选/无头兜底)。 */
   threadMaterialAccountId?: string;
+  /** engine==='localmix'(本地混剪)专属:本地素材文件夹绝对路径(出片时实时扫,新增素材下次运行自动用上)。 */
+  localMixFolder?: string;
+  /** engine==='localmix':素材形态。'video'=文件夹里的视频按换镜节奏循环拼接;'image'=图片逐镜 Ken Burns 合成。 */
+  localMixMediaType?: 'video' | 'image';
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -532,6 +536,30 @@ export function outputFileName(index = 0): string {
 /** 用户点「停止」时,signal 被 abort → 在步骤边界抛出,让 pipeline 干净退出。 */
 export function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new Error('VIDEO_ABORTED:已停止');
+}
+
+// ── 本地混剪(engine='localmix'):扫本地素材文件夹 ──
+// 只扫【顶层】文件(不递归,防用户误选盘根把几万个文件读进来);按扩展名分视频/图片。
+// 向导选文件夹时(sidecar IPC video:scanLocalFolder)和出片时(visuals 分支)共用 —— 出片时
+// 实时重扫,用户往文件夹里加新素材,下次运行自动用上。
+const LOCALMIX_VIDEO_EXTS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi']);
+const LOCALMIX_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.bmp']);
+export function scanLocalMediaFolder(dir: string): { videos: string[]; images: string[] } {
+  const out = { videos: [] as string[], images: [] as string[] };
+  try {
+    const d = String(dir || '').trim();
+    if (!d || !fs.existsSync(d) || !fs.statSync(d).isDirectory()) return out;
+    for (const name of fs.readdirSync(d)) {
+      const p = path.join(d, name);
+      try { if (!fs.statSync(p).isFile()) continue; } catch { continue; }
+      const ext = path.extname(name).toLowerCase();
+      if (LOCALMIX_VIDEO_EXTS.has(ext)) out.videos.push(p);
+      else if (LOCALMIX_IMAGE_EXTS.has(ext)) out.images.push(p);
+    }
+    // 排序保证第 0 条按稳定顺序铺(后续条洗牌出不同组合)。
+    out.videos.sort(); out.images.sort();
+  } catch { /* 扫不了当空处理,调用方给用户可读提示 */ }
+  return out;
 }
 
 /**
@@ -1283,6 +1311,49 @@ async function runVideoPipeline(
       } catch { /* 留存失败不影响出片 */ }
       // 不向用户暴露「X/Y 镜 + 其余就近降级」(失败镜回退是内部兜底,用户不需要知道)。
       tracker.done('visuals', `🎬 AI 画面就绪(${aiScenes.length} 镜)`);
+    } else if (input.engine === 'localmix') {
+      // ── 本地混剪:出片时实时扫素材文件夹 —— 视频按换镜节奏循环拼接(智能剪辑),
+      //    图片逐镜 Ken Burns 合成(imageByScene,复用抖音图文的合成路径)。
+      //    纯本地素材零下载零搜索词;文件夹空/不存在 → 本条失败并给可读原因。
+      const mixDir = String(input.localMixFolder || '').trim();
+      const media = scanLocalMediaFolder(mixDir);
+      const wantImages = input.localMixMediaType === 'image';
+      if (wantImages && media.images.length > 0) {
+        const imgs = media.images;
+        tracker.progress(`使用本地图片素材 ${imgs.length} 张,逐镜缓慢运镜合成…`);
+        assignVisuals = () => {
+          // 每次都洗牌:本引擎 batch 恒 1 条(videoIdx 恒 0),定时任务反复跑同一文件夹,
+          // 不洗牌会每天铺出一模一样的组合(strict 文案下=重复视频,易被平台判重)。
+          const pool = shuffled(imgs);
+          const imageByScene = new Map<number, string>();
+          sentences.forEach((_, i) => imageByScene.set(i, pool[i % pool.length]));
+          return { sceneClips: sentences.map(() => [] as string[]), imagePool: pool, imageByScene };
+        };
+        tracker.done('visuals', `🖼️ 画面就绪(本地图片 ${imgs.length} 张 · 缓慢运镜)`);
+      } else if (!wantImages && media.videos.length > 0) {
+        const vids = media.videos;
+        tracker.progress(`使用本地视频素材 ${vids.length} 个,按换镜节奏循环混剪…`);
+        assignVisuals = () => {
+          // 每次都洗牌(理由同上:batch 恒 1,靠洗牌让定时重复跑的每条组合各不相同)。
+          const pool = shuffled(vids);
+          let cur = 0;
+          const sceneClips = sentences.map((_, i) => {
+            const dur = Math.max(1.2, sceneDurations[i]);
+            const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
+            const clips: string[] = [];
+            for (let k = 0; k < want; k++) clips.push(pool[cur++ % pool.length]);
+            return clips;
+          });
+          return { sceneClips, imagePool: [] };
+        };
+        tracker.done('visuals', `🎬 画面就绪(本地视频 ${vids.length} 个 · 换镜混剪)`);
+      } else {
+        const err = wantImages
+          ? `本地素材文件夹里没有可用图片(${mixDir || '未选择文件夹'}),请检查文件夹后重试`
+          : `本地素材文件夹里没有可用视频(${mixDir || '未选择文件夹'}),请检查文件夹后重试`;
+        tracker.fail('visuals', err);
+        return { ok: false, error: err };
+      }
     } else if (!usesStock && localVideos.length > 0) {
       // 纯本地素材:不搜在线、不花 DeepSeek 搜索词钱,按换镜节奏循环拼接,素材少就复用。
       tracker.progress(`使用本地视频素材 ${localVideos.length} 个,按换镜节奏循环拼接…`);

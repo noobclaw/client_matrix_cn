@@ -147,7 +147,16 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ matrixMo
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && (
+        {editingTask && editingTask.input?.engine === 'localmix' && (
+          <LocalMixVideoModal
+            isZh={isZh}
+            matrixMode={matrixMode}
+            editTask={editingTask}
+            onClose={() => setEditTaskId(null)}
+            onSaved={() => setEditTaskId(null)}
+          />
+        )}
+        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && editingTask.input?.engine !== 'localmix' && (
           <VideoConfigModal
             isZh={isZh}
             matrixMode={matrixMode}
@@ -586,15 +595,18 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           const isAi = task.input.engine === 'ai';
           const isTemplate = task.input.engine === 'template';
           const isHotspot = task.input.engine === 'hotspot';
-          const isLocal = !isAi && !isTemplate && !isHotspot && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
+          const isLocalMix = task.input.engine === 'localmix';
+          const isLocal = !isAi && !isTemplate && !isHotspot && !isLocalMix && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
           const label = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
             : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
             : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
+            : isLocalMix ? i18nService.t('vmixTaskName')
             : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
             : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
           const color = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
             : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
             : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
+            : isLocalMix ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
             : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
           return <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border ${color}`}>{label}</span>;
         })()}
@@ -619,6 +631,25 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
               <div className="flex items-start gap-1.5">
                 <span className="text-gray-400 shrink-0">⏱️ {isZh ? '时长' : 'Length'}</span>
                 <span className="truncate">{task.input.targetSeconds || 60}s</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🚀 {isZh ? '发布' : 'Publish'}</span>
+                <span className="truncate">{pubN > 0 ? (isZh ? `${pubN} 个平台` : `${pubN} platforms`) : (isZh ? '仅存本地' : 'Local only')}</span>
+              </div>
+            </>
+          );
+        })() : task.input.engine === 'localmix' ? (() => {
+          const pubN = Array.isArray(task.input.publishPlatforms) ? task.input.publishPlatforms.length : 0;
+          const inp: any = task.input;
+          return (
+            <>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">📂 {i18nService.t('vmixStepMaterial')}</span>
+                <span className="truncate" title={inp.localMixFolder || ''}>{(inp.localMixMediaType === 'image' ? i18nService.t('vmixMediaImage') : i18nService.t('vmixMediaVideo')) + ' · ' + (inp.localMixFolder || '-')}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">📝 {i18nService.t('vmixStepScript')}</span>
+                <span className="truncate">{task.input.scriptMode === 'ai' ? i18nService.t('vmixScriptAi') : i18nService.t('vmixScriptStrict')}</span>
               </div>
               <div className="flex items-start gap-1.5">
                 <span className="text-gray-400 shrink-0">🚀 {isZh ? '发布' : 'Publish'}</span>
@@ -955,6 +986,20 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{voiceDisplayLabel(input.voice, isZh)}</Row>
         <Row label={`🎮 ${isZh ? '背景' : 'Background'}`}>{threadBgLabel(input, isZh)}</Row>
+        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
+      </div>
+    );
+  }
+  // 本地混剪:素材文件夹/形态/文案模式/配音/BGM/发布(赛道/人设/关键词对它无意义)。
+  if (input.engine === 'localmix') {
+    const inp: any = input;
+    return (
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+        <Row label={`📂 ${i18nService.t('vmixFolderLabel')}`}>{inp.localMixFolder || '-'}</Row>
+        <Row label={`🎞️ ${i18nService.t('vmixMediaTypeLabel')}`}>{inp.localMixMediaType === 'image' ? i18nService.t('vmixMediaImage') : i18nService.t('vmixMediaVideo')}</Row>
+        <Row label={`📝 ${i18nService.t('vmixScriptModeLabel')}`}>{input.scriptMode === 'ai' ? i18nService.t('vmixScriptAi') : i18nService.t('vmixScriptStrict')}</Row>
+        <Row label={`🎤 ${i18nService.t('vmixVoiceLabel')}`}>{input.voice ? `${voiceDisplayLabel(input.voice, isZh)}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : ''}` : (isZh ? '无配音' : 'No voice-over')}</Row>
+        <Row label={`🎵 ${i18nService.t('vmixBgmLabel')}`}>{templateBgmSummary(input, isZh)}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
@@ -1872,6 +1917,7 @@ const VideoCreateFlow: React.FC<{
   const [templateOpen, setTemplateOpen] = useState(false); // 模板速生 → TemplateSpeedModal
   const [hotspotOpen, setHotspotOpen] = useState(false);   // 热搜成片 → HotspotVideoModal
   const [threadOpen, setThreadOpen] = useState(false);     // 爆帖成片 → ThreadVideoModal
+  const [localMixOpen, setLocalMixOpen] = useState(false); // 本地混剪 → LocalMixVideoModal
   // 热搜成片仅简体/繁体中文显示(数据源是中文热榜;韩/日/英先不支持)。繁体也走中文文案。
   const isZhHot = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
@@ -1923,6 +1969,20 @@ const VideoCreateFlow: React.FC<{
           costZh={`单条约 ${feeZh}(写稿/联网/配图/合成)`} costEn={`~${feeEn} per clip (script / web / footage / compose)`}
           btnZh="🔥 开始创作 →" btnEn="🔥 Start →" />
         )}
+        {/* 2026-07-09 用户定的顺序:在线素材、热搜成片保持前二,然后 模板速生 → 本地混剪(新) → 爆帖成片 → 电影级。 */}
+        <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={openWithLogin(() => setTemplateOpen(true))} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
+          titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
+          descZh="把榜单、资讯、数据、金句一键变成带动效竖屏短视频 —— AI 现编动画、本地逐帧渲染、可选配音+字幕。秒级出片、稳定可控,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally, optional voice-over + subtitles. Seconds to render, stable and controllable. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
+          costZh={`单条约 ${feeZh}(数据/写稿/合成)`} costEn={`~${feeEn} per clip (data / script / compose)`}
+          btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
+        <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📁" onOpen={openWithLogin(() => setLocalMixOpen(true))} onGoTasks={onGoTasks}
+          tagZh={i18nService.t('vmixCardTag')} tagEn={i18nService.t('vmixCardTag')}
+          titleZh={i18nService.t('vmixCardTitle')} titleEn={i18nService.t('vmixCardTitle')}
+          descZh={i18nService.t('vmixCardDesc')} descEn={i18nService.t('vmixCardDesc')}
+          costZh={i18nService.t('vmixCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('vmixCardCost').replace('{fee}', feeEn)}
+          btnZh={i18nService.t('vmixCardBtn')} btnEn={i18nService.t('vmixCardBtn')} />
         <VideoScenarioEntryCard isZh={isZh} accent="orange" icon="🧵" onOpen={openWithLogin(() => setThreadOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 爆帖成片" tagEn="AI Auto · Viral Threads"
           titleZh="爆帖成片 · 海外神帖神评" titleEn="Viral Threads · Reddit Stories"
@@ -1937,13 +1997,6 @@ const VideoCreateFlow: React.FC<{
           descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film; add reference images to lock the style. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={HIDE_WEB3 ? `按秒计费 · 约 ￥${cnyFromUsd(aiUsdPerSec)}/秒(720p)` : `按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
-        <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={openWithLogin(() => setTemplateOpen(true))} onGoTasks={onGoTasks}
-          tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
-          titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
-          descZh="把榜单、资讯、数据、金句一键变成带动效竖屏短视频 —— AI 现编动画、本地逐帧渲染、可选配音+字幕。秒级出片、稳定可控,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
-          descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally, optional voice-over + subtitles. Seconds to render, stable and controllable. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh={`单条约 ${feeZh}(数据/写稿/合成)`} costEn={`~${feeEn} per clip (data / script / compose)`}
-          btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
       </section>
 
       <section className="mt-6">
@@ -1986,6 +2039,9 @@ const VideoCreateFlow: React.FC<{
       )}
       {threadOpen && (
         <ThreadVideoModal isZh={isZh} matrixMode={matrixMode} onClose={() => setThreadOpen(false)} onCreated={onCreated} />
+      )}
+      {localMixOpen && (
+        <LocalMixVideoModal isZh={isZh} matrixMode={matrixMode} onClose={() => setLocalMixOpen(false)} onCreated={onCreated} />
       )}
     </div>
   );
@@ -4156,11 +4212,12 @@ const ENTRY_ACCENTS: Record<string, { tag: string; dot: string; border: string; 
   fuchsia: { tag: 'text-fuchsia-500', dot: 'bg-fuchsia-500', border: 'border-fuchsia-500/30', glow: 'bg-fuchsia-500/10', btn: 'bg-fuchsia-500 hover:bg-fuchsia-600 shadow-fuchsia-500/25' },
   violet:  { tag: 'text-violet-500',  dot: 'bg-violet-500',  border: 'border-violet-500/30',  glow: 'bg-violet-500/10',  btn: 'bg-violet-500 hover:bg-violet-600 shadow-violet-500/25' },
   orange:  { tag: 'text-orange-500',  dot: 'bg-orange-500',  border: 'border-orange-500/30',  glow: 'bg-orange-500/10',  btn: 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/25' },
+  emerald: { tag: 'text-emerald-500', dot: 'bg-emerald-500', border: 'border-emerald-500/30', glow: 'bg-emerald-500/10', btn: 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/25' },
 };
 const VideoScenarioEntryCard: React.FC<{
   isZh: boolean; onOpen: () => void; onGoTasks?: () => void; icon: string;
   tagZh: string; tagEn: string; titleZh: string; titleEn: string; descZh: string; descEn: string;
-  btnZh: string; btnEn: string; costZh?: string; costEn?: string; accent?: 'rose' | 'sky' | 'fuchsia' | 'violet' | 'orange';
+  btnZh: string; btnEn: string; costZh?: string; costEn?: string; accent?: 'rose' | 'sky' | 'fuchsia' | 'violet' | 'orange' | 'emerald';
 }> = ({ isZh, onOpen, onGoTasks, icon, tagZh, tagEn, titleZh, titleEn, descZh, descEn, btnZh, btnEn, costZh, costEn, accent = 'rose' }) => {
   const A = ENTRY_ACCENTS[accent];
   return (
@@ -5477,6 +5534,346 @@ export const ThreadVideoModal: React.FC<{
             platforms={selectedPlatformIds}
             onCancel={() => setShowLoginCheck(false)}
             onConfirmed={() => { setShowLoginCheck(false); void doCreate(); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── 本地混剪(engine='localmix'):本地视频/图片文件夹 → 智能混剪/图片合成 + 配音 + 字幕 + BGM → 本地/发布 ──
+// 与其它视频向导同壳(StepDot/Field/发布步),文案走 i18nService(9 语言,key 前缀 vmix)。
+export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+  const t = (k: string) => i18nService.t(k);
+  const isEdit = !!editTask;
+  const ei = editTask?.input as VideoCreationInput | undefined;
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const MAX_STEP = 4;
+  // ── Step 1:素材文件夹 ──
+  const [folder, setFolder] = useState<string>(ei?.localMixFolder || '');
+  const [mediaType, setMediaType] = useState<'video' | 'image'>(ei?.localMixMediaType === 'image' ? 'image' : 'video');
+  const [scan, setScan] = useState<{ videoCount: number; imageCount: number } | null>(null);
+  const [scanning, setScanning] = useState(false);
+  useEffect(() => {
+    // 编辑回填:重扫文件夹刷新素材统计(素材可能已增删)。
+    if (!folder) return;
+    let alive = true;
+    setScanning(true);
+    videoCreationService.scanLocalMixFolder(folder).then((r) => { if (alive) setScan(r); }).finally(() => { if (alive) setScanning(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const pickFolder = async () => {
+    const r = await videoCreationService.pickLocalMixFolder();
+    if (!r) return;
+    setFolder(r.dir);
+    setScan({ videoCount: r.videoCount, imageCount: r.imageCount });
+    // 按扫描结果自动定素材形态(只有一类时);两类都有保留用户当前选择。
+    if (r.videoCount > 0 && r.imageCount === 0) setMediaType('video');
+    else if (r.imageCount > 0 && r.videoCount === 0) setMediaType('image');
+    setErr(null);
+  };
+  const availableCount = mediaType === 'image' ? (scan?.imageCount ?? 0) : (scan?.videoCount ?? 0);
+  // ── Step 2:文案(口播照读 / AI 参考改写) ──
+  const [scriptMode, setScriptMode] = useState<'strict' | 'ai'>(ei?.scriptMode === 'strict' ? 'strict' : (ei?.scriptMode === 'ai' ? 'ai' : 'strict'));
+  const [script, setScript] = useState<string>(ei?.script || '');
+  // ── Step 3:配音 / 字幕 / BGM ──
+  const [narration, setNarration] = useState<boolean>(isEdit ? !!ei?.voice : true);
+  const [voice, setVoice] = useState<string>(ei?.voice || 'zh-CN-YunjianNeural');
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
+  const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei?.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
+  const [bgmVolume, setBgmVolume] = useState<number>(typeof ei?.bgmVolume === 'number' ? ei.bgmVolume : 0.18);
+  const pickBgmFile = async () => { const p = await videoCreationService.pickBgm(); if (p) setBgmPath(p); };
+  // ── Step 4:出片去向 + 发布平台 + 频率 ──
+  const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    if (!editTask) return 'local'; // 本地素材场景默认「仅存本地」(先看效果再发)
+    const list = Array.isArray(ei?.publishPlatforms) ? ei!.publishPlatforms as string[] : [];
+    return list.length > 0 ? 'upload' : 'local';
+  });
+  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
+    const init: Record<Platform, boolean> = {
+      douyin: false, xhs: false, binance: false, x: false, tiktok: false,
+      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false, youtube: false, instagram: false, facebook: false,
+    };
+    const list = Array.isArray(ei?.publishPlatforms) ? ei!.publishPlatforms as string[] : null;
+    if (list && list.length > 0) list.forEach((p) => { if (p in init) init[p as Platform] = true; });
+    else if (!editTask) DEFAULT_PUBLISH_PLATFORMS.forEach((p) => { init[p] = true; });
+    return init;
+  });
+  const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
+  const selectedPlatformIds = PUBLISH_PLATFORMS.map((m) => m.id).filter((p) => platforms[p]);
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
+  // 矩阵号:每个发布平台选一个账号(同 TemplateSpeedModal)。
+  const [matrixAccounts, setMatrixAccounts] = useState<MatrixAcctLite[]>([]);
+  const [accountByPlatform, setAccountByPlatform] = useState<Record<string, string>>(
+    () => (matrixMode && (ei as any)?.publishAccounts && typeof (ei as any).publishAccounts === 'object' ? { ...(ei as any).publishAccounts } : {}),
+  );
+  useEffect(() => {
+    if (!matrixMode) return;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await (window as any).electron?.matrix?.listAccounts?.();
+        const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+        if (alive) setMatrixAccounts(accs.map((a) => ({ id: a.id, platform: a.platform, displayName: a.displayName, status: a.status, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar, loginScope: a.loginScope })));
+      } catch { if (alive) setMatrixAccounts([]); }
+    })();
+    return () => { alive = false; };
+  }, [matrixMode]);
+  const accountsFor = (platform: string) => matrixAccounts.filter((a) => a.platform === platform && (platform !== 'kuaishou' || (a as any).loginScope === 'creator'));
+  const matrixAccountsReady = !matrixMode || outputMode !== 'upload'
+    || selectedPlatformIds.every((p) => !!accountByPlatform[p] && accountsFor(p).some((a) => a.id === accountByPlatform[p] && a.status !== 'login_required'));
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [showLoginCheck, setShowLoginCheck] = useState(false);
+
+  const handleCreate = async () => {
+    if (submitting) return;
+    setSubmitting(true); setErr(null);
+    try {
+      if (!isEdit && !(await videoQueue.canCreate())) {
+        setErr(t('vmixErrTasksFull').replace(/\{n\}/g, String(VIDEO_TASK_LIMIT)));
+        return;
+      }
+      const input: VideoCreationInput = {
+        persona: '', track: '', keywords: [],
+        script: script.trim(),
+        scriptMode,
+        engine: 'localmix',
+        localMixFolder: folder,
+        localMixMediaType: mediaType,
+        referenceImages: [], aspect: '9:16',
+        voice: narration ? voice : undefined,
+        narrationEnabled: narration,
+        subtitleEnabled,
+        bgmPath: bgmPath || undefined,
+        bgmVolume: bgmPath ? bgmVolume : undefined,
+        publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
+        publishAccounts: matrixMode && outputMode === 'upload'
+          ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => [p, accountByPlatform[p]]))
+          : undefined,
+        publishAccountNames: matrixMode && outputMode === 'upload'
+          ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => { const a = matrixAccounts.find((x) => x.id === accountByPlatform[p]); return [p, a ? (a.nickname || a.displayName) : accountByPlatform[p]]; }))
+          : undefined,
+      } as VideoCreationInput;
+      const name = t('vmixTaskName');
+      const schedule: VideoSchedule = { runInterval };
+      if (isEdit) {
+        const ok = videoTaskStore.updateTask(editTask.id, input, name, schedule);
+        if (!ok) { setErr(t('vmixErrTaskRunning')); return; }
+        if (onSaved) onSaved(); else onClose();
+      } else {
+        const id = videoTaskStore.createTask(input, name, schedule);
+        onCreated?.(id);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleFinalClick = () => {
+    if (outputMode === 'upload' && selectedPlatformIds.length === 0) { setStep(4); setErr(t('vmixErrPickPlatform')); return; }
+    if (matrixMode) {
+      if (outputMode === 'upload' && !matrixAccountsReady) { setStep(4); setErr(t('vmixErrPickAccount')); return; }
+      void handleCreate();
+      return;
+    }
+    if (outputMode === 'upload' && selectedPlatformIds.length > 0) { setErr(null); setShowLoginCheck(true); }
+    else { void handleCreate(); }
+  };
+
+  const goNext = () => {
+    if (step === 1) {
+      if (!folder) { setErr(t('vmixErrNoFolder')); return; }
+      if (availableCount === 0) { setErr(mediaType === 'image' ? t('vmixErrNoImages') : t('vmixErrNoVideos')); return; }
+    }
+    if (step === 2 && !script.trim()) { setErr(scriptMode === 'strict' ? t('vmixErrNoScript') : t('vmixErrNoReference')); return; }
+    setErr(null);
+    setStep((s) => (s < MAX_STEP ? ((s + 1) as 1 | 2 | 3 | 4) : s));
+  };
+  const goBack = () => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => ((s - 1) as 1 | 2 | 3 | 4)); };
+
+  const seg = (active: boolean) => `flex-1 py-2 rounded-lg text-sm border transition-colors ${active ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-emerald-500/50'}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative w-full max-w-2xl h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl">
+        <div className="shrink-0 px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold dark:text-white">📁 {isEdit ? t('vmixTitleEdit') : t('vmixTitle')}</h3>
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <StepDot n={1} active={step === 1} done={step > 1} label={t('vmixStepMaterial')} />
+              <div className={`h-px w-3 ${step > 1 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={t('vmixStepScript')} />
+              <div className={`h-px w-3 ${step > 2 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={t('vmixStepVoice')} />
+              <div className={`h-px w-3 ${step > 3 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={false} label={t('vmixStepOutput')} />
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {step === 1 && (
+            <>
+              <Field label={t('vmixFolderLabel')} hint={t('vmixFolderHint')}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={pickFolder} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">📂 {t('vmixPickFolder')}</button>
+                  <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={folder}>{folder || t('vmixNoFolderYet')}</div>
+                </div>
+                {folder && (
+                  <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                    {scanning
+                      ? t('vmixScanning')
+                      : t('vmixScanResult').replace('{v}', String(scan?.videoCount ?? 0)).replace('{i}', String(scan?.imageCount ?? 0))}
+                  </div>
+                )}
+              </Field>
+              <Field label={t('vmixMediaTypeLabel')} hint={t('vmixMediaTypeHint')}>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setMediaType('video'); setErr(null); }} className={seg(mediaType === 'video')}>🎬 {t('vmixMediaVideo')}</button>
+                  <button type="button" onClick={() => { setMediaType('image'); setErr(null); }} className={seg(mediaType === 'image')}>🖼️ {t('vmixMediaImage')}</button>
+                </div>
+              </Field>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <Field label={t('vmixScriptModeLabel')} hint={t('vmixScriptModeHint')}>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setScriptMode('strict'); setErr(null); }} className={seg(scriptMode === 'strict')}>🎙️ {t('vmixScriptStrict')}</button>
+                  <button type="button" onClick={() => { setScriptMode('ai'); setErr(null); }} className={seg(scriptMode === 'ai')}>✨ {t('vmixScriptAi')}</button>
+                </div>
+                <div className="mt-1 text-[11px] text-gray-400">{scriptMode === 'strict' ? t('vmixScriptStrictDesc') : t('vmixScriptAiDesc')}</div>
+              </Field>
+              <Field label={scriptMode === 'strict' ? t('vmixScriptLabel') : t('vmixReferenceLabel')}>
+                <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={8}
+                  placeholder={scriptMode === 'strict' ? t('vmixScriptPlaceholder') : t('vmixReferencePlaceholder')}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" />
+              </Field>
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <Field label={t('vmixVoiceLabel')}>
+                <label className="flex items-center gap-2 text-sm dark:text-gray-200 mb-2">
+                  <input type="checkbox" checked={narration} onChange={(e) => setNarration(e.target.checked)} className="h-4 w-4 accent-emerald-500" />
+                  {t('vmixNarrationOn')}
+                </label>
+                {narration && (
+                  <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                    {VOICE_GROUPS.map((g) => (
+                      <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                        {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+                      </optgroup>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field label={t('vmixSubtitleLabel')}>
+                <label className="flex items-center gap-2 text-sm dark:text-gray-200">
+                  <input type="checkbox" checked={subtitleEnabled} onChange={(e) => setSubtitleEnabled(e.target.checked)} className="h-4 w-4 accent-emerald-500" />
+                  {t('vmixSubtitleBurn')}
+                </label>
+              </Field>
+              <Field label={t('vmixBgmLabel')} hint={t('vmixBgmHint')}>
+                <div className="flex gap-2 items-center flex-wrap">
+                  <select value={bgmPath.startsWith(BUILTIN_BGM_PREFIX) ? bgmPath : (bgmPath ? '__custom__' : '')} onChange={(e) => { const v = e.target.value; if (v === '__custom__') return; setBgmPath(v); }}
+                    className="flex-1 min-w-[180px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                    <option value="">{t('vmixBgmNone')}</option>
+                    {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>{isZh ? b.zh : b.en}</option>))}
+                    {bgmPath && !bgmPath.startsWith(BUILTIN_BGM_PREFIX) && <option value="__custom__">{t('vmixBgmCustom')}</option>}
+                  </select>
+                  <button type="button" onClick={pickBgmFile} className="px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 dark:text-gray-300 hover:border-emerald-500/60">📁 {t('vmixBgmUpload')}</button>
+                </div>
+                {bgmPath && (
+                  <div className="mt-2 flex gap-2">
+                    {BGM_VOLUME_OPTIONS.map((o) => (
+                      <button key={o.v} type="button" onClick={() => setBgmVolume(o.v)} className={`px-3 py-1 rounded-md text-xs border ${Math.abs(bgmVolume - o.v) < 0.01 ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}>{isZh ? o.zh : o.en}</button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+            </>
+          )}
+
+          {step === 4 && (
+            <>
+              <Field label={t('vmixOutputLabel')}>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setOutputMode('local')} className={seg(outputMode === 'local')}>💾 {t('vmixOutputLocal')}</button>
+                  <button type="button" onClick={() => setOutputMode('upload')} className={seg(outputMode === 'upload')}>🚀 {t('vmixOutputUpload')}</button>
+                </div>
+              </Field>
+              {outputMode === 'upload' && (
+                <Field label={t('vmixPlatformsLabel')} hint={t('vmixPlatformsHint')}>
+                  <div className="grid grid-cols-3 gap-2">
+                    {PUBLISH_PLATFORMS.map((p) => (
+                      <button key={p.id} type="button" onClick={() => togglePlatform(p.id)}
+                        className={`py-2 px-2 rounded-lg text-xs border text-left transition-colors ${platforms[p.id] ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-emerald-500/50'}`}>
+                        {p.emoji} {isZh ? p.zh : p.en}
+                      </button>
+                    ))}
+                  </div>
+                  {matrixMode && selectedPlatformIds.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('vmixAccountsLabel')}</div>
+                      {selectedPlatformIds.map((pid) => {
+                        const opts = accountsFor(pid);
+                        const meta = PUBLISH_PLATFORMS.find((m) => m.id === pid);
+                        return (
+                          <div key={pid} className="flex items-center gap-2">
+                            <span className="w-24 shrink-0 text-xs dark:text-gray-300">{meta?.emoji} {isZh ? meta?.zh : meta?.en}</span>
+                            {opts.length === 0 ? (
+                              <span className="text-[11px] text-amber-500">{t('vmixNoAccounts')}</span>
+                            ) : (
+                              <select value={accountByPlatform[pid] || ''} onChange={(e) => setAccountByPlatform((m) => ({ ...m, [pid]: e.target.value }))}
+                                className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs dark:text-white">
+                                <option value="">{t('vmixPickAccount')}</option>
+                                {opts.map((a) => (<option key={a.id} value={a.id} disabled={a.status === 'login_required'}>{(a.nickname || a.displayName)}{a.status === 'login_required' ? ` (${t('vmixAcctExpired')})` : ''}</option>))}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Field>
+              )}
+              <Field label={t('vmixFreqLabel')}>
+                <div className="flex gap-2 flex-wrap">
+                  {(['once', '3h', '6h', 'daily_random'] as VideoRunInterval[]).map((v) => (
+                    <button key={v} type="button" onClick={() => setRunInterval(v)} className={`px-3 py-1.5 rounded-md text-xs border ${runInterval === v ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                      {v === 'once' ? t('vmixFreqOnce') : v === '3h' ? t('vmixFreq3h') : v === '6h' ? t('vmixFreq6h') : t('vmixFreqDailyRandom')}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </>
+          )}
+        </div>
+
+        {err && <div className="shrink-0 px-6 pb-1"><div className="rounded-lg border px-3 py-2 text-xs border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-400">❌ {err}</div></div>}
+
+        <div className="shrink-0 px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
+          <button type="button" onClick={goBack} disabled={submitting} className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{step === 1 ? t('vmixCancel') : t('vmixBack')}</button>
+          <div className="flex-1" />
+          {step < MAX_STEP ? (
+            <button type="button" onClick={goNext} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">{t('vmixNext')}</button>
+          ) : (
+            <button type="button" onClick={handleFinalClick} disabled={submitting} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{submitting ? t('vmixSaving') : (isEdit ? t('vmixSave') : t('vmixCreate'))}</button>
+          )}
+        </div>
+
+        {showLoginCheck && (
+          <VideoLoginCheckModal
+            platforms={selectedPlatformIds}
+            onCancel={() => setShowLoginCheck(false)}
+            onConfirmed={() => { setShowLoginCheck(false); void handleCreate(); }}
           />
         )}
       </div>

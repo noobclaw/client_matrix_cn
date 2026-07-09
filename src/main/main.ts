@@ -2964,6 +2964,23 @@ if (!gotTheLock) {
       return valid;
     });
 
+    // 本地混剪:选素材文件夹(视频或图片)并回扫描统计 { dir, videoCount, imageCount }。
+    ipcMain.handle('video:pickLocalFolder', async () => {
+      const parent = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
+      const opts = { title: '选择本地素材文件夹', properties: ['openDirectory'] as Array<'openDirectory'> };
+      const result = parent ? await dialog.showOpenDialog(parent, opts) : await dialog.showOpenDialog(opts);
+      if (result.canceled || !Array.isArray(result.filePaths) || !result.filePaths[0]) return null;
+      const dir = result.filePaths[0];
+      const { scanLocalMediaFolder } = require('./libs/video/pipeline');
+      const media = scanLocalMediaFolder(dir);
+      return { dir, videoCount: media.videos.length, imageCount: media.images.length };
+    });
+    ipcMain.handle('video:scanLocalFolder', async (_e, dir: string) => {
+      const { scanLocalMediaFolder } = require('./libs/video/pipeline');
+      const media = scanLocalMediaFolder(String(dir || ''));
+      return { videoCount: media.videos.length, imageCount: media.images.length };
+    });
+
     // Read a local image file and return it as a data: URL so the renderer
     // can show a real thumbnail (renderer can't load file:// under CSP).
     ipcMain.handle('video:readImageDataUrl', async (_e, filePath: string) => {

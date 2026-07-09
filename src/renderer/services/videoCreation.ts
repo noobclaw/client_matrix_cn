@@ -75,7 +75,11 @@ export interface VideoCreationInput {
    * 画面引擎:'stock'(默认,AI 分镜 + 在线素材库) | 'ai'(Seedance AI 自动成片,
    * 逐镜生成视频片段,参考图统一风格,走服务端代理逐片段计费)。
    */
-  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix';
+  /** engine==='localmix'(本地混剪)专属:本地素材文件夹绝对路径(出片时实时扫,新增素材自动用上)。 */
+  localMixFolder?: string;
+  /** engine==='localmix':素材形态。'video'=视频按换镜节奏循环混剪;'image'=图片逐镜缓慢运镜合成。 */
+  localMixMediaType?: 'video' | 'image';
   /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
   template?: VideoTemplateOptions;
   /** engine==='hotspot'(热搜成片)专属:用户勾选的热点源('hotsearch'|'web3'|'tech')。
@@ -253,6 +257,29 @@ class VideoCreationService {
       return Array.isArray(paths) ? paths.slice(0, max) : [];
     } catch {
       return [];
+    }
+  }
+
+  /** 本地混剪:弹系统文件夹选择框选素材文件夹,返回 { dir, videoCount, imageCount };取消/失败返回 null。 */
+  async pickLocalMixFolder(): Promise<{ dir: string; videoCount: number; imageCount: number } | null> {
+    if (!this.api?.pickLocalFolder) return null;
+    try {
+      const r = await this.api.pickLocalFolder();
+      if (!r || typeof r.dir !== 'string' || !r.dir) return null;
+      return { dir: r.dir, videoCount: Number(r.videoCount) || 0, imageCount: Number(r.imageCount) || 0 };
+    } catch {
+      return null;
+    }
+  }
+
+  /** 本地混剪:重扫文件夹(编辑任务回填时刷新素材统计)。 */
+  async scanLocalMixFolder(dir: string): Promise<{ videoCount: number; imageCount: number }> {
+    if (!this.api?.scanLocalFolder || !dir) return { videoCount: 0, imageCount: 0 };
+    try {
+      const r = await this.api.scanLocalFolder(dir);
+      return { videoCount: Number(r?.videoCount) || 0, imageCount: Number(r?.imageCount) || 0 };
+    } catch {
+      return { videoCount: 0, imageCount: 0 };
     }
   }
 
