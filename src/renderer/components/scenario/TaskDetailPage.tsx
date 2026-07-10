@@ -951,12 +951,19 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {(task.scenario_id === 'instagram_post' || task.scenario_id === 'facebook_post' || task.scenario_id === 'reddit_post') && (() => {
                     const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
                     const t = task as any;
-                    const sk = t.sourceKind ?? t.source_kind ?? 'news';
-                    const src = String(t.source ?? '').trim();
-                    const catKey = String(t.catKey ?? t.cat_key ?? '').trim();
-                    const lang = String(t.language ?? 'mixed');
-                    const sub = String(t.subreddit ?? '').trim();
-                    const autoPub = (t.autoPublish ?? t.auto_upload ?? t.auto_publish) !== false;
+                    const cfg = t.facebookPost || t.instagramPost || t.redditPost || {};
+                    const sk = t.sourceKind ?? t.source_kind ?? cfg.sourceKind ?? 'news';
+                    const src = String(t.source ?? cfg.source ?? '').trim();
+                    const catKey = String(t.catKey ?? t.cat_key ?? cfg.catKey ?? '').trim();
+                    const lang = String(t.language ?? cfg.language ?? 'mixed');
+                    const sub = String(t.subreddit ?? cfg.subreddit ?? '').trim();
+                    const autoPub = (t.autoPublish ?? t.auto_upload ?? t.auto_publish ?? cfg.autoPublish) !== false;
+                    // 内容来源二选一:reference=参考文案(隐藏数据源/话题过滤,显示已填号数)/ sources(缺省)=数据源。
+                    const contentSource = String(t.contentSource ?? cfg.contentSource ?? t.content_source ?? 'sources');
+                    const isRef = contentSource === 'reference';
+                    const refs = (t.references ?? cfg.references) || {};
+                    const refCount = Object.keys(refs).filter((k) => String((refs as any)[k] || '').trim()).length;
+                    const trackMatch = (t.instagramPost?.sourceTrackMatch ?? t.facebookPost?.sourceTrackMatch ?? t.redditPost?.sourceTrackMatch ?? t.sourceTrackMatch ?? cfg.sourceTrackMatch) !== false;
                     const sourceLabel = sk === 'news'
                       ? (isZh ? 'Web3 资讯' : 'Web3 News')
                       : sk === 'category'
@@ -972,9 +979,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           </div>
                         )}
                         <div className="text-xs text-gray-600 dark:text-gray-300">
-                          <span className="text-gray-500">{isZh ? '数据源' : 'Source'}:</span> {sourceLabel}
+                          <span className="text-gray-500">{isZh ? '内容来源' : 'Content'}:</span>{' '}
+                          {isRef ? (isZh ? `参考文案(${refCount} 个号已填)` : `Reference (${refCount} filled)`) : (isZh ? '数据源选题' : 'Data sources')}
                         </div>
-                        {((t.instagramPost?.sourceTrackMatch ?? t.facebookPost?.sourceTrackMatch ?? t.redditPost?.sourceTrackMatch ?? t.sourceTrackMatch) !== false) && (
+                        {!isRef && (
+                          <div className="text-xs text-gray-600 dark:text-gray-300">
+                            <span className="text-gray-500">{isZh ? '数据源' : 'Source'}:</span> {sourceLabel}
+                          </div>
+                        )}
+                        {!isRef && trackMatch && (
                           <div className="text-xs text-gray-600 dark:text-gray-300">
                             <span className="text-gray-500">{isZh ? '话题过滤' : 'Topic filter'}:</span> {isZh ? '仅取账号赛道相关' : 'Niche-matched only'}
                           </div>

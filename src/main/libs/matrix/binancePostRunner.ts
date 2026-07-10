@@ -198,6 +198,13 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
     // 「仅账号赛道相关」(默认开):FB/IG/Reddit 有数据源 → 传本号赛道 id,取材按 track 过滤;binance(无 sourceKind)/关开关则空。
     if ((cfg as any).sourceKind && (cfg as any).sourceTrackMatch !== false) task.track_id = trackIdFromGroup(acc.group);
     if ((cfg as any).subreddit) task.subreddit = (cfg as any).subreddit; // reddit_post 目标 subreddit
+    // 参考文案模式(FB/Reddit/IG,2026-07-10):contentSource='reference' → orchestrator 跳过数据源取材,
+    //   按本号身份 + 本号参考文案(references[accountId],可空)自由创作。binance_post 无此字段 → 恒数据源模式,不受影响。
+    if ((cfg as any).contentSource === 'reference') {
+      task.content_source = 'reference';
+      const refMap = ((cfg as any).references || {}) as Record<string, string>;
+      task.reference = String(refMap[accountId] || '').trim();
+    }
 
     const onAiCost = (credits: number, usd: number) => {
       chargedCredits += credits; chargedUsd += usd;

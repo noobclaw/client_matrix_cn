@@ -172,6 +172,9 @@ export interface FacebookPostConfig {
   withImage: boolean;
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
+  // 内容来源二选一(contentSource):'sources'(缺省)=数据源选题;'reference'=参考文案(按本号身份+可选参考文案自由创作,跳过数据源)。
+  contentSource?: 'reference' | 'sources';
+  references?: Record<string, string>;      // 仅 contentSource='reference':各账号参考文案 { accountId: text };空则该号按身份自由创作
   sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
   sourceTrackMatch?: boolean;               // 仅取账号赛道相关的选题(缺省 true)
   sourceKind: 'news' | 'category' | 'hot';  // 数据源类型(旧单选字段=第一个选中源,兼容旧 orchestrator)
@@ -187,6 +190,9 @@ export interface FacebookPostConfig {
 export interface RedditPostConfig {
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
+  // 内容来源二选一(contentSource):'sources'(缺省)=数据源选题;'reference'=参考文案(按本号身份+可选参考文案自由创作,跳过数据源)。
+  contentSource?: 'reference' | 'sources';
+  references?: Record<string, string>;      // 仅 contentSource='reference':各账号参考文案 { accountId: text };空则该号按身份自由创作
   sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
   sourceTrackMatch?: boolean;               // 仅取账号赛道相关的选题(缺省 true)
   sourceKind: 'news' | 'category' | 'hot';
@@ -204,6 +210,9 @@ export interface InstagramPostConfig {
   withImage: boolean; // 恒 true(IG 帖必带图);保留字段与 facebook 对齐
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
+  // 内容来源二选一(contentSource):'sources'(缺省)=数据源选题;'reference'=参考文案(按本号身份+可选参考文案自由创作,跳过数据源)。
+  contentSource?: 'reference' | 'sources';
+  references?: Record<string, string>;      // 仅 contentSource='reference':各账号参考文案 { accountId: text };空则该号按身份自由创作
   sources?: PostSourceSel[];                // 多选数据源(每轮随机挑 1 个;老任务无此字段走下面单选)
   sourceTrackMatch?: boolean;               // 仅取账号赛道相关的选题(缺省 true)
   sourceKind: 'news' | 'category' | 'hot';

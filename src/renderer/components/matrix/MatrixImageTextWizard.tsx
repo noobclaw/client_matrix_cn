@@ -15,7 +15,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
-import MatrixSourcesPreview from './MatrixSourcesPreview';
 import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -292,13 +291,17 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                       </button>
                     ))}
                   </div>
-                  <div className="text-[11px] text-gray-400 mt-1.5">{T('AI 围绕选题、按各号赛道/人设视角创作,内容互不相同(海外源标题为英文,成稿仍按平台语言)', 'AI writes around the topic from each account’s persona; overseas source titles are English, output follows platform language')}</div>
-                  <label className="flex items-start gap-2 mt-2.5 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" checked={sourceTrackMatch} onChange={(e) => setSourceTrackMatch(e.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-500 shrink-0" />
-                    <span className="leading-relaxed">{T('仅选用与账号赛道相关的内容', 'Only topics matching each account’s niche')}<span className="text-gray-400 font-normal">{T('(每个号只从自己赛道的热点里取题;某轮无相关则按赛道自由创作)', ' (each account picks from its own niche; falls back to free creation when none match)')}</span></span>
-                  </label>
+                  <div className="mt-2.5">
+                    <button type="button" onClick={() => setSourceTrackMatch(!sourceTrackMatch)} aria-pressed={sourceTrackMatch} disabled={saving}
+                      className={`w-full px-4 py-3 rounded-xl border text-left transition-colors flex items-start gap-3 disabled:opacity-50 ${sourceTrackMatch ? 'border-emerald-400 bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 text-emerald-700 dark:text-emerald-300 shadow-sm' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-400/60'}`}>
+                      <span className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-sm transition-colors ${sourceTrackMatch ? 'bg-emerald-500 text-white' : 'border-2 border-gray-400 dark:border-gray-600'}`}>{sourceTrackMatch ? '✓' : ''}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center gap-1.5 text-sm font-semibold">🎯 {T('仅选用账号赛道相关内容', 'Only niche-relevant topics')}{sourceTrackMatch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500 text-white font-bold tracking-wide">{T('已开', 'ON')}</span>}</span>
+                        <span className="block text-[11px] text-gray-500 dark:text-gray-400 font-normal mt-0.5">{T('勾选此项,则 AI 会从数据源中筛选符合每个矩阵号赛道的热点进行选题创作', "When on, AI filters the data sources for topics matching each account's niche")}</span>
+                      </span>
+                    </button>
+                  </div>
                 </div>
-                <MatrixSourcesPreview sourceIds={sourceIds} isZh={isZh} />
               </div>
             )}
           </>

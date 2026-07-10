@@ -49,7 +49,6 @@ import MatrixRedditPostWizard, { type RedditPostWizardSave } from '../matrix/Mat
 import MatrixInstagramPostWizard, { type InstagramPostWizardSave } from '../matrix/MatrixInstagramPostWizard';
 import MatrixBinanceRepostWizard, { type BinanceRepostWizardSave } from '../matrix/MatrixBinanceRepostWizard';
 import MatrixViralRewriteWizard, { type ViralRewriteWizardSave } from '../matrix/MatrixViralRewriteWizard';
-import { HIDE_WEB3 } from '../../buildFlags';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'reddit' | 'video';
 
@@ -738,6 +737,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       withImage: input.withImage,
       language: input.language,
       autoPublish: input.autoPublish,
+      contentSource: input.contentSource,   // 内容来源二选一:reference=参考文案 / sources=数据源
+      references: input.references,          // 仅 reference 模式:各号参考文案
       sources: input.sources,   // 多选源(每轮随机挑 1 个);旧单选字段=第一个选中源,兼容旧 orchestrator
       sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       sourceKind: input.sourceKind,
@@ -798,6 +799,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const redditPost = {
       language: input.language,
       autoPublish: input.autoPublish,
+      contentSource: input.contentSource,   // 内容来源二选一:reference=参考文案 / sources=数据源
+      references: input.references,          // 仅 reference 模式:各号参考文案
       sources: input.sources,   // 多选源(每轮随机挑 1 个);旧单选字段=第一个选中源,兼容旧 orchestrator
       sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       sourceKind: input.sourceKind,
@@ -860,6 +863,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       withImage: true,
       language: input.language,
       autoPublish: input.autoPublish,
+      contentSource: input.contentSource,   // 内容来源二选一:reference=参考文案 / sources=数据源
+      references: input.references,          // 仅 reference 模式:各号参考文案
       sources: input.sources,   // 多选源(每轮随机挑 1 个);旧单选字段=第一个选中源,兼容旧 orchestrator
       sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       sourceKind: input.sourceKind,
@@ -2143,8 +2148,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。 */}
-          {/* 国内版(HIDE_WEB3):过滤掉「币安广场」平台 tab(web3),其余含海外平台保留。 */}
-          {(matrixMode ? MATRIX_TAB_ORDER.map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).filter((tab) => !(HIDE_WEB3 && tab.id === 'binance')).map((tab) => {
+          {(matrixMode ? MATRIX_TAB_ORDER.map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
             const active = currentPlatform === tab.id;
             // 矩阵号:对齐「我的矩阵账号」的简洁 pill 切换(纯文字 + violet 选中,rounded-full),
             // 顺序同账号页(MATRIX_TAB_ORDER 已与 PLATFORMS 一致)。非矩阵(旧视频版)保持原绿卡样式。
