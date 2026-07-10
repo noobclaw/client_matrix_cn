@@ -974,6 +974,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         <div className="text-xs text-gray-600 dark:text-gray-300">
                           <span className="text-gray-500">{isZh ? '数据源' : 'Source'}:</span> {sourceLabel}
                         </div>
+                        {((t.instagramPost?.sourceTrackMatch ?? t.facebookPost?.sourceTrackMatch ?? t.redditPost?.sourceTrackMatch ?? t.sourceTrackMatch) !== false) && (
+                          <div className="text-xs text-gray-600 dark:text-gray-300">
+                            <span className="text-gray-500">{isZh ? '话题过滤' : 'Topic filter'}:</span> {isZh ? '仅取账号赛道相关' : 'Niche-matched only'}
+                          </div>
+                        )}
                         <div className="text-xs text-gray-600 dark:text-gray-300">
                           <span className="text-gray-500">{isZh ? '语言' : 'Language'}:</span> {LANG_LABEL[lang] || lang}
                         </div>
@@ -981,6 +986,96 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           <span className="text-gray-500">{isZh ? '发布' : 'Publish'}:</span>{' '}
                           {autoPub ? (isZh ? '自动发布' : 'Auto-publish') : (isZh ? '仅生成' : 'Draft only')}
                         </div>
+                      </div>
+                    );
+                  })()}
+                  {/* 自动发推(x_post):内容来源(数据源选题 · 自由创作)/ 数据源 / 赛道过滤 / 配图 / 语言 / 字数 / 发布。
+                      之前详情页对发推任务没有专属配置渲染。数据从 task.tweetPost 对象读。 */}
+                  {task.scenario_id === 'x_post' && (() => {
+                    const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
+                    const tp = (task as any).tweetPost || {};
+                    const isSrc = tp.mode === 'web3';
+                    const srcs: any[] = Array.isArray(tp.sources) ? tp.sources : [];
+                    const label = (s: any) => s?.kind === 'news' ? (isZh ? 'Web3 资讯' : 'Web3 News') : s?.kind === 'category' ? (s.catKey === 'tech' ? (isZh ? '科技 / AI' : 'Tech / AI') : 'Web3') : (s?.source || (isZh ? '热榜' : 'Hotlist'));
+                    const lang = String(tp.language ?? 'mixed');
+                    const LANG: Record<string, string> = { mixed: isZh ? '跟随账号' : 'Follow account', auto: isZh ? '跟随账号' : 'Follow account', zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
+                    const row = (k: string, v: string) => (<div className="text-xs text-gray-600 dark:text-gray-300"><span className="text-gray-500">{k}:</span> {v}</div>);
+                    return (
+                      <div className="space-y-1 pl-1 pt-1 border-t border-gray-200 dark:border-gray-800 mt-1.5">
+                        {row(isZh ? '内容来源' : 'Content', isSrc ? (isZh ? '数据源选题' : 'Data sources') : (isZh ? '按账号身份自由创作' : 'Free (account identity)'))}
+                        {isSrc && row(isZh ? '数据源' : 'Sources', srcs.length ? srcs.map(label).join(isZh ? '、' : ', ') : (isZh ? 'Web3 资讯' : 'Web3 News'))}
+                        {isSrc && (tp.sourceTrackMatch !== false) && row(isZh ? '话题过滤' : 'Topic filter', isZh ? '仅取账号赛道相关' : 'Niche-matched only')}
+                        {row(isZh ? '配图' : 'Image', tp.withImage ? (isZh ? 'AI 生图' : 'AI image') : (isZh ? '纯文字' : 'Text only'))}
+                        {row(isZh ? '语言' : 'Language', LANG[lang] || lang)}
+                        {row(isZh ? '字数' : 'Length', tp.isBlueV ? (isZh ? '蓝V(长文自由)' : 'Blue check (long-form)') : (isZh ? '普通(≤140 字)' : 'Standard (≤140)'))}
+                        {row(isZh ? '发布' : 'Publish', (tp.autoPublish ?? true) !== false ? (isZh ? '自动发布' : 'Auto-publish') : (isZh ? '仅生成' : 'Draft only'))}
+                      </div>
+                    );
+                  })()}
+                  {/* 币安广场自动发帖(binance_post):纯 web3 资讯,配置只有 配图 / 语言 / 发布。之前也没专属渲染。 */}
+                  {task.scenario_id === 'binance_post' && (() => {
+                    const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
+                    const bp = (task as any).binancePost || {};
+                    const lang = String(bp.language ?? 'mixed');
+                    const LANG: Record<string, string> = { mixed: isZh ? '跟随账号' : 'Follow account', auto: isZh ? '跟随账号' : 'Follow account', zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
+                    const row = (k: string, v: string) => (<div className="text-xs text-gray-600 dark:text-gray-300"><span className="text-gray-500">{k}:</span> {v}</div>);
+                    return (
+                      <div className="space-y-1 pl-1 pt-1 border-t border-gray-200 dark:border-gray-800 mt-1.5">
+                        {row(isZh ? '数据源' : 'Source', isZh ? 'Web3 资讯' : 'Web3 News')}
+                        {row(isZh ? '配图' : 'Image', bp.withImage ? (isZh ? '源图优先 → AI 生图' : 'Source image → AI') : (isZh ? '纯文字' : 'Text only'))}
+                        {row(isZh ? '语言' : 'Language', LANG[lang] || lang)}
+                        {row(isZh ? '发布' : 'Publish', (bp.autoPublish ?? true) !== false ? (isZh ? '自动发布' : 'Auto-publish') : (isZh ? '仅生成' : 'Draft only'))}
+                      </div>
+                    );
+                  })()}
+                  {/* 币安广场批量搬运(binance_repost):采集号来源平台 / 搬运形态(图文·视频)/ 搜索词 / 语言 / 发布。
+                      之前详情页对搬运任务没有专属配置渲染,只剩账号块 —— 用户填的来源/形态/关键词全不显示。
+                      数据从 task.binanceRepost 对象读(mxTaskToScenario 已整体透传)。 */}
+                  {task.scenario_id === 'binance_repost' && (() => {
+                    const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
+                    const rp = (task as any).binanceRepost || {};
+                    const PLAT: Record<string, string> = { douyin: isZh ? '抖音' : 'Douyin', xhs: isZh ? '小红书' : 'Xiaohongshu', tiktok: 'TikTok', x: isZh ? 'X / 推特' : 'X / Twitter' };
+                    const mat = rp.material === 'video' ? (isZh ? '视频' : 'Video') : (isZh ? '图文' : 'Image-text');
+                    const kw = String(rp.keyword || '').trim();
+                    const lang = String(rp.language ?? 'mixed');
+                    const LANG: Record<string, string> = { mixed: isZh ? '跟随源语言' : 'Follow source', auto: isZh ? '跟随源语言' : 'Follow source', zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
+                    const autoPub = (rp.autoPublish ?? true) !== false;
+                    const row = (k: string, v: string) => (
+                      <div className="text-xs text-gray-600 dark:text-gray-300"><span className="text-gray-500">{k}:</span> {v}</div>
+                    );
+                    return (
+                      <div className="space-y-1 pl-1 pt-1 border-t border-gray-200 dark:border-gray-800 mt-1.5">
+                        {row(isZh ? '来源平台' : 'Source platform', PLAT[rp.sourcePlatform] || rp.sourcePlatform || '—')}
+                        {row(isZh ? '搬运形态' : 'Material', mat)}
+                        {row(isZh ? '搜索词' : 'Keyword', kw || (isZh ? '(用采集号自带关键词)' : '(collector account keywords)'))}
+                        {row(isZh ? '仿写语言' : 'Language', LANG[lang] || lang)}
+                        {row(isZh ? '发布' : 'Publish', autoPub ? (isZh ? '自动发布' : 'Auto-publish') : (isZh ? '仅生成' : 'Draft only'))}
+                      </div>
+                    );
+                  })()}
+                  {/* 图文创作:内容来源(数据源选题 vs 参考文案)+ 数据源列表 + 赛道过滤。
+                      之前详情页只展示参考文案(sourceSegments),数据源模式选了哪些源/是否按赛道过滤全不显示。
+                      数据从 task.imageText 对象读(mxTaskToScenario 已整体透传该对象)。 */}
+                  {isImageTextTask && (() => {
+                    const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
+                    const it = (task as any).imageText || {};
+                    if ((it.contentSource || 'reference') !== 'sources') return null; // 参考文案模式由下方 sourceSegments 展示
+                    const srcs: any[] = Array.isArray(it.sources) ? it.sources : [];
+                    const label = (s: any) => s?.kind === 'news' ? (isZh ? 'Web3 资讯' : 'Web3 News')
+                      : s?.kind === 'category' ? (s.catKey === 'tech' ? (isZh ? '科技 / AI' : 'Tech / AI') : (isZh ? 'Web3' : 'Web3'))
+                      : (s?.source || (isZh ? '热榜' : 'Hotlist'));
+                    return (
+                      <div className="space-y-1 pl-1 pt-1 border-t border-gray-200 dark:border-gray-800 mt-1.5">
+                        <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                          <span className="text-gray-500">{isZh ? '数据源' : 'Sources'}:</span>{' '}
+                          {srcs.length ? srcs.map(label).join(isZh ? '、' : ', ') : (isZh ? '(未选)' : '(none)')}
+                        </div>
+                        {it.sourceTrackMatch !== false && (
+                          <div className="text-xs text-gray-600 dark:text-gray-300">
+                            <span className="text-gray-500">{isZh ? '话题过滤' : 'Topic filter'}:</span>{' '}
+                            {isZh ? '仅取账号赛道相关的选题' : 'Niche-matched topics only'}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
