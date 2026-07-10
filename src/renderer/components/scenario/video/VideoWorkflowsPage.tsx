@@ -998,6 +998,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <Row label={`📂 ${i18nService.t('vmixFolderLabel')}`}>{inp.localMixFolder || '-'}</Row>
         <Row label={`🎞️ ${i18nService.t('vmixMediaTypeLabel')}`}>{inp.localMixMediaType === 'image' ? i18nService.t('vmixMediaImage') : i18nService.t('vmixMediaVideo')}</Row>
         <Row label={`📝 ${i18nService.t('vmixScriptModeLabel')}`}>{input.scriptMode === 'ai' ? i18nService.t('vmixScriptAi') : i18nService.t('vmixScriptStrict')}</Row>
+        <Row label={`🎬 ${isZh ? '换镜节奏' : 'Pacing'}`}>{`${input.maxClipSeconds ?? 4}s`}{scriptLangDisplay(input.scriptLang, isZh) ? ` · ${scriptLangDisplay(input.scriptLang, isZh)}` : ''}</Row>
         <Row label={`🎤 ${i18nService.t('vmixVoiceLabel')}`}>{input.voice ? `${voiceDisplayLabel(input.voice, isZh)}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : ''}` : (isZh ? '无配音' : 'No voice-over')}</Row>
         <Row label={`🎵 ${i18nService.t('vmixBgmLabel')}`}>{templateBgmSummary(input, isZh)}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
@@ -5547,8 +5548,11 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const MAX_STEP = 4;
+  // 6 步,对齐在线素材(stock)向导:素材 / 文案 / 画面(换镜节奏)/ 音频 / 字幕 / 出片发布。
+  // 本地混剪本质=在线素材换成本地素材,故画面/音频/字幕/出片的控件尽量与 stock 一致。
+  type LmStep = 1 | 2 | 3 | 4 | 5 | 6;
+  const [step, setStep] = useState<LmStep>(1);
+  const MAX_STEP = 6;
   // ── Step 1:素材文件夹 ──
   const [folder, setFolder] = useState<string>(ei?.localMixFolder || '');
   const [mediaType, setMediaType] = useState<'video' | 'image'>(ei?.localMixMediaType === 'image' ? 'image' : 'video');
@@ -5584,6 +5588,44 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei?.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   const [bgmVolume, setBgmVolume] = useState<number>(typeof ei?.bgmVolume === 'number' ? ei.bgmVolume : 0.18);
   const pickBgmFile = async () => { const p = await videoCreationService.pickBgm(); if (p) setBgmPath(p); };
+  // ── 对齐在线素材的画面/音频/字幕控件(本地混剪 pipeline 已消费这些字段,原来向导没暴露) ──
+  // 换镜节奏(video 模式循环混剪的每段最长时长;image 模式逐镜运镜此项不生效)。
+  const [maxClipSeconds, setMaxClipSeconds] = useState<number>(typeof (ei as any)?.maxClipSeconds === 'number' ? (ei as any).maxClipSeconds : 4);
+  // 创作语言(AI 参考改写时决定口播稿/字幕语言;逐字朗读时按原文,不生效)。
+  const [scriptLang, setScriptLang] = useState<string>((ei as any)?.scriptLang || 'auto');
+  const pickScriptLang = (code: string) => {
+    setScriptLang(code);
+    const opt = SCRIPT_LANGS.find((l) => l.code === code);
+    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) setVoice(opt.defaultVoice);
+  };
+  const [voiceRate, setVoiceRate] = useState<number>(typeof ei?.voiceRate === 'number' ? ei.voiceRate : 0);
+  // 字幕样式(与 stock 同一套 SUB_* 常量)。
+  const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>((ei as any)?.subtitlePosition || 'bottom');
+  const [subtitleColor, setSubtitleColor] = useState<string>((ei as any)?.subtitleColor || '#FFFFFF');
+  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(typeof (ei as any)?.subtitleFontSize === 'number' ? (ei as any).subtitleFontSize : 64);
+  const [subtitleFont, setSubtitleFont] = useState<string>((ei as any)?.subtitleFont || '');
+  const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>((ei as any)?.subtitleStrokeColor ?? '#000000');
+  // BGM 云端曲库(与 stock 同源);拉不到只用内置。
+  const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${REMOTE_BGM_MANIFEST_URL}?t=${Date.now()}`);
+        if (!resp.ok) return;
+        const json: any = await resp.json();
+        const arr: any[] = Array.isArray(json) ? json : json?.tracks;
+        if (!alive || !Array.isArray(arr)) return;
+        setRemoteBgm(arr.filter((x) => x && typeof x.url === 'string' && x.url)
+          .map((x) => ({ id: String(x.id || x.url), zh: String(x.zh || x.title || x.name || '云端音乐'), en: String(x.en || x.title || x.name || 'Cloud track'), url: String(x.url) })));
+      } catch { /* 清单未上线/网络失败:静默,仅用内置 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const bgmIsLibrary = bgmPath.startsWith(BUILTIN_BGM_PREFIX) || bgmPath.startsWith(REMOTE_BGM_PREFIX);
+  const bgmIsRemote = bgmPath.startsWith(REMOTE_BGM_PREFIX);
+  const bgmIsUpload = !!bgmPath && !bgmIsLibrary;
+  const bgmInLibraryList = remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath);
   // ── Step 4:出片去向 + 发布平台 + 频率 ──
   const [outputMode, setOutputMode] = useState<OutputMode>(() => {
     if (!editTask) return 'local'; // 本地素材场景默认「仅存本地」(先看效果再发)
@@ -5643,9 +5685,17 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
         localMixFolder: folder,
         localMixMediaType: mediaType,
         referenceImages: [], aspect: '9:16',
+        maxClipSeconds,
+        scriptLang: scriptLang !== 'auto' ? scriptLang : undefined,
         voice: narration ? voice : undefined,
+        voiceRate: narration ? voiceRate : undefined,
         narrationEnabled: narration,
         subtitleEnabled,
+        subtitlePosition,
+        subtitleColor,
+        subtitleFontSize,
+        subtitleFont,
+        subtitleStrokeColor: subtitleStrokeColor || undefined,
         bgmPath: bgmPath || undefined,
         bgmVolume: bgmPath ? bgmVolume : undefined,
         publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
@@ -5672,9 +5722,9 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   };
 
   const handleFinalClick = () => {
-    if (outputMode === 'upload' && selectedPlatformIds.length === 0) { setStep(4); setErr(t('vmixErrPickPlatform')); return; }
+    if (outputMode === 'upload' && selectedPlatformIds.length === 0) { setStep(MAX_STEP); setErr(t('vmixErrPickPlatform')); return; }
     if (matrixMode) {
-      if (outputMode === 'upload' && !matrixAccountsReady) { setStep(4); setErr(t('vmixErrPickAccount')); return; }
+      if (outputMode === 'upload' && !matrixAccountsReady) { setStep(MAX_STEP); setErr(t('vmixErrPickAccount')); return; }
       void handleCreate();
       return;
     }
@@ -5689,9 +5739,9 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
     }
     if (step === 2 && !script.trim()) { setErr(scriptMode === 'strict' ? t('vmixErrNoScript') : t('vmixErrNoReference')); return; }
     setErr(null);
-    setStep((s) => (s < MAX_STEP ? ((s + 1) as 1 | 2 | 3 | 4) : s));
+    setStep((s) => (s < MAX_STEP ? ((s + 1) as LmStep) : s));
   };
-  const goBack = () => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => ((s - 1) as 1 | 2 | 3 | 4)); };
+  const goBack = () => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => ((s - 1) as LmStep)); };
 
   const seg = (active: boolean) => `flex-1 py-2 rounded-lg text-sm border transition-colors ${active ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-emerald-500/50'}`;
 
@@ -5707,9 +5757,13 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
               <div className={`h-px w-3 ${step > 1 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={2} active={step === 2} done={step > 2} label={t('vmixStepScript')} />
               <div className={`h-px w-3 ${step > 2 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={t('vmixStepVoice')} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '画面' : 'Visuals'} />
               <div className={`h-px w-3 ${step > 3 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={false} label={t('vmixStepOutput')} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音频' : 'Audio'} />
+              <div className={`h-px w-3 ${step > 4 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '字幕' : 'Subtitles'} />
+              <div className={`h-px w-3 ${step > 5 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={6} active={step === 6} done={false} label={t('vmixStepOutput')} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -5757,39 +5811,87 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
             </>
           )}
 
+          {/* ── 步骤 3:画面(换镜节奏)—— 对齐在线素材 画面步的下半部分 ── */}
           {step === 3 && (
             <>
-              <Field label={t('vmixVoiceLabel')}>
-                <label className="flex items-center gap-2 text-sm dark:text-gray-200 mb-2">
+              <Field label={isZh ? '换镜节奏' : 'Clip pacing'} hint={isZh ? (mediaType === 'image' ? '图片模式逐镜运镜,此项主要作用于视频混剪' : '每段素材最长时长,越快画面越动感') : 'shorter = more dynamic cuts'}>
+                <div className="flex gap-2">
+                  {PACE_OPTIONS.map((p) => (
+                    <button key={p.v} type="button" onClick={() => setMaxClipSeconds(p.v)}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-sm border transition-colors ${maxClipSeconds === p.v ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>
+                      {isZh ? p.zh : p.en}<span className="ml-1 text-[10px] opacity-60">{p.v}s</span>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </>
+          )}
+
+          {/* ── 步骤 4:音频(创作语言 + 配音音色/语速 + 背景音乐)── */}
+          {step === 4 && (
+            <>
+              <Field label={isZh ? '配音' : 'Voice-over'}>
+                <label className="flex items-center gap-2 text-sm dark:text-gray-200">
                   <input type="checkbox" checked={narration} onChange={(e) => setNarration(e.target.checked)} className="h-4 w-4 accent-emerald-500" />
                   {t('vmixNarrationOn')}
                 </label>
-                {narration && (
-                  <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                    {VOICE_GROUPS.map((g) => (
-                      <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
-                        {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+              </Field>
+              {narration && (
+                <>
+                  <Field label={isZh ? '创作语言' : 'Script language'}
+                    hint={scriptMode === 'strict' ? (isZh ? '逐字朗读模式:按你文案的原文语言,此项不生效' : 'Verbatim mode follows your script; no effect') : (isZh ? '决定 AI 口播稿和字幕的语言' : 'Language of AI narration & subtitles')}>
+                    <select value={scriptLang} onChange={(e) => pickScriptLang(e.target.value)} disabled={scriptMode === 'strict'}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white disabled:opacity-50">
+                      {SCRIPT_LANGS.map((l) => (<option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>))}
+                    </select>
+                  </Field>
+                  <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成,免费' : 'edge-tts, free'}>
+                    <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                      {VOICE_GROUPS.map((g) => (
+                        <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                          {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <div className="flex gap-2 mt-2">
+                      {RATE_OPTIONS.map((r) => (
+                        <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
+                          className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>
+                          {isZh ? r.zh : r.en}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                </>
+              )}
+              <Field label={isZh ? '背景音乐（选填）' : 'Background music (optional)'} hint={isZh ? '混在旁白下方,出片末尾自动淡出' : 'mixed under narration, fades out'}>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <button type="button" onClick={() => setBgmPath('')} className={`px-2 py-1.5 rounded-lg text-xs border ${!bgmPath ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '无' : 'None'}</button>
+                  <button type="button" onClick={() => { if (!bgmIsLibrary) setBgmPath(BUILTIN_BGM_PREFIX + BUILTIN_BGM[0].id); }} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsLibrary ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '曲库' : 'Library'}</button>
+                  <button type="button" onClick={pickBgmFile} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsUpload ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '上传' : 'Upload'}</button>
+                </div>
+                {bgmIsLibrary && (
+                  <select value={bgmPath} onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                    <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                      {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
+                    </optgroup>
+                    {remoteBgm.length > 0 && (
+                      <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
+                        {!bgmInLibraryList && bgmIsRemote && (<option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>)}
+                        {remoteBgm.map((b) => (<option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>))}
                       </optgroup>
-                    ))}
+                    )}
                   </select>
                 )}
-              </Field>
-              <Field label={t('vmixSubtitleLabel')}>
-                <label className="flex items-center gap-2 text-sm dark:text-gray-200">
-                  <input type="checkbox" checked={subtitleEnabled} onChange={(e) => setSubtitleEnabled(e.target.checked)} className="h-4 w-4 accent-emerald-500" />
-                  {t('vmixSubtitleBurn')}
-                </label>
-              </Field>
-              <Field label={t('vmixBgmLabel')} hint={t('vmixBgmHint')}>
-                <div className="flex gap-2 items-center flex-wrap">
-                  <select value={bgmPath.startsWith(BUILTIN_BGM_PREFIX) ? bgmPath : (bgmPath ? '__custom__' : '')} onChange={(e) => { const v = e.target.value; if (v === '__custom__') return; setBgmPath(v); }}
-                    className="flex-1 min-w-[180px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                    <option value="">{t('vmixBgmNone')}</option>
-                    {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>{isZh ? b.zh : b.en}</option>))}
-                    {bgmPath && !bgmPath.startsWith(BUILTIN_BGM_PREFIX) && <option value="__custom__">{t('vmixBgmCustom')}</option>}
-                  </select>
-                  <button type="button" onClick={pickBgmFile} className="px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 dark:text-gray-300 hover:border-emerald-500/60">📁 {t('vmixBgmUpload')}</button>
-                </div>
+                {bgmIsUpload && (
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2">
+                    <span className="text-sm">🎵</span>
+                    <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{bgmPath.split(/[\\/]/).pop()}</span>
+                    <button type="button" onClick={pickBgmFile} className="text-xs text-emerald-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
+                    <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
+                  </div>
+                )}
                 {bgmPath && (
                   <div className="mt-2 flex gap-2">
                     {BGM_VOLUME_OPTIONS.map((o) => (
@@ -5801,7 +5903,66 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
             </>
           )}
 
-          {step === 4 && (
+          {/* ── 步骤 5:字幕(开关 + 完整样式,同在线素材)── */}
+          {step === 5 && (
+            <>
+              <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '开启时用 edge-tts 词边界对齐时间轴' : 'edge-tts word-boundary timing when on'}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-300">{isZh ? '烧录字幕' : 'Burn subtitles'}</span>
+                  <button type="button" onClick={() => setSubtitleEnabled((v) => !v)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${subtitleEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${subtitleEnabled ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+                {subtitleEnabled && (
+                  <div className="space-y-2">
+                    <div className="flex gap-2 flex-wrap">
+                      <div className="flex gap-1">
+                        {SUB_FONTSIZE_OPTIONS.map((f) => (
+                          <button key={f.v} type="button" onClick={() => setSubtitleFontSize(f.v)}
+                            className={`px-3 py-1.5 rounded-lg text-xs border ${subtitleFontSize === f.v ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? f.zh : f.en}</button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1">
+                        {SUB_POSITION_OPTIONS.map((s) => (
+                          <button key={s.id} type="button" onClick={() => setSubtitlePosition(s.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs border ${subtitlePosition === s.id ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? s.zh : s.en}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 shrink-0">{isZh ? '字体' : 'Font'}</span>
+                      <select value={subtitleFont} onChange={(e) => setSubtitleFont(e.target.value)}
+                        className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs dark:text-white">
+                        {SUB_FONT_OPTIONS.map((f) => (<option key={f.v || 'default'} value={f.v}>{isZh ? f.zh : f.en}</option>))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 shrink-0">{isZh ? '颜色' : 'Color'}</span>
+                      <div className="flex gap-1.5">
+                        {SUB_COLOR_OPTIONS.map((c) => (
+                          <button key={c.v} type="button" title={isZh ? c.zh : c.en} onClick={() => setSubtitleColor(c.v)}
+                            className={`w-6 h-6 rounded-full border-2 ${subtitleColor === c.v ? 'border-emerald-500 scale-110' : 'border-gray-300 dark:border-gray-600'}`} style={{ backgroundColor: c.v }} />
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 shrink-0">{isZh ? '描边' : 'Stroke'}</span>
+                      <div className="flex gap-1.5">
+                        {SUB_STROKE_OPTIONS.map((c) => {
+                          const active = subtitleStrokeColor === c.v;
+                          if (c.v === '') return (<button key="none" type="button" onClick={() => setSubtitleStrokeColor('')} className={`px-2 h-6 rounded-full text-[11px] border-2 ${active ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'border-gray-300 dark:border-gray-600 text-gray-500'}`}>{isZh ? '无' : 'None'}</button>);
+                          return (<button key={c.v} type="button" title={isZh ? c.zh : c.en} onClick={() => setSubtitleStrokeColor(c.v)} className={`w-6 h-6 rounded-full border-2 ${active ? 'border-emerald-500 scale-110' : 'border-gray-300 dark:border-gray-600'}`} style={{ backgroundColor: c.v }} />);
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Field>
+            </>
+          )}
+
+          {step === 6 && (
             <>
               <Field label={t('vmixOutputLabel')}>
                 <div className="flex gap-2">
