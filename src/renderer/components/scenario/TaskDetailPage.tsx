@@ -1173,13 +1173,21 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           const cmStr = fmtRange(cmMin, cmMax, 1);
                           // 海外平台(youtube/tiktok/facebook/reddit/instagram)才标评论语言;国内(douyin/kuaishou/bilibili)跟帖子语言、不标。
                           const engLangTag = (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage' || sid === 'facebook_auto_engage' || sid === 'reddit_auto_engage' || sid === 'instagram_auto_engage') ? langTag : '';
+                          // 抖音/快手/TikTok 支持「刷剧模式 vs 关键词筛选」,摘要开头标出当前模式(engage_mode);其余平台无此模式。
+                          const bingeCap = sid === 'douyin_auto_engage' || sid === 'kuaishou_auto_engage' || sid === 'tiktok_auto_engage';
+                          const zhLang = i18nService.currentLanguage === 'zh';
+                          const modePrefix = bingeCap
+                            ? ((t.engage_mode === 'binge')
+                              ? (zhLang ? '📺 刷剧模式 · ' : '📺 Binge · ')
+                              : (zhLang ? '🔍 关键词筛选 · ' : '🔍 Keyword search · '))
+                            : '';
                           if (sid === 'youtube_auto_engage') {
                             const sStr = fmtRange(sMin, sMax, 1);
                             return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
                           }
                           // tiktok / douyin 用 follow
                           const fStr2 = fmtRange(fMin, fMax, 1);
-                          return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdFollow')} ${fStr2} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
+                          return modePrefix + `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdFollow')} ${fStr2} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
                         }
                         // v4.31.27: binance_from_x_repost 也走 daily_post_min/max(批量搬运同样按"每次 N 条")
                         // v4.31.30: 频次摘要文案对齐 wizard step3 — 之前只有数字+"条/次",

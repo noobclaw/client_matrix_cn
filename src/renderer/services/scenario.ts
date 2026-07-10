@@ -215,6 +215,9 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     // 海外平台「强制评论语言」:必须透传,否则详情页 langTag 读不到(t.comment_lang)永远不显示;
     // 且经 updateTask 兜底写回时会把已存的语言抹掉(用户实测:币安/TikTok/YouTube 详情页都看不到)。
     comment_lang: q.comment_lang,
+    // 刷剧模式:同 comment_lang 一样必须透传,否则详情页读不到 t.engage_mode 永远不显示模式,
+    // 且 updateTask 兜底写回时会把已存的模式抹掉(与 comment_lang 完全同类的坑)。
+    engage_mode: q.engage_mode,
     // 回复粉丝 + 互动(评论引流)都带引流尾巴配置(供详情页展示 + 编辑回填)。
     // 互动任务的引流用于「评论时按概率把引流语融进 AI 评论」(见 engageRunner.makeAiCall)。
     funnel_phrase: (isReply || isEngage) ? (fn.funnel_phrase || '') : undefined,
@@ -406,6 +409,8 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       daily_comment_min: input.daily_comment_min, daily_comment_max: input.daily_comment_max,
       // 评论语言必须跟着写回,否则 MyTasksPage 开关任务等 updateTask 路径会把它抹掉。
       comment_lang: input.comment_lang,
+      // 刷剧模式同理:不写回则 updateTask 兜底会把已存的 engage_mode 抹成关键词搜索模式。
+      engage_mode: input.engage_mode,
     },
     // 互动评论引流:透传引流配置,否则经 updateTask 兜底(如 MyTasksPage 改启用)会把 funnel 丢掉。
     // 老任务 / 未填 → funnel_phrase 为 undefined → 存 {'',0} 视作未配,评论纯 AI(向后兼容)。

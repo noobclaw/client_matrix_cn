@@ -75,6 +75,8 @@ export interface EngageQuota {
   daily_like_min?: number; daily_like_max?: number;
   daily_follow_min?: number; daily_follow_max?: number;
   daily_comment_min?: number; daily_comment_max?: number;
+  comment_lang?: string;            // 评论语言(海外平台强制模式)
+  engage_mode?: '' | 'binge';       // 抖音/快手/TikTok:''=关键词筛选, 'binge'=刷剧模式
 }
 
 /**
