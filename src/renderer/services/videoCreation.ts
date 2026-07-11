@@ -89,6 +89,12 @@ export interface VideoCreationInput {
   /** engine==='hotspot' 素材来源:'image'(默认,Serper 配图 Ken Burns)|
    *  'douyin'(按标题搜抖音、下无水印视频混剪 + 底部黑条盖原字幕 + 配音)。 */
   hotspotMaterialSource?: 'image' | 'douyin';
+  /** engine==='hotspot' 赛道筛选(可选):track-presets 的赛道 id。选题只从该赛道相关的热点里挑
+   *  (backend 按 web3_news.track 标签 SQL 过滤,窗口自动放大);空 = 不过滤全量选题。
+   *  某轮该赛道无相关热点 → backend 回退全量选题并回 trackMiss,客户端打日志。 */
+  hotspotTrack?: string;
+  /** 赛道显示名(向导存入,卡片/详情页直接展示,不用再拉赛道目录)。 */
+  hotspotTrackName?: string;
   /** 画面素材来源平台(矩阵号):'douyin' | 'tiktok' —— 用哪个平台做全网取材。 */
   hotspotMaterialPlatform?: 'douyin' | 'tiktok';
   /** 取材账号 id(矩阵号):用该账号的指纹内核做全网搜索 + 下载素材(不发帖)。 */

@@ -56,13 +56,17 @@ export interface HotspotTopic {
   summary?: string;
   category: string;
   lang?: string;
+  /** 传了赛道但该赛道无相关热点、backend 回退全量选的这条 → true(调用方打日志)。 */
+  trackMiss?: boolean;
 }
 
 /** 选题:从勾选源(hotsearch/web3/tech)最新 pool 条里随机 1 条。无可选 / 失败返回 null。
  *  exclude = 该任务已用过的热点 id,后端选题时排除(都用光才退回整池)→ 一次跑 N 条不重复、
- *  跨次运行也不重复同一热点。 */
-export async function pickHotspotTopic(sources: string[], exclude: string[] = [], pool = 20): Promise<HotspotTopic | null> {
-  const json = await postJson('/api/video/hotspot/pick', { sources, pool, exclude });
+ *  跨次运行也不重复同一热点。
+ *  track = 赛道筛选(可选,track-presets id):只从该赛道相关热点里选;该赛道无相关时 backend
+ *  回退全量并回 trackMiss=true。 */
+export async function pickHotspotTopic(sources: string[], exclude: string[] = [], pool = 20, track = ''): Promise<HotspotTopic | null> {
+  const json = await postJson('/api/video/hotspot/pick', { sources, pool, exclude, track: track || undefined });
   const t = json?.topic;
   if (!t || !t.title) return null;
   return {
@@ -73,6 +77,7 @@ export async function pickHotspotTopic(sources: string[], exclude: string[] = []
     summary: t.summary ? String(t.summary) : undefined,
     category: String(t.category || ''),
     lang: t.lang ? String(t.lang) : undefined,
+    trackMiss: json?.trackMiss === true,
   };
 }
 

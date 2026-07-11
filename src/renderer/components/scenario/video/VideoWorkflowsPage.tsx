@@ -966,6 +966,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
         <Row label={`🔥 ${isZh ? '热点源' : 'Sources'}`}>{srcs}</Row>
+        {(input as any).hotspotTrack && <Row label={`🎯 ${isZh ? '赛道筛选' : 'Niche'}`}>{(input as any).hotspotTrackName || (input as any).hotspotTrack}</Row>}
         <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
         <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
         {scriptLangDisplay(input.scriptLang, isZh) && <Row label={`🌐 ${isZh ? '创作语言' : 'Language'}`}>{scriptLangDisplay(input.scriptLang, isZh)}</Row>}
@@ -1154,6 +1155,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     return (
       <>
         <div className="break-words">🔥 {isZh ? '热点源' : 'Sources'}：{srcs}</div>
+        {(input as any).hotspotTrack && <div>🎯 {isZh ? '赛道筛选' : 'Niche'}：{(input as any).hotspotTrackName || (input as any).hotspotTrack}</div>}
         <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
         <div>🔢 {isZh ? '每次条数' : 'Per run'}：{hotspotCountLabel(input, isZh)}</div>
         {scriptLangDisplay(input.scriptLang, isZh) && <div>🌐 {isZh ? '创作语言' : 'Language'}：{scriptLangDisplay(input.scriptLang, isZh)}</div>}
@@ -2477,6 +2479,24 @@ async function fetchVideoFeeRange(): Promise<{ min: number; max: number }> {
     }
   } catch { /* 网络/未登录 → 兜底 */ }
   return { min: 0.02, max: 0.1 };
+}
+
+// 赛道目录(热搜成片「按赛道筛选热点」下拉):/api/video/config 的 hotspotTracks 下发,
+// 与矩阵同源 track-presets.json(35 赛道,web3_news.track 标签同一 id 池)。拉不到 → 空列表,
+// 向导隐藏赛道筛选区(老后端兼容:不筛选照常可用)。
+let _hotspotTracksCache: { list: { id: string; name: string }[]; at: number } | null = null;
+async function fetchHotspotTracks(): Promise<{ id: string; name: string }[]> {
+  if (_hotspotTracksCache && Date.now() - _hotspotTracksCache.at < 300_000) return _hotspotTracksCache.list;
+  try {
+    const res = await fetch(`${getBackendApiUrl()}/api/video/config`, { headers: noobClawAuth.getAuthHeaders() });
+    if (res.ok) {
+      const data = await res.json();
+      const arr: any[] = Array.isArray(data?.hotspotTracks) ? data.hotspotTracks : [];
+      const list = arr.map((t) => ({ id: String(t?.id || ''), name: String(t?.name || '') })).filter((t) => t.id && t.name);
+      if (list.length > 0) { _hotspotTracksCache = { list, at: Date.now() }; return list; }
+    }
+  } catch { /* 网络/未登录 → 空 */ }
+  return _hotspotTracksCache?.list || [];
 }
 
 const VideoConfigModal: React.FC<{
@@ -4357,6 +4377,15 @@ export const HotspotVideoModal: React.FC<{
     return init;
   });
   const [targetSeconds, setTargetSeconds] = useState<number>(ei.targetSeconds ?? 60);
+  // 赛道筛选(可选):选了只从该赛道相关热点里选题(backend 按 web3_news.track 标签过滤,预览同步过滤);
+  // 空 = 不过滤(默认,老行为)。赛道目录服务端下发,拉不到就隐藏这块(不影响创建)。
+  const [hotspotTrack, setHotspotTrack] = useState<string>(typeof (ei as any).hotspotTrack === 'string' ? (ei as any).hotspotTrack : '');
+  const [trackList, setTrackList] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetchHotspotTracks().then((l) => { if (alive) setTrackList(l); });
+    return () => { alive = false; };
+  }, []);
   // 素材来源:'image'=Serper 配图 Ken Burns;'douyin'=搜抖音视频混剪 + 底部黑条盖原字幕。
   // 新建默认【按界面语言分流】:中文界面(国内/华人,有抖音)默认抖音混剪;海外(非中文,
   // 多半没抖音)默认图片配图。用户仍可在向导手动改;编辑态沿用已存值。
@@ -4444,15 +4473,17 @@ export const HotspotVideoModal: React.FC<{
   const MAX_STEP = 6;
 
   // 热点源预览:每个榜当前 top-3 实时条目,挂在卡片下方,让用户选前就知道会选中什么内容。
-  // 拉失败不影响选择(静默)。打开向导时拉一次。
+  // 拉失败不影响选择(静默)。打开向导时拉一次;选了赛道则带 track 重拉(预览与选题同一过滤口径)。
   const [previews, setPreviews] = useState<Record<string, { title: string }[]>>({});
   const [previewLoading, setPreviewLoading] = useState(true);
   useEffect(() => {
     let alive = true;
     (async () => {
+      setPreviewLoading(true);
       try {
         const res = await fetch(`${getBackendApiUrl()}/api/video/hotspot/preview`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perSource: 3 }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ perSource: 3, track: hotspotTrack || undefined }),
         });
         const json = await res.json();
         if (alive && json?.items && typeof json.items === 'object') setPreviews(json.items);
@@ -4460,7 +4491,7 @@ export const HotspotVideoModal: React.FC<{
       finally { if (alive) setPreviewLoading(false); }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [hotspotTrack]);
 
   // 按条平台费区间(USD)由服务端下发(/api/video/config,admin 可调),计费文案用动态值不写死。
   const [fee, setFee] = useState<{ min: number; max: number }>({ min: 0.02, max: 0.1 });
@@ -4505,6 +4536,12 @@ export const HotspotVideoModal: React.FC<{
     engine: 'hotspot',
     hotspotSources: selectedSources,
     hotspotMaterialSource: materialSource,
+    // 赛道筛选(空=不过滤)。显示名一并存入:卡片/详情页直接展示,不用再拉目录;
+    //   编辑老任务且目录还没拉到时兜底沿用已存名。
+    hotspotTrack: hotspotTrack || undefined,
+    hotspotTrackName: hotspotTrack
+      ? (trackList.find((t) => t.id === hotspotTrack)?.name || ((ei as any).hotspotTrackName as string) || hotspotTrack)
+      : undefined,
     // 画面素材来源平台 + 取材账号(运行时用该账号指纹内核全网搜+下素材)。
     hotspotMaterialPlatform: materialPlatform,
     hotspotMaterialAccountId: materialAccountId || undefined,
@@ -4687,13 +4724,33 @@ export const HotspotVideoModal: React.FC<{
                             ? items.slice(0, 3).map((it, i) => (
                                 <span key={i} className="block truncate">{i + 1}. {it.title}</span>
                               ))
-                            : <span className="block truncate">{previewLoading ? (isZh ? '加载中…' : 'Loading…') : (isZh ? '暂无内容' : 'No items')}</span>}
+                            : <span className="block truncate">{previewLoading ? (isZh ? '加载中…' : 'Loading…') : (hotspotTrack ? (isZh ? '该赛道暂无相关' : 'No match for niche') : (isZh ? '暂无内容' : 'No items'))}</span>}
                         </span>
                       </button>
                     );
                   })}
                 </div>
               </Field>
+              {/* 赛道筛选(可选):目录服务端下发,拉不到就整块隐藏(创建不受影响)。选了赛道,
+                  上面的预览立即按赛道过滤 —— 用户选前就能看到"筛完还剩什么"。 */}
+              {trackList.length > 0 && (
+                <Field label={isZh ? '🎯 按赛道筛选热点(可选)' : '🎯 Filter by niche (optional)'}
+                  hint={isZh ? '只从该赛道相关的热点里选题;不选=全部热点不过滤' : 'only topics matching the niche; empty = no filter'}>
+                  <select value={hotspotTrack} onChange={(e) => setHotspotTrack(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                    <option value="">{isZh ? '不限(全部热点,不过滤)' : 'Any (no filter)'}</option>
+                    {/* 国内版隐藏「加密货币 · Web3」赛道(HIDE_WEB3,与 VideoConfigModal 赛道列表同口径) */}
+                    {trackList.filter((t) => !(HIDE_WEB3 && t.id === 'crypto')).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                  {hotspotTrack && (
+                    <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400 mt-1.5">
+                      {isZh
+                        ? '上方预览已按该赛道过滤。选题会在所选榜单里往前多翻(不止 top20),只挑该赛道相关的;某轮实在没有相关热点时,回退全量选题并在运行日志里提示。'
+                        : 'Preview above is filtered by this niche. Picks scan deeper than top-20 for matches; if none match in a run, it falls back to all topics (logged).'}
+                    </p>
+                  )}
+                </Field>
+              )}
             </>
           )}
 

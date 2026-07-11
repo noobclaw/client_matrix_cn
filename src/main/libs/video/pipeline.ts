@@ -174,6 +174,11 @@ export interface VideoCreationInput {
   /** engine==='hotspot' 素材来源:'image'(默认,Serper 配图 Ken Burns)|
    *  'douyin'(按标题搜抖音、下无水印视频混剪 + 底部黑条盖原字幕 + 配音)。 */
   hotspotMaterialSource?: 'image' | 'douyin';
+  /** engine==='hotspot' 赛道筛选(可选):track-presets 赛道 id,选题只从该赛道相关热点里挑;
+   *  空 = 不过滤。该轮无相关 → backend 回退全量 + trackMiss,这里打日志。 */
+  hotspotTrack?: string;
+  /** 赛道显示名(展示/日志用)。 */
+  hotspotTrackName?: string;
   /** engine==='thread'(爆帖成片)专属。内容源,v1 只有 'reddit'(字段留给以后加贴吧/虎扑等)。 */
   threadSource?: 'reddit';
   /** engine==='thread':勾选的 subreddit(如 ['AskReddit','tifu'])。 */
@@ -805,17 +810,21 @@ async function runVideoPipeline(
         bilibili: 'B站热搜', xueqiu: '雪球热门股', web3: 'Web3 资讯', tech: '科技/AI',
       };
       const srcNames = sources.map((s) => HOTSPOT_SRC_LABEL[s] || s).join('、');
-      tracker.progress(`🔥 已勾选热点源:${srcNames} —— 正在从这些榜单最新条目里随机选题…`);
+      const trackName = (input.hotspotTrackName || input.hotspotTrack || '').trim();
+      tracker.progress(`🔥 已勾选热点源:${srcNames}${input.hotspotTrack ? `(按赛道筛选:${trackName})` : ''} —— 正在从这些榜单最新条目里随机选题…`);
       // 按任务读出已用过的热点 id 传给后端排除:一次跑 N 条(主进程外层循环逐条调本 pipeline)
       //   每条都排掉前面已选的 → 各不相同;跨次运行也不会重复同一热点。
       //   ⚠️ 不在这里 markHotspotUsed —— 改到【发布后、≥1 平台成功(或仅存本地已出片)】才记一笔
       //   (用户要求:只有上传成功才算用过;发布全失败的选题下次还能重试)。见下方 publish 段。
       const usedIds = getUsedHotspots(input.taskId || '');
-      hotspotTopic = await pickHotspotTopic(sources, usedIds);
+      hotspotTopic = await pickHotspotTopic(sources, usedIds, 20, input.hotspotTrack || '');
       if (!hotspotTopic) {
         const err = '热搜成片:所选热点源暂无可用条目(稍后热榜刷新再试)';
         tracker.fail('script', err);
         return { ok: false, error: err };
+      }
+      if (hotspotTopic.trackMiss) {
+        tracker.progress(`⚠️ 所选赛道「${trackName}」本轮暂无相关热点,已回退全量选题(下轮榜单更新后会再按赛道筛)`);
       }
       const pickedSrc = HOTSPOT_SRC_LABEL[hotspotTopic.source] || hotspotTopic.source || '未知来源';
       tracker.progress(`📌 本次选中【${pickedSrc}】的热点:「${hotspotTopic.title}」`);
