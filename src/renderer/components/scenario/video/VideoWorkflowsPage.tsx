@@ -4380,6 +4380,8 @@ export const HotspotVideoModal: React.FC<{
   // 赛道筛选(可选):选了只从该赛道相关热点里选题(backend 按 web3_news.track 标签过滤,预览同步过滤);
   // 空 = 不过滤(默认,老行为)。赛道目录服务端下发,拉不到就隐藏这块(不影响创建)。
   const [hotspotTrack, setHotspotTrack] = useState<string>(typeof (ei as any).hotspotTrack === 'string' ? (ei as any).hotspotTrack : '');
+  // 赛道下拉展开态(自绘两列面板,对齐账号编辑的赛道选择器:35 项原生 select 单列太高不好选)。
+  const [trackOpen, setTrackOpen] = useState(false);
   const [trackList, setTrackList] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
     let alive = true;
@@ -4736,12 +4738,32 @@ export const HotspotVideoModal: React.FC<{
               {trackList.length > 0 && (
                 <Field label={isZh ? '🎯 按赛道筛选热点(可选)' : '🎯 Filter by niche (optional)'}
                   hint={isZh ? '只从该赛道相关的热点里选题;不选=全部热点不过滤' : 'only topics matching the niche; empty = no filter'}>
-                  <select value={hotspotTrack} onChange={(e) => setHotspotTrack(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-amber-500/40">
-                    <option value="">{isZh ? '不限(全部热点,不过滤)' : 'Any (no filter)'}</option>
-                    {/* 国内版隐藏「加密货币 · Web3」赛道(HIDE_WEB3,与 VideoConfigModal 赛道列表同口径) */}
-                    {trackList.filter((t) => !(HIDE_WEB3 && t.id === 'crypto')).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
+                  {/* 自绘两列面板(对齐账号编辑的赛道选择器):35 项原生 select 单列太高不好选。 */}
+                  <button type="button" onClick={() => setTrackOpen((v) => !v)}
+                    className="relative w-full text-left text-sm pl-3 pr-9 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 cursor-pointer focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                    {hotspotTrack ? (trackList.find((t) => t.id === hotspotTrack)?.name || hotspotTrack) : (isZh ? '不限(全部热点,不过滤)' : 'Any (no filter)')}
+                    <svg className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${trackOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {trackOpen && (
+                    <div className="mt-1 grid grid-cols-2 gap-1 p-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 max-h-72 overflow-y-auto">
+                      <button type="button" onClick={() => { setHotspotTrack(''); setTrackOpen(false); }}
+                        className={`col-span-2 text-left text-sm px-2.5 py-2 rounded-md transition-colors ${!hotspotTrack ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium' : 'hover:bg-black/5 dark:hover:bg-white/10 dark:text-gray-200'}`}>
+                        {!hotspotTrack ? '✓ ' : ''}{isZh ? '不限(全部热点,不过滤)' : 'Any (no filter)'}
+                      </button>
+                      {/* 国内版隐藏「加密货币 · Web3」赛道(HIDE_WEB3,与 VideoConfigModal 赛道列表同口径) */}
+                      {trackList.filter((t) => !(HIDE_WEB3 && t.id === 'crypto')).map((t) => {
+                        const active = t.id === hotspotTrack;
+                        return (
+                          <button key={t.id} type="button" onClick={() => { setHotspotTrack(t.id); setTrackOpen(false); }}
+                            className={`text-left text-sm px-2.5 py-2 rounded-md truncate transition-colors ${active ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium' : 'hover:bg-black/5 dark:hover:bg-white/10 dark:text-gray-200'}`}>
+                            {active ? '✓ ' : ''}{t.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   {hotspotTrack && (
                     <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400 mt-1.5">
                       {isZh
