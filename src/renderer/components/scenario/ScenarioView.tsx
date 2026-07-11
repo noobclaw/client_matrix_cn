@@ -355,6 +355,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         daily_comment_min: task.daily_comment_min, daily_comment_max: task.daily_comment_max,
         // 评论语言回填:漏了会在编辑时显示 auto、保存后把已存语言洗掉(mxTaskToScenario 已透传该字段)。
         comment_lang: (task as any).comment_lang,
+        // 刷剧模式回填:同 comment_lang 一样必须带上,否则编辑时向导读 initialTask.quota.engage_mode
+        //   永远 undefined → 回到「关键词筛选」模式(mxTaskToScenario 已把 engage_mode 拍平到 task 顶层)。
+        engage_mode: (task as any).engage_mode,
       },
       // 评论引流回填(老任务无此字段 → 空 → 向导显示未填)。
       funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },
