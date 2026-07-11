@@ -461,6 +461,17 @@ export async function captureThreadCards(session: ThreadSession, opts: CaptureCa
       kill('shreddit-async-loader[bundlename*="cookie"]');
       kill('shreddit-experience-tree');
       kill('[data-testid="bottom-sheet"]');
+      // 字号放大 + 清卡片噪音(与内核 driver reddit_search.js 同款,保证两条路径卡片观感一致):
+      // 标题 32px 加粗、评论正文 22px —— Reddit 默认 13-16px 缩进竖屏卡后手机上看不清(用户拍板)。
+      const st = document.createElement('style');
+      st.textContent = 'shreddit-post-overflow-menu,shreddit-comment-action-row,award-button,'
+        + '[data-testid="share-button"],[aria-label*="Share"],button[aria-label*="Join"],'
+        + 'shreddit-comment shreddit-comment,shreddit-comment [slot="children"]'
+        + '{display:none !important;}'
+        + 'h1[slot="title"]{font-size:32px !important;line-height:1.3 !important;font-weight:800 !important;}'
+        + 'shreddit-comment div[slot="comment"],shreddit-comment div[slot="comment"] p'
+        + '{font-size:22px !important;line-height:1.5 !important;}';
+      document.head.appendChild(st);
       return true;
     })()`);
   } catch (e) { diag.push(`关弹窗失败: ${String((e as Error)?.message || e)}`); }

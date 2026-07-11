@@ -49,10 +49,11 @@ const THREAD_STEPS = [
 
 const W = 1080;
 const H = 1920;
-/** 卡片显示宽(px)。RedditVideoMakerBot 原版是 45%(final_video.py:268),但那套渲染尺度下
- *  照搬到竖屏太小、手机上字读不清。真机比对后取 0.62:字醒目、卡片干净(操作栏已在 driver
- *  隐藏),上下仍露出游戏画面 —— 兼顾"小卡浮在背景"的品类灵魂与移动端可读性。不用 80%+(文字墙)。 */
-const CARD_W = Math.round(W * 0.62); // ≈670
+/** 卡片显示宽(px)。RedditVideoMakerBot 原版是 45%(final_video.py:268),照搬到竖屏太小。
+ *  2026-07-11 用户拍板「截图卡字要看得清」→ 0.62 提到 0.74,并配合截图端字号放大
+ *  (driver/threadProvider 注入 CSS:标题 32px、评论 22px)—— 两头相乘,屏上字径接近翻倍。
+ *  仍不满宽(不做 90%+ 文字墙),上下留游戏画面保住品类灵魂。 */
+const CARD_W = Math.round(W * 0.74); // ≈800
 /** 卡片显示高上限:随宽等比缩小,超高长评论按此钳制不顶穿画面。 */
 const CARD_MAX_H = Math.round(H * 0.7); // ≈1344
 /** 卡片叠加不透明度(照 bot opacity=0.9,略提到 0.92):微透和游戏背景柔和融合,不生硬。 */
