@@ -4369,9 +4369,10 @@ export const HotspotVideoModal: React.FC<{
   // 任务名不再让用户填:沿用编辑态旧名,新建固定「热搜成片」(见 buildTitle)。
   const [title] = useState<string>(editTask?.title || '');
   const [sources, setSources] = useState<Record<string, boolean>>(() => {
+    // 新建默认【全选】(与图文/发帖向导同口径,2026-07-11 用户拍板);编辑沿用已存勾选。
     const saved: string[] = Array.isArray(ei.hotspotSources) && ei.hotspotSources.length
       ? ei.hotspotSources
-      : HOTSPOT_SOURCES.filter((s) => s.def).map((s) => s.id);  // 新建默认勾选常用榜
+      : HOTSPOT_SOURCES.map((s) => s.id);
     const init: Record<string, boolean> = {};
     HOTSPOT_SOURCES.forEach((s) => { init[s.id] = saved.includes(s.id); });
     return init;
