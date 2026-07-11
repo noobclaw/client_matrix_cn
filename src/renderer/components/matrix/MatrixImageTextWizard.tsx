@@ -15,7 +15,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
-import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
+import { POST_SOURCE_OPTIONS, PostSourceSel, defaultSourceIdsFor, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -105,9 +105,10 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
     return out;
   });
   const setRef = (id: string, v: string) => setReferences((prev) => ({ ...prev, [id]: v }));
-  // 内容来源二选一(老任务无此字段=参考文案模式,行为不变);数据源多选默认微博热搜。
+  // 内容来源二选一(老任务无此字段=参考文案模式,行为不变)。
   const [contentSource, setContentSource] = useState<'reference' | 'sources'>(it.contentSource === 'sources' ? 'sources' : 'reference');
-  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(it, 'weibo'));
+  // 新任务默认勾选:国内平台(抖音/小红书/视频号/头条)除 Web3 外全勾;海外平台全勾(赛道过滤默认开兜底)。
+  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(it, defaultSourceIdsFor(platform)));
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(it.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
 

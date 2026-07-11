@@ -46,6 +46,17 @@ export function postSourceById(id: string): PostSourceOption | undefined {
   return POST_SOURCE_OPTIONS.find((s) => s.id === id);
 }
 
+/**
+ * 新建任务的数据源默认勾选(2026-07-11 拍板,配合「仅账号赛道相关」默认开——赛道过滤兜底,源敢全开):
+ * 国外平台任务(x/FB/Reddit/IG/TikTok/YouTube/币安)默认【全部】源;国内平台任务默认除 Web3 外全勾。
+ * 编辑老任务不受影响(sourceIdsFromConfig 优先读已存配置,这里只是兜底默认)。
+ */
+const OVERSEAS_PLATFORMS = new Set(['x', 'tiktok', 'youtube', 'facebook', 'instagram', 'reddit', 'binance']);
+export function defaultSourceIdsFor(platform: string | undefined): string[] {
+  const overseas = OVERSEAS_PLATFORMS.has(String(platform || ''));
+  return POST_SOURCE_OPTIONS.filter((s) => overseas || s.id !== 'web3').map((s) => s.id);
+}
+
 /** 选中 id 列表 → 存盘的 sources 数组(过滤未知 id,保持点选顺序)。 */
 export function selsFromSourceIds(ids: string[]): PostSourceSel[] {
   const out: PostSourceSel[] = [];
@@ -65,11 +76,11 @@ function idOfSel(sel: { kind?: string; source?: string; catKey?: string }): stri
 
 /**
  * 任务配置 → 选中 id 数组(编辑回填)。优先新 sources 数组;老任务只有单选 sourceKind/source/catKey
- * 时映射成单元素数组;都没有回退 fallbackId。
+ * 时映射成单元素数组;都没有回退 fallback(新建任务默认,单 id 或 id 数组,见 defaultSourceIdsFor)。
  */
 export function sourceIdsFromConfig(
   cfg: { sources?: Array<{ kind?: string; source?: string; catKey?: string }>; sourceKind?: string; source?: string; catKey?: string } | undefined,
-  fallbackId: string,
+  fallback: string | string[],
 ): string[] {
   if (cfg && Array.isArray(cfg.sources) && cfg.sources.length) {
     const ids = cfg.sources.map(idOfSel).filter((x): x is string => !!x);
@@ -79,7 +90,7 @@ export function sourceIdsFromConfig(
     const id = idOfSel({ kind: cfg.sourceKind, source: cfg.source, catKey: cfg.catKey });
     if (id) return [id];
   }
-  return [fallbackId];
+  return Array.isArray(fallback) ? [...fallback] : [fallback];
 }
 
 /** 选中源的展示名(摘要行用):「微博热搜、知乎热榜」/ "Weibo, Zhihu"。 */

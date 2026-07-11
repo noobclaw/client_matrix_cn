@@ -16,7 +16,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
-import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
+import { POST_SOURCE_OPTIONS, PostSourceSel, defaultSourceIdsFor, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -75,8 +75,8 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
   const ip = initialTask?.instagramPost || {};
   // 内容来源二选一(老任务无 contentSource=数据源模式,行为不变)。
   const [contentSource, setContentSource] = useState<'reference' | 'sources'>(ip.contentSource === 'reference' ? 'reference' : 'sources');
-  // 多选:新任务默认 Web3;老任务(单选字段)映射成单元素数组。
-  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(ip, 'web3'));
+  // 多选:新任务默认全勾(海外平台含 Web3;赛道过滤默认开兜底);老任务(单选字段)映射成单元素数组。
+  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(ip, defaultSourceIdsFor('instagram')));
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(ip.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
   const [language, setLanguage] = useState<string>(ip.language || 'mixed');

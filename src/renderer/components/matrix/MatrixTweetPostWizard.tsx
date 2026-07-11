@@ -16,7 +16,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
-import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
+import { POST_SOURCE_OPTIONS, PostSourceSel, defaultSourceIdsFor, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -71,7 +71,8 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const tp = initialTask?.tweetPost || {};
   const [mode, setMode] = useState<'web3' | 'free'>(tp.mode === 'free' ? 'free' : 'web3');
   // 数据源多选(仅数据源模式用):老任务只有 mode='web3' 无 sources → 回填 ['web3'](与旧行为一致)。
-  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(tp, 'web3'));
+  // 新任务默认全勾(海外平台含 Web3;赛道过滤默认开兜底);老任务(单选字段)映射成单元素数组。
+  const [sourceIds, setSourceIds] = useState<string[]>(() => sourceIdsFromConfig(tp, defaultSourceIdsFor('x')));
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(tp.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
   const [withImage, setWithImage] = useState<boolean>(tp.withImage !== false); // 默认配图开
