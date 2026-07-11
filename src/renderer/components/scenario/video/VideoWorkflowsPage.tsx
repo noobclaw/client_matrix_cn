@@ -4704,37 +4704,8 @@ export const HotspotVideoModal: React.FC<{
                   ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配图片成片。配合「每日随机时间」= 全自动日更。'
                   : 'Each run randomly picks 1 of the latest 20 from your chosen sources, fetches the latest web info, writes a script tight to it, and auto-composes with relevant images. Pair with daily schedule for full auto.'}
               </p>
-              <Field label={isZh ? '热点源(可多选,榜单实时更新)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
-                <div className="grid grid-cols-2 gap-2">
-                  {/* Web3 资讯是【信息源】不是 web3 平台功能:海外平台(TikTok/YouTube/X…)发片用得上,国内版不砍(2026-07-05 拍板)。 */}
-                  {HOTSPOT_SOURCES.map((s) => {
-                    const on = !!sources[s.id];
-                    const items = previews[s.id];
-                    return (
-                      <button key={s.id} type="button"
-                        onClick={() => setSources((p) => ({ ...p, [s.id]: !p[s.id] }))}
-                        className={`flex flex-col gap-1.5 px-3 py-2 rounded-lg border text-sm text-left transition-all ${
-                          on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-amber-300'}`}>
-                        <span className="flex items-center gap-2 w-full">
-                          <span>{s.emoji}</span>
-                          <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
-                          {on && <span className="text-amber-500">✓</span>}
-                        </span>
-                        {/* 卡片下方挂当前 top-3(实时);整张卡片仍是勾选目标,预览只是静态文字,不冲突。 */}
-                        <span className="block w-full text-[11px] leading-snug text-gray-400 dark:text-gray-500">
-                          {items && items.length > 0
-                            ? items.slice(0, 3).map((it, i) => (
-                                <span key={i} className="block truncate">{i + 1}. {it.title}</span>
-                              ))
-                            : <span className="block truncate">{previewLoading ? (isZh ? '加载中…' : 'Loading…') : (hotspotTrack ? (isZh ? '该赛道暂无相关' : 'No match for niche') : (isZh ? '暂无内容' : 'No items'))}</span>}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </Field>
               {/* 赛道筛选(可选):目录服务端下发,拉不到就整块隐藏(创建不受影响)。选了赛道,
-                  上面的预览立即按赛道过滤 —— 用户选前就能看到"筛完还剩什么"。 */}
+                  下方榜单预览立即按赛道过滤 —— 选完直接看到"筛完还剩什么"。 */}
               {trackList.length > 0 && (
                 <Field label={isZh ? '🎯 按赛道筛选热点(可选)' : '🎯 Filter by niche (optional)'}
                   hint={isZh ? '只从该赛道相关的热点里选题;不选=全部热点不过滤' : 'only topics matching the niche; empty = no filter'}>
@@ -4767,12 +4738,41 @@ export const HotspotVideoModal: React.FC<{
                   {hotspotTrack && (
                     <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400 mt-1.5">
                       {isZh
-                        ? '上方预览已按该赛道过滤。选题会在所选榜单里往前多翻(不止 top20),只挑该赛道相关的;某轮实在没有相关热点时,回退全量选题并在运行日志里提示。'
-                        : 'Preview above is filtered by this niche. Picks scan deeper than top-20 for matches; if none match in a run, it falls back to all topics (logged).'}
+                        ? '下方预览已按该赛道过滤。选题会在所选榜单里往前多翻(不止 top20),只挑该赛道相关的;某轮实在没有相关热点时,回退全量选题并在运行日志里提示。'
+                        : 'Preview below is filtered by this niche. Picks scan deeper than top-20 for matches; if none match in a run, it falls back to all topics (logged).'}
                     </p>
                   )}
                 </Field>
               )}
+              <Field label={isZh ? '热点源(可多选,榜单实时更新)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Web3 资讯是【信息源】不是 web3 平台功能:海外平台(TikTok/YouTube/X…)发片用得上,国内版不砍(2026-07-05 拍板)。 */}
+                  {HOTSPOT_SOURCES.map((s) => {
+                    const on = !!sources[s.id];
+                    const items = previews[s.id];
+                    return (
+                      <button key={s.id} type="button"
+                        onClick={() => setSources((p) => ({ ...p, [s.id]: !p[s.id] }))}
+                        className={`flex flex-col gap-1.5 px-3 py-2 rounded-lg border text-sm text-left transition-all ${
+                          on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-amber-300'}`}>
+                        <span className="flex items-center gap-2 w-full">
+                          <span>{s.emoji}</span>
+                          <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
+                          {on && <span className="text-amber-500">✓</span>}
+                        </span>
+                        {/* 卡片下方挂当前 top-3(实时);整张卡片仍是勾选目标,预览只是静态文字,不冲突。 */}
+                        <span className="block w-full text-[11px] leading-snug text-gray-400 dark:text-gray-500">
+                          {items && items.length > 0
+                            ? items.slice(0, 3).map((it, i) => (
+                                <span key={i} className="block truncate">{i + 1}. {it.title}</span>
+                              ))
+                            : <span className="block truncate">{previewLoading ? (isZh ? '加载中…' : 'Loading…') : (hotspotTrack ? (isZh ? '该赛道暂无相关' : 'No match for niche') : (isZh ? '暂无内容' : 'No items'))}</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
             </>
           )}
 
