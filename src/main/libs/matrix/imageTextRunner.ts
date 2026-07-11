@@ -391,8 +391,12 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
     return { accountId, state: 'success', counts, chargedCredits, chargedUsd };
   } catch (e: any) {
     setAccountStatus(accountId, 'idle');
+    const _emsg = String(e?.message || e);
     coworkLog('ERROR', 'imageText', `[${accountId}] threw: ${String(e?.stack || e?.message || e).slice(0, 300)}`);
-    return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'imagetext_threw:' + String(e?.message || e).slice(0, 140) };
+    // 把异常原因打给用户看(否则界面停在「启动指纹内核」毫无原因)。
+    log('🛑 运行出错,该号跳过(其它号照跑):'
+      + (_emsg.indexOf(NO_KERNEL_ERROR) >= 0 ? '指纹内核未就绪/未下载 — 请在「我的矩阵账号」下载内核' : _emsg.slice(0, 160)));
+    return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'imagetext_threw:' + _emsg.slice(0, 140) };
   } finally {
     // 完成后留时间让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
     // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。

@@ -598,9 +598,14 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     return { accountId, state: 'success', counts, chargedCredits, chargedUsd };
   } catch (e: any) {
     setAccountStatus(accountId, 'idle');
+    const _emsg = String(e?.message || e);
     coworkLog('ERROR', 'engage', `[${accountId}] threw: ${String(e?.stack || e?.message || e).slice(0, 300)}`);
+    // ⚠️ 之前只写 cowork.log 文件、没调用户可见的 log() → 内核启动/导航/剧本一抛异常,界面就停在
+    //   「启动指纹内核」毫无原因(用户实测快手/tiktok「跑一会没反应就停」)。这里把原因打给用户看。
+    log('🛑 运行出错,该号跳过(其它号照跑):'
+      + (_emsg.indexOf(NO_KERNEL_ERROR) >= 0 ? '指纹内核未就绪/未下载 — 请在「我的矩阵账号」下载内核' : _emsg.slice(0, 160)));
     // 抛错前可能已经扣过几笔 —— 钱已花,照样回传,别让「已扣的费」从消耗统计里消失。
-    return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'engage_threw:' + String(e?.message || e).slice(0, 140) };
+    return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'engage_threw:' + _emsg.slice(0, 140) };
   } finally {
     // 完成后留时间让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
     // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
