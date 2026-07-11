@@ -5135,6 +5135,8 @@ export const ThreadVideoModal: React.FC<{
   const [bgSource, setBgSource] = useState<'douyin' | 'youtube'>(
     ei.threadBgSource === 'youtube' ? 'youtube' : ei.threadBgSource === 'douyin' ? 'douyin' : (isZh ? 'douyin' : 'youtube'));
   const [bgChoice, setBgChoice] = useState<string>(ei.threadBgChoice || 'random');
+  // 画面风格:'cards'=Reddit 截图卡(经典)| 'karaoke'=跳字大字幕(TikTok 爆款风)。
+  const [captionStyle, setCaptionStyle] = useState<'cards' | 'karaoke'>(ei.threadCaptionStyle === 'karaoke' ? 'karaoke' : 'cards');
   const [voice, setVoice] = useState<string>(ei.voice || THREAD_LANG_VOICE[isZh ? 'zh' : 'en']);
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
@@ -5220,6 +5222,7 @@ export const ThreadVideoModal: React.FC<{
     threadLang: lang,
     threadBgSource: bgSource,
     threadBgChoice: bgChoice,
+    threadCaptionStyle: captionStyle,
     threadMaterialAccountId: materialAccountId || undefined,
     referenceImages: [],
     aspect: '9:16',
@@ -5437,6 +5440,20 @@ export const ThreadVideoModal: React.FC<{
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh ? '背景只下载一次、之后复用缓存。画面无关但一直在动,是这个形态的完播率秘诀。' : 'Downloaded once then cached. Meaningless motion keeps eyes engaged — the retention trick of this format.'}
                 </p>
+              </Field>
+              <Field label={isZh ? '画面风格' : 'Caption style'}>
+                <div className="flex gap-2">
+                  {([
+                    { v: 'cards', zh: '🗨️ Reddit 截图卡', en: '🗨️ Reddit cards', deszh: '经典形态 · 帖子/评论真截图依次上屏' },
+                    { v: 'karaoke', zh: '🔤 跳字大字幕', en: '🔤 Jump-word captions', deszh: 'TikTok 爆款风 · 大字逐词弹出跟配音,无截图卡' },
+                  ] as const).map((m) => (
+                    <button key={m.v} type="button" onClick={() => setCaptionStyle(m.v)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left ${captionStyle === m.v ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
+                      <div>{isZh ? m.zh : m.en}</div>
+                      {isZh && <div className="text-[11px] font-normal text-gray-500 dark:text-gray-400 mt-0.5">{m.deszh}</div>}
+                    </button>
+                  ))}
+                </div>
               </Field>
             </>
           )}

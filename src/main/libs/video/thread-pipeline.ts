@@ -32,7 +32,7 @@ import {
   ThreadSession, pickRedditPost, fetchRedditComments, captureThreadCards, waitForRedditReady,
   type RedditPost, type RedditComment,
 } from './threadProvider';
-import { synthesize, getVoiceFallbacks, getLastTtsError } from './tts';
+import { synthesize, getVoiceFallbacks, getLastTtsError, type TtsCue } from './tts';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { callDeepSeek, extractJsonObject, type ContentLang } from './scriptWriter';
 import { ensureBgVideo, bgCacheDir } from './ytdlpRuntime';
@@ -81,6 +81,8 @@ interface CardSeg {
   /** overlay 时间窗(compose 前算好)。 */
   startSec?: number;
   endSec?: number;
+  /** edge-tts 短语级字幕 cue(相对本段起点,秒)。跳字大字幕模式用;无则按时长均分估算。 */
+  cues?: TtsCue[];
 }
 
 function sanitizeName(s: string): string {
@@ -125,12 +127,103 @@ async function translateThread(
 }
 
 /** TTS 一段(带音色 fallback 链)。失败返回 null(该段丢弃)。 */
-async function ttsSeg(text: string, primary: string, outPath: string, rate?: number): Promise<{ audioPath: string; durationSec: number } | null> {
+async function ttsSeg(text: string, primary: string, outPath: string, rate?: number): Promise<{ audioPath: string; durationSec: number; cues?: TtsCue[] } | null> {
   for (const v of getVoiceFallbacks(primary)) {
     const r = await synthesize(text, outPath, v, rate);
-    if (r.ok && r.synthesized && r.durationSec > 0.2) return { audioPath: r.audioPath, durationSec: r.durationSec };
+    if (r.ok && r.synthesized && r.durationSec > 0.2) return { audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues };
   }
   return null;
+}
+
+// ── 跳字大字幕(TikTok 爆款风):短语 cue 内按词/字均分出词级时间 → ASS 卡拉OK ──
+// edge-tts 的 cues 是短语级(≤12 字符,时间精确);词级用短语内均分估算(误差 <±0.2s,
+// 视觉上完全够;TikTok TTS 等无时间戳引擎也能走同一套估算,不用改两份)。
+function splitCueWords(cue: TtsCue): TtsCue[] {
+  const txt = (cue.text || '').trim();
+  if (!txt) return [];
+  // 英文按空格分词;中文按 1~2 字成组(单字太碎,2 字一跳节奏最像爆款)。
+  const hasCjk = /[一-鿿]/.test(txt);
+  let parts: string[];
+  if (hasCjk) {
+    const chars = Array.from(txt.replace(/\s+/g, ''));
+    parts = [];
+    for (let i = 0; i < chars.length; i += 2) parts.push(chars.slice(i, i + 2).join(''));
+  } else {
+    parts = txt.split(/\s+/).filter(Boolean);
+  }
+  if (!parts.length) return [];
+  const span = Math.max(0.05, cue.end - cue.start);
+  const per = span / parts.length;
+  return parts.map((p, i) => ({ text: p, start: cue.start + per * i, end: cue.start + per * (i + 1) }));
+}
+
+function assTime(sec: number): string {
+  const s = Math.max(0, sec);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  const rest = (s % 60).toFixed(2).padStart(5, '0');
+  return `${h}:${String(m).padStart(2, '0')}:${rest}`;
+}
+
+function assEscape(s: string): string {
+  return (s || '').replace(/\\/g, '＼').replace(/\{/g, '（').replace(/\}/g, '）').replace(/\r?\n/g, ' ');
+}
+
+/**
+ * 生成跳字大字幕 ASS:每个词一条 Dialogue,居中偏上、大号粗体白字黑描边,
+ * 词出现瞬间 120%→100% 缩放弹一下(爆款标志性 pop 动效)。
+ * segs 的 startSec 必须已算好;cue 缺失的段按时长均分单词兜底。
+ */
+function buildKaraokeAss(segs: CardSeg[], outPath: string): void {
+  const lines: string[] = [
+    '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${W}`, `PlayResY: ${H}`, 'WrapStyle: 2', '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    // 白字 + 黑描边 6 + 阴影 2,Alignment=5(正中),字号 88(1080 宽下和爆款接近)。
+    'Style: Jump,Microsoft YaHei,88,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,5,60,60,0,1',
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Text',
+  ];
+  for (const seg of segs) {
+    const base = seg.startSec || 0;
+    // 有 cue 用 cue;没有 → 整段文本按时长均分成一个大 cue 再拆词。
+    const cues: TtsCue[] = (seg.cues && seg.cues.length)
+      ? seg.cues
+      : [{ text: seg.text, start: 0, end: Math.max(0.4, seg.durationSec) }];
+    for (const cue of cues) {
+      for (const w of splitCueWords(cue)) {
+        const st = base + w.start, en = base + w.end;
+        if (en - st < 0.04) continue;
+        // \an5 居中;pos 在画面 62% 高(卡片风格在中间,跳字放低一点避开截图卡区域也不挡脸)。
+        // \fscx120\fscy120 → 80ms 内缩回 100:pop 动效。
+        lines.push(`Dialogue: 0,${assTime(st)},${assTime(en)},Jump,,0,0,0,{\\an5\\pos(${Math.round(W / 2)},${Math.round(H * 0.62)})\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${assEscape(w.text)}`);
+      }
+    }
+  }
+  fs.writeFileSync(outPath, '﻿' + lines.join('\n'), 'utf8');
+}
+
+/** AI 把标题改写成前 3 秒钩子句(悬念/冲突前置)。失败返回原标题(不挡出片)。 */
+async function hookifyTitle(
+  title: string,
+  lang: ContentLang,
+  onCost: (tokens: number, usd: number) => void,
+): Promise<string> {
+  const sys = [
+    `你是短视频爆款开头写手。把给定的帖子标题改写成${LANG_NAME[lang]}的「前 3 秒钩子」:`,
+    '1. 把最炸的冲突/悬念/反差提到第一句,让人必须听下去;疑问句/悬念句优先。',
+    '2. 不超过 30 个字(英文 15 词),口语化,禁止书面腔。',
+    '3. 不编造标题里没有的事实,只做强化表达。',
+    '4. 只输出严格 JSON(json):{"hook":"改写后的钩子"}',
+  ].join('\n');
+  try {
+    const r = await callDeepSeek(sys, JSON.stringify({ title }), true, 60_000, 'noobclawai-chat');
+    onCost(r.tokens, r.costUsd);
+    const parsed = JSON.parse(extractJsonObject(r.content));
+    const hook = typeof parsed?.hook === 'string' ? parsed.hook.trim() : '';
+    if (hook && hook.length >= 4) return hook;
+  } catch { /* 钩子失败不挡出片 */ }
+  return title;
 }
 
 /** 生成 GAP_SEC 静音 mp3(旁白段间停顿)。 */
@@ -267,6 +360,8 @@ async function composeThreadVideo(opts: {
   bgmPath?: string;
   bgmVolume: number;
   outPath: string;
+  /** 跳字大字幕 ASS(karaoke 风格);有则烧进画面(在卡片 overlay 之后)。 */
+  assPath?: string;
   signal?: AbortSignal;
 }): Promise<boolean> {
   const cards = opts.segs.filter((s) => s.pngPath && typeof s.startSec === 'number');
@@ -288,13 +383,20 @@ async function composeThreadVideo(opts: {
     // 照 bot 的 colorchannelmixer=aa=opacity,让卡片跟游戏背景柔和融合而非实心糊上去。
     parts.push(`[${2 + i}:v]${scaleArgs[i]},format=rgba,colorchannelmixer=aa=${CARD_OPACITY}[c${i}]`);
   });
+  // 有 ASS(跳字字幕)时,卡片链输出到 [vpre] 再烧字幕出 [vout];否则直接出 [vout]。
+  const vEnd = opts.assPath ? '[vpre]' : '[vout]';
   let cur = '[0:v]';
   cards.forEach((c, i) => {
-    const next = i === cards.length - 1 ? '[vout]' : `[ov${i}]`;
+    const next = i === cards.length - 1 ? vEnd : `[ov${i}]`;
     parts.push(`${cur}[c${i}]overlay=(W-w)/2:(H-h)/2:enable='between(t,${c.startSec!.toFixed(2)},${c.endSec!.toFixed(2)})'${next}`);
     cur = next;
   });
-  if (cards.length === 0) parts.push(`[0:v]null[vout]`);
+  if (cards.length === 0) parts.push(`[0:v]null${vEnd}`);
+  if (opts.assPath) {
+    // Windows 路径进 filter 要 / 分隔 + 冒号转义;整个文件名再包引号防空格。
+    const assEsc = opts.assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+    parts.push(`[vpre]subtitles=filename='${assEsc}'[vout]`);
+  }
 
   let audioMap = '1:a';
   if (hasBgm) {
@@ -438,15 +540,21 @@ export async function runThreadPipeline(
 
     const segs: CardSeg[] = [];
     let acc = 0;
-    // 标题永远第一段
-    const titleText = (trTitle || post.title).trim();
+    // 标题永远第一段。开头 3 秒钩子:AI 把标题改写成悬念句(冲突前置),抓住前 3 秒;
+    // 失败自动退回原标题,不挡出片。截图卡上仍显示原标题(卡是 Reddit 原貌),钩子只进口播+跳字。
+    let titleText = (trTitle || post.title).trim();
+    const hooked = await hookifyTitle(titleText, lang, (tk, usd) => tracker.addTokens(tk, usd));
+    if (hooked && hooked !== titleText) {
+      tracker.progress(`🪝 开头钩子:「${hooked.slice(0, 40)}」`);
+      titleText = hooked;
+    }
     const t0 = await ttsSeg(titleText, voice, path.join(assetDir, 'seg-title.mp3'), rate);
     if (!t0) {
       const why = getLastTtsError() || '请稍后再试';
       tracker.fail('voice', `标题配音失败:${why}`);
       return { ok: false, error: `配音失败:${why}` };
     }
-    segs.push({ key: 'title', text: titleText, audioPath: t0.audioPath, durationSec: t0.durationSec });
+    segs.push({ key: 'title', text: titleText, audioPath: t0.audioPath, durationSec: t0.durationSec, cues: t0.cues });
     acc += t0.durationSec;
     // 评论逐条 TTS,超 targetSeconds 停(bot 的 max_length 截断逻辑)
     for (const c of translateCandidates) {
@@ -456,7 +564,7 @@ export async function runThreadPipeline(
       if (!text) continue;
       const r = await ttsSeg(text, voice, path.join(assetDir, `seg-${c.id}.mp3`), rate);
       if (!r) { tracker.progress(`⚠️ 评论 ${c.id} 配音失败,跳过`); continue; }
-      segs.push({ key: c.id, text, audioPath: r.audioPath, durationSec: r.durationSec });
+      segs.push({ key: c.id, text, audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues });
       acc += r.durationSec + GAP_SEC;
     }
     if (segs.length < 2) {
@@ -465,8 +573,16 @@ export async function runThreadPipeline(
     }
     tracker.done('voice', `✅ 配音完成 · ${segs.length} 段(标题+${segs.length - 1}条神评)· 约 ${Math.round(acc)}s`);
 
-    // ── STEP 3:真截图(只截入选段的卡片) ────────────────────────────────
+    // ── STEP 3:画面素材 ─────────────────────────────────────────────────
+    // 风格分流(threadCaptionStyle):'cards'(默认)= Reddit 真截图卡;'karaoke' = 跳字大字幕
+    //   (TikTok 爆款风,不放截图卡 → 跳过整个截图阶段,快很多)。
     throwIfAborted(signal);
+    const captionStyle = String((input as any).threadCaptionStyle || 'cards') === 'karaoke' ? 'karaoke' : 'cards';
+    let alive: CardSeg[];
+    if (captionStyle === 'karaoke') {
+      tracker.start('cards', '🔤 跳字大字幕模式:跳过截图,按词时间轴生成字幕…');
+      alive = segs;
+    } else {
     tracker.start('cards', '📸 打开帖子页,替换文字并逐卡截图…');
     const pickedComments = rawComments.filter((c) => segs.some((s) => s.key === c.id));
     const captureOpts = {
@@ -487,7 +603,7 @@ export async function runThreadPipeline(
       return { ok: false, error: err };
     }
     // 对齐音画:截图失败的评论段【连音频一起丢】,时间窗按存活段重算
-    const alive: CardSeg[] = [];
+    alive = [];
     for (const s of segs) {
       if (s.key === 'title') { s.pngPath = captured.titlePng; alive.push(s); continue; }
       const png = captured.commentPngs.get(s.key);
@@ -498,6 +614,7 @@ export async function runThreadPipeline(
       const err = '爆帖成片:评论卡片全部截图失败,无法成片(看上方诊断)';
       tracker.fail('cards', err);
       return { ok: false, error: err };
+    }
     }
     let cursor = 0;
     for (const s of alive) {
@@ -580,12 +697,24 @@ export async function runThreadPipeline(
     const bgm = await resolveBgmPath(input.bgmPath, (m) => tracker.progress(m)).catch(() => undefined);
 
     throwIfAborted(signal);
-    tracker.progress('🎞️ 合成中(卡片按配音时间窗依次上屏)…');
+    // 跳字大字幕:按段起点 + 词时间轴生成 ASS(卡片模式不生成)。
+    let assPath: string | undefined;
+    if (captionStyle === 'karaoke') {
+      try {
+        assPath = path.join(assetDir, 'karaoke.ass');
+        buildKaraokeAss(alive, assPath);
+        tracker.progress('🔤 跳字字幕就绪(逐词弹出,随配音节奏)');
+      } catch (e) {
+        assPath = undefined;
+        tracker.progress(`⚠️ 跳字字幕生成失败(${String((e as Error)?.message || e).slice(0, 60)}),本条无字幕出片`);
+      }
+    }
+    tracker.progress(captionStyle === 'karaoke' ? '🎞️ 合成中(游戏背景 + 跳字大字幕)…' : '🎞️ 合成中(卡片按配音时间窗依次上屏)…');
     const outPath = path.join(destDir, outputFileName(0));
     const composed = await composeThreadVideo({
       basePath, narrationPath, segs: alive, totalSec,
       bgmPath: bgm, bgmVolume: typeof input.bgmVolume === 'number' ? input.bgmVolume : 0.15,
-      outPath, signal,
+      outPath, assPath, signal,
     });
     if (!composed) {
       tracker.fail('compose', '视频合成失败(ffmpeg)');

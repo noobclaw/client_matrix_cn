@@ -183,6 +183,8 @@ export interface VideoCreationInput {
   threadSource?: 'reddit';
   /** engine==='thread':勾选的 subreddit(如 ['AskReddit','tifu'])。 */
   threadSubreddits?: string[];
+  /** engine==='thread':画面风格。'cards'(默认)= Reddit 真截图卡;'karaoke' = 跳字大字幕(TikTok 爆款风,不放截图卡)。 */
+  threadCaptionStyle?: 'cards' | 'karaoke';
   /** engine==='thread':创作语言(卡片文字 + 口播都用它;'en' = 原声不翻译)。默认 zh。 */
   threadLang?: 'zh' | 'en' | 'ja' | 'ko';
   /** engine==='thread':游戏录屏背景来源。'douyin'(默认,国内可用)| 'youtube'(需 VPN)。 */
