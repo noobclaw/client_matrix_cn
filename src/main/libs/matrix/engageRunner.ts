@@ -390,7 +390,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     // reply_fan 剧本读 task.persona / funnel_phrase / funnel_probability;engage 剧本读 keywords/配额/comment_prompt。
     // 两套字段都带上(互不干扰),由各自剧本按需取。
     const task: any = {
-      id: accountId, keywords: effectiveKeywords(acc), track: acc.track || 'douyin_default',
+      // ⚠️ track 传【真赛道显示名 acc.group】(如"🍲 美食 · 探店做饭")给剧本 —— 刷剧的内容匹配 AI
+      //   要靠它;acc.track 是 platform_default 占位、喂给 AI 是噪音会误判(用户实测美食视频判"不相关")。
+      id: accountId, keywords: effectiveKeywords(acc),
+      track: (acc.group && String(acc.group).trim()) || acc.track || 'douyin_default',
       // 人设 → 复用老剧本现成的 comment_prompt 槽(comment_composer 的 user_prompt 口味提示),
       // 不另造 persona 路径(老抖音剧本本就支持,backend 零改动)。
       comment_prompt: acc.persona || '',
