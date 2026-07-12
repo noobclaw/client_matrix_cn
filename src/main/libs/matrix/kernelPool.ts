@@ -1081,6 +1081,45 @@ export async function checkKernelLogin(accountId: string, platform: string): Pro
   } catch { return false; }
 }
 
+/**
+ * 把内核当前的【会话 cookie】固化为持久 cookie 写回 → 强制落盘到 userDataDir。
+ *
+ * 【为什么需要】扫码登录设的 sessionid/sessionid_ss 等常是【会话 cookie】(session=true、
+ *   无 expires),Chromium 只把它们留在【内存】,不写磁盘 cookie 库。登录窗被强杀(手动关窗 /
+ *   下次开同号时对残留进程 SIGKILL / 关闭超时兜底 kill)时来不及优雅刷盘 → 内存里的 sessionid
+ *   随进程消失。之后任务【新起内核】读磁盘 cookie(没 sessionid)→ checkKernelLogin cookie 快筛
+ *   直接判未登录 → 好号被误标「登录过期」。这正是「重连成功、一跑任务又提示未登录」的根因。
+ *
+ * 【做法】读全部 cookie,对会话/无过期的补一个远期 expires(180 天)后 Network.setCookies 写回。
+ *   持久 cookie 会进 Chromium 的 SQLite cookie 库并落盘,新起内核就能读到 → 登录态跨进程保持。
+ *   全程 try/catch,任何失败都不影响主流程(最坏退回原行为)。返回固化的 cookie 数(便于日志/自检)。
+ */
+export async function persistKernelCookies(accountId: string): Promise<number> {
+  const s = sessions.get(accountId);
+  if (!s) return 0;
+  try {
+    const r = await send(s, 'Network.getAllCookies', {});
+    const cookies: any[] = r?.cookies || [];
+    const far = Math.floor(Date.now() / 1000) + 180 * 24 * 3600;
+    const toSet = cookies
+      .filter((c) => c && c.name && (c.session === true || !c.expires || Number(c.expires) <= 0))
+      .map((c) => {
+        const p: any = {
+          name: String(c.name), value: String(c.value ?? ''),
+          domain: c.domain, path: c.path || '/',
+          secure: !!c.secure, httpOnly: !!c.httpOnly, expires: far,
+        };
+        // sameSite 必须是合法枚举;None 必须 secure,否则 setCookies 整批可能被拒。
+        if (c.sameSite === 'Strict' || c.sameSite === 'Lax') p.sameSite = c.sameSite;
+        else if (c.sameSite === 'None') { p.sameSite = 'None'; p.secure = true; }
+        return p;
+      });
+    if (!toSet.length) return 0;
+    await send(s, 'Network.setCookies', { cookies: toSet });
+    return toSet.length;
+  } catch { return 0; }
+}
+
 // 读登录后的真实身份(昵称 / 平台号 / uid / 头像)。【昵称不在 cookie】—— 登录 cookie 是 httpOnly
 // 令牌;昵称要从各平台的页面 SSR / 接口读,uid 部分在明文 cookie、部分在页面。来源全部 2026-06-21
 // 真机 CDP 实测确定(见 reference_matrix_account_identity_sources)。

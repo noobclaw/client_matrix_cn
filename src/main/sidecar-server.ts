@@ -1490,6 +1490,9 @@ const server = http.createServer(async (req, res) => {
                     // 读身份(否则读太早拿到空 → 这就是之前必须手动点「刷新信息」才出头像的原因)。和 refreshIdentity 一致。
                     try { if (a?.loginUrl) await kernelNavigate(acc.id, a.loginUrl); } catch { /* ignore */ }
                     await new Promise((r) => setTimeout(r, 3000));
+                    // 关键:把刚扫到的【会话 cookie】固化落盘,否则内核被强杀后 sessionid 丢失 →
+                    //   下次任务新起内核读空 cookie 又判「登录过期」(见 persistKernelCookies 注释)。
+                    try { const { persistKernelCookies } = await import('./libs/matrix/kernelPool'); await persistKernelCookies(acc.id); } catch { /* ignore */ }
                     // 读真实身份(昵称 + uid)。
                     let ident: any = {};
                     try {

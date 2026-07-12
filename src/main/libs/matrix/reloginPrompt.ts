@@ -20,7 +20,7 @@ import {
 } from './accountManager';
 import {
   launchKernel, kernelNavigate, kernelBringToFront, kernelShowExpiredBadge,
-  checkKernelLogin, kernelReadIdentity, kernelClearCookies, getSession,
+  checkKernelLogin, kernelReadIdentity, kernelClearCookies, getSession, persistKernelCookies,
 } from './kernelPool';
 
 // 登录/读身份导航 URL(与 renderer MatrixView.LOGIN_URL 一致;快手按场景分流创作端/主站)。
@@ -89,6 +89,9 @@ export async function promptReloginForExpiredAccount(accountId: string): Promise
         // 登录刚成功页面常停在回跳页 → 先导航平台页再读身份(否则读太早拿空,同 openLogin)。
         try { if (loginUrl) await kernelNavigate(acc.id, loginUrl); } catch { /* ignore */ }
         await sleep(3000);
+        // 关键:把刚扫到的【会话 cookie】固化落盘,否则内核被强杀后 sessionid 丢失 →
+        //   下次任务新起内核读空 cookie 又判「登录过期」(见 persistKernelCookies 注释)。
+        try { await persistKernelCookies(acc.id); } catch { /* ignore */ }
         let ident: { nickname?: string; displayId?: string; avatar?: string; uid?: string } = {};
         try { ident = await kernelReadIdentity(acc.id, pk); } catch { /* 身份读取失败不影响翻状态 */ }
 
