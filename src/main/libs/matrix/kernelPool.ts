@@ -997,6 +997,15 @@ const LOGIN_COOKIES: Record<string, string[]> = {
  *  关键认知:cookie 在 ≠ 登录有效(服务端可作废 session,cookie 仍在 profile 里)→ 必须有 ②/③ 的活体确认。
  *  ⚠️ cookie 用 getAllCookies(读所有域),否则在 creator./cp./mp. 子域会漏掉挂在父域的登录 cookie。 */
 export async function checkKernelLogin(accountId: string, platform: string): Promise<boolean> {
+  const ok = await checkKernelLoginInner(accountId, platform);
+  // 【全平台通用】确认登录有效就顺手把会话 cookie 固化落盘(见 persistKernelCookies 注释):
+  //   这里是所有「登录有效」判定的唯一咽喉 —— 任务跑前校验(8 个 runner)/保活/扫码轮询/cookie 导入验活
+  //   都经过,收口在此=每个平台每次确认登录都补一次落盘,内核被强杀也不丢登录态。幂等,失败不影响判定。
+  if (ok) { try { await persistKernelCookies(accountId); } catch { /* ignore */ } }
+  return ok;
+}
+
+async function checkKernelLoginInner(accountId: string, platform: string): Promise<boolean> {
   if (!sessions.get(accountId)) return false;
   try {
     const s = await getPage(accountId);
