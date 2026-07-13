@@ -93,6 +93,9 @@ async function runOne(
   await sleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000));
 
   let closeReason: string | undefined;   // 收口给 finally 判是否撞墙(此函数走 driver,无 finished 闭包)
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel ——
+  // 否则会错放【别的流程】正持有的锁 / 把它刚开的窗关掉(对齐 keepAliveOne 的 launched 守卫)。
+  let kernelLaunched = false;
   try {
     setAccountStatus(accountId, 'running');
     log('启动指纹内核');
@@ -108,6 +111,7 @@ async function runOne(
       label: accountBadgeLabel(acc),                       // 绿色角标:账号信息(平台·昵称·备注)
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId), // 蓝色 pill:🤖 平台 #任务缩写(不重复账号信息)
     });
+    kernelLaunched = true;
 
     // 发前登录检查(用 PUBLISHER_ANCHOR_URL,driver 内部也会再导航一次)。
     const anchorMod = await import('../video/publishers/publisherUtils');
@@ -148,14 +152,16 @@ async function runOne(
     // 完成后留时间让用户检查浏览器里的结果再关窗(有 signal 时点「停止」立即关、不等)。
     // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
     const _sig: AbortSignal | undefined = (opts as any).signal;
-    const holdMs = inspectHoldMs(closeReason);
-    if (!_sig?.aborted) {
-      await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, holdMs);
-        try { _sig?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
-      });
+    if (kernelLaunched) {
+      const holdMs = inspectHoldMs(closeReason);
+      if (!_sig?.aborted) {
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, holdMs);
+          try { _sig?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
+        });
+      }
+      try { closeKernel(accountId); } catch { /* ignore */ }
     }
-    try { closeKernel(accountId); } catch { /* ignore */ }
   }
 }
 

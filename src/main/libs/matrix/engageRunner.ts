@@ -341,6 +341,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   const q = opts.quota || {};
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined; // aiCall/计费 token(main 侧)
   let finished: { status: string; error?: string } | null = null;
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel ——
+  // 否则会错放【别的流程】正持有的锁 / 把它刚开的窗关掉(对齐 keepAliveOne 的 launched 守卫)。
+  let kernelLaunched = false;
 
   try {
     if (opts.signal?.aborted) { return { accountId, state: 'skipped', reason: 'aborted' }; }
@@ -354,6 +357,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       label: accountBadgeLabel(acc),                       // 绿色角标:账号信息(平台·昵称·备注)
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId), // 蓝色 pill:🤖 平台 #任务缩写(不重复账号信息)
     });
+    kernelLaunched = true;
     // 导航 URL + 登录态 key:回复粉丝(reply_fan)在【创作者中心】评论管理操作,快手须导航
     //   cp.kuaishou.com 并按创作端登录态校验(platformKey 把快手创作号映成 'kuaishou_creator',
     //   主站/创作端登录互不覆盖);互动涨粉走主站。非快手账号无 loginScope → 行为不变(主站 + 平台名)。
@@ -361,12 +365,14 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     const navUrl = (opts.taskType === 'reply_fan' && acc.loginScope)
       ? loginUrlFor(opts.platform, acc.loginScope)
       : (PLATFORM_HOME[opts.platform] || 'https://www.douyin.com/');
-    if (opts.signal?.aborted) { try { closeKernel(accountId, { force: true }); } catch { /* ignore */ } return { accountId, state: 'skipped', reason: 'aborted' }; }
+    // 中止直接 return,由 finally 统一 closeKernel(原来这里 force 关 + finally 再关一次 → 双关:
+    // force 会无视引用计数把同号挂着的扫码重连窗杀掉,二次关还会错放别的流程刚拿到的使用锁)。
+    if (opts.signal?.aborted) { return { accountId, state: 'skipped', reason: 'aborted' }; }
     await kernelNavigate(accountId, navUrl);
     // 登录判定【前多等一会】:很多平台(WAF 站 / 重 SPA)导航后要几秒才跳到登录页 / 渲染出登录态,
     //   等太短会赶在跳转前判 → 误判(登出的当已登录 / 登录的当失效)。给 4.5s 让页面跳转+渲染稳。
     await abortableSleep(4500, opts.signal);
-    if (opts.signal?.aborted) { try { closeKernel(accountId, { force: true }); } catch { /* ignore */ } return { accountId, state: 'skipped', reason: 'aborted' }; }
+    if (opts.signal?.aborted) { return { accountId, state: 'skipped', reason: 'aborted' }; }
 
     // 跑前登录态检查:cookie 过期 / 没关联 → 跳过该号 + 标「需关联」(其它号照跑),不空转。
     let loggedIn = true;
@@ -619,7 +625,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
       });
     }
-    try { closeKernel(accountId); } catch { /* ignore */ }
+    if (kernelLaunched) { try { closeKernel(accountId); } catch { /* ignore */ } }
   }
 }
 

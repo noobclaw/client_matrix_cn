@@ -259,6 +259,8 @@ async function collectFromSource(
   // seen 由 runBinanceRepostTask 创建并传入:采集阶段【只查不记】(seen.set.has 跳过已用满的),
   // 真正计数(record)挪到【发布成功后】—— 下载了但没发出去不算一次,可下轮重试(用户要求)。
   let candidates: RepostCandidate[] = [];
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel(会错关/错放别的流程)。
+  let kernelLaunched = false;
 
   try {
     setAccountStatus(srcAccId, 'running');
@@ -268,6 +270,7 @@ async function collectFromSource(
       userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
       label: accountBadgeLabel(acc), groupTitle: matrixGroupTitle(cfg.sourcePlatform, opts.taskId),
     });
+    kernelLaunched = true;
     await kernelNavigate(srcAccId, SOURCE_HOME[cfg.sourcePlatform] || SOURCE_HOME.xhs);
     await sleep(2500);
     let loggedIn = true;
@@ -355,7 +358,7 @@ async function collectFromSource(
     if (!opts.signal?.aborted) {
       await new Promise<void>((resolve) => { const t = setTimeout(resolve, 8000); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
     }
-    try { closeKernel(srcAccId); } catch { /* ignore */ }
+    if (kernelLaunched) { try { closeKernel(srcAccId); } catch { /* ignore */ } }
   }
 }
 
@@ -376,6 +379,8 @@ async function publishOne(
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
   let finished: { status: string; error?: string } | null = null;
   let posted = false;
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel(会错关/错放别的流程)。
+  let kernelLaunched = false;
 
   try {
     setAccountStatus(accountId, 'running');
@@ -385,6 +390,7 @@ async function publishOne(
       userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
       label: accountBadgeLabel(acc), groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
+    kernelLaunched = true;
     await kernelNavigate(accountId, BINANCE_SQUARE);
     await sleep(2500);
     let loggedIn = true;
@@ -528,7 +534,7 @@ async function publishOne(
     if (!opts.signal?.aborted) {
       await new Promise<void>((resolve) => { const t = setTimeout(resolve, holdMs); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
     }
-    try { closeKernel(accountId); } catch { /* ignore */ }
+    if (kernelLaunched) { try { closeKernel(accountId); } catch { /* ignore */ } }
   }
 }
 
@@ -583,6 +589,8 @@ async function publishVideoOne(
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
   let closeReason: string | undefined;   // 收口给 finally 判是否撞墙(此函数走 driver,无 finished 闭包)
 
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel(会错关/错放别的流程)。
+  let kernelLaunched = false;
   try {
     setAccountStatus(accountId, 'running');
     log('启动指纹内核(视频发布)');
@@ -591,6 +599,7 @@ async function publishVideoOne(
       userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
       label: accountBadgeLabel(acc), groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
+    kernelLaunched = true;
     await kernelNavigate(accountId, BINANCE_SQUARE);
     await sleep(2500);
     let loggedIn = true;
@@ -644,7 +653,7 @@ async function publishVideoOne(
     if (!opts.signal?.aborted) {
       await new Promise<void>((resolve) => { const t = setTimeout(resolve, holdMs); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
     }
-    try { closeKernel(accountId); } catch { /* ignore */ }
+    if (kernelLaunched) { try { closeKernel(accountId); } catch { /* ignore */ } }
   }
 }
 

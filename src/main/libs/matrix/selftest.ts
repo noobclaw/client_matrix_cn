@@ -67,7 +67,8 @@ export async function runKernelSelfTest(opts: {
   } catch (e: any) {
     report.error = String(e?.message || e);
   } finally {
-    try { closeKernel(accountId); } catch { /* ignore */ }
+    // launch 失败时 kernelPool 已回退引用计数/使用锁,不能再 closeKernel(会错关/错放别的流程)。
+    if (report.launched) { try { closeKernel(accountId); } catch { /* ignore */ } }
   }
 
   return report;

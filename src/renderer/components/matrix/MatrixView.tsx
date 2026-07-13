@@ -326,7 +326,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     return () => { if (typeof off === 'function') off(); };
   }, [reload, reloadTasks, reloadRuns]);
 
-  useEffect(() => { const off = M()?.onAccount?.(() => { reload(); }); return () => { if (typeof off === 'function') off(); }; }, [reload]);
+  useEffect(() => {
+    const off = M()?.onAccount?.((p: any) => {
+      reload();
+      // 主进程在账号 SSE 里带的账号级错误(如扫码后「该账号已被 XX 关联」的去重拒绝)必须让用户看到 ——
+      // 原来只静默 reload,用户扫码明明成功、卡片却弹回「需关联」,零解释。
+      if (p && typeof p === 'object' && p.error) setNotice('⚠️ ' + String(p.error));
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, [reload]);
   useEffect(() => { localStorage.setItem('matrix:kernelPath', kernelPath); }, [kernelPath]);
   useEffect(() => { const h = setInterval(() => { reloadTasks(); }, 30000); return () => clearInterval(h); }, [reloadTasks]);
 
@@ -493,7 +501,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     if (!requireKernel()) return;
     setNotice(i18nService.t('mvReadingIdentity').replace('{name}', a.displayName));
     const r = await M()?.refreshIdentity?.({ accountId: a.id, homeUrl: loginUrlFor(a.platform, a.loginScope), kernelPath });
-    if (r?.ok) { await reload(); setNotice(r.loggedIn ? i18nService.t('mvIdentityRead').replace('{name}', r.nickname || a.displayName).replace('{id}', r.displayId ? ' · ' + r.displayId : '') : i18nService.t('mvNoLoginDetected').replace('{name}', a.displayName)); }
+    // 重复关联(同一真实账号已绑到别的矩阵号)单独提示 —— 别落进「未检测到登录」误导用户。
+    if (r?.ok && r?.duplicate) { await reload(); setNotice('❌ ' + (r.error || (i18nService.currentLanguage === 'zh' ? '该账号已被其他矩阵号关联' : 'This account is already linked to another matrix account'))); }
+    else if (r?.ok) { await reload(); setNotice(r.loggedIn ? i18nService.t('mvIdentityRead').replace('{name}', r.nickname || a.displayName).replace('{id}', r.displayId ? ' · ' + r.displayId : '') : i18nService.t('mvNoLoginDetected').replace('{name}', a.displayName)); }
     else setNotice(i18nService.t('mvReadFailed') + (r?.error || i18nService.t('mvUnknown')));
   };
   // 断开连接:清登录 cookie + 身份,但保留赛道/关键词/人设/代理/指纹配置,可随时重新扫码连接。

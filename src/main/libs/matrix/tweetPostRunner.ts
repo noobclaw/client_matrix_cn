@@ -142,6 +142,8 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
   let chargedCredits = 0, chargedUsd = 0;
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
   let finished: { status: string; error?: string } | null = null;
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel(会错关/错放别的流程)。
+  let kernelLaunched = false;
 
   try {
     setAccountStatus(accountId, 'running');
@@ -152,6 +154,7 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
       label: accountBadgeLabel(acc),
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
+    kernelLaunched = true;
     // 发推在主站 —— 先导航推特首页校验登录态(对齐 feedback_matrix_task_login_precheck)。
     await kernelNavigate(accountId, TWEET_LOGIN_HOME[opts.platform] || TWEET_LOGIN_HOME.x);
     await sleep(2500);
@@ -324,7 +327,7 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
       });
     }
-    try { closeKernel(accountId); } catch { /* ignore */ }
+    if (kernelLaunched) { try { closeKernel(accountId); } catch { /* ignore */ } }
   }
 }
 

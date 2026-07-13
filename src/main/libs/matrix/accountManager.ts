@@ -163,6 +163,8 @@ export function setAccountStatus(id: string, status: AccountStatus): void {
   if (!a) return;
   const changed = a.status !== status;
   a.status = status;
+  // 重新连上(翻 idle)即清「主动断开」标记 —— 所有连接成功路径(扫码/导入/刷新/保活自愈)都经这里,单点收口。
+  if (status === 'idle' && a.manualDisconnect) delete a.manualDisconnect;
   persist();
   // 状态真变了才广播(避免 running→running 之类空转刷屏);payload 带 id/status,渲染层收到即整表 reload。
   if (changed) { try { _accountSSEBroadcast?.('matrix:account', { id, status }); } catch { /* 广播失败不影响落盘 */ } }
@@ -317,6 +319,14 @@ export function clearAccountIdentity(id: string): void {
   const a = getAccount(id);
   if (!a) return;
   delete a.nickname; delete a.displayId; delete a.avatar; delete a.boundUid;
+  persist();
+}
+
+/** 用户主动「断开连接」:标记之,让 keepAlive 不再把它当「疑似误标过期」每轮开窗复验(见 MatrixAccount.manualDisconnect)。 */
+export function markManualDisconnect(id: string): void {
+  const a = getAccount(id);
+  if (!a) return;
+  a.manualDisconnect = true;
   persist();
 }
 

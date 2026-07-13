@@ -184,6 +184,8 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
   let chargedCredits = 0, chargedUsd = 0;
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
   let finished: { status: string; error?: string } | null = null;
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel(会错关/错放别的流程)。
+  let kernelLaunched = false;
 
   try {
     setAccountStatus(accountId, 'running');
@@ -194,6 +196,7 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
       label: accountBadgeLabel(acc),
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
+    kernelLaunched = true;
     // 图文发布在创作者中心 —— 先导航对应平台创作者中心校验登录态(对齐 feedback_matrix_task_login_precheck)。
     await kernelNavigate(accountId, IMAGE_TEXT_LOGIN_HOME[opts.platform] || IMAGE_TEXT_LOGIN_HOME.douyin);
     await sleep(2000);
@@ -407,7 +410,7 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
       });
     }
-    try { closeKernel(accountId); } catch { /* ignore */ }
+    if (kernelLaunched) { try { closeKernel(accountId); } catch { /* ignore */ } }
   }
 }
 
@@ -444,6 +447,7 @@ export async function runImageTextTask(opts: ImageTextTaskOptions): Promise<Enga
   // 发布号 → 整任务【串行】(k=1)。AI生图 / 抖音·小红书(自己浏览器搜本平台)不走这条,照常并行。
   const dlAcct = (opts.config?.useRealPhotos && opts.config?.imageDownloadAccountId) ? opts.config.imageDownloadAccountId : undefined;
   let k = Math.max(1, Math.min(opts.concurrency ?? 3, 10));
+  let dlLaunched = false; // 下图内核 launch 成功才在收尾 closeKernel(失败时 kernelPool 已回退计数/锁,再关会错关别的流程)
   if (dlAcct) {
     k = 1;
     const dl = getAccount(dlAcct);
@@ -456,6 +460,7 @@ export async function runImageTextTask(opts: ImageTextTaskOptions): Promise<Enga
           userDataDir: dl.userDataDir, fingerprint: dl.fingerprint, proxy: dl.proxy,
           label: accountBadgeLabel(dl), groupTitle: matrixGroupTitle('douyin', opts.taskId),
         });
+        dlLaunched = true;
         await kernelNavigate(dlAcct, 'https://www.douyin.com/');
         await sleep(2000);
         let dlLoggedIn = true;
@@ -467,7 +472,7 @@ export async function runImageTextTask(opts: ImageTextTaskOptions): Promise<Enga
   }
   coworkLog('INFO', 'imageTextRunner', `image_text ${opts.platform} x${opts.accountIds.length} (${scenarioId})${dlAcct ? ' +dl:' + dlAcct + ' (serial)' : ''}`);
   const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id, dlAcct), opts.onItem);
-  if (dlAcct) { try { closeKernel(dlAcct); } catch { /* ignore */ } }
+  if (dlAcct && dlLaunched) { try { closeKernel(dlAcct); } catch { /* ignore */ } }
   return {
     platform: opts.platform, total: items.length,
     success: items.filter((x) => x.state === 'success').length,

@@ -284,22 +284,30 @@ export async function launchKernel(opts: LaunchKernelOptions): Promise<KernelSes
   if (!opts.skipLease) await acquireLease(opts.accountId);
   // 引用计数 +1:任何流程要用这个号都先 +1,closeKernel 时 -1,归 0 才真关。
   refCount.set(opts.accountId, (refCount.get(opts.accountId) || 0) + 1);
-  const existing = sessions.get(opts.accountId);
-  // 复用前确认进程【真活着】:崩溃的子进程 .killed 仍是 false(那只代表我们没主动 kill),
-  // 必须再查 exitCode===null,否则会复用到已死进程 → 后续 CDP 全部 ECONNRESET。
-  if (existing && existing.process && !existing.process.killed && existing.process.exitCode === null) {
-    return existing;
-  }
-  const inflight = launching.get(opts.accountId);
-  if (inflight) return inflight;
+  try {
+    const existing = sessions.get(opts.accountId);
+    // 复用前确认进程【真活着】:崩溃的子进程 .killed 仍是 false(那只代表我们没主动 kill),
+    // 必须再查 exitCode===null,否则会复用到已死进程 → 后续 CDP 全部 ECONNRESET。
+    if (existing && existing.process && !existing.process.killed && existing.process.exitCode === null) {
+      return existing;
+    }
+    const inflight = launching.get(opts.accountId);
+    if (inflight) return await inflight;
 
-  const p = doLaunch(opts).finally(() => {
-    if (launching.get(opts.accountId) === p) launching.delete(opts.accountId);
-  });
-  // 启动失败时调用方拿到 reject、不会再 closeKernel → 这里回退它的 +1 并释放锁,防计数/锁泄漏。
-  p.catch(() => { refCount.set(opts.accountId, Math.max(0, (refCount.get(opts.accountId) || 1) - 1)); if (!opts.skipLease) releaseLease(opts.accountId); });
-  launching.set(opts.accountId, p);
-  return p;
+    const p = doLaunch(opts).finally(() => {
+      if (launching.get(opts.accountId) === p) launching.delete(opts.accountId);
+    });
+    launching.set(opts.accountId, p);
+    return await p;
+  } catch (e) {
+    // 启动失败时调用方拿到 reject、【不应再 closeKernel】→ 这里回退本调用方的 +1 并释放锁,防计数/锁泄漏。
+    // 放 catch 里(而非创建者单点 p.catch)是为了让【每个调用方】各自回退自己的那份:
+    // skipLease 流程会 join 进行中的 doLaunch(lease 拦不住它),原来只回退创建者的 +1,joiner 的 +1
+    // 永久泄漏 → 该号 refCount 永远 >0 → closeKernel 永不真关,窗口只能手关。
+    refCount.set(opts.accountId, Math.max(0, (refCount.get(opts.accountId) || 1) - 1));
+    if (!opts.skipLease) releaseLease(opts.accountId);
+    throw e;
+  }
 }
 
 async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
@@ -1306,13 +1314,22 @@ export function getSession(accountId: string): KernelSession | undefined {
   return sessions.get(accountId);
 }
 
+/** 该号的「使用互斥锁」当前是否被某个流程持有(=正在跑任务/保活/刷新信息)。
+ *  给交互入口(扫码连接/导入 cookie/刷新信息)做忙碌预检:直接告知「正在执行任务」,
+ *  而不是在 acquireLease 上无限期排队让 UI 看起来卡死。 */
+export function isAccountBusy(accountId: string): boolean {
+  return leaseHeld.has(accountId);
+}
+
 export function listSessions(): string[] {
   return Array.from(sessions.keys());
 }
 
-export function closeKernel(accountId: string, opts?: { force?: boolean }): void {
+export function closeKernel(accountId: string, opts?: { force?: boolean; skipLease?: boolean }): void {
   // 释放「使用互斥锁」:本流程对该号的操作结束 → 让排队的下一个流程能进(不受 refcount/下面早返回影响)。
-  releaseLease(accountId);
+  // ⚠️ skipLease 起的流程(openLogin/导入 cookie 等)关闭时必须传 skipLease:true —— 它没占过锁,
+  //   这里无条件 releaseLease 会把【别的流程正持有的锁】弹掉,放行排队者与持有者并发驱动同一页面。
+  if (!opts?.skipLease) releaseLease(accountId);
   // 引用计数 -1:还有别的流程在用(>0)就【不关】,只有归 0(或 force)才真关 → 防误关在用的窗。
   const n = Math.max(0, (refCount.get(accountId) || 1) - 1);
   refCount.set(accountId, n);

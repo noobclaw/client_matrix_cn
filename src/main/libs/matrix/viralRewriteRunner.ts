@@ -180,6 +180,8 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
   let finished: { status: string; error?: string } | null = null;
   const seen = contentUsageStore(accountId, opts.platform, VIRAL_CONTENT_CAP);
+  // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel(会错关/错放别的流程)。
+  let kernelLaunched = false;
 
   try {
     setAccountStatus(accountId, 'running');
@@ -190,6 +192,7 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
       label: accountBadgeLabel(acc),
       groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
+    kernelLaunched = true;
     // 先导航小红书主站校验登录态(采集走主站搜索;发布走 creator,主站登录态覆盖)。
     await kernelNavigate(accountId, 'https://www.xiaohongshu.com/');
     await sleep(2000);
@@ -384,7 +387,7 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
       });
     }
-    try { closeKernel(accountId); } catch { /* ignore */ }
+    if (kernelLaunched) { try { closeKernel(accountId); } catch { /* ignore */ } }
   }
 }
 

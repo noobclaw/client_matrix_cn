@@ -20,7 +20,7 @@ import {
 } from './accountManager';
 import {
   launchKernel, kernelNavigate, kernelBringToFront, kernelShowExpiredBadge,
-  checkKernelLogin, kernelReadIdentity, kernelClearCookies, getSession, persistKernelCookies,
+  checkKernelLogin, kernelReadIdentity, kernelClearCookies, getSession, persistKernelCookies, closeKernel,
 } from './kernelPool';
 
 // 登录/读身份导航 URL(与 renderer MatrixView.LOGIN_URL 一致;快手按场景分流创作端/主站)。
@@ -111,6 +111,10 @@ export async function promptReloginForExpiredAccount(accountId: string): Promise
       }
     } finally {
       watching.delete(accountId);
+      // 平衡本次 launchKernel 的 +1:轮询收尾(扫码成功/重复关联/超时/窗口被手关)即释放 ——
+      // 原来这条路永不 closeKernel,引用计数被 pin 住:任务后续复用同内核后 closeKernel 归不了 0,
+      // 重连窗永远关不掉、越积越多(同 openLogin 的修法)。skipLease 起的 → 关闭也 skipLease(不动别人的锁)。
+      try { closeKernel(accountId, { skipLease: true }); } catch { /* ignore */ }
     }
   })();
 }

@@ -182,6 +182,8 @@ const sseClients = new Set<http.ServerResponse>();
 // 运行中的视频任务注册表(taskId → AbortController),供「停止」中断 pipeline + kill 子进程。
 // 对齐 Electron main.ts 的 activeVideoRuns;Tauri 下视频跑在 sidecar,停止必须在这里 abort。
 const activeVideoRuns = new Map<string, AbortController>();
+// 扫码连接的后台轮询去重(accountId):重复点「扫码连接」不再叠加轮询/引用计数(对齐 reloginPrompt 的 watching)。
+const matrixScanWatching = new Set<string>();
 
 // 矩阵号运行锁:按【平台】并发(参照老客户端 scenarioManager 的 runningByResource 按资源并发)——
 // 不同平台的任务可同时跑(各平台账号是独立指纹内核,互不冲突);同一平台同时只跑一个。封顶防开爆内核。
@@ -1461,26 +1463,45 @@ const server = http.createServer(async (req, res) => {
             }
           }
           case 'matrix:openLogin': {
-            // 起该号的指纹内核并导航到平台登录页,供用户扫码;不关窗,登完用户自己确认。
+            // 起该号的指纹内核并导航到平台登录页,供用户扫码;轮询到登录成功(或超时/窗口被关)才收尾。
             try {
               const { getAccount, setAccountStatus, accountBadgeLabel, platformKey } = await import('./libs/matrix/accountManager');
-              const { launchKernel, kernelNavigate, checkKernelLogin, getSession } = await import('./libs/matrix/kernelPool');
+              const { launchKernel, kernelNavigate, checkKernelLogin, getSession, closeKernel, kernelBringToFront, isAccountBusy } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              // 忙碌预检:该号正被任务/保活/刷新占用 → 明确拒绝。skipLease 虽不排队,但下面的 navigate 会把
+              //   正在跑的任务页面导走(毁任务),所以这里必须拦。
+              if (isAccountBusy(acc.id)) return writeJSON(res, 200, { ok: false, error: '该账号正在执行任务,请等任务结束后再扫码连接' });
+              // 去重:已有扫码轮询在跑 → 不重复起(否则引用计数只加不减、多个轮询打架),把窗提到前台即可。
+              if (matrixScanWatching.has(acc.id)) {
+                try { await kernelBringToFront(acc.id); } catch { /* 非关键 */ }
+                return writeJSON(res, 200, { ok: true, already: true });
+              }
               const pk = platformKey(acc);
-              await launchKernel({
-                accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
-                userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
-                label: accountBadgeLabel(acc),   // 角标:平台名 · 昵称 · 备注
-                startUrl: a?.loginUrl || undefined,   // 新起内核直接开到登录页(避免新标签页竞态)
-                skipLease: true,                  // 用户扫码场景:只读 cookie 轮询、不驱动页面 → 不占使用互斥锁,不阻塞任务
-              });
-              // 内核已在运行(复用)时不会按 startUrl 重开 → 仍 navigate 兜底;新起时这步是冗余的二次确保。
-              await kernelNavigate(acc.id, a?.loginUrl || 'about:blank');
-              // 后台轮询登录态:扫码成功后自动把状态翻成 idle 并推 matrix:account SSE(最多 ~3min;窗口关了就停)。
+              // 去重标记在 launch 【前】置位:连点两下时第二下才能被上面的去重挡住(launch 要几秒,加晚了两个轮询都起来)。
+              matrixScanWatching.add(acc.id);
+              try {
+                await launchKernel({
+                  accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
+                  userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
+                  label: accountBadgeLabel(acc),   // 角标:平台名 · 昵称 · 备注
+                  startUrl: a?.loginUrl || undefined,   // 新起内核直接开到登录页(避免新标签页竞态)
+                  skipLease: true,                  // 用户扫码场景:不占使用互斥锁,不阻塞任务(忙碌预检已在上面拦过)
+                });
+              } catch (e) {
+                matrixScanWatching.delete(acc.id); // 没起来 → 撤去重标记(kernelPool 已回退计数),让用户能重试
+                throw e;
+              }
+              // 后台轮询登录态:扫码成功后自动把状态翻成 idle 并推 matrix:account SSE
+              // (~10min,对齐 reloginPrompt —— 原来只 3min,拿手机/收验证码常超时,登录成功了状态却不翻;窗口关了就停)。
               (async () => {
-                for (let i = 0; i < 60; i++) {
+                try {
+                for (let i = 0; i < 200; i++) {
+                  if (i === 0) {
+                    // 内核已在运行(复用)时不会按 startUrl 重开 → navigate 兜底;新起时是冗余的二次确保。
+                    try { await kernelNavigate(acc.id, a?.loginUrl || 'about:blank'); } catch { /* 导航失败轮询照跑(可能已在登录页) */ }
+                  }
                   await new Promise((r) => setTimeout(r, 3000));
                   if (!getSession(acc.id)) break; // 窗口被关
                   let ok = false;
@@ -1515,6 +1536,13 @@ const server = http.createServer(async (req, res) => {
                     break;
                   }
                 }
+                } finally {
+                  matrixScanWatching.delete(acc.id);
+                  // 平衡本次 launchKernel 的 +1:轮询收尾(登录成功/去重拒绝/超时/窗口被手关)即释放 ——
+                  // 原来这条路永不 closeKernel,引用计数被 pin 住,后续任务复用同内核后窗口永远关不掉、越积越多。
+                  // skipLease 起的 → 关闭也 skipLease(绝不能去动别的流程持有的使用锁)。
+                  try { closeKernel(acc.id, { skipLease: true }); } catch { /* ignore */ }
+                }
               })();
               return writeJSON(res, 200, { ok: true });
             } catch (e: any) {
@@ -1526,10 +1554,12 @@ const server = http.createServer(async (req, res) => {
             //   海外 Google/Apple 登录号、已在其它浏览器登录过的号走这条(不在指纹内核里跑 OAuth,行业标准做法)。
             try {
               const { getAccount, setAccountStatus, accountBadgeLabel, platformKey, setAccountIdentity, findAccountByUid } = await import('./libs/matrix/accountManager');
-              const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, kernelSetCookies, kernelClearCookies } = await import('./libs/matrix/kernelPool');
+              const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, kernelSetCookies, kernelClearCookies, closeKernel, isAccountBusy } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              // 忙碌预检:该号正被任务/保活/刷新占用 → 明确拒绝(灌 cookie + navigate 会毁掉正在跑的任务页面)。
+              if (isAccountBusy(acc.id)) return writeJSON(res, 200, { ok: false, error: '该账号正在执行任务,请等任务结束后再导入 cookie' });
               let cookies: any[] = [];
               if (Array.isArray(a?.cookies)) {
                 cookies = a.cookies;
@@ -1550,65 +1580,54 @@ const server = http.createServer(async (req, res) => {
                 userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
                 label: accountBadgeLabel(acc), skipLease: true,
               });
-              const inj = await kernelSetCookies(acc.id, cookies);
-              try { await kernelNavigate(acc.id, a?.navUrl || 'about:blank'); } catch { /* ignore */ }
-              await new Promise((r) => setTimeout(r, 2500));
-              let ok = false;
-              try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = false; }
-              if (!ok) {
-                setAccountStatus(acc.id, 'login_required');
-                broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: `cookie 无效或非该平台登录态(注入 ${inj.set} 条/失败 ${inj.failed})。请确认导出的是该号在 ${pk} 已登录的 cookie` });
-                return writeJSON(res, 200, { ok: false, error: `cookie 未通过活体校验(注入 ${inj.set}/失败 ${inj.failed})` });
-              }
-              let ident: any = {};
-              try { ident = await kernelReadIdentity(acc.id, pk); } catch { /* 身份读取失败不影响登录 */ }
-              const dup = ident.uid ? findAccountByUid(pk, String(ident.uid), acc.id) : undefined;
-              if (dup) {
-                try { await kernelClearCookies(acc.id); } catch { /* ignore */ }
-                setAccountStatus(acc.id, 'login_required');
-                broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: `该账号已被「${dup.displayName}」关联,一个真实账号只能关联一个矩阵号` });
-                return writeJSON(res, 200, { ok: false, error: `该账号已被「${dup.displayName}」关联` });
-              }
-              setAccountStatus(acc.id, 'idle');
-              try { setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
-              try { const { probeAndSaveHealth } = await import('./libs/matrix/proxyBridge'); await probeAndSaveHealth(acc); } catch { /* ignore */ }
-              broadcastSSE('matrix:account', { id: acc.id, status: 'idle', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
-              return writeJSON(res, 200, { ok: true, account: getAccount(acc.id) });
-            } catch (e: any) {
-              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
-            }
-          }
-          case 'matrix:checkLogin': {
-            // 手动「刷新登录态」:立即查一次 cookie,登了就翻 idle + 推 SSE。
-            try {
-              const { getAccount, setAccountStatus, setAccountIdentity, platformKey } = await import('./libs/matrix/accountManager');
-              const { checkKernelLogin, kernelReadIdentity } = await import('./libs/matrix/kernelPool');
-              const a = args[0] as any;
-              const acc = getAccount(a?.accountId);
-              if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
-              const pk = platformKey(acc);
-              const loggedIn = await checkKernelLogin(acc.id, pk);
-              let ident: any = {};
-              if (loggedIn) {
+              // launch 成功后无论哪条路退出(无效/重复/成功/异常)都关窗收尾(对齐 refreshIdentity 的「读完不留窗」;
+              // 原来三条路都把窗留着、引用计数 pin 在 1 → 窗口永远关不掉)。skipLease 起的 → 关闭也 skipLease。
+              try {
+                const inj = await kernelSetCookies(acc.id, cookies);
+                try { await kernelNavigate(acc.id, a?.navUrl || 'about:blank'); } catch { /* ignore */ }
+                await new Promise((r) => setTimeout(r, 2500));
+                let ok = false;
+                try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = false; }
+                if (!ok) {
+                  setAccountStatus(acc.id, 'login_required');
+                  broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: `cookie 无效或非该平台登录态(注入 ${inj.set} 条/失败 ${inj.failed})。请确认导出的是该号在 ${pk} 已登录的 cookie` });
+                  return writeJSON(res, 200, { ok: false, error: `cookie 未通过活体校验(注入 ${inj.set}/失败 ${inj.failed})` });
+                }
+                let ident: any = {};
+                try { ident = await kernelReadIdentity(acc.id, pk); } catch { /* 身份读取失败不影响登录 */ }
+                const dup = ident.uid ? findAccountByUid(pk, String(ident.uid), acc.id) : undefined;
+                if (dup) {
+                  try { await kernelClearCookies(acc.id); } catch { /* ignore */ }
+                  setAccountStatus(acc.id, 'login_required');
+                  broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: `该账号已被「${dup.displayName}」关联,一个真实账号只能关联一个矩阵号` });
+                  return writeJSON(res, 200, { ok: false, error: `该账号已被「${dup.displayName}」关联` });
+                }
                 setAccountStatus(acc.id, 'idle');
-                try { ident = await kernelReadIdentity(acc.id, pk); setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
-                try { const { probeAndSaveHealth } = await import('./libs/matrix/proxyBridge'); await probeAndSaveHealth(acc); } catch { /* 代理探测失败不影响 */ }
+                try { setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
+                try { const { probeAndSaveHealth } = await import('./libs/matrix/proxyBridge'); await probeAndSaveHealth(acc); } catch { /* ignore */ }
                 broadcastSSE('matrix:account', { id: acc.id, status: 'idle', nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid });
+                return writeJSON(res, 200, { ok: true, account: getAccount(acc.id) });
+              } finally {
+                try { closeKernel(acc.id, { skipLease: true }); } catch { /* ignore */ }
               }
-              return writeJSON(res, 200, { ok: true, loggedIn, nickname: ident.nickname });
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
           }
+          // (删)matrix:checkLogin:tauriShim 暴露过但渲染层从无调用;且其「无内核会话直接返回未登录」的
+          // 语义容易被误用成登录判定。需要即时校验请用 refreshIdentity(拉起内核真验)。
           case 'matrix:refreshIdentity': {
             // 「刷新信息」:对任意账号(尤其已登录但没读过身份的),拉起内核→导航平台→读 昵称/平台号/头像
             // (cookie 在持久 profile,自然登录态)→存+广播。读完若不是原本在跑的内核则关掉,不留窗。
             try {
               const { getAccount, setAccountStatus, setAccountIdentity, accountBadgeLabel, platformKey } = await import('./libs/matrix/accountManager');
-              const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, closeKernel } = await import('./libs/matrix/kernelPool');
+              const { launchKernel, kernelNavigate, checkKernelLogin, kernelReadIdentity, closeKernel, isAccountBusy } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              // 忙碌预检:该号正被任务/保活占用时,launchKernel 会在使用锁上无限期排队(锁无超时)→
+              //   UI 一直「正在读取…」看着像卡死。直接明确告知,让用户等任务结束再刷新。
+              if (isAccountBusy(acc.id)) return writeJSON(res, 200, { ok: false, error: '该账号正在执行任务,请等任务结束后再刷新信息' });
               const pk = platformKey(acc);
               await launchKernel({
                 accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion,
@@ -1629,8 +1648,10 @@ const server = http.createServer(async (req, res) => {
                   if (dup) {
                     try { const { kernelClearCookies } = await import('./libs/matrix/kernelPool'); await kernelClearCookies(acc.id); } catch { /* ignore */ }
                     setAccountStatus(acc.id, 'login_required');
-                    broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: `该账号已被「${dup.displayName}」关联,一个真实账号只能关联一个矩阵号` });
-                    return writeJSON(res, 200, { ok: true, loggedIn: false, duplicate: true });
+                    const dupMsg = `该账号已被「${dup.displayName}」关联,一个真实账号只能关联一个矩阵号`;
+                    broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', error: dupMsg });
+                    // error 同时带在 HTTP 响应里:渲染层直接显示,不再被显示成误导性的「未检测到登录」。
+                    return writeJSON(res, 200, { ok: true, loggedIn: false, duplicate: true, error: dupMsg });
                   }
                   setAccountStatus(acc.id, 'idle');
                   try { setAccountIdentity(acc.id, { nickname: ident.nickname, displayId: ident.displayId, avatar: ident.avatar, boundUid: ident.uid }); } catch { /* ignore */ }
@@ -1650,17 +1671,24 @@ const server = http.createServer(async (req, res) => {
           case 'matrix:disconnectAccount': {
             // 断开关联:清登录 cookie + 清身份,状态回「需关联」;保留账号配置(赛道/关键词/人设/代理/指纹)。
             try {
-              const { getAccount, setAccountStatus, clearAccountIdentity, accountBadgeLabel } = await import('./libs/matrix/accountManager');
-              const { launchKernel, kernelClearCookies, closeKernel } = await import('./libs/matrix/kernelPool');
+              const { getAccount, setAccountStatus, clearAccountIdentity, markManualDisconnect, accountBadgeLabel } = await import('./libs/matrix/accountManager');
+              const { launchKernel, kernelClearCookies, closeKernel, isAccountBusy } = await import('./libs/matrix/kernelPool');
               const a = args[0] as any;
               const acc = getAccount(a?.accountId);
               if (!acc) return writeJSON(res, 200, { ok: false, error: 'account_not_found' });
+              // 忙碌预检:任务占着锁时 launchKernel 会无限期排队(UI 看着像卡死)→ 明确拒绝。
+              if (isAccountBusy(acc.id)) return writeJSON(res, 200, { ok: false, error: '该账号正在执行任务,请等任务结束后再断开' });
+              let launched = false;
               try {
                 await launchKernel({ accountId: acc.id, kernelPath: a?.kernelPath, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy, label: accountBadgeLabel(acc) });
+                launched = true;
                 await kernelClearCookies(acc.id);
               } catch { /* 内核拉不起也要把本地状态清掉 */ }
-              try { closeKernel(acc.id); } catch { /* ignore */ } // 引用计数 -1(别的流程用着不会真关)
+              // launch 失败时 kernelPool 已回退计数/锁,不能再 closeKernel(会错关/错放别的流程)。
+              if (launched) { try { closeKernel(acc.id); } catch { /* ignore */ } } // 引用计数 -1(别的流程用着不会真关)
               setAccountStatus(acc.id, 'login_required');
+              // 标「主动断开」:与意外过期区分,keepAlive 不再对它每 12h 开窗复验(cookie 已清、永远验不过)。
+              markManualDisconnect(acc.id);
               clearAccountIdentity(acc.id);
               broadcastSSE('matrix:account', { id: acc.id, status: 'login_required', nickname: null, displayId: null, avatar: null });
               return writeJSON(res, 200, { ok: true });

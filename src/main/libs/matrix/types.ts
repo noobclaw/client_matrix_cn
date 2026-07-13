@@ -44,6 +44,9 @@ export interface MatrixAccount {
   group?: string;                  // 赛道/分组
   persona?: string;                // 人设(喂评论 AI 口吻;点赞/关注用不到)
   status: AccountStatus;
+  // 用户主动「断开连接」标记(与意外过期区分):断开也是 login_required,但 keepAlive 不对它做
+  // 误标复验(cookie 已清、永远验不过,复验只会每 12h 开窗白闪)。重新连上(状态翻 idle)即自动清除。
+  manualDisconnect?: boolean;
   userDataDir: string;             // 持久 profile 目录(登录态长期粘住)
   fingerprint: Fingerprint;
   proxy?: Proxy;

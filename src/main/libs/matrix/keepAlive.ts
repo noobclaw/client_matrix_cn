@@ -49,13 +49,14 @@ export async function runKeepAliveSweep(): Promise<void> {
         // login_required → 每轮都复验(误标自愈)。runner 预检单次误判(慢代理/导航失败/CDP 抖动)
         // 标红后,原来没有任何机制再查一遍 → 好号永久红(用户实测「好多号显示过期、点开却登录着」)。
         // 复验成功走 markAccountAlive → login_required 翻回 idle;真过期的复验仍失败,保持红,无副作用。
-        || a.status === 'login_required'
+        // ⚠️ 用户【主动断开】的号除外(manualDisconnect):cookie 已清、永远验不过,复验只会每 12h 白开窗闪屏。
+        || (a.status === 'login_required' && !a.manualDisconnect)
       ),
     );
     for (const acc of due) {
       // 串行期间状态/占用可能变 → 临用前再确认一次。
       const cur = getAccount(acc.id);
-      if (!cur || (cur.status !== 'idle' && cur.status !== 'login_required') || getSession(acc.id)) continue;
+      if (!cur || (cur.status !== 'idle' && cur.status !== 'login_required') || cur.manualDisconnect || getSession(acc.id)) continue;
       await keepAliveOne(acc.id);
       await sleep(8000 + Math.floor(Math.random() * 7000)); // 抖动 8~15s,别形成机器人式规律
     }
@@ -95,11 +96,13 @@ async function keepAliveOne(accountId: string): Promise<void> {
     // 仍未登录才标 login_required —— 宁可这轮漏标(保持 idle,下轮再查),绝不误杀登录着的好号。
     if (!ok) {
       try { closeKernel(acc.id); } catch { /* ignore */ }
+      launched = false; // 已关;下面重开若失败(kernelPool 已回退计数/锁),finally 不能再 closeKernel(会错放别的流程)
       try {
         await launchKernel({
           accountId: acc.id, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir,
           fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc),
         });
+        launched = true;
         if (home) { try { await kernelNavigate(acc.id, home); } catch { /* ignore */ } }
         await sleep(6000);
         try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = true; }
