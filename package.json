@@ -6,7 +6,7 @@
     "email": "support@noobclaw.com"
   },
   "license": "MIT",
-  "version": "3.4.2",
+  "version": "3.4.3",
   "main": "dist-electron/main.js",
   "engines": {
     "node": ">=24 <25"
