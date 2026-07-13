@@ -357,8 +357,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {i18nService.t('scheduledTasks')}
               </button>
 
-              {/* web3连接 — 国内版隐藏(HIDE_WEB3) */}
-              {!HIDE_WEB3 && (
+              {/* web3连接 — 国内版保留入口但改名「IM连接」,页面只展示 IM 机器人组(见 Web3View 的 HIDE_WEB3 分支) */}
               <button
                 type="button"
                 onClick={() => { setIsSearchOpen(false); onShowMcp(); }}
@@ -369,9 +368,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 }`}
               >
                 <span className="text-sm">{'🌐'}</span>
-                {i18nService.t('mcpServers')}
+                {HIDE_WEB3 ? 'IM连接' : i18nService.t('mcpServers')}
               </button>
-              )}
 
               {/* 行业热点 — 国内版隐藏(HIDE_WEB3) */}
               {!HIDE_WEB3 && (

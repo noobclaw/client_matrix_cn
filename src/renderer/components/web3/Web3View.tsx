@@ -13,6 +13,7 @@ import { setFeishuConfig, setTelegramConfig, setDingTalkConfig, clearError } fro
 import type { IMConnectivityTestResult, IMGatewayConfig } from '../../types/im';
 import { getBackendApiUrl } from '../../services/endpoints';
 import { i18nService } from '../../services/i18n';
+import { HIDE_WEB3 } from '../../buildFlags';
 import WindowTitleBar from '../window/WindowTitleBar';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
@@ -29,6 +30,8 @@ type ModalPlatform = 'telegram' | 'feishu' | 'lark' | 'dingtalk' | null;
 type TabKey = 'im' | 'news' | 'jobs' | 'exchange';
 
 const getTabLabels = (): { key: TabKey; label: string }[] => {
+  // 国内版:页面改名「IM连接」,只展示 IM 机器人组(社媒KOL/Web3招聘/交易所是 web3 内容,藏)。
+  if (HIDE_WEB3) return [{ key: 'im', label: i18nService.t('web3TabIM') }];
   return [
     { key: 'im', label: i18nService.t('web3TabIM') },
     { key: 'news', label: i18nService.t('web3TabKOL') },
@@ -324,12 +327,13 @@ export const Web3View: React.FC<Web3ViewProps> = ({ isSidebarCollapsed, onToggle
               {updateBadge}
             </div>
           )}
-          <h1 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('web3Connect')}</h1>
+          <h1 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">{HIDE_WEB3 ? 'IM连接' : i18nService.t('web3Connect')}</h1>
         </div>
         <WindowTitleBar inline />
       </div>
 
-      {/* Tab Bar */}
+      {/* Tab Bar(国内版只剩 IM 一个 tab 时不渲染,避免孤零零一个 pill) */}
+      {getTabLabels().length > 1 && (
       <div className="flex gap-1 p-1 rounded-xl dark:bg-claude-darkSurface/50 bg-gray-100 mx-6 mt-4">
         {getTabLabels().map(tab => (
           <button key={tab.key} onClick={() => setActiveTab(tab.key)}
@@ -342,6 +346,7 @@ export const Web3View: React.FC<Web3ViewProps> = ({ isSidebarCollapsed, onToggle
           </button>
         ))}
       </div>
+      )}
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-6">
@@ -362,7 +367,7 @@ export const Web3View: React.FC<Web3ViewProps> = ({ isSidebarCollapsed, onToggle
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5">{i18nService.t('web3TelegramDesc')}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{HIDE_WEB3 ? '全球流行的即时通讯软件' : i18nService.t('web3TelegramDesc')}</p>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <Toggle
