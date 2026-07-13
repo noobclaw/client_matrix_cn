@@ -403,11 +403,21 @@ async function getPage(accountId: string): Promise<KernelSession> {
   return p;
 }
 
+// Chromium 109+ 的 /json/new 只认 PUT:GET 会返回纯文本「Using unsafe HTTP verb GET to invoke /json/new…」
+//   → .json() 抛 "Unexpected token 'U'" 一路传到 UI「读取失败」(小红书刷新信息真机踩过)。
+//   老内核不校验 verb,PUT 同样可用;保险起见解析失败再回退一次 GET。
+async function devtoolsNewTab(debugPort: number): Promise<any> {
+  const r = await fetch(`http://127.0.0.1:${debugPort}/json/new`, { method: 'PUT' });
+  const t = await r.text();
+  try { return JSON.parse(t); } catch { /* 极老内核不认 PUT → 回退 GET */ }
+  return await (await fetch(`http://127.0.0.1:${debugPort}/json/new`)).json();
+}
+
 async function doGetPage(s: KernelSession): Promise<KernelSession> {
   const list: any[] = await (await fetch(`http://127.0.0.1:${s.debugPort}/json/list`)).json();
   let target = list.find((t) => t.type === 'page');
   if (!target) {
-    target = await (await fetch(`http://127.0.0.1:${s.debugPort}/json/new`)).json();
+    target = await devtoolsNewTab(s.debugPort);
   }
   s.pageTargetId = target.id;
 

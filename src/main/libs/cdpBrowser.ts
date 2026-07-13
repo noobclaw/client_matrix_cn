@@ -285,9 +285,16 @@ async function getOrCreatePage(): Promise<CDPPage> {
   const pageTarget = targets.find(t => t.type === 'page');
 
   if (!pageTarget) {
-    // Create a new tab
-    const newResponse = await fetch(`http://127.0.0.1:${browserSession.debugPort}/json/new`);
-    const newTarget = await newResponse.json();
+    // Create a new tab. Chromium 109+ only accepts PUT for /json/new (GET returns plain text
+    // "Using unsafe HTTP verb GET..." which breaks .json()); older builds accept PUT too.
+    const newResponse = await fetch(`http://127.0.0.1:${browserSession.debugPort}/json/new`, { method: 'PUT' });
+    let newTarget: any;
+    const body = await newResponse.text();
+    try { newTarget = JSON.parse(body); }
+    catch {
+      const legacy = await fetch(`http://127.0.0.1:${browserSession.debugPort}/json/new`);
+      newTarget = await legacy.json();
+    }
     const ws = await connectToTarget(newTarget.id);
     await sendCDPCommand(ws, 'Page.enable');
     const page: CDPPage = {
