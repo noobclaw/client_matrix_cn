@@ -610,7 +610,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
             : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
           return <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border ${color}`}>{label}</span>;
         })()}
-        <span className="font-medium dark:text-white truncate">{task.title}</span>
+        <span className="font-medium dark:text-white truncate">{localizeTaskTitle(task.title, isZh)}</span>
         <IdTag kind="task" id={task.id} isZh={isZh} />
         {queueBadge}
       </div>
@@ -805,7 +805,7 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <StatusPill isZh={isZh} status={run.status} />
           <HeadBadges isZh={isZh} input={run.input} />
-          <span className="font-medium dark:text-white truncate">{run.title}</span>
+          <span className="font-medium dark:text-white truncate">{localizeTaskTitle(run.title, isZh)}</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
           <span>⏱️ {fmtRecordTime(run.startedAt, isZh)}</span>
@@ -910,6 +910,22 @@ function templateDataPreview(dataText: string | undefined, isZh: boolean): { cou
   const head = lines.slice(0, 3).join(' · ');
   const tail = lines.length > 3 ? (isZh ? ` · 等 ${lines.length} 条` : ` · +${lines.length - 3} more`) : '';
   return { count: lines.length, preview: head + tail };
+}
+
+// 视频任务的默认名(建任务时按【当时】界面语言写死进 task.title:见各 buildTitle)。
+// 存量任务用中文建的,切到英文界面后 task.title 仍是中文 → 展示层把【已知默认名】按当前界面语言映射回去。
+// 用户自定义标题不在表内 → 原样显示(只精确匹配这几个默认串,几乎不会误伤)。
+const VIDEO_DEFAULT_TITLES: { zh: string; en: string }[] = [
+  { zh: '热搜成片', en: 'Hotspot Video' },
+  { zh: '爆帖成片', en: 'Viral Thread Video' },
+  { zh: '模板速生', en: 'Template' },
+];
+function localizeTaskTitle(title: string | undefined, isZh: boolean): string {
+  const t = (title || '').trim();
+  for (const m of VIDEO_DEFAULT_TITLES) {
+    if (t === m.zh || t === m.en) return isZh ? m.zh : m.en;
+  }
+  return title || '';
 }
 
 /** 模板速生:版式 id → emoji + 中英名。 */
@@ -1874,7 +1890,7 @@ const VideoRunRecordDetail: React.FC<{
         <HeadBadges isZh={isZh} size="md" input={run.input} />
         <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">#{shortId(run.id)}</span>
       </div>
-      <h2 className="text-lg font-bold dark:text-white mb-1">🎬 {run.title}</h2>
+      <h2 className="text-lg font-bold dark:text-white mb-1">🎬 {localizeTaskTitle(run.title, isZh)}</h2>
       <div className="text-xs text-gray-400 mb-3">
         {isZh ? '运行于 ' : 'Ran at '}{new Date(run.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
         {run.finishedAt && <> · {isZh ? '耗时' : 'took'} {Math.max(1, Math.round((run.finishedAt - run.startedAt) / 1000))}s</>}
