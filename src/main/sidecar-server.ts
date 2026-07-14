@@ -1854,7 +1854,7 @@ const server = http.createServer(async (req, res) => {
           case 'matrix:updateAccountMeta': {
             const { updateAccountMeta } = await import('./libs/matrix/accountManager');
             const a = args[0] as any;
-            updateAccountMeta(a?.id, { displayName: a?.displayName, group: a?.group, persona: a?.persona, keywords: a?.keywords, track: a?.track });
+            updateAccountMeta(a?.id, { displayName: a?.displayName, group: a?.group, persona: a?.persona, keywords: a?.keywords, track: a?.track, contentLang: a?.contentLang });
             return writeJSON(res, 200, { ok: true });
           }
           case 'matrix:kernelStatus': {

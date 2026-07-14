@@ -67,6 +67,9 @@ export interface MatrixAccount {
   displayId?: string;
   avatar?: string;
   boundUid?: string;
+  // 内容语言:赛道名/人设/关键词按 zh 还是 en 预填与显示(建号时按界面语言默认,可切换)。
+  // group 始终存中文规范名(供 trackIdFromGroup 匹配),此字段仅决定展示/预填语言。存量号无此字段视为 'zh'。
+  contentLang?: 'zh' | 'en';
   // 登录场景(仅快手用):'main'=主站 www.kuaishou.com(涨粉互动+读身份)、'creator'=创作者中心
   // cp.kuaishou.com(视频发布)。快手主站与创作端登录互不覆盖(实测),故拆成两类账号、各自登录。
   // 建号时确定、之后不可改。其它平台不设(主站登录即覆盖创作端 / 同域)。

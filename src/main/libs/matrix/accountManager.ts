@@ -107,6 +107,7 @@ export function createAccount(args: {
   keywords?: string[];
   track?: string;
   persona?: string;
+  contentLang?: 'zh' | 'en';          // 内容语言(赛道/人设/关键词的语言),默认由客户端按界面语言给
   kernelVersion?: string;
   loginScope?: 'main' | 'creator';   // 仅快手:主站 / 创作者中心
 }): MatrixAccount {
@@ -133,6 +134,7 @@ export function createAccount(args: {
     proxy: args.proxy,
     keywords: Array.isArray(args.keywords) ? args.keywords.filter(Boolean) : [],
     track: args.track || `${args.platform}_default`,
+    contentLang: args.contentLang === 'en' ? 'en' : 'zh',
     kernelVersion: args.kernelVersion || undefined,
     loginScope: args.platform === 'kuaishou' ? (args.loginScope || 'main') : undefined,
   };
@@ -292,7 +294,7 @@ export function effectiveKeywords(acc: { keywords?: string[]; derivedKeywords?: 
 }
 
 /** 编辑账号元信息(备注名/赛道分组/人设/关键词)。只更新传入的字段。 */
-export function updateAccountMeta(id: string, patch: { displayName?: string; group?: string; persona?: string; keywords?: string[]; track?: string }): void {
+export function updateAccountMeta(id: string, patch: { displayName?: string; group?: string; persona?: string; keywords?: string[]; track?: string; contentLang?: 'zh' | 'en' }): void {
   const a = getAccount(id);
   if (!a) return;
   if (patch.displayName !== undefined) a.displayName = patch.displayName;
@@ -300,6 +302,7 @@ export function updateAccountMeta(id: string, patch: { displayName?: string; gro
   if (patch.persona !== undefined) a.persona = patch.persona;
   if (patch.keywords !== undefined) a.keywords = (patch.keywords || []).filter(Boolean);
   if (patch.track !== undefined) a.track = patch.track;
+  if (patch.contentLang !== undefined) a.contentLang = patch.contentLang === 'en' ? 'en' : 'zh';
   persist();
 }
 
