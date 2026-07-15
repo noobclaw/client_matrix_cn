@@ -19,6 +19,9 @@ export interface MatrixRunRecord {
   taskId: string;
   taskName: string;
   platform: string;
+  // 任务类型(engage/reply_fan/video_download/image_text/viral_rewrite/x_post/binance_post/…)。
+  // 运行记录显示端按此还原正确的场景名(缺=老记录→回退 engage)。
+  type?: string;
   startedAt: number;
   finishedAt: number;
   success: number;

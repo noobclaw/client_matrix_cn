@@ -451,6 +451,27 @@ function mxRunToTaskRun(r: any): ScenarioTaskRun {
 }
 
 /** 矩阵运行记录 → 旧「富运行记录」(RunHistoryPage / RunRecordDetailPage 用)。 */
+// 运行记录按【任务类型 + 平台】还原 scenario_snapshot。原来写死 engage「互动涨粉」→ 回复粉丝/图文/下载/
+//   仿写/发推/发帖等所有非 engage 任务的运行记录都错显成「互动涨粉」(用户实测抖音回复粉丝跑完看不到自己的记录)。
+//   id/名字/图标对齐 listScenarios 的 synth 快照;老记录无 type → default 回退 engage(与旧行为一致,无害)。
+function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id: string; name_zh: string; name_en: string; icon: string; platform: string } {
+  const p = platform || 'douyin';
+  const mk = (id: string, name_zh: string, icon: string) => ({ id, name_zh, name_en: '', icon, platform: p });
+  switch (type) {
+    case 'reply_fan':      return mk(`${p}_reply_fans_comment`, MATRIX_REPLY_META[p]?.name_zh || '自动回复粉丝', MATRIX_REPLY_META[p]?.icon || '💌');
+    case 'video_download': return mk(`${p}_video_download`, MATRIX_DOWNLOAD_META[p]?.name_zh || '视频下载', MATRIX_DOWNLOAD_META[p]?.icon || '⬇️');
+    case 'image_text':     return mk(`${p}_image_text`, MATRIX_IMAGETEXT_META[p]?.name_zh || '图文创作', MATRIX_IMAGETEXT_META[p]?.icon || '📝');
+    case 'viral_rewrite':  return mk(`${p}_viral_production_career`, MATRIX_VIRAL_META[p]?.name_zh || '爆款仿写', MATRIX_VIRAL_META[p]?.icon || '🔥');
+    case 'x_post':         return mk(`${p}_post`, MATRIX_TWEET_META[p]?.name_zh || '自动发推', MATRIX_TWEET_META[p]?.icon || '🐦');
+    case 'binance_post':   return mk(`${p}_post`, MATRIX_BINANCE_META[p]?.name_zh || '币安广场发帖', MATRIX_BINANCE_META[p]?.icon || '📊');
+    case 'facebook_post':  return mk(`${p}_post`, 'Facebook 自动发帖', '📘');
+    case 'reddit_post':    return mk(`${p}_post`, 'Reddit 自动发帖', '👽');
+    case 'instagram_post': return mk(`${p}_post`, 'Instagram 自动发帖', '📸');
+    case 'binance_repost': return mk(MATRIX_REPOST_SCENARIO_ID, '币安广场 批量搬运', '♻️');
+    default:               return mk(engageScenarioIdForPlatform(p), MATRIX_ENGAGE_META[p]?.name_zh || '互动涨粉', MATRIX_ENGAGE_META[p]?.icon || '🤝');
+  }
+}
+
 function mxRunToRecord(r: any): any {
   const t = r.totals || {};
   const status = r.failed > 0 && r.success === 0 ? 'error' : r.failed > 0 ? 'partial' : 'done';
@@ -465,13 +486,13 @@ function mxRunToRecord(r: any): any {
     status: it.state === 'success' ? 'done' : it.state === 'failed' ? 'error' : 'running',
     message: `[${it.displayName || it.accountId}] ${it.state}${it.counts ? ` 赞${it.counts.like || 0}/关${it.counts.follow || 0}/评${it.counts.comment || 0}` : ''}${it.reason ? ` (${it.reason})` : ''}`,
   }));
-  // 运行记录也按真实 platform 还原 scenario_snapshot(原来写死抖音 → 运行记录 tab 同样错位)。
+  // 运行记录按真实 platform + 任务类型还原 scenario_snapshot(原来只按 platform 写死 engage → 回复粉丝等非
+  //   engage 任务的记录全错显成「互动涨粉」)。
   const rPlatform = r.platform || 'douyin';
-  const rMeta = MATRIX_ENGAGE_META[rPlatform];
   return {
     id: r.id,
     task_id: r.taskId,
-    scenario_snapshot: { id: engageScenarioIdForPlatform(rPlatform), name_zh: rMeta?.name_zh || '互动涨粉', name_en: '', icon: rMeta?.icon || '🤝', platform: rPlatform },
+    scenario_snapshot: mxRunScenarioSnapshot(r.type, rPlatform),
     task_snapshot: { track: 'matrix', name: r.taskName, account_ids: items.map((it) => it.accountId) },
     started_at: r.startedAt,
     finished_at: r.finishedAt,
