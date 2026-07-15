@@ -244,7 +244,6 @@ const ActivitiesTab: React.FC<{
 
       {popup && (
         <RewardPopup
-          isZh={isZh}
           activity={popup.activity}
           reward={popup.reward}
           onClose={() => {
@@ -348,26 +347,21 @@ const ActivityCard: React.FC<ActivityCardProps> = ({
 
 // ── Cool Reward Popup ─────────────────────────────────────────────────
 
-const ACTIVITY_LABELS_ZH: Record<string, { title: string; emoji: string }> = {
+// ⚠️ 函数【每次调用求值】i18n:原来写成模块级 const(且 _ZH/_EN 两份内容还完全一样),加载时按默认中文冻结,
+//   切英文/小语种后弹层标题(签到成功 / 小红书任务完成 等)仍是中文(用户实测)。i18n.t 已按当前语言返回,无需再分 ZH/EN。
+const activityLabels = (): Record<string, { title: string; emoji: string }> => ({
   checkin: { title: i18nService.t('pvPopupCheckin'), emoji: '📅' },
   xhs_rewrite: { title: i18nService.t('pvPopupXhs'), emoji: '📝' },
   og_brawl: { title: i18nService.t('pvPopupBrawl'), emoji: '⚔️' },
   personality_test: { title: i18nService.t('pvPopupPersona'), emoji: '🧠' },
-};
-const ACTIVITY_LABELS_EN: Record<string, { title: string; emoji: string }> = {
-  checkin: { title: i18nService.t('pvPopupCheckin'), emoji: '📅' },
-  xhs_rewrite: { title: i18nService.t('pvPopupXhs'), emoji: '📝' },
-  og_brawl: { title: i18nService.t('pvPopupBrawl'), emoji: '⚔️' },
-  personality_test: { title: i18nService.t('pvPopupPersona'), emoji: '🧠' },
-};
+});
 
 const RewardPopup: React.FC<{
-  isZh: boolean;
   activity: string;
   reward: { noob: number; points: number };
   onClose: () => void;
-}> = ({ isZh, activity, reward, onClose }) => {
-  const labels = isZh ? ACTIVITY_LABELS_ZH : ACTIVITY_LABELS_EN;
+}> = ({ activity, reward, onClose }) => {
+  const labels = activityLabels();
   const info = labels[activity] || { title: activity, emoji: '🎉' };
   // 只允许通过"太棒了"按钮关闭，遮罩点击和 × 按钮都去掉，
   // 这样才能保证"点关闭就跳转到对应内容"的流程始终触发。

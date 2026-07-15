@@ -31,13 +31,14 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON'; size?: number }> = ({ chain, 
   );
 };
 
-const PERIODS: Array<{ key: Period; label: string }> = [
+// ⚠️ 用函数【每次调用求值】i18n —— 模块级 const 会在加载时(语言默认中文)冻结,切英文/小语种后周期文案仍中文。
+const periods = (): Array<{ key: Period; label: string }> => [
   { key: 'month', label: i18nService.t('mpPeriodMonth') },
   { key: 'quarter', label: i18nService.t('mpPeriodQuarter') },
   { key: 'half', label: i18nService.t('mpPeriodHalf') },
   { key: 'year', label: i18nService.t('mpPeriodYear') },
 ];
-const PERIOD_LABEL: Record<string, string> = { month: i18nService.t('mpUnitMonth'), quarter: i18nService.t('mpUnitQuarter'), half: i18nService.t('mpUnitHalf'), year: i18nService.t('mpUnitYear') };
+const periodLabel = (k: string): string => (({ month: i18nService.t('mpUnitMonth'), quarter: i18nService.t('mpUnitQuarter'), half: i18nService.t('mpUnitHalf'), year: i18nService.t('mpUnitYear') } as Record<string, string>)[k] || '');
 const PERIOD_MONTHS: Record<Period, number> = { month: 1, quarter: 3, half: 6, year: 12 };
 const RECOMMENDED = 'pro';
 // 档位主题色:免费灰 / 基础蓝银 / 进阶金 / 旗舰紫。
@@ -109,7 +110,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
       setRedeemInput('');
       setRedeemMsg({
         text: d.product_type === 'subscription'
-          ? i18nService.t('mpRedeemSubOk').replace('{period}', PERIOD_LABEL[d.plan_period || ''] || '')
+          ? i18nService.t('mpRedeemSubOk').replace('{period}', periodLabel(d.plan_period || ''))
           : i18nService.t('mpRedeemCreditsOk').replace('{n}', Number(d.credits ?? 0).toLocaleString()),
         color: '#22c55e',
       });
@@ -140,7 +141,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
         </div>
         )}
         <div className="inline-flex rounded-lg overflow-hidden border dark:border-claude-darkBorder border-claude-border">
-          {PERIODS.map(p => (
+          {periods().map(p => (
             <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>
           ))}
         </div>
@@ -182,7 +183,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
               <div className="mt-3 flex items-end gap-1.5 flex-wrap">
                 <span className="text-2xl font-extrabold dark:text-claude-darkText text-claude-text">{sym}{finalP}</span>
                 {hasDiscount && <span className="text-xs line-through dark:text-claude-darkTextSecondary text-claude-textSecondary">{sym}{Math.round(origP)}</span>}
-                {!isFree && <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">/{PERIOD_LABEL[period]}</span>}
+                {!isFree && <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">/{periodLabel(period)}</span>}
               </div>
               <ul className="mt-3 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary flex-1">
                 <li>· {isFree ? i18nService.t('mpFeatSignupGift') : i18nService.t('mpFeatMonthlyCredits').replace('{n}', fmtCredits(plan.monthly_credits))}</li>

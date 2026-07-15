@@ -67,8 +67,10 @@ const KS_SCOPES: { key: 'main' | 'creator'; label: string }[] = [
   { key: 'main', label: i18nService.t('mvKsMain') },
 ];
 const STATUS_DOT: Record<AccountStatus, string> = { idle: 'bg-green-500', running: 'bg-blue-500', login_required: 'bg-amber-500', limited: 'bg-gray-400', banned: 'bg-red-500' };
-const STATUS_LABEL: Record<AccountStatus, string> = { idle: i18nService.t('mvStIdle'), running: i18nService.t('mvStRunning'), login_required: i18nService.t('mvStNotConnected'), limited: i18nService.t('mvStLimited'), banned: i18nService.t('mvStBanned') };
-const FREQ_LABEL: Record<string, string> = { once: i18nService.t('mvFreqOnce'), '30min': i18nService.t('mvFreq30min'), '1h': i18nService.t('mvFreq1h'), '3h': i18nService.t('mvFreq3h'), '6h': i18nService.t('mvFreq6h'), daily_random: i18nService.t('mvFreqDailyRandom') };
+// ⚠️ 必须【每次调用时】求值 i18nService.t —— 不能写成模块级 const 对象:那会在模块加载时(语言可能还没
+//   切到用户语言,默认中文)求值一次并永久冻结,导致切英文/小语种后状态/频率文案仍是中文(用户实测)。
+const statusLabel = (s: AccountStatus): string => (({ idle: i18nService.t('mvStIdle'), running: i18nService.t('mvStRunning'), login_required: i18nService.t('mvStNotConnected'), limited: i18nService.t('mvStLimited'), banned: i18nService.t('mvStBanned') } as Record<AccountStatus, string>)[s] || '');
+const freqLabel = (f: string): string => (({ once: i18nService.t('mvFreqOnce'), '30min': i18nService.t('mvFreq30min'), '1h': i18nService.t('mvFreq1h'), '3h': i18nService.t('mvFreq3h'), '6h': i18nService.t('mvFreq6h'), daily_random: i18nService.t('mvFreqDailyRandom') } as Record<string, string>)[f] || f);
 
 // 赛道预设(下拉可选):选了自动填关键词 + 人设建议(用户仍可在下面微调)。
 // 赛道预设库【服务端下发,内置兜底】。配账号时选赛道→自动带出人设+关键词(可改),任务跟号走。
@@ -795,7 +797,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     : a.status === 'running' ? 'bg-blue-500'
                     : a.status === 'banned' ? 'bg-red-500'
                     : 'bg-gray-400';
-                  const stLabel = expired ? i18nService.t('mvStExpired') : STATUS_LABEL[a.status];
+                  const stLabel = expired ? i18nService.t('mvStExpired') : statusLabel(a.status);
                   const stDot = expired ? 'bg-red-500' : STATUS_DOT[a.status];
                   const isSuspended = suspendedIds.has(a.id);
                   return (
@@ -986,8 +988,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       </div>
                       <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">👥 {i18nService.t('mvAccountCountLabel').replace('{n}', String(t.accountIds.length))} · {isReply ? i18nService.t('mvReplyOwnFans') : i18nService.t('mvUseOwnKeywords')}</div>
                       {isReply
-                        ? <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 🎣 {t.funnel?.funnel_phrase ? i18nService.t('mvFunnelTail').replace('{n}', String(t.funnel.funnel_probability || 0)) : i18nService.t('mvPureAiReply')}</div>
-                        : <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {FREQ_LABEL[t.frequency] || t.frequency} · 👍 {t.quota.daily_like_min}-{t.quota.daily_like_max} · ➕ {t.quota.daily_follow_min}-{t.quota.daily_follow_max} · 💬 {t.quota.daily_comment_min}-{t.quota.daily_comment_max} / {i18nService.t('mvPerRun')}</div>}
+                        ? <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {freqLabel(t.frequency)} · 🎣 {t.funnel?.funnel_phrase ? i18nService.t('mvFunnelTail').replace('{n}', String(t.funnel.funnel_probability || 0)) : i18nService.t('mvPureAiReply')}</div>
+                        : <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {freqLabel(t.frequency)} · 👍 {t.quota.daily_like_min}-{t.quota.daily_like_max} · ➕ {t.quota.daily_follow_min}-{t.quota.daily_follow_max} · 💬 {t.quota.daily_comment_min}-{t.quota.daily_comment_max} / {i18nService.t('mvPerRun')}</div>}
                       <div className="text-[11px] text-gray-400 mt-1">{t.lastRunAt ? i18nService.t('mvLastRun').replace('{time}', fmtTime(t.lastRunAt)) : i18nService.t('mvNotRunYet')}</div>
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         {isRunning
@@ -1020,7 +1022,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5 mb-4">
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('mvTaskSummary')}</div>
-              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvFrequency')}</span><span className="text-gray-800 dark:text-gray-200">{FREQ_LABEL[selectedTask.frequency] || selectedTask.frequency}{selectedTask.frequency !== 'once' && selectedTask.enabled ? i18nService.t('mvNextRunSuffix').replace('{time}', fmtTime(selectedTask.nextPlannedRunAt)) : ''}</span></div>
+              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvFrequency')}</span><span className="text-gray-800 dark:text-gray-200">{freqLabel(selectedTask.frequency)}{selectedTask.frequency !== 'once' && selectedTask.enabled ? i18nService.t('mvNextRunSuffix').replace('{time}', fmtTime(selectedTask.nextPlannedRunAt)) : ''}</span></div>
               {selectedIsReply
                 ? <>
                     <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvFunnelPhrase')}</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.funnel?.funnel_phrase ? `"${selectedTask.funnel.funnel_phrase.slice(0, 40)}${selectedTask.funnel.funnel_phrase.length > 40 ? '...' : ''}" · ${selectedTask.funnel.funnel_probability || 0}%` : i18nService.t('mvFunnelEmpty')}</span></div>

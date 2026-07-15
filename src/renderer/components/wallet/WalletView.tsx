@@ -824,8 +824,12 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 // 并隐藏无意义的积分数(订阅订单 tokens_purchased 恒为 0)。总价仍走上面的金额显示(BNB/USDT/¥)。
                 const isSub = order.product_type === 'subscription';
                 const subPeriodLabel: Record<string, string> = { month: i18nService.t('wvPeriodMonth'), quarter: i18nService.t('wvPeriodQuarter'), half: i18nService.t('wvPeriodHalf'), year: i18nService.t('wvPeriodYear') };
+                // plan_name 后端 join 下发的是中文档名(基础版/进阶版…)→ 按当前界面语言映射(同 subPlanBadge 的 K 表);映射不到才原样。
+                const planK: Record<string, string> = { free: 'planTierFree', basic: 'planTierBasic', pro: 'planTierPro', max: 'planTierMax', '免费版': 'planTierFree', '基础版': 'planTierBasic', '进阶版': 'planTierPro', '旗舰版': 'planTierMax' };
+                const planRaw = order.plan_name || order.plan_code || '';
+                const planNm = planK[planRaw] ? i18nService.t(planK[planRaw]) : (planRaw || i18nService.t('wvMembership'));
                 const subLabel = isSub
-                  ? `${order.plan_name || order.plan_code || '会员'}${order.plan_period ? ' · ' + (subPeriodLabel[order.plan_period] || order.plan_period) : ''}`
+                  ? `${planNm}${order.plan_period ? ' · ' + (subPeriodLabel[order.plan_period] || order.plan_period) : ''}`
                   : '';
 
                 return (
