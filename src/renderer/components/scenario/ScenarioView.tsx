@@ -38,6 +38,7 @@ import { VideoWorkflowsPage } from './video/VideoWorkflowsPage';
 import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
+import { HIDE_WEB3 } from '../../buildFlags';
 import MatrixTaskWizard, { type WizardAccount } from '../matrix/MatrixTaskWizard';
 import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
@@ -2150,8 +2151,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           active treatment. */}
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
-          {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。 */}
-          {(matrixMode ? MATRIX_TAB_ORDER.map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
+          {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。
+              国内版(HIDE_WEB3):隐藏「币安广场」(binance)tab —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录都不露 web3。 */}
+          {(matrixMode ? MATRIX_TAB_ORDER.filter((id) => !(HIDE_WEB3 && id === 'binance')).map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
             const active = currentPlatform === tab.id;
             // 矩阵号:对齐「我的矩阵账号」的简洁 pill 切换(纯文字 + violet 选中,rounded-full),
             // 顺序同账号页(MATRIX_TAB_ORDER 已与 PLATFORMS 一致)。非矩阵(旧视频版)保持原绿卡样式。
