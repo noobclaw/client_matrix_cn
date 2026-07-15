@@ -325,9 +325,10 @@ const IdTag: React.FC<{ kind: 'task' | 'record'; id: string; isZh: boolean }> = 
 
 /** 视频创作教程入口(对齐币安 MyTasksPage 的「涨粉教程」胶囊:系统浏览器打开 docs)。 */
 const VideoTutorialButton: React.FC<{ isZh: boolean }> = ({ isZh }) => {
+  // 文档结构已改版:旧 slug(shi-pin-chuang-zuo-jiao-cheng / english/video-creation)已 404 → 用新路径。
   const url = isZh
-    ? 'https://docs.noobclaw.com/zhong-wen-ban/shi-pin-chuang-zuo-jiao-cheng'
-    : 'https://docs.noobclaw.com/english/video-creation';
+    ? 'https://docs.noobclaw.com/zhong-wen-ban/kua-ping-tai-shi-pin-chuang-zuo'
+    : 'https://docs.noobclaw.com/english/video-maker';
   return (
     <button
       type="button"

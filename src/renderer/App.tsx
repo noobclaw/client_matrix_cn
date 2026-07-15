@@ -1219,7 +1219,7 @@ const App: React.FC = () => {
                 screen={'accounts'}
                 initialPlatform={matrixInitialPlatform}
                 onPlatformChange={setMatrixPlatform}
-                onNavigate={(s: string) => setMainView(s === 'newTask' ? 'matrixTaskNew' : s === 'tasks' ? 'matrixTasks' : s === 'runs' ? 'matrixRuns' : 'matrix')}
+                onNavigate={(s: string, platform?: string) => { if (platform) setMatrixPlatform(platform); setMainView(s === 'newTask' ? 'matrixTaskNew' : s === 'tasks' ? 'matrixTasks' : s === 'runs' ? 'matrixRuns' : 'matrix'); }}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onShowInvite={handleShowInvite}

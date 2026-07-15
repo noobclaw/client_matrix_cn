@@ -28,7 +28,8 @@ export interface HomeViewProps {
 }
 
 const OFFICIAL_SITE = 'https://noobclaw.com/cn/';
-const TUTORIAL_URL = 'https://docs.noobclaw.com/';
+// 文档首页跟界面语言走:中文→/zhong-wen-ban,其余→ /english(文档仅中英两版)。必须【调用时】求值,别冻结在加载时语言。
+const tutorialHome = (): string => (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? 'https://docs.noobclaw.com/zhong-wen-ban' : 'https://docs.noobclaw.com/english';
 const GITHUB_URL = 'https://github.com/noobclaw';
 
 const HomeView: React.FC<HomeViewProps> = ({
@@ -190,7 +191,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               </h2>
               <button
                 type="button"
-                onClick={() => openExternal(TUTORIAL_URL)}
+                onClick={() => openExternal(tutorialHome())}
                 className="text-xs font-medium text-claude-accent hover:underline inline-flex items-center gap-1"
               >
                 {i18nService.t('hvFullTutorial')}

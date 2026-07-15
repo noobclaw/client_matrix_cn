@@ -390,7 +390,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     await refreshAll();
     // 编辑(从详情页进的)→ refreshAll 已就地刷新当前详情数据,不跳走(否则被踢回列表还要重新点进去);
     // 新建 → 切到管理页看新任务。
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
 
   // ── 自动回复粉丝向导 ────────────────────────────────────────────────
@@ -454,7 +455,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixReplyPlatform(null);
     setMatrixReplyTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「视频无水印下载」向导(单账号):账号取主站 scope(同 replyAccountFilter,douyin 走主站登录态)。
   const openMatrixDownloadWizard = async (platform: string) => {
@@ -507,7 +509,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixDownloadPlatform(null);
     setMatrixDownloadTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「图文创作」向导(多账号):账号取主站 scope(同 replyAccountFilter,douyin 主站登录态即覆盖创作者中心)。
   const openMatrixImageTextWizard = async (platform: string) => {
@@ -577,7 +580,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixImageTextPlatform(null);
     setMatrixImageTextTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「自动发推」向导(多账号):账号取主站 scope(推特主站登录态,发推在 x.com 主站)。
   const openMatrixTweetWizard = async (platform: string) => {
@@ -639,7 +643,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixTweetPlatform(null);
     setMatrixTweetTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「币安广场自动发帖」向导(多账号):账号取主站 scope(币安主站登录态即覆盖币安广场)。
   const openMatrixBinanceWizard = async (platform: string) => {
@@ -696,7 +701,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixBinancePlatform(null);
     setMatrixBinanceTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // ── Facebook 自动发帖向导(复用 binancePostRunner + facebook_post 剧本) ──
   const openMatrixFacebookWizard = async (platform: string) => {
@@ -759,7 +765,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixFacebookPlatform(null);
     setMatrixFacebookTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // ── Reddit 自动发帖向导(复用 binancePostRunner + reddit_post 剧本) ──
   const openMatrixRedditWizard = async (platform: string) => {
@@ -822,7 +829,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixRedditPlatform(null);
     setMatrixRedditTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // ── Instagram 自动发帖向导(复用 binancePostRunner + instagram_post 剧本) ──
   const openMatrixInstagramWizard = async (platform: string) => {
@@ -885,7 +893,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixInstagramPlatform(null);
     setMatrixInstagramTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // ── 币安广场批量搬运向导:发布号取币安(replyAccountFilter),采集号取【全部账号】(按所选源平台过滤在 wizard 内做)。 ──
   const loadRepostAccounts = async (plat: string) => {
@@ -936,7 +945,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixRepostPlatform(null);
     setMatrixRepostTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「爆款批量仿写」向导(多账号):账号取主站 scope(同 replyAccountFilter,小红书主站登录态)。
   const openMatrixViralWizard = async (platform: string) => {
@@ -983,7 +993,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixViralPlatform(null);
     setMatrixViralTask(null);
     await refreshAll();
-    if (!wasEdit) onSwitchToManage?.(plat as any);
+    // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // Link-mode edit modal (separate from the keyword wizard — they capture
   // completely different inputs and users were confusing them)
@@ -2113,8 +2124,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             const isVideoTab = currentPlatform === 'video';
             const isZhDoc = i18nService.currentLanguage === 'zh';
             const tutorialUrl = isVideoTab
-              ? (isZhDoc ? 'https://docs.noobclaw.com/zhong-wen-ban/kua-ping-tai-shi-pin-chuang-zuo' : 'https://docs.noobclaw.com/english/video-creation')
-              : 'https://docs.noobclaw.com';
+              ? (isZhDoc ? 'https://docs.noobclaw.com/zhong-wen-ban/kua-ping-tai-shi-pin-chuang-zuo' : 'https://docs.noobclaw.com/english/video-maker')
+              : (isZhDoc ? 'https://docs.noobclaw.com/zhong-wen-ban' : 'https://docs.noobclaw.com/english');
             const tutorialLabel = isVideoTab
               ? i18nService.t('svVideoTutorial')
               : i18nService.t('svGrowthTutorial');

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';import { i18nService } from '../../services/i18n';
+import React, { useEffect, useState, useCallback, useRef } from 'react';import { i18nService } from '../../services/i18n';
 
 import { shortId } from '../../utils/shortId';
 import MatrixTaskWizard from './MatrixTaskWizard';
@@ -203,7 +203,7 @@ const DEFAULT_TRACK = '🍲 美食 · 探店做饭'; // 默认选中赛道(存 g
 const M = () => (window as any).electron?.matrix;
 const fmtTime = (ts?: number) => { if (!ts || ts >= Number.MAX_SAFE_INTEGER) return '—'; const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
-interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; initialPlatform?: string; onNavigate?: (s: string) => void; onPlatformChange?: (p: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void; onShowInvite?: () => void }
+interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; initialPlatform?: string; onNavigate?: (s: string, platform?: string) => void; onPlatformChange?: (p: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void; onShowInvite?: () => void }
 
 const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onNavigate, onPlatformChange }) => {
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
@@ -344,6 +344,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       // 主进程在账号 SSE 里带的账号级错误(如扫码后「该账号已被 XX 关联」的去重拒绝)必须让用户看到 ——
       // 原来只静默 reload,用户扫码明明成功、卡片却弹回「需关联」,零解释。
       if (p && typeof p === 'object' && p.error) setNotice('⚠️ ' + String(p.error));
+      // 扫码连接成功(该号翻 idle)→ 弹「连接成功 + 建任务」庆祝。只对【本次正在扫码】的号触发(scanningRef),
+      // 避免任务跑完等其它 idle 广播误弹。dup 拒绝会带 error 且 status 非 idle,不会命中。
+      else if (p && typeof p === 'object' && p.id && p.status === 'idle' && scanningRef.current.has(p.id)) {
+        const info = scanningRef.current.get(p.id)!;
+        scanningRef.current.delete(p.id);
+        setConnectedPopup(info);
+      }
     });
     return () => { if (typeof off === 'function') off(); };
   }, [reload]);
@@ -502,6 +509,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   };
   // 「连接账号」统一入口:点开先弹窗选连接方式(扫码 / 导入 cookie),再走各自流程。持有待连接的账号信息。
   const [connectChoice, setConnectChoice] = useState<{ accountId: string; plat: string; displayName: string; loginScope?: string } | null>(null);
+  // 连接成功庆祝弹窗:告知已连接 + 引导为该号建任务(点「创建任务」跳到该平台的新建矩阵任务 tab)。
+  const [connectedPopup, setConnectedPopup] = useState<{ platform: string; displayName: string } | null>(null);
+  // 正在【扫码连接】中的号(扫码是异步、成功走 SSE):记下 id→平台/名,SSE 里该号翻 idle 即弹成功庆祝。
+  const scanningRef = useRef<Map<string, { platform: string; displayName: string }>>(new Map());
   // 导入 cookie 登录:海外号(Google/Apple 登录)或已在其它浏览器登录过的号——不在指纹内核里跑 OAuth,注入已登录 cookie(行业标准)。
   const [cookieImport, setCookieImport] = useState<{ accountId: string; plat: string; displayName: string; loginScope?: string } | null>(null);
   const [cookieText, setCookieText] = useState('');
@@ -512,7 +523,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     setCookieBusy(true);
     try {
       const r = await M()?.importCookieLogin?.({ accountId: cookieImport.accountId, cookiesRaw: cookieText, navUrl: loginUrlFor(cookieImport.plat, cookieImport.loginScope), kernelPath });
-      if (r?.ok) { setCookieImport(null); setCookieText(''); await reload(); setNotice((i18nService.currentLanguage === 'zh' ? '✅ cookie 导入成功:' : '✅ Cookie imported: ') + (cookieImport.displayName)); }
+      if (r?.ok) { const info = { platform: cookieImport.plat, displayName: cookieImport.displayName }; setCookieImport(null); setCookieText(''); await reload(); setConnectedPopup(info); }
       else setNotice((i18nService.currentLanguage === 'zh' ? '❌ 导入失败:' : '❌ Import failed: ') + (r?.error || ''));
     } catch (e: any) { setNotice((i18nService.currentLanguage === 'zh' ? '❌ 导入异常:' : '❌ Import error: ') + (e?.message || String(e))); }
     finally { setCookieBusy(false); }
@@ -522,6 +533,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     if (!requireLogin()) return;
     if (!requireKernel()) return;
     setNotice(i18nService.t('mvOpeningBrowserFor').replace('{name}', displayName));
+    // 记下本次扫码的号 → 扫码成功(SSE 翻 idle)时弹「连接成功 + 建任务」庆祝(见 onAccount)。
+    scanningRef.current.set(accountId, { platform: plat, displayName });
     await M()?.openLogin({ accountId, kernelPath, loginUrl: loginUrlFor(plat, loginScope) });
   };
   // 刷新信息:对任意账号拉起内核读 昵称/平台号/头像(已登录但没读过身份的号用这个)。
@@ -746,7 +759,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="flex items-center gap-2.5">
                 <h2 className="text-lg font-bold dark:text-white">🧬 {i18nService.t('mvMyMatrixAccounts')}</h2>
                 {/* 涨粉教程(从顶栏挪到标题后,贴着账号页) */}
-                <button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 {i18nService.t('mvGrowthTutorial')}</button>
+                <button type="button" onClick={() => { try { const docs = (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? 'https://docs.noobclaw.com/zhong-wen-ban' : 'https://docs.noobclaw.com/english'; (window as any).electron?.shell?.openExternal(docs); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 {i18nService.t('mvGrowthTutorial')}</button>
               </div>
               <div className="flex items-center gap-2.5">
                 {/* 当前平台账号数 / 上限(上限服务端可调) */}
@@ -1144,6 +1157,27 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             </div>
             <div className="mt-4 flex justify-end">
               <button onClick={() => setConnectChoice(null)} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{i18nService.t('mvCancel')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 连接成功庆祝 + 引导建任务:扫码/导入 cookie 成功后弹。点「创建任务」跳到该号平台的新建矩阵任务 tab。 */}
+      {connectedPopup && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="text-5xl mb-2">🎉</div>
+            <div className="text-lg font-bold mb-1 dark:text-white">{i18nService.t('mvConnectedTitle')}</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 mb-5">{i18nService.t('mvConnectedBody').replace('{name}', connectedPopup.displayName).replace('{platform}', platLabel(connectedPopup.platform))}</div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => { const plat = connectedPopup.platform; setConnectedPopup(null); onNavigate?.('newTask', plat); }}
+                className="w-full px-4 py-2.5 rounded-xl bg-violet-500 text-white text-sm font-semibold hover:bg-violet-600 shadow-sm shadow-violet-500/25">
+                ✨ {i18nService.t('mvConnectedCreateTask')}
+              </button>
+              <button onClick={() => setConnectedPopup(null)} className="w-full px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 text-sm hover:bg-gray-100 dark:hover:bg-gray-800">
+                {i18nService.t('mvConnectedLater')}
+              </button>
             </div>
           </div>
         </div>

@@ -89,13 +89,14 @@ function tutorialUrl(platformId: string, isZh: boolean): string | null {
     douyin:  'https://docs.noobclaw.com/zhong-wen-ban/dou-yin-zhang-fen-jiao-cheng',
     tiktok:  'https://docs.noobclaw.com/zhong-wen-ban/tiktok-zhang-fen-jiao-cheng',
   };
+  // 文档改版后英文平台页 slug 去掉了 -growth 后缀(旧 slug 全 404)→ 用新路径,与 llms.txt 一致。
   const en: Record<string, string> = {
-    binance: 'https://docs.noobclaw.com/english/binance-square-growth',
-    x:       'https://docs.noobclaw.com/english/twitter-growth',
-    xhs:     'https://docs.noobclaw.com/english/xiaohongshu-growth',
-    youtube: 'https://docs.noobclaw.com/english/youtube-growth',
-    douyin:  'https://docs.noobclaw.com/english/douyin-growth',
-    tiktok:  'https://docs.noobclaw.com/english/tiktok-growth',
+    binance: 'https://docs.noobclaw.com/english/binance-square',
+    x:       'https://docs.noobclaw.com/english/twitter',
+    xhs:     'https://docs.noobclaw.com/english/xiaohongshu',
+    youtube: 'https://docs.noobclaw.com/english/youtube',
+    douyin:  'https://docs.noobclaw.com/english/douyin',
+    tiktok:  'https://docs.noobclaw.com/english/tiktok',
   };
   const map = isZh ? zh : en;
   return map[platformId] || null;
