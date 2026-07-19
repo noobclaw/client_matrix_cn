@@ -577,14 +577,10 @@ export async function runThreadPipeline(
     }
     const voice = input.voice || LANG_DEFAULT_VOICE[lang];
     const rate = typeof input.voiceRate === 'number' ? input.voiceRate : 0;
-    // 评论多音色(2026-07-18,对标 RedditVideoMakerBot 的招牌效果):标题/正文用主音色,
-    // 每条评论从池里轮换一个不同音色 —— 听感像不同楼层的人在说话。池按语言给;
-    // 没配池的语言回落主音色(行为不变)。
-    const COMMENT_VOICE_POOL: Record<string, string[]> = {
-      zh: ['zh-CN-XiaoxiaoNeural', 'zh-CN-YunxiNeural', 'zh-CN-XiaoyiNeural', 'zh-CN-YunyangNeural'],
-      en: ['en-US-JennyNeural', 'en-US-GuyNeural', 'en-US-AriaNeural', 'en-US-DavisNeural'],
-    };
-    const commentPool = (COMMENT_VOICE_POOL[lang] || []).filter((v) => v !== voice);
+    // 评论多音色已取消(2026-07-19 用户拍板):评论经主持稿(引入语)织进整条口播,本来
+    // 就是一个主持人从头讲到尾;多音色要按音色拆多次 edge-tts 请求,连接频率一高就被微软
+    // 掐(限频/黑洞),爆帖因此必卡而单请求的模板速生从不失败。现在整条口播【单音色一次
+    // 请求】合成 —— 和模板速生同款请求量。
 
     const segs: CardSeg[] = [];
     let acc = 0;
@@ -603,24 +599,27 @@ export async function runThreadPipeline(
     // 段落结构:钩子标题 → 主持人开场(交代主题背景) → 帖子正文
     if (hostIntro) titleText = titleText + '。' + hostIntro;
     if (postBodyText) titleText = titleText + '。' + postBodyText;
-    // ── 一口气配音(2026-07-19 用户拍板,对齐 stock/ai pipeline 的 synthesizeWhole 路径):
-    //   按音色分组,每组整段只发 1 次 edge-tts 请求,再按 cue 时间戳切回各段 —— 请求数
-    //   15+ → ≤5,从根上躲开「逐段重试静默磨十几分钟像卡死」。评论多音色轮换保留(一组
-    //   一个音色)。组合成失败 / 切段对不齐 → 仅该组回退逐段 ttsSeg(有界),不拖累其他组。
+    // ── 一口气配音(2026-07-19 用户拍板):整条口播【单音色 1 次 edge-tts 请求】合成,
+    //   再按 cue 时间戳切回各段(卡片时间窗) —— 请求数 15+ → 1,和「从不失败」的模板速生
+    //   同款请求量,从根上躲开限频/黑洞。合成失败 / 切段对不齐 → 回退逐段 ttsSeg(有界)。
+    //   评论按【估算时长】预裁到 ~1.5× 目标片长再进大文本:13 条全合是浪费(60s 片通常只
+    //   用 5~8 条),文本越短合成越快、对齐越稳。
     const onTtsLog = (m: string) => tracker.progress(m);
     interface PlanSeg { key: string; text: string; voice: string; outPath: string }
     const plan: PlanSeg[] = [{ key: 'title', text: titleText, voice, outPath: path.join(assetDir, 'seg-title.mp3') }];
+    const estSec = (s: string) => s.replace(/\s+/g, '').length / 4.5;
+    let planEstSec = estSec(titleText);
     for (const c of translateCandidates) {
+      if (planEstSec > targetSeconds * 1.5 + 8) break;
       let text = (trBodies[c.id] || c.body).trim();
       if (!text) continue;
       // 主持人引入:「网友XX直言」「有人反驳道」…(AI 给的;没给则不加,保持生读)
       const lead = (leadIns[c.id] || '').trim();
       if (lead) text = lead + (lang === 'en' ? ': ' : ':') + text;
-      const segVoice = commentPool.length ? commentPool[plan.length % commentPool.length] : voice;
-      plan.push({ key: c.id, text, voice: segVoice, outPath: path.join(assetDir, `seg-${c.id}.mp3`) });
+      plan.push({ key: c.id, text, voice, outPath: path.join(assetDir, `seg-${c.id}.mp3`) });
+      planEstSec += estSec(text);
     }
-    // 按音色分组(组内保持段序)。超 targetSeconds 的段照样合成、组装阶段裁掉 —— edge-tts
-    // 免费,多合的不花钱;比逐段边合边停多几秒,换来请求数最少。
+    // 组结构保留(单音色 = 恒 1 组;将来要恢复多音色只用改 voice 赋值)。
     const groups = new Map<string, PlanSeg[]>();
     for (const s of plan) { const g = groups.get(s.voice); if (g) g.push(s); else groups.set(s.voice, [s]); }
     /**
