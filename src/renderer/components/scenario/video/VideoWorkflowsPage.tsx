@@ -6167,7 +6167,11 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const MAX_STEP = 5;
   // ── Step 1:内容 ──
   // 版式步已砍掉 —— 新建一律 AI 自由排版(它最灵活、能涵盖固定版式);编辑老任务保留它原版式。
-  const [style] = useState<VideoTemplateStyle>(et?.style || 'ai_freeform');
+  // 新任务默认从「适合榜单的精品模板」里随机挑一套(音画同步/质感稳),不再固定 ai_freeform
+  // (老任务保留其已存风格)。用户仍可在版式网格里自由改。
+  const [style, setStyle] = useState<VideoTemplateStyle>(
+    et?.style || (['rank_list', 'news_cards', 'billboard'] as VideoTemplateStyle[])[Math.floor(Math.random() * 3)],
+  );
   const [title, setTitle] = useState<string>(et?.title || '');
   const [dataText, setDataText] = useState<string>(et?.dataText || '');
   // 数据源二选一:'paste' 粘贴任意内容(老路) / 'hotlist' 选一个热榜取前 N 条当内容。
@@ -6537,13 +6541,19 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                 </Field>
               )}
 
-              {(() => {
-                const s = TEMPLATE_STYLES.find((x) => x.id === style);
-                if (!s) return null;
-                return (
-                  <div className="text-[11px] text-gray-400">{isZh ? `已选版式:${s.emoji} ${s.zh}` : `Selected style: ${s.emoji} ${s.en}`}</div>
-                );
-              })()}
+              <Field label={isZh ? '版式风格' : 'Layout style'} hint={isZh ? '选一套画面版式;AI 自由排版最灵活但风格随机' : 'pick a visual layout; AI freeform is flexible but random'}>
+                <div className="grid grid-cols-2 gap-2">
+                  {TEMPLATE_STYLES.map((s) => (
+                    <button key={s.id} type="button" onClick={() => setStyle(s.id)}
+                      className={`px-3 py-2 rounded-lg border text-left text-xs transition-colors ${style === s.id
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
+                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-400'}`}
+                      title={isZh ? s.hint : s.en}>
+                      {s.emoji} {isZh ? s.zh : s.en}
+                    </button>
+                  ))}
+                </div>
+              </Field>
             </>
           )}
           {step === 2 && (

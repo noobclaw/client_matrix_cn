@@ -54,39 +54,53 @@ export async function chargeMode1Video(
 
   const videoCount = Math.max(1, Math.min(5, Math.round(opts?.videoCount ?? 1)));
   const aiCostUsd = Math.max(0, Number(opts?.aiCostUsd) || 0);
+  return postCharge(token, {
+    mode: 'stock',
+    durationSec: Math.max(0, Number(durationSec) || 0),
+    videoCount,
+    aiCostUsd,
+  });
+}
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15_000);
-  try {
-    const resp = await fetch(`${apiBase()}/api/video/charge`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        mode: 'stock',
-        durationSec: Math.max(0, Number(durationSec) || 0),
-        videoCount,
-        aiCostUsd,
-      }),
-      signal: ctrl.signal,
-    });
-    if (resp.status === 402) return { ok: false, reason: 'insufficient' };
-    if (!resp.ok) return { ok: false, reason: 'error' };
-    const json: any = await resp.json().catch((): null => null);
-    return {
-      ok: true,
-      chargeId: typeof json?.chargeId === 'string' ? json.chargeId : undefined,
-      chargedTokens: Number(json?.chargedTokens) || 0,
-      feeUsd: Number(json?.feeUsd) || 0,
-      balanceAfter: Number(json?.balanceAfter) || 0,
-    };
-  } catch {
-    return { ok: false, reason: 'error' };
-  } finally {
-    clearTimeout(timer);
+/**
+ * POST /api/video/charge,连接级网络错误自动重试(共 3 次,2s/4s 退避)。
+ *
+ * 用户常挂着 VPN,对 api 的连接会瞬断(实测 2026-07-18 一单:nginx 访问日志里
+ * 请求根本没到,前后几十秒其他请求都正常)—— 原来单次失败就把整个任务判死。
+ * ⚠️ 只对「fetch 直接抛错(连接没建立/被重置,请求确定没到服务端)」重试;
+ * 超时(AbortError)不重试 —— 请求可能已到服务端并扣费成功,重试会重复扣。
+ */
+async function postCharge(token: string, payload: Record<string, unknown>): Promise<VideoChargeResult> {
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15_000);
+    try {
+      const resp = await fetch(`${apiBase()}/api/video/charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      });
+      if (resp.status === 402) return { ok: false, reason: 'insufficient' };
+      if (!resp.ok) return { ok: false, reason: 'error' };
+      const json: any = await resp.json().catch((): null => null);
+      return {
+        ok: true,
+        chargeId: typeof json?.chargeId === 'string' ? json.chargeId : undefined,
+        chargedTokens: Number(json?.chargedTokens) || 0,
+        feeUsd: Number(json?.feeUsd) || 0,
+        balanceAfter: Number(json?.balanceAfter) || 0,
+      };
+    } catch (e: any) {
+      const aborted = e?.name === 'AbortError' || /abort/i.test(String(e?.message || ''));
+      if (aborted || attempt >= MAX_ATTEMPTS) return { ok: false, reason: 'error' };
+      await new Promise((r) => setTimeout(r, attempt * 2000));
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  return { ok: false, reason: 'error' };
 }
 
 /**
@@ -96,30 +110,7 @@ export async function chargeMode1Video(
 export async function chargeHotspotImages(imageCount: number, cloudProxied: boolean): Promise<VideoChargeResult> {
   const token = getNoobClawAuthToken();
   if (!token) return { ok: false, reason: 'no_auth' };
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15_000);
-  try {
-    const resp = await fetch(`${apiBase()}/api/video/charge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ mode: 'hotspot', imageCount: Math.max(0, Math.round(imageCount)), cloudProxied: !!cloudProxied }),
-      signal: ctrl.signal,
-    });
-    if (resp.status === 402) return { ok: false, reason: 'insufficient' };
-    if (!resp.ok) return { ok: false, reason: 'error' };
-    const json: any = await resp.json().catch((): null => null);
-    return {
-      ok: true,
-      chargeId: typeof json?.chargeId === 'string' ? json.chargeId : undefined,
-      chargedTokens: Number(json?.chargedTokens) || 0,
-      feeUsd: Number(json?.feeUsd) || 0,
-      balanceAfter: Number(json?.balanceAfter) || 0,
-    };
-  } catch {
-    return { ok: false, reason: 'error' };
-  } finally {
-    clearTimeout(timer);
-  }
+  return postCharge(token, { mode: 'hotspot', imageCount: Math.max(0, Math.round(imageCount)), cloudProxied: !!cloudProxied });
 }
 
 /**

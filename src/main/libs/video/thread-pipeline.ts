@@ -96,18 +96,19 @@ async function translateThread(
   comments: RedditComment[],
   lang: ContentLang,
   onCost: (tokens: number, usd: number) => void,
-): Promise<{ title: string; bodies: Record<string, string> } | null> {
+): Promise<{ title: string; bodies: Record<string, string>; postBody?: string; intro?: string; outro?: string; leadIns?: Record<string, string> } | null> {
   const sys = [
-    `你是短视频本地化译者。把 Reddit 帖子标题和评论翻译改写成${LANG_NAME[lang]},用于口播朗读和画面展示。`,
-    '要求:',
-    '1. 口语化、地道、保留原梗和语气(吐槽/反讽/玩笑要传神),不是生硬直译。',
-    '2. 每条译文长度与原文相当,不添油加醋、不合并、不遗漏。',
-    '3. 俚语/缩写(AITA、TIFU、OP 等)转成目标语言观众能懂的说法。',
-    '4. 只输出严格 JSON(json):{"title":"译文","comments":{"<id>":"译文",...}},id 原样保留。',
+    `你是短视频「爆帖解说」主持人兼本地化译者。目标语言:${LANG_NAME[lang]}。把 Reddit 帖子做成有叙事感的口播:`,
+    '1. 翻译改写:标题/正文/评论译成目标语言,口语化、保留原梗语气;俚语缩写(AITA/TIFU/OP)转成观众能懂的说法。目标语言与原文相同时原样保留、只做轻度口语顺滑。',
+    '2. intro(开场,≤2句):像主持人一样交代这帖在聊什么、背景是什么,把观众带入(如「今天这帖炸了:楼主说…大家吵翻了」)。',
+    '3. leadIns:给每条评论写一个≤10字的引入短语,自然多样、可带网友名(如「网友Bannon9k直言」「有人当场反驳」「高赞回复说」),避免连续重复句式。',
+    '4. outro(结尾,≤2句):总结各方观点或抛一个问题引导互动(如「你站哪边?评论区聊聊」)。',
+    '5. 只输出严格 JSON(json):{"title":"…","postBody":"…(无则空串)","intro":"…","outro":"…","leadIns":{"<id>":"…"},"comments":{"<id>":"…"}},id 原样保留。',
   ].join('\n');
   const user = JSON.stringify({
     title: post.title,
-    comments: comments.map((c) => ({ id: c.id, text: c.body })),
+    postBody: String(post.selftext || '').slice(0, 1500),
+    comments: comments.map((c) => ({ id: c.id, author: c.author || '', text: c.body })),
   });
   try {
     const r = await callDeepSeek(sys, user, true, 90_000, 'noobclawai-chat');
@@ -121,7 +122,16 @@ async function translateThread(
       }
     }
     if (!title && Object.keys(bodies).length === 0) return null;
-    return { title: title || post.title, bodies };
+    const postBody = typeof parsed?.postBody === 'string' ? parsed.postBody.trim() : '';
+    const intro = typeof parsed?.intro === 'string' ? parsed.intro.trim() : '';
+    const outro = typeof parsed?.outro === 'string' ? parsed.outro.trim() : '';
+    const leadIns: Record<string, string> = {};
+    if (parsed?.leadIns && typeof parsed.leadIns === 'object') {
+      for (const [k, v] of Object.entries(parsed.leadIns)) {
+        if (typeof v === 'string' && v.trim()) leadIns[k] = v.trim();
+      }
+    }
+    return { title: title || post.title, bodies, postBody, intro, outro, leadIns };
   } catch {
     return null;
   }
@@ -526,18 +536,36 @@ export async function runThreadPipeline(
     const translateCandidates = rawComments.slice(0, 14);
     let trTitle = post.title;
     let trBodies: Record<string, string> = {};
-    if (lang !== 'en') {
+    let trPostBody = '';
+    let hostIntro = '';
+    let hostOutro = '';
+    let leadIns: Record<string, string> = {};
+    // 主持人叙事(2026-07-18 用户反馈「只念评论完全看不懂」):所有语言(含英文)都过一次 AI,
+    // 产出 开场intro + 每条评论引入语 + 结尾outro;英文时原文保留只写主持词。失败回落生读(老行为)。
+    {
       const tr = await translateThread(post, translateCandidates, lang, (tk, usd) => tracker.addTokens(tk, usd));
       if (tr) {
         trTitle = tr.title;
         trBodies = tr.bodies;
-        tracker.progress(`✅ 翻译改写完成(标题 + ${Object.keys(tr.bodies).length} 条评论)`);
+        trPostBody = tr.postBody || '';
+        hostIntro = tr.intro || '';
+        hostOutro = tr.outro || '';
+        leadIns = tr.leadIns || {};
+        tracker.progress(`✅ 主持稿就绪(开场+${Object.keys(tr.bodies).length} 条评论引入+结尾${lang !== 'en' ? ' · 已本地化' : ''})`);
       } else {
-        tracker.progress('⚠️ 翻译改写失败,本条用英文原文出片');
+        tracker.progress('⚠️ 主持稿生成失败,本条按原文生读出片');
       }
     }
     const voice = input.voice || LANG_DEFAULT_VOICE[lang];
     const rate = typeof input.voiceRate === 'number' ? input.voiceRate : 0;
+    // 评论多音色(2026-07-18,对标 RedditVideoMakerBot 的招牌效果):标题/正文用主音色,
+    // 每条评论从池里轮换一个不同音色 —— 听感像不同楼层的人在说话。池按语言给;
+    // 没配池的语言回落主音色(行为不变)。
+    const COMMENT_VOICE_POOL: Record<string, string[]> = {
+      zh: ['zh-CN-XiaoxiaoNeural', 'zh-CN-YunxiNeural', 'zh-CN-XiaoyiNeural', 'zh-CN-YunyangNeural'],
+      en: ['en-US-JennyNeural', 'en-US-GuyNeural', 'en-US-AriaNeural', 'en-US-DavisNeural'],
+    };
+    const commentPool = (COMMENT_VOICE_POOL[lang] || []).filter((v) => v !== voice);
 
     const segs: CardSeg[] = [];
     let acc = 0;
@@ -549,6 +577,13 @@ export async function runThreadPipeline(
       tracker.progress(`🪝 开头钩子:「${hooked.slice(0, 40)}」`);
       titleText = hooked;
     }
+    // 帖子正文(selftext)以前被整个跳过 —— 故事型帖(TIFU/AITA 等)正文才是主菜,只念评论
+    // 观众不知所云(2026-07-18 用户反馈,对标 RedditVideoMakerBot 它是念正文的)。正文跟在
+    // 标题后同段朗读(画面即帖子卡);截 900 字防吃光片长,评论仍按剩余时长逐条截断。
+    const postBodyText = (trPostBody || String(post.selftext || '')).trim().slice(0, 900);
+    // 段落结构:钩子标题 → 主持人开场(交代主题背景) → 帖子正文
+    if (hostIntro) titleText = titleText + '。' + hostIntro;
+    if (postBodyText) titleText = titleText + '。' + postBodyText;
     const t0 = await ttsSeg(titleText, voice, path.join(assetDir, 'seg-title.mp3'), rate);
     if (!t0) {
       const why = getLastTtsError() || '请稍后再试';
@@ -561,9 +596,13 @@ export async function runThreadPipeline(
     for (const c of translateCandidates) {
       if (acc >= targetSeconds) break;
       throwIfAborted(signal);
-      const text = (trBodies[c.id] || c.body).trim();
+      let text = (trBodies[c.id] || c.body).trim();
       if (!text) continue;
-      const r = await ttsSeg(text, voice, path.join(assetDir, `seg-${c.id}.mp3`), rate);
+      // 主持人引入:「网友XX直言」「有人反驳道」…(AI 给的;没给则不加,保持生读)
+      const lead = (leadIns[c.id] || '').trim();
+      if (lead) text = lead + (lang === 'en' ? ': ' : ':') + text;
+      const segVoice = commentPool.length ? commentPool[segs.length % commentPool.length] : voice;
+      const r = await ttsSeg(text, segVoice, path.join(assetDir, `seg-${c.id}.mp3`), rate);
       if (!r) { tracker.progress(`⚠️ 评论 ${c.id} 配音失败,跳过`); continue; }
       segs.push({ key: c.id, text, audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues });
       acc += r.durationSec + GAP_SEC;
@@ -571,6 +610,20 @@ export async function runThreadPipeline(
     if (segs.length < 2) {
       tracker.fail('voice', '可用配音段不足(标题之外没有评论段成功)');
       return { ok: false, error: '配音段不足,请重试' };
+    }
+    // 主持人结尾:总结/抛问接在【最后一条评论段】末尾重配(同卡同音色,不动画面映射)。
+    if (hostOutro) {
+      const last = segs[segs.length - 1];
+      try {
+        const lastVoice = commentPool.length ? commentPool[(segs.length - 1) % commentPool.length] : voice;
+        const merged = last.text + '。' + hostOutro;
+        const r2 = await ttsSeg(merged, lastVoice, path.join(assetDir, `seg-${last.key}-outro.mp3`), rate);
+        if (r2) {
+          acc += r2.durationSec - last.durationSec;
+          last.text = merged; last.audioPath = r2.audioPath; last.durationSec = r2.durationSec; last.cues = r2.cues;
+          tracker.progress('🎬 结尾总结已并入最后一段');
+        }
+      } catch { /* 失败保留原段 */ }
     }
     tracker.done('voice', `✅ 配音完成 · ${segs.length} 段(标题+${segs.length - 1}条神评)· 约 ${Math.round(acc)}s`);
 

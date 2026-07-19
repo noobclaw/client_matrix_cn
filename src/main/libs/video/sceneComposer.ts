@@ -284,11 +284,17 @@ export function renderScene(scene: Scene, ctx: ComposeCtx): SceneResult {
   const parts: string[] = [];
   blocks.forEach((b, i) => {
     const h = Math.max(120, Math.round((weights[i] / totalW) * usableH));
-    const blockStart = ctx.narrationOn ? cl(0.4 + (i / Math.max(1, blocks.length)) * ctx.durationSec * 0.5, 0.4, ctx.durationSec - 1) : 0.3 + i * 0.35;
+    // 音画对齐(2026-07-18 修):原 blockStart 按【总时长×0.5】铺块 —— 165s 的片第 2 块
+    // 要 41s 才出现,配音早念到内容画面还空着(用户实测);itemStagger 封顶 1.2s 又让
+    // 条目十几秒内挤完、后段空转。改:块在前几秒内进场,列表条目沿【整段配音】铺开
+    // (≈配音逐条推进的节奏,宁早勿晚)。
+    const blockStart = ctx.narrationOn
+      ? cl(0.4 + (i / Math.max(1, blocks.length)) * Math.min(6, ctx.durationSec * 0.1), 0.4, ctx.durationSec - 1)
+      : 0.3 + i * 0.35;
     const isList = ['bullets', 'ranks', 'stats', 'steps'].includes(b.type);
     const itemCount = Math.max(1, (b.items || []).length);
     const itemStagger = ctx.narrationOn && isList
-      ? cl((ctx.durationSec - blockStart - 1) / itemCount, 0.2, 1.2)
+      ? cl((ctx.durationSec - blockStart - 1.5) / itemCount, 0.2, 30)
       : 0.14;
     parts.push(renderBlock(b, { top: cursor, height: h, index: i, startSec: blockStart, itemStagger }, tctx));
     cursor += h + GAP;

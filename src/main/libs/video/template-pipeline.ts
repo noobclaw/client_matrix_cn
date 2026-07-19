@@ -312,7 +312,10 @@ export async function runTemplatePipeline(
     if (tpl.hotlistSource) {
       const fresh = await fetchHotlistText(tpl.hotlistSource);
       if (fresh) {
-        dataText = fresh;
+        // 标注抓取日期(2026-07-18 用户反馈:画面写「今日热点」却没日期,观众无从判断时效)。
+        // 首行注入「(M月D日)」提示,AI 解析 dataText 出 title 时会带上;英文内容 AI 会自行转写。
+        const now = new Date();
+        dataText = `(${now.getMonth() + 1}月${now.getDate()}日榜单,标题里带上这个日期)\n` + fresh;
         tracker.progress(`🔥 已抓「${tpl.hotlistSource}」实时榜单 ${fresh.split('\n').length} 条`);
       } else {
         tracker.progress(`⚠️ 实时榜单「${tpl.hotlistSource}」抓取失败,用已保存的快照`);

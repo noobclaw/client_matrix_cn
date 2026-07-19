@@ -185,7 +185,9 @@ async function callDeepSeekData(
       model,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       stream: false,
-      max_tokens: maxTokens && maxTokens > 0 ? maxTokens : 2400,
+      // 2400→6000(2026-07-18):narration 时 AI 一次输出 {title+items+800字口播稿} 的 JSON,
+      // 2400 会把 voiceScript 腰斩在半句(用户实测「稿子停在'背后逻辑是演'、播音少一截」)。
+      max_tokens: maxTokens && maxTokens > 0 ? maxTokens : 6000,
     };
     // response_format=json_object 仅 chat(flash)支持;reasoner(Pro)不支持(强行带上会被拒/失效,
     //   正是历史上 Pro「解析不出来」的根因)。Pro 改靠 prompt 强约束 + extractJsonObject 宽松解析兜底。
