@@ -179,21 +179,29 @@ const SYNTH_TIMEOUT_MS = 60_000;
  * 跑一次 edge-tts-universal 合成:写 MP3 到 outPath,返回逐词 cue。
  * 不抛异常 —— 失败把原因放进 detail,由调用方决定重试 / 兜底。
  */
-async function runEdgeTts(text: string, voice: string, outPath: string, rate?: number): Promise<EdgeTtsRun> {
+async function runEdgeTts(text: string, voice: string, outPath: string, rate?: number, signal?: AbortSignal): Promise<EdgeTtsRun> {
   // 每次重试前清掉上轮可能残留的半截输出,避免「旧文件 >256 字节」骗过校验。
   try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch {}
   let timer: NodeJS.Timeout | null = null;
+  let onAbort: (() => void) | null = null;
   try {
     const tts = new EdgeTTS(text, voice, { rate: normalizeRate(rate) });
     // synthesize() 是单次 WebSocket 往返;库本身不带超时,这里用 Promise.race 兜底,
-    // 避免端点不通时永不 resolve 卡死出片流程。
+    // 避免端点不通时永不 resolve 卡死出片流程。用户点停止(signal)也立刻掀桌,
+    // 不用干等 60s 超时才轮到外层 throwIfAborted。
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
         () => reject(new Error('合成超时(60s,可能是网络到微软 TTS 端点不通)')),
         SYNTH_TIMEOUT_MS,
       );
     });
-    const res = await Promise.race([tts.synthesize(), timeout]);
+    const aborted = new Promise<never>((_, reject) => {
+      if (!signal) return;
+      if (signal.aborted) { reject(new Error('已停止')); return; }
+      onAbort = () => reject(new Error('已停止'));
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    const res = await Promise.race([tts.synthesize(), timeout, aborted]);
     const buf = Buffer.from(await res.audio.arrayBuffer());
     if (buf.length <= 256) {
       return { ok: false, words: [], detail: '合成返回空音频' };
@@ -206,6 +214,7 @@ async function runEdgeTts(text: string, voice: string, outPath: string, rate?: n
     return { ok: false, words: [], detail: msg || '未知错误' };
   } finally {
     if (timer) clearTimeout(timer);
+    if (signal && onAbort) signal.removeEventListener('abort', onAbort);
   }
 }
 
@@ -214,10 +223,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** synthesize() 的可选控制项(不传 = 老行为)。 */
+export interface SynthesizeOpts {
+  /** 用户停止信号:当次 WebSocket 立即掀桌,重试循环立即退出(不再退避睡眠)。 */
+  signal?: AbortSignal;
+  /** 重试次数上限(默认 5)。多段流水(爆帖逐段配音)可调小,防失败时静默磨太久。 */
+  maxAttempts?: number;
+}
+
 /**
  * 给一句文案配音,输出 mp3 到 outPath。失败自动退化为静音 mp3。
  */
-export async function synthesize(text: string, outPath: string, voice?: string, rate?: number): Promise<TtsResult> {
+export async function synthesize(text: string, outPath: string, voice?: string, rate?: number, opts?: SynthesizeOpts): Promise<TtsResult> {
   const clean = (text || '').trim();
   const estDur = estimateDuration(clean || '。');
   const useVoice = voice || getTtsVoice();
@@ -227,10 +244,11 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
       // edge-tts 走在线接口,偶发网络抖动/限流 → 重试最多 5 次再判失败(指数退避)。
       // 2026-04 起微软上游按 voice 间歇性拒发音频(rany2/edge-tts#473),
       // 单纯加重试次数仍有限,真正救场要靠调用方做 voice fallback(见 getVoiceFallbacks)。
-      const MAX_ATTEMPTS = 5;
+      const MAX_ATTEMPTS = Math.max(1, opts?.maxAttempts ?? 5);
       let lastDetail = '';
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        const run = await runEdgeTts(clean, useVoice, outPath, rate);
+        if (opts?.signal?.aborted) break;
+        const run = await runEdgeTts(clean, useVoice, outPath, rate, opts?.signal);
         if (run.ok) {
           const dur = await probeDuration(outPath);
           let cues: TtsCue[] | undefined;
@@ -246,7 +264,7 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
           };
         }
         lastDetail = run.detail || lastDetail;
-        if (attempt < MAX_ATTEMPTS) await sleep(800 * attempt);
+        if (attempt < MAX_ATTEMPTS && !opts?.signal?.aborted) await sleep(800 * attempt);
       }
       _lastTtsError = lastDetail
         ? `edge-tts 合成失败(已重试 ${MAX_ATTEMPTS} 次):${lastDetail.slice(0, 160)}`
@@ -334,20 +352,21 @@ export interface WholeTtsResult {
  * 整段合成一次(单 voice;voice fallback 由调用方控制 —— 整段失败换 voice 重合,1 次请求不浪费)。
  * 失败把原因写进 _lastTtsError,返回 ok:false。
  */
-export async function synthesizeWhole(text: string, outPath: string, voice: string, rate?: number): Promise<WholeTtsResult> {
+export async function synthesizeWhole(text: string, outPath: string, voice: string, rate?: number, opts?: SynthesizeOpts): Promise<WholeTtsResult> {
   const clean = (text || '').trim();
   const fail = (): WholeTtsResult => ({ ok: false, audioPath: outPath, durationSec: 0, rawCues: [] });
   if (!clean) return fail();
-  const MAX_ATTEMPTS = 5;
+  const MAX_ATTEMPTS = Math.max(1, opts?.maxAttempts ?? 5);
   let lastDetail = '';
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const run = await runEdgeTts(clean, voice, outPath, rate);
+    if (opts?.signal?.aborted) break;
+    const run = await runEdgeTts(clean, voice, outPath, rate, opts?.signal);
     if (run.ok) {
       const dur = await probeDuration(outPath);
       return { ok: true, audioPath: outPath, durationSec: dur > 0 ? dur : estimateDuration(clean), rawCues: run.words };
     }
     lastDetail = run.detail || lastDetail;
-    if (attempt < MAX_ATTEMPTS) await sleep(800 * attempt);
+    if (attempt < MAX_ATTEMPTS && !opts?.signal?.aborted) await sleep(800 * attempt);
   }
   _lastTtsError = lastDetail
     ? `edge-tts 整段合成失败(已重试 ${MAX_ATTEMPTS} 次):${lastDetail.slice(0, 160)}`

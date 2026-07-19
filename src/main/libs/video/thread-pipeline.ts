@@ -32,7 +32,10 @@ import {
   ThreadSession, pickRedditPost, fetchRedditComments, captureThreadCards, waitForRedditReady,
   type RedditPost, type RedditComment,
 } from './threadProvider';
-import { synthesize, getVoiceFallbacks, getLastTtsError, type TtsCue } from './tts';
+import {
+  synthesize, synthesizeWhole, getVoiceFallbacks, getLastTtsError,
+  groupWordCues, alignSentencesToCues, type TtsCue, type WholeTtsResult,
+} from './tts';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { callDeepSeek, extractJsonObject, type ContentLang } from './scriptWriter';
 import { ensureBgVideo, bgCacheDir } from './ytdlpRuntime';
@@ -137,11 +140,25 @@ async function translateThread(
   }
 }
 
-/** TTS 一段(带音色 fallback 链)。失败返回 null(该段丢弃)。 */
-async function ttsSeg(text: string, primary: string, outPath: string, rate?: number): Promise<{ audioPath: string; durationSec: number; cues?: TtsCue[] } | null> {
+/**
+ * TTS 一段(带音色 fallback 链)。失败返回 null(该段丢弃)。
+ * 有界:每段墙钟预算 3 分钟 + 每音色最多 3 次重试(synthesize 默认 5 次是给单请求
+ * pipeline 用的;爆帖 15+ 段,乘上 3 音色 fallback 链后,失败最坏会静默磨十几分钟,
+ * UI 上表现为「卡在配音不动」—— 2026-07-19 用户 3.4.6 实际踩到)。停止信号直通
+ * synthesize,点停止立刻中断当次 WebSocket,不再等 60s 超时。
+ */
+const TTS_SEG_BUDGET_MS = 180_000;
+async function ttsSeg(text: string, primary: string, outPath: string, rate?: number, signal?: AbortSignal, onLog?: (m: string) => void): Promise<{ audioPath: string; durationSec: number; cues?: TtsCue[] } | null> {
+  const started = Date.now();
   for (const v of getVoiceFallbacks(primary)) {
-    const r = await synthesize(text, outPath, v, rate);
+    if (signal?.aborted) return null;
+    if (Date.now() - started > TTS_SEG_BUDGET_MS) {
+      onLog?.('⏱ 本段配音超出 3 分钟预算,放弃剩余备选音色');
+      break;
+    }
+    const r = await synthesize(text, outPath, v, rate, { signal, maxAttempts: 3 });
     if (r.ok && r.synthesized && r.durationSec > 0.2) return { audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues };
+    if (!signal?.aborted) onLog?.(`🔁 音色 ${v} 多次合成未成(网络到微软 TTS 端点不稳)`);
   }
   return null;
 }
@@ -584,7 +601,102 @@ export async function runThreadPipeline(
     // 段落结构:钩子标题 → 主持人开场(交代主题背景) → 帖子正文
     if (hostIntro) titleText = titleText + '。' + hostIntro;
     if (postBodyText) titleText = titleText + '。' + postBodyText;
-    const t0 = await ttsSeg(titleText, voice, path.join(assetDir, 'seg-title.mp3'), rate);
+    // ── 一口气配音(2026-07-19 用户拍板,对齐 stock/ai pipeline 的 synthesizeWhole 路径):
+    //   按音色分组,每组整段只发 1 次 edge-tts 请求,再按 cue 时间戳切回各段 —— 请求数
+    //   15+ → ≤5,从根上躲开「逐段重试静默磨十几分钟像卡死」。评论多音色轮换保留(一组
+    //   一个音色)。组合成失败 / 切段对不齐 → 仅该组回退逐段 ttsSeg(有界),不拖累其他组。
+    const onTtsLog = (m: string) => tracker.progress(m);
+    interface PlanSeg { key: string; text: string; voice: string; outPath: string }
+    const plan: PlanSeg[] = [{ key: 'title', text: titleText, voice, outPath: path.join(assetDir, 'seg-title.mp3') }];
+    for (const c of translateCandidates) {
+      let text = (trBodies[c.id] || c.body).trim();
+      if (!text) continue;
+      // 主持人引入:「网友XX直言」「有人反驳道」…(AI 给的;没给则不加,保持生读)
+      const lead = (leadIns[c.id] || '').trim();
+      if (lead) text = lead + (lang === 'en' ? ': ' : ':') + text;
+      const segVoice = commentPool.length ? commentPool[plan.length % commentPool.length] : voice;
+      plan.push({ key: c.id, text, voice: segVoice, outPath: path.join(assetDir, `seg-${c.id}.mp3`) });
+    }
+    // 按音色分组(组内保持段序)。超 targetSeconds 的段照样合成、组装阶段裁掉 —— edge-tts
+    // 免费,多合的不花钱;比逐段边合边停多几秒,换来请求数最少。
+    const groups = new Map<string, PlanSeg[]>();
+    for (const s of plan) { const g = groups.get(s.voice); if (g) g.push(s); else groups.set(s.voice, [s]); }
+    /** 一段文本整段一口气合成(带音色 fallback 链);失败返回 null,由调用方决定兜底。 */
+    const oneShot = async (text: string, primary: string, outPath: string): Promise<WholeTtsResult | null> => {
+      for (const v of getVoiceFallbacks(primary)) {
+        throwIfAborted(signal);
+        const w = await synthesizeWhole(text, outPath, v, rate, { signal, maxAttempts: 3 });
+        if (w.ok) return w;
+        const why = getLastTtsError();
+        if (!signal?.aborted) tracker.progress(`🔁 音色 ${v} 整段合成未成${why ? `(${why.slice(0, 90)})` : ''}`);
+      }
+      return null;
+    };
+    const made = new Map<string, { audioPath: string; durationSec: number; cues?: TtsCue[] }>();
+    let gi = 0;
+    for (const [gv, gsegs] of groups) {
+      gi++;
+      throwIfAborted(signal);
+      tracker.progress(`🎙 一口气配音 ${gi}/${groups.size}(音色 ${gv} · ${gsegs.length} 段 · ${gsegs.reduce((a, s) => a + s.text.length, 0)} 字)…`);
+      let groupDone = false;
+      if (gsegs.length === 1) {
+        const w = await oneShot(gsegs[0].text, gv, gsegs[0].outPath);
+        if (w) {
+          made.set(gsegs[0].key, { audioPath: w.audioPath, durationSec: w.durationSec, cues: w.rawCues.length ? groupWordCues(w.rawCues) : undefined });
+          groupDone = true;
+        }
+      } else {
+        const groupMp3 = path.join(assetDir, `narr-group-${gi}.mp3`);
+        const w = await oneShot(gsegs.map((s) => s.text).join('\n'), gv, groupMp3);
+        if (w) {
+          // 切段对齐照抄 stock(pipeline.ts 一口气路径):字符流锚 cue 真实时间戳,不累积误差。
+          const spans = alignSentencesToCues(gsegs.map((s) => s.text), w.rawCues, w.durationSec);
+          if (spans && spans.length === gsegs.length) {
+            let cutOk = true;
+            for (let i = 0; i < gsegs.length; i++) {
+              throwIfAborted(signal);
+              const r = await runFfmpeg([
+                '-y', '-i', groupMp3,
+                '-ss', spans[i].start.toFixed(3), '-to', spans[i].end.toFixed(3),
+                '-c:a', 'libmp3lame', '-q:a', '4', gsegs[i].outPath,
+              ], { timeoutMs: 30_000, signal });
+              if (!r.ok || !fs.existsSync(gsegs[i].outPath)) { cutOk = false; break; }
+              // 本段 cue = 整段 cue 落在本段时间窗内的,平移成段内相对时间(CardSeg.cues 契约)。
+              // 按 cue 起点归段(边界 cue 归后段,与 filter 上界互斥 → 不会两段重复出词)
+              const segCues = w.rawCues
+                .filter((c) => c.start >= spans[i].start && c.start < spans[i].end)
+                .map((c) => ({
+                  text: c.text,
+                  start: Math.max(0, c.start - spans[i].start),
+                  end: Math.max(0.05, Math.min(c.end, spans[i].end) - spans[i].start),
+                }));
+              made.set(gsegs[i].key, {
+                audioPath: gsegs[i].outPath,
+                durationSec: Math.max(0.3, spans[i].end - spans[i].start),
+                cues: segCues.length ? groupWordCues(segCues) : undefined,
+              });
+            }
+            groupDone = cutOk;
+          } else {
+            tracker.progress(`↩️ 音色 ${gv} 切段对不齐(edge-tts 念读与文本差异过大)`);
+          }
+        }
+      }
+      if (!groupDone) {
+        throwIfAborted(signal);
+        if (gsegs.length > 1) tracker.progress(`↩️ 该组回退逐段配音(${gsegs.length} 段,已切好的保留)…`);
+        for (const s of gsegs) {
+          throwIfAborted(signal);
+          if (made.has(s.key)) continue; // 切到一半失败的组:已切好的段不重配
+          tracker.progress(`🎙 逐段配音:${s.key === 'title' ? '标题+开场' : `评论 ${s.key}`}(${s.text.length} 字)…`);
+          const r = await ttsSeg(s.text, s.voice, s.outPath, rate, signal, onTtsLog);
+          if (r) made.set(s.key, r);
+          else { throwIfAborted(signal); if (s.key !== 'title') tracker.progress(`⚠️ 评论 ${s.key} 配音失败,跳过`); }
+        }
+      }
+    }
+    throwIfAborted(signal);
+    const t0 = made.get('title');
     if (!t0) {
       const why = getLastTtsError() || '请稍后再试';
       tracker.fail('voice', `标题配音失败:${why}`);
@@ -592,19 +704,13 @@ export async function runThreadPipeline(
     }
     segs.push({ key: 'title', text: titleText, audioPath: t0.audioPath, durationSec: t0.durationSec, cues: t0.cues });
     acc += t0.durationSec;
-    // 评论逐条 TTS,超 targetSeconds 停(bot 的 max_length 截断逻辑)
-    for (const c of translateCandidates) {
+    // 按段序组装,超 targetSeconds 停(bot 的 max_length 截断逻辑;多合成的段直接弃用)
+    for (const s of plan) {
+      if (s.key === 'title') continue;
       if (acc >= targetSeconds) break;
-      throwIfAborted(signal);
-      let text = (trBodies[c.id] || c.body).trim();
-      if (!text) continue;
-      // 主持人引入:「网友XX直言」「有人反驳道」…(AI 给的;没给则不加,保持生读)
-      const lead = (leadIns[c.id] || '').trim();
-      if (lead) text = lead + (lang === 'en' ? ': ' : ':') + text;
-      const segVoice = commentPool.length ? commentPool[segs.length % commentPool.length] : voice;
-      const r = await ttsSeg(text, segVoice, path.join(assetDir, `seg-${c.id}.mp3`), rate);
-      if (!r) { tracker.progress(`⚠️ 评论 ${c.id} 配音失败,跳过`); continue; }
-      segs.push({ key: c.id, text, audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues });
+      const r = made.get(s.key);
+      if (!r) continue;
+      segs.push({ key: s.key, text: s.text, audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues });
       acc += r.durationSec + GAP_SEC;
     }
     if (segs.length < 2) {
@@ -615,17 +721,19 @@ export async function runThreadPipeline(
     if (hostOutro) {
       const last = segs[segs.length - 1];
       try {
-        const lastVoice = commentPool.length ? commentPool[(segs.length - 1) % commentPool.length] : voice;
+        const lastVoice = plan.find((p) => p.key === last.key)?.voice || voice;
         const merged = last.text + '。' + hostOutro;
-        const r2 = await ttsSeg(merged, lastVoice, path.join(assetDir, `seg-${last.key}-outro.mp3`), rate);
-        if (r2) {
-          acc += r2.durationSec - last.durationSec;
-          last.text = merged; last.audioPath = r2.audioPath; last.durationSec = r2.durationSec; last.cues = r2.cues;
+        tracker.progress('🎙 配音收尾:结尾总结并入最后一段…');
+        const w = await oneShot(merged, lastVoice, path.join(assetDir, `seg-${last.key}-outro.mp3`));
+        if (w) {
+          acc += w.durationSec - last.durationSec;
+          last.text = merged; last.audioPath = w.audioPath; last.durationSec = w.durationSec;
+          last.cues = w.rawCues.length ? groupWordCues(w.rawCues) : undefined;
           tracker.progress('🎬 结尾总结已并入最后一段');
         }
-      } catch { /* 失败保留原段 */ }
+      } catch (e) { if (signal?.aborted) throw e; /* 失败保留原段 */ }
     }
-    tracker.done('voice', `✅ 配音完成 · ${segs.length} 段(标题+${segs.length - 1}条神评)· 约 ${Math.round(acc)}s`);
+    tracker.done('voice', `✅ 配音完成 · ${segs.length} 段(标题+${segs.length - 1}条神评)· 约 ${Math.round(acc)}s · ${groups.size + (hostOutro ? 1 : 0)} 次整段合成`);
 
     // ── STEP 3:画面素材 ─────────────────────────────────────────────────
     // 风格分流(threadCaptionStyle):'cards'(默认)= Reddit 真截图卡;'karaoke' = 跳字大字幕
