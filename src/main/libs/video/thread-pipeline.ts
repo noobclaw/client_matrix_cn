@@ -1,4 +1,4 @@
-﻿/**
+/**
  * thread-pipeline — 「爆帖成片」流水线(engine==='thread',v1 内容源 Reddit)。
  *
  * 像素级复刻 RedditVideoMakerBot 功能1 并超越:
@@ -33,7 +33,7 @@ import {
   type RedditPost, type RedditComment,
 } from './threadProvider';
 import {
-  synthesize, synthesizeWhole, getVoiceFallbacks, getLastTtsError,
+  synthesize, synthesizeWhole, getVoiceFallbacksWide, getLastTtsError,
   groupWordCues, alignSentencesToCues, type TtsCue, type WholeTtsResult,
 } from './tts';
 import { chargeMode1Video, refundMode1Video } from './billing';
@@ -141,24 +141,26 @@ async function translateThread(
 }
 
 /**
- * TTS 一段(带音色 fallback 链)。失败返回 null(该段丢弃)。
- * 有界:每段墙钟预算 3 分钟 + 每音色最多 3 次重试(synthesize 默认 5 次是给单请求
- * pipeline 用的;爆帖 15+ 段,乘上 3 音色 fallback 链后,失败最坏会静默磨十几分钟,
- * UI 上表现为「卡在配音不动」—— 2026-07-19 用户 3.4.6 实际踩到)。停止信号直通
- * synthesize,点停止立刻中断当次 WebSocket,不再等 60s 超时。
+ * TTS 一段(逐段兜底路径)。失败返回 null(该段丢弃)。
+ * 音色走【同语种全音色】宽链(#473 按音色族拒发,同性别链可能全灭,见 getVoiceFallbacksWide);
+ * 出现超时型失败后,后续音色只试 1 次快速扫过。每段墙钟预算 6 分钟兜底(宽链最坏也能扫到
+ * 可用音色);停止信号直通 synthesize,点停止立刻中断当次 WebSocket。
  */
-const TTS_SEG_BUDGET_MS = 180_000;
+const TTS_SEG_BUDGET_MS = 360_000;
 async function ttsSeg(text: string, primary: string, outPath: string, rate?: number, signal?: AbortSignal, onLog?: (m: string) => void): Promise<{ audioPath: string; durationSec: number; cues?: TtsCue[] } | null> {
   const started = Date.now();
-  for (const v of getVoiceFallbacks(primary)) {
+  let sawTimeout = false;
+  for (const v of getVoiceFallbacksWide(primary)) {
     if (signal?.aborted) return null;
     if (Date.now() - started > TTS_SEG_BUDGET_MS) {
-      onLog?.('⏱ 本段配音超出 3 分钟预算,放弃剩余备选音色');
+      onLog?.('⏱ 本段配音超出预算,放弃剩余备选音色');
       break;
     }
-    const r = await synthesize(text, outPath, v, rate, { signal, maxAttempts: 3 });
+    const r = await synthesize(text, outPath, v, rate, { signal, maxAttempts: sawTimeout ? 2 : 3 });
     if (r.ok && r.synthesized && r.durationSec > 0.2) return { audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues };
-    if (!signal?.aborted) onLog?.(`🔁 音色 ${v} 多次合成未成(网络到微软 TTS 端点不稳)`);
+    const why = getLastTtsError() || '';
+    if (why.includes('超时')) sawTimeout = true;
+    if (!signal?.aborted) onLog?.(`🔁 音色 ${v} 合成未成${why ? `(${why.slice(0, 70)})` : ''},换下一个音色…`);
   }
   return null;
 }
@@ -621,14 +623,27 @@ export async function runThreadPipeline(
     // 免费,多合的不花钱;比逐段边合边停多几秒,换来请求数最少。
     const groups = new Map<string, PlanSeg[]>();
     for (const s of plan) { const g = groups.get(s.voice); if (g) g.push(s); else groups.set(s.voice, [s]); }
-    /** 一段文本整段一口气合成(带音色 fallback 链);失败返回 null,由调用方决定兜底。 */
+    /**
+     * 一段文本整段一口气合成;失败返回 null,由调用方决定兜底。
+     * fallback 用【同语种全音色】宽链(2026-07-19 真机:#473 按音色族拒发,云健/云希/云扬
+     * 全灭时晓晓正常 —— 同性别链会 9 分钟全军覆没,跨性别才能出片)。首个音色试 2 次;
+     * 一旦出现【超时型】失败(= 拒发的典型表现,重试同音色无意义),后续每个音色只试 1 次,
+     * 快速扫到能用的音色为止。
+     */
+    let sawTtsTimeout = false;
+    const deadVoices = new Set<string>(); // 本次任务内确认被拒发(超时)的音色,后续组直接跳过不再撞墙
     const oneShot = async (text: string, primary: string, outPath: string): Promise<WholeTtsResult | null> => {
-      for (const v of getVoiceFallbacks(primary)) {
+      for (const v of getVoiceFallbacksWide(primary)) {
+        if (deadVoices.has(v)) continue;
         throwIfAborted(signal);
-        const w = await synthesizeWhole(text, outPath, v, rate, { signal, maxAttempts: 3 });
-        if (w.ok) return w;
-        const why = getLastTtsError();
-        if (!signal?.aborted) tracker.progress(`🔁 音色 ${v} 整段合成未成${why ? `(${why.slice(0, 90)})` : ''}`);
+        const w = await synthesizeWhole(text, outPath, v, rate, { signal, maxAttempts: sawTtsTimeout ? 2 : 3 });
+        if (w.ok) {
+          if (v !== primary) tracker.progress(`🎤 已改用备选音色 ${v}(原音色被上游拒发)`);
+          return w;
+        }
+        const why = getLastTtsError() || '';
+        if (why.includes('超时')) { sawTtsTimeout = true; deadVoices.add(v); }
+        if (!signal?.aborted) tracker.progress(`🔁 音色 ${v} 整段合成未成${why ? `(${why.slice(0, 90)})` : ''},换下一个音色…`);
       }
       return null;
     };
@@ -684,6 +699,10 @@ export async function runThreadPipeline(
       }
       if (!groupDone) {
         throwIfAborted(signal);
+        if (getVoiceFallbacksWide(gv).every((v) => deadVoices.has(v))) {
+          tracker.progress('⚠️ 同语种全部音色均被上游拒发/超时,该组跳过逐段兜底');
+          continue;
+        }
         if (gsegs.length > 1) tracker.progress(`↩️ 该组回退逐段配音(${gsegs.length} 段,已切好的保留)…`);
         for (const s of gsegs) {
           throwIfAborted(signal);

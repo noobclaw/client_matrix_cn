@@ -172,8 +172,16 @@ interface EdgeTtsRun {
   detail: string;
 }
 
-/** 合成超时(连不通微软端点 / 卡死时兜底)。 */
-const SYNTH_TIMEOUT_MS = 60_000;
+/**
+ * 合成超时(连不通微软端点 / 卡死时兜底)。按文本长度自适应:
+ * 活连接首字节 <3s、音频流 15~30× 实时速度,死连接(黑洞)等多久都不会活 ——
+ * 2026-07-19 真机:用户网络到微软 TTS 大面积黑洞、少数连接能通,固定 60s/次把
+ * 重试预算全烧在死连接上(模板速生 1 次超时+1 次成功耗 65s 实锤)。
+ * 短文本 ~17s、整段长组 ~40s,封顶 60s —— 同样的预算能多抽几次「活连接」。
+ */
+function synthTimeoutMs(text: string): number {
+  return Math.min(60_000, 15_000 + Math.ceil((estimateDuration(text) * 1000) / 5));
+}
 
 /**
  * 跑一次 edge-tts-universal 合成:写 MP3 到 outPath,返回逐词 cue。
@@ -189,10 +197,11 @@ async function runEdgeTts(text: string, voice: string, outPath: string, rate?: n
     // synthesize() 是单次 WebSocket 往返;库本身不带超时,这里用 Promise.race 兜底,
     // 避免端点不通时永不 resolve 卡死出片流程。用户点停止(signal)也立刻掀桌,
     // 不用干等 60s 超时才轮到外层 throwIfAborted。
+    const timeoutMs = synthTimeoutMs(text);
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(
-        () => reject(new Error('合成超时(60s,可能是网络到微软 TTS 端点不通)')),
-        SYNTH_TIMEOUT_MS,
+        () => reject(new Error(`合成超时(${Math.round(timeoutMs / 1000)}s:到微软 TTS 的连接黑洞/被拒,换连接重试)`)),
+        timeoutMs,
       );
     });
     const aborted = new Promise<never>((_, reject) => {
@@ -326,6 +335,25 @@ export function getVoiceFallbacks(primary: string): string[] {
     //   ja/ko/fr/es-MX/pt-BR/id/vi/ar 各只配了一对 voice,跨性别会让音色跳变,体验不如失败退费让用户重试。
   };
   return M[primary] || [primary];
+}
+
+/**
+ * 同语种【全音色】fallback 链:先走 getVoiceFallbacks 的同性别链,走完再跨性别补齐同语种
+ * 其余 voice。给爆帖这类「整段一口气」链路用 —— 2026-07-19 真机实锤:#473 的音色拒发是
+ * 按【音色族】来的(云健/云希/云扬男声全灭,同一时刻晓晓正常),同性别链全军覆没时,
+ * 跨性别换个音色能出片,比整条视频失败强。单句流水(stock 逐句)不用它,保持音色统一。
+ */
+export function getVoiceFallbacksWide(primary: string): string[] {
+  const lang = primary.split('-').slice(0, 2).join('-');
+  const ALL: Record<string, string[]> = {
+    'zh-CN': ['zh-CN-XiaoxiaoNeural', 'zh-CN-XiaoyiNeural', 'zh-CN-YunxiNeural', 'zh-CN-YunyangNeural', 'zh-CN-YunjianNeural'],
+    'zh-HK': ['zh-HK-HiuGaaiNeural', 'zh-HK-HiuMaanNeural', 'zh-HK-WanLungNeural'],
+    'zh-TW': ['zh-TW-HsiaoChenNeural', 'zh-TW-HsiaoYuNeural', 'zh-TW-YunJheNeural'],
+    'en-US': ['en-US-JennyNeural', 'en-US-AriaNeural', 'en-US-EmmaNeural', 'en-US-GuyNeural', 'en-US-AndrewNeural', 'en-US-BrianNeural'],
+  };
+  const base = getVoiceFallbacks(primary);
+  const extra = (ALL[lang] || []).filter((v) => !base.includes(v));
+  return [...base, ...extra];
 }
 
 // ─────────────────────── 整段「一口气」合成 + 切句对齐 ───────────────────────
