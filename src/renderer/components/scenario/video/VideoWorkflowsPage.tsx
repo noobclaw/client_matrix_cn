@@ -4338,13 +4338,10 @@ const TEMPLATE_HOTLISTS: Array<{ name: string; emoji: string; catKey?: 'web3' | 
 /** 「热榜做数据源」取前 N 条标题拼成 dataText。 */
 const TEMPLATE_HOTLIST_TOPN = 12;
 
-// 模板速生:4 步向导(2026-06-14 砍掉「版式」步 —— 新建一律 AI 自由排版,它最灵活、涵盖固定版式)。
-//   Step 1 内容(来源二选一:粘贴 / 热榜 + 标题 + 风格要求)
-//   Step 2 配音(开关 + 音色 + 语速 + 字幕开关 + 自定义口播稿)
-//   Step 3 背景音乐(三选一 + 音量)
-//   Step 4 出片(品牌色 + 成片去向 + 运行频率)
-//   注:固定版式(排行榜/资讯/金句/倒数/数据看板)仍在 templateLibrary,仅老任务编辑时保留,新建不再选。
-type TplStep = 1 | 2 | 3 | 4 | 5;
+// 模板速生:6 步向导。
+//   Step 1 版式 · Step 2 内容 · Step 3 配音 · Step 4 音乐 · Step 5 出片 · Step 6 发布
+//   (2026-07-19 用户要求:版式独立成第一步,先选样子再填内容)
+type TplStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 // ── 热搜成片配置向导(engine='hotspot')──────────────────────────────────
 //   跟其它视频卡不同:不填赛道/关键词/稿子,只勾「热点源」。每次运行从勾选源最新 20 条
@@ -6161,13 +6158,14 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const isEdit = !!editTask;
   const et = editTask?.input?.template;
   const [step, setStep] = useState<TplStep>(1);
-  // 出片(4)= 本地/上传去向 + 频率;发布(5)= 发布平台 + 每平台选号(matrix)。
+  // 步骤:1 版式 · 2 内容 · 3 配音 · 4 音乐 · 5 出片 · 6 发布。
+  // 版式独立成第一步(2026-07-19 用户要求:版式网格 + 内容表单挤一步太乱,先选样子再填内容)。
+  // 出片(5)= 本地/上传去向 + 频率;发布(6)= 发布平台 + 每平台选号(matrix)。
   // 对齐热搜成片:平台与账号【同一步】,且与「出片去向」分开成独立的「发布」步。
-  const PUBLISH_STEP = 5 as const;
-  const MAX_STEP = 5;
-  // ── Step 1:内容 ──
-  // 版式步已砍掉 —— 新建一律 AI 自由排版(它最灵活、能涵盖固定版式);编辑老任务保留它原版式。
-  // 新任务默认从「适合榜单的精品模板」里随机挑一套(音画同步/质感稳),不再固定 ai_freeform
+  const PUBLISH_STEP = 6 as const;
+  const MAX_STEP = 6;
+  // ── Step 1:版式 ──
+  // 新任务默认从「适合榜单的精品模板」里随机挑一套(音画同步/质感稳),不固定 ai_freeform
   // (老任务保留其已存风格)。用户仍可在版式网格里自由改。
   const [style, setStyle] = useState<VideoTemplateStyle>(
     et?.style || (['rank_list', 'news_cards', 'billboard'] as VideoTemplateStyle[])[Math.floor(Math.random() * 3)],
@@ -6429,8 +6427,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
 
   // 「下一步」按 step 路由 + 必填校验。
   const goNext = () => {
-    // Step 1 = 内容/数据,必填校验放这里。
-    if (step === 1) {
+    // Step 2 = 内容/数据,必填校验放这里(Step 1 版式总有默认值,无需校验)。
+    if (step === 2) {
       if (!effectiveDataText.trim()) {
         setErr(dataSourceMode === 'hotlist'
           ? (isZh ? '请先选一个热榜并等它加载出条目' : 'Pick a hot list and wait for it to load')
@@ -6455,22 +6453,61 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           <div>
             <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? (isEdit ? '编辑模板速生' : '模板速生') : (isEdit ? 'Edit Template' : 'Template Speed')}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '版式' : 'Layout'} />
               <div className={`h-px w-3 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '配音' : 'Voice'} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '内容' : 'Content'} />
               <div className={`h-px w-3 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '音乐' : 'Music'} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '配音' : 'Voice'} />
               <div className={`h-px w-3 ${step > 3 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '出片' : 'Output'} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音乐' : 'Music'} />
               <div className={`h-px w-3 ${step > 4 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={5} active={step === 5} done={false} label={isZh ? '发布' : 'Publish'} />
+              <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '出片' : 'Output'} />
+              <div className={`h-px w-3 ${step > 5 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={6} active={step === 6} done={false} label={isZh ? '发布' : 'Publish'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {/* ── Step 1:版式(独立一步,先选样子再填内容)── */}
           {step === 1 && (
+            <>
+              <Field label={isZh ? '版式风格' : 'Layout style'} hint={isZh ? '选一套画面版式;AI 自由排版最灵活但风格随机' : 'pick a visual layout; AI freeform is flexible but random'}>
+                <div className="grid grid-cols-2 gap-2">
+                  {TEMPLATE_STYLES.map((s) => (
+                    <button key={s.id} type="button" onClick={() => setStyle(s.id)}
+                      className={`px-3 py-2 rounded-lg border text-left text-xs transition-colors ${style === s.id
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
+                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-400'}`}
+                      title={isZh ? s.hint : s.en}>
+                      {s.emoji} {isZh ? s.zh : s.en}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {style === 'ai_freeform' && (
+                <Field label={isZh ? '设计主题' : 'Design theme'} hint={isZh ? '成套审美(配色/字体/装饰)。自动 = 按内容气质挑最搭的一套' : 'curated look; Auto picks by content'}>
+                  <select value={themeId} onChange={(e) => setThemeId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white dark:bg-[#1a1a2e]">
+                    {THEME_OPTIONS.map((t) => <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>)}
+                  </select>
+                </Field>
+              )}
+
+              {style === 'ai_freeform' && (
+                <Field label={isZh ? '风格 / 要求(选填)' : 'Style / brief (optional)'} hint={isZh ? '像跟设计师说话,描述想要的画面风格/重点' : 'talk to the AI like a designer: vibe, emphasis, layout'}>
+                  <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={2}
+                    placeholder={isZh ? '如:深色科技风,大号数字,突出涨幅最高的那条' : 'e.g. dark tech vibe, big numbers, emphasize the top mover'}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
+                </Field>
+              )}
+            </>
+          )}
+
+          {/* ── Step 2:内容 ── */}
+          {step === 2 && (
             <>
               {/* 数据源二选一:粘贴任意内容 / 选一个热榜(取前 N 条) */}
               <Field label={isZh ? '内容来源' : 'Content source'} hint={isZh ? '自己粘贴,或选一个热榜自动取前几条当内容' : 'paste your own, or pull top items from a hot list'}>
@@ -6524,39 +6561,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                 </Field>
               )}
 
-              {style === 'ai_freeform' && (
-                <Field label={isZh ? '设计主题' : 'Design theme'} hint={isZh ? '成套审美(配色/字体/装饰)。自动 = 按内容气质挑最搭的一套' : 'curated look; Auto picks by content'}>
-                  <select value={themeId} onChange={(e) => setThemeId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white dark:bg-[#1a1a2e]">
-                    {THEME_OPTIONS.map((t) => <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>)}
-                  </select>
-                </Field>
-              )}
-
-              {style === 'ai_freeform' && (
-                <Field label={isZh ? '风格 / 要求(选填)' : 'Style / brief (optional)'} hint={isZh ? '像跟设计师说话,描述想要的画面风格/重点' : 'talk to the AI like a designer: vibe, emphasis, layout'}>
-                  <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={2}
-                    placeholder={isZh ? '如:深色科技风,大号数字,突出涨幅最高的那条' : 'e.g. dark tech vibe, big numbers, emphasize the top mover'}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
-                </Field>
-              )}
-
-              <Field label={isZh ? '版式风格' : 'Layout style'} hint={isZh ? '选一套画面版式;AI 自由排版最灵活但风格随机' : 'pick a visual layout; AI freeform is flexible but random'}>
-                <div className="grid grid-cols-2 gap-2">
-                  {TEMPLATE_STYLES.map((s) => (
-                    <button key={s.id} type="button" onClick={() => setStyle(s.id)}
-                      className={`px-3 py-2 rounded-lg border text-left text-xs transition-colors ${style === s.id
-                        ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
-                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-400'}`}
-                      title={isZh ? s.hint : s.en}>
-                      {s.emoji} {isZh ? s.zh : s.en}
-                    </button>
-                  ))}
-                </div>
-              </Field>
             </>
           )}
-          {step === 2 && (
+          {step === 3 && (
             <>
               {/* 生成语言:画面文字 + AI 口播稿都用它(纯视觉也影响画面文字),所以放在配音开关外面。 */}
               <Field label={isZh ? '生成语言' : 'Output language'} hint={isZh ? '画面文字和 AI 口播稿都用该语言;内容是其它语言时 AI 自动翻译。自动 = 跟你给的内容' : 'Page text & AI narration language; AI translates if the content differs. Auto = follow your content'}>
@@ -6621,7 +6628,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
               )}
             </>
           )}
-          {step === 3 && (
+          {step === 4 && (
             <>
               <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'} hint={isZh ? '配音模式下作为氛围音垫底;纯视觉模式下是主音轨' : 'Bed for narration; main audio in silent mode'}>
                 <div className="grid grid-cols-3 gap-2 mb-2">
@@ -6683,7 +6690,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
               </Field>
             </>
           )}
-          {step === 4 && (
+          {step === 5 && (
             <>
               <Field label={isZh ? '主品牌色' : 'Brand color'} hint={isZh ? '画面整体主色调:标题字色、装饰元素、数字高亮都用它' : 'Drives the title color, accent bars, and number highlights'}>
                 <div className="flex items-center gap-2">
@@ -6708,7 +6715,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
             </>
           )}
 
-          {/* ── Step 5:发布平台 + 发布账号(独立一步,平台与账号同一步,对齐热搜成片)── */}
+          {/* ── Step 6:发布平台 + 发布账号(独立一步,平台与账号同一步,对齐热搜成片)── */}
           {step === PUBLISH_STEP && (
             <PublishPlatformPicker
               isZh={isZh}
