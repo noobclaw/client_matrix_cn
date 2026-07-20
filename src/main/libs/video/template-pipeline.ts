@@ -33,7 +33,7 @@ import { generateFreeformScene, deterministicFallbackScene, type FreeformResult 
 import { wrapTemplateHtml } from './templateAnim';
 import { loadFontFaceCss } from './fontAsset';
 import { loadGsapSource } from './gsapAsset';
-import { synthesize, getLastTtsError, getVoiceFallbacks } from './tts';
+import { synthesize, getLastTtsError, getVoiceFallbacks, alignSentencesToCues } from './tts';
 import { getTtsVoice } from './config';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import type { CaptionCue } from './templateAnim';
@@ -372,6 +372,8 @@ export async function runTemplatePipeline(
     let realNarrationPath: string | undefined;
     let realDurationSec = 0;
     let captionCues: CaptionCue[] | undefined;
+    // 配音的真实时间戳 cue(不管字幕开没开都留着):分页翻页窗口用它对齐,比字数比例估算准。
+    let narrCues: CaptionCue[] | undefined;
     if (wantNarration) {
       tracker.start('voice', '🎤 正在合成配音…');
       const script = cleanForTts(tpl.voiceScript || data.voiceScript || '');
@@ -403,6 +405,7 @@ export async function runTemplatePipeline(
         return { ok: false, error: err };
       }
       // 字幕开关:默认 true,显式 false 时关
+      narrCues = r.cues;
       if (tpl.subtitleEnabled !== false) captionCues = r.cues;
       // 把口播稿存一份到任务目录(对齐 stock pipeline 的「文案.txt」)。失败不阻塞出片 ——
       //   只是供用户事后查看 / 复用稿子。voiceSegments 有就一并列出,标明每段对应哪一页画面。
@@ -495,18 +498,39 @@ export async function runTemplatePipeline(
       let pageTimings: Array<{ startSec: number; durSec: number }> | undefined;
       if (wantNarration && realDurationSec > 0 && data.voiceSegments && data.voiceSegments.length === actualPageCount) {
         const segs = data.voiceSegments;
-        const totalChars = segs.reduce((s, x) => s + x.length, 0);
-        if (totalChars > 0) {
-          // 留 0.3s 入场 + 0.3s 尾留白(跟 paginate 兜底分支同口径)
-          const usable = Math.max(2.0, realDurationSec - 0.6);
-          let cursor = 0.3;
-          pageTimings = segs.map((seg) => {
-            const dur = (seg.length / totalChars) * usable;
-            const startSec = cursor;
-            cursor += dur;
-            return { startSec, durSec: dur };
-          });
-          tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页配上 ${segs.length} 段配音`);
+        // ① 首选:配音真实时间戳对齐(2026-07-20 用户实测「口播念到第二屏画面还停第一屏」:
+        //   字数比例假设语速恒定,数字/英文/停顿都会让实际朗读偏离比例、误差逐页累积;
+        //   cue 锚定每页边界都是微软报的真实时间,零累积误差 —— 与爆帖/素材切段同一算法)。
+        if (narrCues && narrCues.length > 0) {
+          const spans = alignSentencesToCues(
+            segs,
+            narrCues.map((c) => ({ text: c.text, start: c.startSec, end: c.endSec })),
+            realDurationSec,
+          );
+          if (spans && spans.length === segs.length) {
+            pageTimings = spans.map((s, i) => ({
+              startSec: s.start,
+              // 末页吃掉尾留白,画面撑到视频结束不黑屏。
+              durSec: (i === spans.length - 1 ? Math.max(s.end, durationSec) : s.end) - s.start,
+            }));
+            tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页按配音真实时间戳对齐`);
+          }
+        }
+        // ② 兜底:字数比例估算(cue 缺失 / 念读与文本对不齐时;有累积误差但不至于失联)
+        if (!pageTimings) {
+          const totalChars = segs.reduce((s, x) => s + x.length, 0);
+          if (totalChars > 0) {
+            // 留 0.3s 入场 + 0.3s 尾留白(跟 paginate 兜底分支同口径)
+            const usable = Math.max(2.0, realDurationSec - 0.6);
+            let cursor = 0.3;
+            pageTimings = segs.map((seg) => {
+              const dur = (seg.length / totalChars) * usable;
+              const startSec = cursor;
+              cursor += dur;
+              return { startSec, durSec: dur };
+            });
+            tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页按字数比例估算(时间戳不可用)`);
+          }
         }
       } else if (wantNarration && actualPageCount > 1) {
         // 开了配音但 segments 没拿到/对不上 → 提示用户后会走均分,画面跟配音不严格对齐
