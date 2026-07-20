@@ -75,6 +75,19 @@ const LANG_DEFAULT_VOICE: Record<ContentLang, string> = {
 
 const LANG_NAME: Record<ContentLang, string> = { zh: '简体中文', en: 'English', ja: '日本語', ko: '한국어' };
 
+/**
+ * 粗校验文本是否像目标语言(2026-07-20 用户实测:AI 会被 prompt 里的中文示例带偏,英文/日韩
+ * 任务照样输出中文;英文 voice 念中文只会蹦出几个拉丁用户名,整条片报废)。
+ * en 不得含汉字;ja 必须含假名(日文正常句子必带);ko 必须含谚文;zh 不校验。
+ * 校验不过 → 调用方弃用该 AI 产物、回退原文,宁可少主持词也不出「哑巴音频」。
+ */
+function looksLikeLang(text: string, lang: ContentLang): boolean {
+  if (lang === 'en') return !/[一-鿿]/.test(text);
+  if (lang === 'ja') return /[ぁ-ゖァ-ヺ]/.test(text);
+  if (lang === 'ko') return /[가-힣]/.test(text);
+  return true;
+}
+
 interface CardSeg {
   /** 'title' 或 comment id。 */
   key: string;
@@ -105,8 +118,9 @@ async function translateThread(
 ): Promise<{ title: string; bodies: Record<string, string>; postBody?: string; intro?: string; outro?: string; leadIns?: Record<string, string> } | null> {
   const sys = [
     `你是短视频「爆帖解说」主持人兼本地化译者。目标语言:${LANG_NAME[lang]}。把 Reddit 帖子做成有叙事感的口播:`,
+    `0. 【铁律】所有输出字段(title/postBody/intro/outro/leadIns/comments)一律用目标语言 ${LANG_NAME[lang]} 书写,一个别的语言的字都不能混。下面规则里的示例是中文示意 —— 目标语言不是中文时,必须改写成目标语言的等价说法(如 English:「Today's top Reddit thread」),绝不能照抄中文。`,
     '1. 翻译改写:标题/正文/评论译成目标语言,口语化、保留原梗语气;俚语缩写(AITA/TIFU/OP)转成观众能懂的说法。目标语言与原文相同时原样保留、只做轻度口语顺滑。',
-    '2. intro(开场,≤2句):第一句必须用「今日 Reddit 热帖」这类栏目感句式点题开场(让观众知道这是个每日栏目),紧接着像主持人一样交代这帖在聊什么、冲突/悬念是什么(如「今日 Reddit 热帖:楼主说…大家直接吵翻了」)。',
+    '2. intro(开场,≤2句):第一句必须用「今日 Reddit 热帖」这类栏目感句式点题开场(让观众知道这是个每日栏目;目标语言非中文时用等价说法,如 English:「Today\'s top Reddit thread」),紧接着像主持人一样交代这帖在聊什么、冲突/悬念是什么(如「今日 Reddit 热帖:楼主说…大家直接吵翻了」)。',
     '3. leadIns:给每条评论写一个≤12字的引入短语,自然多样、可带网友名(如「网友Bannon9k直言」「有人当场反驳」「高赞回复说」);要尽量【承接上一条评论的观点】(赞同/反驳/补充/递进),让整条口播像一个连续展开的故事,而不是孤立地念评论;避免连续重复句式。',
     '4. outro(结尾,≤2句):总结各方观点或抛一个问题引导互动(如「你站哪边?评论区聊聊」)。',
     '5. 只输出严格 JSON(json):{"title":"…","postBody":"…(无则空串)","intro":"…","outro":"…","leadIns":{"<id>":"…"},"comments":{"<id>":"…"}},id 原样保留。',
@@ -254,7 +268,7 @@ async function hookifyTitle(
     onCost(r.tokens, r.costUsd);
     const parsed = JSON.parse(extractJsonObject(r.content));
     const hook = typeof parsed?.hook === 'string' ? parsed.hook.trim() : '';
-    if (hook && hook.length >= 4) return hook;
+    if (hook && hook.length >= 4 && looksLikeLang(hook, lang)) return hook;
   } catch { /* 钩子失败不挡出片 */ }
   return title;
 }
@@ -584,7 +598,18 @@ export async function runThreadPipeline(
     // 主持人叙事(2026-07-18 用户反馈「只念评论完全看不懂」):所有语言(含英文)都过一次 AI,
     // 产出 开场intro + 每条评论引入语 + 结尾outro;英文时原文保留只写主持词。失败回落生读(老行为)。
     {
-      const tr = await translateThread(post, translateCandidates, lang, (tk, usd) => tracker.addTokens(tk, usd));
+      let tr = await translateThread(post, translateCandidates, lang, (tk, usd) => tracker.addTokens(tk, usd));
+      // 语言兜底(2026-07-20 用户实测「英文配出来只有几个名字」):AI 会被中文示例带偏、
+      // 非中文任务照样输出中文稿 → 目标语言 voice 念不出来。整稿语言校验不过就作废,
+      // 回退原文生读(宁可没主持词,不能出「只念名字」的哑巴音频)。
+      if (tr && lang !== 'zh') {
+        const joined = [tr.title, tr.postBody || '', tr.intro || '', tr.outro || '',
+          ...Object.values(tr.leadIns || {}), ...Object.values(tr.bodies)].filter(Boolean).join(' ');
+        if (!looksLikeLang(joined, lang)) {
+          tracker.progress(`⚠️ 主持稿语言不符(未按 ${LANG_NAME[lang]} 输出),弃用主持稿,按原文生读`);
+          tr = null;
+        }
+      }
       if (tr) {
         trTitle = tr.title;
         trBodies = tr.bodies;
@@ -619,8 +644,14 @@ export async function runThreadPipeline(
     // 标题后同段朗读(画面即帖子卡);截 900 字防吃光片长,评论仍按剩余时长逐条截断。
     const postBodyText = (trPostBody || String(post.selftext || '')).trim().slice(0, 900);
     // 段落结构:钩子标题 → 主持人开场(交代主题背景) → 帖子正文
-    if (hostIntro) titleText = titleText + '。' + hostIntro;
-    if (postBodyText) titleText = titleText + '。' + postBodyText;
+    // 拼接补句号:前段已带句末标点就不再加(修「Think again.。今日…」双标点);英文用 '. '。
+    const joinSpeech = (a: string, b: string) => {
+      const t = a.trim();
+      const ended = /[。.!?！?…"」』]$/.test(t);
+      return t + (ended ? (lang === 'en' ? ' ' : '') : (lang === 'en' ? '. ' : '。')) + b;
+    };
+    if (hostIntro) titleText = joinSpeech(titleText, hostIntro);
+    if (postBodyText) titleText = joinSpeech(titleText, postBodyText);
     // ── 一口气配音(2026-07-19 用户拍板):整条口播【单音色 1 次 edge-tts 请求】合成,
     //   再按 cue 时间戳切回各段(卡片时间窗) —— 请求数 15+ → 1,和「从不失败」的模板速生
     //   同款请求量,从根上躲开限频/黑洞。合成失败 / 切段对不齐 → 回退逐段 ttsSeg(有界)。
@@ -762,7 +793,7 @@ export async function runThreadPipeline(
       const last = segs[segs.length - 1];
       try {
         const lastVoice = plan.find((p) => p.key === last.key)?.voice || voice;
-        const merged = last.text + '。' + hostOutro;
+        const merged = joinSpeech(last.text, hostOutro);
         tracker.progress('🎙 配音收尾:结尾总结并入最后一段…');
         const w = await oneShot(merged, lastVoice, path.join(assetDir, `seg-${last.key}-outro.mp3`));
         if (w) {
