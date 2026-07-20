@@ -46,6 +46,25 @@ const PROBE_TARGETS = [
   { host: 'www.apple.com', port: 443 },
 ];
 
+/** 连代理服务器本身的失败(区别于「代理通、但连不到目标站」)—— 这类错误后面再试别的
+ *  目标/协议全是白等,直接中止。ETIMEDOUT/ECONNREFUSED/EHOSTUNREACH/socks 库的连接超时文案。 */
+function isProxyUnreachable(err: string): boolean {
+  return /ETIMEDOUT|ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|connection timed out|closed before/i.test(err);
+}
+
+/** 纯 TCP 探一下代理 host:port 是否可达(不走 socks/http 握手)。坏代理最常见就是端口连不上,
+ *  4s 内快速失败,避免后面 6 次满超时握手把总时长累加到 90s(2026-07-21 用户实测卡死根因)。 */
+function tcpReachable(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok: boolean): void => { if (done) return; done = true; try { sock.destroy(); } catch { /* ignore */ } resolve(ok); };
+    const sock = net.connect(port, host);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    sock.once('connect', () => { clearTimeout(timer); finish(true); });
+    sock.once('error', () => { clearTimeout(timer); finish(false); });
+  });
+}
+
 /** 经 socks5 连一次目标(域名直传 = remote DNS)。成功即销毁连接。 */
 async function socksConnectOnce(proxy: Proxy, host: string, port: number, timeoutMs: number): Promise<void> {
   const info = await SocksClient.createConnection({
@@ -67,6 +86,8 @@ async function probeVia(protocol: Proxy['protocol'], proxy: Proxy, timeoutMs: nu
           await socksConnectOnce(proxy, target.host, target.port, timeoutMs);
           return null;
         } catch (e1) {
+          // 连代理本身就失败 → 换目标也没用,直接中止(不再本地解析重试)。
+          if (isProxyUnreachable(String((e1 as Error)?.message || e1))) throw e1;
           const ip = await dns.promises.lookup(target.host).then((r) => r.address).catch(() => null);
           if (!ip) throw e1;
           await socksConnectOnce(proxy, ip, target.port, timeoutMs);
@@ -75,7 +96,11 @@ async function probeVia(protocol: Proxy['protocol'], proxy: Proxy, timeoutMs: nu
       }
       if (await probeHttpConnect(proxy, target.host, target.port, timeoutMs)) return null;
       lastErr = 'HTTP CONNECT rejected/no response';
-    } catch (e) { lastErr = String((e as Error)?.message || e); }
+    } catch (e) {
+      lastErr = String((e as Error)?.message || e);
+      // 代理服务器都连不上 → 后面的目标全是白等,立即返回。
+      if (isProxyUnreachable(lastErr)) return lastErr;
+    }
   }
   return lastErr;
 }
@@ -97,14 +122,26 @@ export interface ProxyProbeResult {
 }
 
 /** 绑定代理时的详细校验:所选协议不通时自动换协议再试,能通就给出正确协议建议。
- *  超时 10s:跨境慢代理 7~8s 才握完手,6s 会把能用的代理误判成死的(2026-07-20 用户实测)。 */
-export async function probeProxyDetailed(proxy: Proxy, timeoutMs = 10_000): Promise<ProxyProbeResult> {
-  const err = await probeVia(proxy.protocol, proxy, timeoutMs);
-  if (!err) return { ok: true };
-  const alt: Proxy['protocol'] = (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') ? 'http' : 'socks5';
-  const altErr = await probeVia(alt, proxy, timeoutMs);
-  if (!altErr) return { ok: false, error: err, suggestProtocol: alt };
-  return { ok: false, error: err };
+ *  单次握手超时 7s(跨境慢代理够用);整体 12s 硬上限,任何情况都保证返回,绝不让 UI 卡死
+ *  (2026-07-21 用户实测:一条端口连不上的代理原来串行探测要 90s,UI 一直转「校验中」)。 */
+export async function probeProxyDetailed(proxy: Proxy, timeoutMs = 7_000): Promise<ProxyProbeResult> {
+  const deadline = new Promise<ProxyProbeResult>((resolve) =>
+    setTimeout(() => resolve({ ok: false, error: '校验超时(代理响应过慢或不通)' }), 12_000));
+  const work = (async (): Promise<ProxyProbeResult> => {
+    // 先纯 TCP 探代理端口本身:连不上直接失败,不进 6 次满超时握手(坏代理最常见的死法)。
+    if (!(await tcpReachable(proxy.host, proxy.port, 5_000))) {
+      return { ok: false, error: '代理地址无法连接(host/端口不通,或该 IP 未对本机授权)' };
+    }
+    const err = await probeVia(proxy.protocol, proxy, timeoutMs);
+    if (!err) return { ok: true };
+    // 连代理本身失败(端口通但握手超时/被拒)→ 换协议也没意义,直接报错。
+    if (isProxyUnreachable(err)) return { ok: false, error: err };
+    const alt: Proxy['protocol'] = (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') ? 'http' : 'socks5';
+    const altErr = await probeVia(alt, proxy, timeoutMs);
+    if (!altErr) return { ok: false, error: err, suggestProtocol: alt };
+    return { ok: false, error: err };
+  })();
+  return Promise.race([work, deadline]);
 }
 
 /** 探测该账号代理并把结果写进 proxy.health(无代理跳过返回 null)。供连接/刷新/保活复用。 */
