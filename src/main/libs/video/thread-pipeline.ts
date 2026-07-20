@@ -424,6 +424,12 @@ async function composeThreadVideo(opts: {
   assPath?: string;
   /** 顶部常驻抬头(如「今日 Reddit 热帖 · 7月20日」)。空 = 不画。 */
   headerText?: string;
+  /** 底部口播字幕(热搜同款):全局时间轴短语 cue。空 = 不烧(karaoke 模式用 ASS)。 */
+  subtitleCues?: Array<{ text: string; start: number; end: number }>;
+  /** 蒙层(局部高斯模糊带)中心占画高比例。不传 = 不画。字幕/跳字都垫这条,观感同热搜。 */
+  maskCenterRatio?: number;
+  /** cue 文本文件落盘目录(drawtext textfile 用相对名 + ffmpeg cwd 指到这)。烧字幕时必传。 */
+  workDir?: string;
   signal?: AbortSignal;
 }): Promise<boolean> {
   const cards = opts.segs.filter((s) => s.pngPath && typeof s.startSec === 'number');
@@ -450,6 +456,14 @@ async function composeThreadVideo(opts: {
       baseIn = '[vhdr]';
     }
   }
+  // 蒙层(2026-07-20 用户要求对齐热搜):在字幕中心处叠一条局部高斯模糊带,字幕画在带上。
+  // 画在底片上、卡片 overlay 之前(卡片/字幕都在其上层)。配方同 compose.renderClipsBg。
+  if (opts.maskCenterRatio) {
+    const maskH = Math.round(H * 0.18);
+    const maskY = Math.max(0, Math.min(Math.round(H * opts.maskCenterRatio) - Math.round(maskH / 2), H - maskH));
+    parts.push(`${baseIn}split[vmb0][vmsrc];[vmsrc]crop=${W}:${maskH}:0:${maskY},boxblur=24:2[vmblur];[vmb0][vmblur]overlay=0:${maskY}[vmask]`);
+    baseIn = '[vmask]';
+  }
   // 卡片:缩到显示宽,超高的按高钳制(截图 2x DPI,缩小锐利)
   const scaleArgs: string[] = [];
   for (const c of cards) {
@@ -462,8 +476,11 @@ async function composeThreadVideo(opts: {
     // 照 bot 的 colorchannelmixer=aa=opacity,让卡片跟游戏背景柔和融合而非实心糊上去。
     parts.push(`[${2 + i}:v]${scaleArgs[i]},format=rgba,colorchannelmixer=aa=${CARD_OPACITY}[c${i}]`);
   });
-  // 有 ASS(跳字字幕)时,卡片链输出到 [vpre] 再烧字幕出 [vout];否则直接出 [vout]。
-  const vEnd = opts.assPath ? '[vpre]' : '[vout]';
+  // 底部口播字幕(热搜同款,cards 模式):需要内置字体 + workDir(textfile 相对名)。
+  const subFont = (opts.subtitleCues && opts.subtitleCues.length && opts.workDir) ? resolveBundledFont() : null;
+  const burnSubs = !!subFont;
+  // 链尾:有 ASS(跳字)→ [vpre] 烧 ASS 出 [vout];有底部字幕 → [vcards] 接 drawtext 出 [vout];都无 → 直接 [vout]。
+  const vEnd = opts.assPath ? '[vpre]' : burnSubs ? '[vcards]' : '[vout]';
   let cur = baseIn;
   cards.forEach((c, i) => {
     const next = i === cards.length - 1 ? vEnd : `[ov${i}]`;
@@ -475,6 +492,20 @@ async function composeThreadVideo(opts: {
     // Windows 路径进 filter 要 / 分隔 + 冒号转义;整个文件名再包引号防空格。
     const assEsc = opts.assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
     parts.push(`[vpre]subtitles=filename='${assEsc}'[vout]`);
+  }
+  if (burnSubs) {
+    // 每条短语 cue 一个 drawtext(textfile 落盘避开转义地狱,ffmpeg cwd 指到 workDir)。
+    // 字幕垂直中心 = 蒙层中心(maskCenterRatio,默认 0.86)→ 字幕稳稳落在模糊带正中,同热搜。
+    const fontEsc2 = subFont!.replace(/\\/g, '/').replace(/:/g, '\\:');
+    const centerY = Math.round(H * (opts.maskCenterRatio || 0.86));
+    const draws = opts.subtitleCues!.map((c, j) => {
+      const txtName = `thrsub_${String(j).padStart(4, '0')}.txt`;
+      fs.writeFileSync(path.join(opts.workDir!, txtName), (c.text || '').trim(), 'utf8');
+      return `drawtext=fontfile='${fontEsc2}':textfile=${txtName}:fontsize=54:fontcolor=white`
+        + `:box=1:boxcolor=black@0.45:boxborderw=22:x=(w-text_w)/2:y=${centerY}-text_h/2`
+        + `:enable='between(t,${c.start.toFixed(2)},${Math.max(c.start + 0.15, c.end).toFixed(2)})'`;
+    });
+    parts.push(`[vcards]${draws.join(',')}[vout]`);
   }
 
   let audioMap = '1:a';
@@ -493,7 +524,7 @@ async function composeThreadVideo(opts: {
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
     opts.outPath,
-  ], { timeoutMs: 900_000, signal: opts.signal });
+  ], { timeoutMs: 900_000, signal: opts.signal, cwd: opts.workDir });
   return r.ok && fs.existsSync(opts.outPath);
 }
 
@@ -547,7 +578,10 @@ export async function runThreadPipeline(
     const vcfg = await getVideoConfig();
     const { acquireRedditKernel, pickThreadViaKernel, captureCardsViaKernel } = require('./threadProvider');
     kernelAccountId = await acquireRedditKernel(input.threadMaterialAccountId, (m: string) => tracker.progress(m));
-    const usedIds = getUsedHotspots(input.taskId || '');
+    // 去重改【全局】(2026-07-20 用户反馈:每个任务各存各的已用表,新建任务后又抽中同一个
+    // 高赞帖)。所有爆帖任务共用 'thread__global' 一张表;兼容读老的 per-task 记录。
+    const THREAD_USED_KEY = 'thread__global';
+    const usedIds = [...new Set([...getUsedHotspots(THREAD_USED_KEY), ...getUsedHotspots(input.taskId || '')])];
     let post: RedditPost | null = null;
     let rawComments: RedditComment[] = [];
     if (kernelAccountId) {
@@ -968,10 +1002,31 @@ export async function runThreadPipeline(
       if (lang === 'ja') return `本日のReddit人気投稿 · ${m}月${d}日`;
       return `Reddit Daily Hot · ${now.toLocaleString('en-US', { month: 'short' })} ${d}`;
     })();
+    // 底部口播字幕(2026-07-20 用户要求对齐热搜:大蒙层 + 字幕)。cards 模式烧短语字幕
+    // (全局时间轴 = 段起点 + 段内 cue;无 cue 的段整段文本兜底);karaoke 模式跳字就是字幕,
+    // 只把蒙层垫到跳字中心(0.62H)。
+    const globalSubCues = captionStyle === 'karaoke' ? undefined : alive.flatMap((s) => {
+      const base = s.startSec || 0;
+      // 无 cue 的段(静音兜底等):整段文本按 ~14 字均分伪 cue,防一条字幕溢出一行。
+      const cs: TtsCue[] = (s.cues && s.cues.length) ? s.cues : (() => {
+        const t = s.text.replace(/\s+/g, ' ').trim();
+        const n = Math.max(1, Math.ceil(t.length / 14));
+        const per = Math.max(0.4, s.durationSec / n);
+        return Array.from({ length: n }, (_, i) => ({
+          text: t.slice(i * 14, (i + 1) * 14),
+          start: i * per,
+          end: Math.min(Math.max(0.4, s.durationSec), (i + 1) * per),
+        }));
+      })();
+      return cs.map((c) => ({ text: c.text, start: base + c.start, end: base + c.end }));
+    });
     const composed = await composeThreadVideo({
       basePath, narrationPath, segs: alive, totalSec,
       bgmPath: bgm, bgmVolume: typeof input.bgmVolume === 'number' ? input.bgmVolume : 0.15,
       outPath, assPath, headerText, signal,
+      subtitleCues: globalSubCues,
+      maskCenterRatio: captionStyle === 'karaoke' ? 0.62 : 0.86,
+      workDir: assetDir,
     });
     if (!composed) {
       tracker.fail('compose', '视频合成失败(ffmpeg)');
@@ -1031,9 +1086,10 @@ export async function runThreadPipeline(
     } catch (e) {
       tracker.progress(`⚠️ 发布步骤异常:${String((e as Error)?.message || e).slice(0, 120)}`);
     }
-    // 已做去重口径对齐 hotspot:仅存本地出片成功 = 用过;选了平台则 ≥1 个发布成功才算
-    if (input.taskId && (platforms.length === 0 || publishedCount > 0)) {
-      markHotspotUsed(input.taskId, post.id);
+    // 已做去重口径对齐 hotspot:仅存本地出片成功 = 用过;选了平台则 ≥1 个发布成功才算。
+    // 记到全局表(所有爆帖任务共用,防跨任务重复选帖)。
+    if (platforms.length === 0 || publishedCount > 0) {
+      markHotspotUsed('thread__global', post.id);
     }
     tracker.finish(outPath, 1);
     return { ok: true, outputPath: outPath, outputPaths: [outPath] };
