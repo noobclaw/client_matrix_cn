@@ -1453,11 +1453,14 @@ const server = http.createServer(async (req, res) => {
               const proxy = a?.proxy;
               if (!proxy || !proxy.host) return writeJSON(res, 200, { ok: true, reachable: false, error: 'no_proxy' });
               const { listAccounts, platformKey } = await import('./libs/matrix/accountManager');
-              const { probeProxy } = await import('./libs/matrix/proxyBridge');
+              const { probeProxyDetailed } = await import('./libs/matrix/proxyBridge');
               const pk = platformKey({ platform: a?.platform, loginScope: a?.loginScope });
               const dup = listAccounts().find((x: any) => x.id !== a?.accountId && x.proxy && x.proxy.host === proxy.host && platformKey(x) === pk);
-              const reachable = await probeProxy(proxy).catch(() => false);
-              return writeJSON(res, 200, { ok: true, reachable, duplicateName: dup ? (dup.displayName || dup.nickname || dup.id) : undefined });
+              const probe = await probeProxyDetailed(proxy).catch(() => ({ ok: false } as any));
+              return writeJSON(res, 200, {
+                ok: true, reachable: probe.ok, error: probe.error, suggestProtocol: probe.suggestProtocol,
+                duplicateName: dup ? (dup.displayName || dup.nickname || dup.id) : undefined,
+              });
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, reachable: false, error: e?.message || String(e) });
             }

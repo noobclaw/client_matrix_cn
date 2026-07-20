@@ -598,7 +598,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     setProxyBusy(false);
     const issues: string[] = [];
     if (r?.duplicateName) issues.push(i18nService.t('mvProxyDuplicate').replace('{name}', r.duplicateName));
-    if (!r?.reachable) issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
+    if (!r?.reachable) {
+      if (r?.suggestProtocol) {
+        // 按所选协议不通、换协议能通 → 卖家标错协议。帮用户把表单切到能通的协议,提示重新校验。
+        issues.push(i18nService.t('mvProxyProtocolSuggest').replace('{p}', r.suggestProtocol));
+        setProxyForm((f) => ({ ...f, protocol: r.suggestProtocol }));
+      } else {
+        issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
+      }
+    }
     if (issues.length) {
       setProxyMsg({ kind: 'warn', text: issues.join('\n') });
       setPendingProxySave(() => async () => { setPendingProxySave(null); setProxyMsg(null); await save(proxy); }); // 跳过校验保存(不带 health,待下次探测)

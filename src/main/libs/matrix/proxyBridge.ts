@@ -10,6 +10,7 @@
  */
 
 import net from 'net';
+import dns from 'dns';
 import { SocksClient } from 'socks';
 import { coworkLog } from '../coworkLogger';
 import type { Proxy } from './types';
@@ -36,23 +37,74 @@ export async function ensureProxyBridge(proxy?: Proxy): Promise<number | null> {
   }
 }
 
+/** 连通性探测目标:【任一通即算通】。首选咱们自己的 API 域(全球可达、自己控制,顺带验证
+ *  代理能连到我们的服务);再兜 baidu/apple —— 有的代理出口封锁部分目标(如仅供国内平台用
+ *  的代理连不到 apple),单目标会把能用的代理误判成不通(2026-07-20 用户实测)。 */
+const PROBE_TARGETS = [
+  { host: 'api.noobclaw.com', port: 443 },
+  { host: 'www.baidu.com', port: 443 },
+  { host: 'www.apple.com', port: 443 },
+];
+
+/** 经 socks5 连一次目标(域名直传 = remote DNS)。成功即销毁连接。 */
+async function socksConnectOnce(proxy: Proxy, host: string, port: number, timeoutMs: number): Promise<void> {
+  const info = await SocksClient.createConnection({
+    proxy: { host: proxy.host, port: proxy.port, type: 5, userId: proxy.username, password: proxy.password },
+    command: 'connect', destination: { host, port }, timeout: timeoutMs,
+  });
+  try { (info.socket as net.Socket).destroy(); } catch { /* ignore */ }
+}
+
+/** 按指定协议探一遍所有目标:通返回 null,不通返回最后一次的错误描述。
+ *  socks5 发域名(remote DNS)失败时,本地解析成 IP 再试一次 —— 有些代理远端 DNS 坏/慢,
+ *  发域名必挂、发 IP 就通(curl 的 socks5:// 就是本地解析,所以「curl 能通我们不通」)。 */
+async function probeVia(protocol: Proxy['protocol'], proxy: Proxy, timeoutMs: number): Promise<string | null> {
+  let lastErr = 'timeout';
+  for (const target of PROBE_TARGETS) {
+    try {
+      if (protocol === 'socks5' || protocol === 'socks5h') {
+        try {
+          await socksConnectOnce(proxy, target.host, target.port, timeoutMs);
+          return null;
+        } catch (e1) {
+          const ip = await dns.promises.lookup(target.host).then((r) => r.address).catch(() => null);
+          if (!ip) throw e1;
+          await socksConnectOnce(proxy, ip, target.port, timeoutMs);
+          return null;
+        }
+      }
+      if (await probeHttpConnect(proxy, target.host, target.port, timeoutMs)) return null;
+      lastErr = 'HTTP CONNECT rejected/no response';
+    } catch (e) { lastErr = String((e as Error)?.message || e); }
+  }
+  return lastErr;
+}
+
 /**
- * 探测代理是否【能通】:经该代理连一个全球(含中国大陆)可达的中立目标(apple.com:443)。
- * 成功=能通(角标变绿),失败/超时=不通(角标变黄)。socks5 走 socks 库;http/https 走 CONNECT 隧道。
+ * 探测代理是否【能通】(角标/保活用的轻量布尔版)。socks5 走 socks 库;http/https 走 CONNECT 隧道。
  */
 export async function probeProxy(proxy: Proxy, timeoutMs = 6000): Promise<boolean> {
-  const target = { host: 'www.apple.com', port: 443 }; // 国内外都可达的中立目标(避免 google 在墙内误判不通)
-  try {
-    if (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') {
-      const info = await SocksClient.createConnection({
-        proxy: { host: proxy.host, port: proxy.port, type: 5, userId: proxy.username, password: proxy.password },
-        command: 'connect', destination: target, timeout: timeoutMs,
-      });
-      try { (info.socket as net.Socket).destroy(); } catch { /* ignore */ }
-      return true;
-    }
-    return await probeHttpConnect(proxy, target.host, target.port, timeoutMs);
-  } catch { return false; }
+  try { return (await probeVia(proxy.protocol, proxy, timeoutMs)) === null; } catch { return false; }
+}
+
+export interface ProxyProbeResult {
+  ok: boolean;
+  /** 不通时的原因(socks 库/CONNECT 的原始错误,给 UI 显示定位)。 */
+  error?: string;
+  /** 按所选协议不通、但换这个协议能通 → 卖家标错协议(socks5↔http 很常见,AdsPower 等
+   *  工具会自动探测所以「别家能用」)。UI 拿到后帮用户切协议。 */
+  suggestProtocol?: Proxy['protocol'];
+}
+
+/** 绑定代理时的详细校验:所选协议不通时自动换协议再试,能通就给出正确协议建议。
+ *  超时 10s:跨境慢代理 7~8s 才握完手,6s 会把能用的代理误判成死的(2026-07-20 用户实测)。 */
+export async function probeProxyDetailed(proxy: Proxy, timeoutMs = 10_000): Promise<ProxyProbeResult> {
+  const err = await probeVia(proxy.protocol, proxy, timeoutMs);
+  if (!err) return { ok: true };
+  const alt: Proxy['protocol'] = (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') ? 'http' : 'socks5';
+  const altErr = await probeVia(alt, proxy, timeoutMs);
+  if (!altErr) return { ok: false, error: err, suggestProtocol: alt };
+  return { ok: false, error: err };
 }
 
 /** 探测该账号代理并把结果写进 proxy.health(无代理跳过返回 null)。供连接/刷新/保活复用。 */
@@ -152,12 +204,27 @@ function handleClient(client: net.Socket, proxy: Proxy): void {
     const pb = await reader.read(2);
     const port = (pb[0] << 8) | pb[1];
     // 3) 用 socks 库连上游(它做账密握手 + 地址类型);Chromium 发的域名原样透传 → remote DNS 不漏。
-    const info = await SocksClient.createConnection({
-      proxy: { host: proxy.host, port: proxy.port, type: 5, userId: proxy.username, password: proxy.password },
-      command: 'connect',
-      destination: { host, port },
-      timeout: 30000,
-    });
+    //    上游远端 DNS 坏(发域名必挂)时,本地解析成 IP 重试一次兜底(与 probeVia 同款;
+    //    代价是该代理场景下 DNS 走本地,兼容性优先)。
+    let info;
+    try {
+      info = await SocksClient.createConnection({
+        proxy: { host: proxy.host, port: proxy.port, type: 5, userId: proxy.username, password: proxy.password },
+        command: 'connect',
+        destination: { host, port },
+        timeout: 30000,
+      });
+    } catch (e1) {
+      const isDomain = !net.isIP(host);
+      const ip = isDomain ? await dns.promises.lookup(host).then((r) => r.address).catch(() => null) : null;
+      if (!ip) throw e1;
+      info = await SocksClient.createConnection({
+        proxy: { host: proxy.host, port: proxy.port, type: 5, userId: proxy.username, password: proxy.password },
+        command: 'connect',
+        destination: { host: ip, port },
+        timeout: 30000,
+      });
+    }
     const up = info.socket as net.Socket;
     // 4) 回 Chromium 成功(BND 用 0,Chromium 不校验)→ 冲掉残留 → 双向 pipe
     client.write(Buffer.from([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]));
