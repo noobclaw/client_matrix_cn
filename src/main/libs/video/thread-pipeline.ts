@@ -22,6 +22,7 @@ import os from 'os';
 import path from 'path';
 import { isFfmpegAvailable, runFfmpeg, probeDuration, probeImageSize } from './ffmpegRuntime';
 import { resolveBgmPath } from './bgm';
+import { resolveBundledFont } from './compose';
 import {
   ProgressTracker, resolveOutputDirs, outputFileName, throwIfAborted,
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
@@ -53,10 +54,10 @@ const THREAD_STEPS = [
 const W = 1080;
 const H = 1920;
 /** 卡片显示宽(px)。RedditVideoMakerBot 原版是 45%(final_video.py:268),照搬到竖屏太小。
- *  2026-07-11 用户拍板「截图卡字要看得清」→ 0.62 提到 0.74,并配合截图端字号放大
- *  (driver/threadProvider 注入 CSS:标题 32px、评论 22px)—— 两头相乘,屏上字径接近翻倍。
- *  仍不满宽(不做 90%+ 文字墙),上下留游戏画面保住品类灵魂。 */
-const CARD_W = Math.round(W * 0.74); // ≈800
+ *  2026-07-11 用户拍板「截图卡字要看得清」→ 0.62 提到 0.74;2026-07-20 用户再反馈
+ *  「看不到字」→ 0.84,并配合截图端字号再放大(driver/threadProvider 注入 CSS)。
+ *  上下仍留游戏画面保住品类灵魂。 */
+const CARD_W = Math.round(W * 0.84); // ≈907
 /** 卡片显示高上限:随宽等比缩小,超高长评论按此钳制不顶穿画面。 */
 const CARD_MAX_H = Math.round(H * 0.7); // ≈1344
 /** 卡片叠加不透明度(照 bot opacity=0.9,略提到 0.92):微透和游戏背景柔和融合,不生硬。 */
@@ -105,8 +106,8 @@ async function translateThread(
   const sys = [
     `你是短视频「爆帖解说」主持人兼本地化译者。目标语言:${LANG_NAME[lang]}。把 Reddit 帖子做成有叙事感的口播:`,
     '1. 翻译改写:标题/正文/评论译成目标语言,口语化、保留原梗语气;俚语缩写(AITA/TIFU/OP)转成观众能懂的说法。目标语言与原文相同时原样保留、只做轻度口语顺滑。',
-    '2. intro(开场,≤2句):像主持人一样交代这帖在聊什么、背景是什么,把观众带入(如「今天这帖炸了:楼主说…大家吵翻了」)。',
-    '3. leadIns:给每条评论写一个≤10字的引入短语,自然多样、可带网友名(如「网友Bannon9k直言」「有人当场反驳」「高赞回复说」),避免连续重复句式。',
+    '2. intro(开场,≤2句):第一句必须用「今日 Reddit 热帖」这类栏目感句式点题开场(让观众知道这是个每日栏目),紧接着像主持人一样交代这帖在聊什么、冲突/悬念是什么(如「今日 Reddit 热帖:楼主说…大家直接吵翻了」)。',
+    '3. leadIns:给每条评论写一个≤12字的引入短语,自然多样、可带网友名(如「网友Bannon9k直言」「有人当场反驳」「高赞回复说」);要尽量【承接上一条评论的观点】(赞同/反驳/补充/递进),让整条口播像一个连续展开的故事,而不是孤立地念评论;避免连续重复句式。',
     '4. outro(结尾,≤2句):总结各方观点或抛一个问题引导互动(如「你站哪边?评论区聊聊」)。',
     '5. 只输出严格 JSON(json):{"title":"…","postBody":"…(无则空串)","intro":"…","outro":"…","leadIns":{"<id>":"…"},"comments":{"<id>":"…"}},id 原样保留。',
   ].join('\n');
@@ -394,6 +395,8 @@ async function composeThreadVideo(opts: {
   outPath: string;
   /** 跳字大字幕 ASS(karaoke 风格);有则烧进画面(在卡片 overlay 之后)。 */
   assPath?: string;
+  /** 顶部常驻抬头(如「今日 Reddit 热帖 · 7月20日」)。空 = 不画。 */
+  headerText?: string;
   signal?: AbortSignal;
 }): Promise<boolean> {
   const cards = opts.segs.filter((s) => s.pngPath && typeof s.startSec === 'number');
@@ -403,6 +406,23 @@ async function composeThreadVideo(opts: {
   if (hasBgm) inputs.push('-stream_loop', '-1', '-i', opts.bgmPath!);
 
   const parts: string[] = [];
+  // 顶部抬头(2026-07-20 用户要求:视频上方常驻「今日 Reddit 热帖 + 日期」栏目标识)。
+  // 画在底片上、卡片 overlay 之前:卡片高钳 0.7H 居中,顶部 0.15H 内不会与抬头相撞。
+  // 需要内置 CJK 字体;没找到字体就跳过(不挡出片)。
+  let baseIn = '[0:v]';
+  if (opts.headerText) {
+    const font = resolveBundledFont();
+    if (font) {
+      const fontEsc = font.replace(/\\/g, '/').replace(/:/g, '\\:');
+      const textEsc = opts.headerText.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:').replace(/%/g, '\\%').replace(/,/g, '\\,');
+      parts.push(
+        `[0:v]drawtext=fontfile='${fontEsc}':text='${textEsc}':fontsize=52:fontcolor=white`
+        + `:borderw=2:bordercolor=black@0.6:box=1:boxcolor=black@0.4:boxborderw=18`
+        + `:x=(w-text_w)/2:y=96[vhdr]`,
+      );
+      baseIn = '[vhdr]';
+    }
+  }
   // 卡片:缩到显示宽,超高的按高钳制(截图 2x DPI,缩小锐利)
   const scaleArgs: string[] = [];
   for (const c of cards) {
@@ -417,13 +437,13 @@ async function composeThreadVideo(opts: {
   });
   // 有 ASS(跳字字幕)时,卡片链输出到 [vpre] 再烧字幕出 [vout];否则直接出 [vout]。
   const vEnd = opts.assPath ? '[vpre]' : '[vout]';
-  let cur = '[0:v]';
+  let cur = baseIn;
   cards.forEach((c, i) => {
     const next = i === cards.length - 1 ? vEnd : `[ov${i}]`;
     parts.push(`${cur}[c${i}]overlay=(W-w)/2:(H-h)/2:enable='between(t,${c.startSec!.toFixed(2)},${c.endSec!.toFixed(2)})'${next}`);
     cur = next;
   });
-  if (cards.length === 0) parts.push(`[0:v]null${vEnd}`);
+  if (cards.length === 0) parts.push(`${baseIn}null${vEnd}`);
   if (opts.assPath) {
     // Windows 路径进 filter 要 / 分隔 + 冒号转义;整个文件名再包引号防空格。
     const assEsc = opts.assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
@@ -893,10 +913,19 @@ export async function runThreadPipeline(
     }
     tracker.progress(captionStyle === 'karaoke' ? '🎞️ 合成中(游戏背景 + 跳字大字幕)…' : '🎞️ 合成中(卡片按配音时间窗依次上屏)…');
     const outPath = path.join(destDir, outputFileName(0));
+    // 顶部常驻抬头「今日 Reddit 热帖 · M月D日」(2026-07-20 用户要求,栏目感)。
+    // 思源黑体SC 无谚文,韩语退英文;日期用出片当天。
+    const now = new Date();
+    const HEADER_TEXT: Record<ContentLang, string> = {
+      zh: `今日 Reddit 热帖 · ${now.getMonth() + 1}月${now.getDate()}日`,
+      en: `Reddit Daily Hot · ${now.toLocaleString('en-US', { month: 'short' })} ${now.getDate()}`,
+      ja: `本日のReddit人気投稿 · ${now.getMonth() + 1}月${now.getDate()}日`,
+      ko: `Reddit Daily Hot · ${now.getMonth() + 1}.${now.getDate()}`,
+    };
     const composed = await composeThreadVideo({
       basePath, narrationPath, segs: alive, totalSec,
       bgmPath: bgm, bgmVolume: typeof input.bgmVolume === 'number' ? input.bgmVolume : 0.15,
-      outPath, assPath, signal,
+      outPath, assPath, headerText: HEADER_TEXT[lang], signal,
     });
     if (!composed) {
       tracker.fail('compose', '视频合成失败(ffmpeg)');

@@ -462,21 +462,26 @@ export async function captureThreadCards(session: ThreadSession, opts: CaptureCa
       kill('shreddit-experience-tree');
       kill('[data-testid="bottom-sheet"]');
       // 字号放大 + 清卡片噪音(与内核 driver reddit_search.js 同款,保证两条路径卡片观感一致):
-      // 标题 32px 加粗、评论正文 22px —— Reddit 默认 13-16px 缩进竖屏卡后手机上看不清(用户拍板)。
+      // 2026-07-20 用户反馈「看不到字」再放大:标题 34px、评论 25px;.nc-tr-* 是翻译附加块
+      // (原文保留 + 译文放下面,虚线分隔)。
       const st = document.createElement('style');
       st.textContent = 'shreddit-post-overflow-menu,shreddit-comment-action-row,award-button,'
         + '[data-testid="share-button"],[aria-label*="Share"],button[aria-label*="Join"],'
         + 'shreddit-comment shreddit-comment,shreddit-comment [slot="children"]'
         + '{display:none !important;}'
-        + 'h1[slot="title"]{font-size:32px !important;line-height:1.3 !important;font-weight:800 !important;}'
+        + 'h1[slot="title"]{font-size:34px !important;line-height:1.3 !important;font-weight:800 !important;}'
         + 'shreddit-comment div[slot="comment"],shreddit-comment div[slot="comment"] p'
-        + '{font-size:22px !important;line-height:1.5 !important;}';
+        + '{font-size:25px !important;line-height:1.5 !important;}'
+        + '.nc-tr-title{font-size:34px !important;line-height:1.35;font-weight:800;margin:10px 0 4px;}'
+        + '.nc-tr-body{font-size:25px !important;line-height:1.5;margin-top:8px;padding-top:8px;'
+        + 'border-top:1px dashed rgba(128,128,128,.45);}';
       document.head.appendChild(st);
       return true;
     })()`);
   } catch (e) { diag.push(`关弹窗失败: ${String((e as Error)?.message || e)}`); }
 
-  // 文字替换(翻译模式)。分两步:标题 + 各评论正文。
+  // 翻译呈现(2026-07-20 用户拍板):不再替换原文 —— 卡片保留 Reddit 英文原貌,
+  // 译文作为附加块放在原文【下面】(.nc-tr-* 样式,虚线分隔),观众原文译文都看得到。
   if (opts.translatedTitle) {
     try {
       const ok = await session.evalJson<boolean>(`(function(){
@@ -485,11 +490,14 @@ export async function captureThreadCards(session: ThreadSession, opts: CaptureCa
           || document.querySelector('shreddit-post h1')
           || document.querySelector('h1');
         if (!el) return false;
-        el.textContent = t;
+        const d = document.createElement('div');
+        d.className = 'nc-tr-title';
+        d.textContent = t;
+        el.insertAdjacentElement('afterend', d);
         return true;
       })()`);
       if (!ok) diag.push('标题元素没找到(h1[slot="title"] / shreddit-post h1 / h1 都空)');
-    } catch (e) { diag.push(`标题替换失败: ${String((e as Error)?.message || e)}`); }
+    } catch (e) { diag.push(`标题译文附加失败: ${String((e as Error)?.message || e)}`); }
   }
   const bodies = opts.translatedBodies || {};
   for (const c of opts.comments) {
@@ -504,14 +512,14 @@ export async function captureThreadCards(session: ThreadSession, opts: CaptureCa
         const md = host.querySelector('div[slot="comment"] .md') || host.querySelector('div[slot="comment"]')
           || host.querySelector('.md') || (host.querySelector('p') ? host.querySelector('p').parentElement : null);
         if (!md) return false;
-        md.innerHTML = '';
         const p = document.createElement('p');
+        p.className = 'nc-tr-body';
         p.textContent = t;
         md.appendChild(p);
         return true;
       })()`);
-      if (!ok) diag.push(`评论 ${c.id} 元素/正文容器没找到,保留英文原文`);
-    } catch (e) { diag.push(`评论 ${c.id} 替换失败: ${String((e as Error)?.message || e)}`); }
+      if (!ok) diag.push(`评论 ${c.id} 元素/正文容器没找到,译文未附加`);
+    } catch (e) { diag.push(`评论 ${c.id} 译文附加失败: ${String((e as Error)?.message || e)}`); }
     if (opts.signal?.aborted) throw new Error('aborted');
   }
   await sleep(400); // 替换后让布局稳定

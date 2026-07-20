@@ -74,8 +74,8 @@ function bundledFontDirs(): string[] {
   return dirs;
 }
 
-/** 解析内置思源黑体路径;找不到返回 null(退回系统字体)。 */
-function resolveBundledFont(): string | null {
+/** 解析内置思源黑体路径;找不到返回 null(退回系统字体)。thread-pipeline 顶部抬头 drawtext 也用。 */
+export function resolveBundledFont(): string | null {
   for (const dir of bundledFontDirs()) {
     const p = path.join(dir, BUNDLED_FONT_FILE);
     if (fs.existsSync(p)) return p;
