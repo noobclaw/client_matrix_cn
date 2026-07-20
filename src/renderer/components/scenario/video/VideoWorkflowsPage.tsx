@@ -4339,8 +4339,8 @@ const TEMPLATE_HOTLISTS: Array<{ name: string; emoji: string; catKey?: 'web3' | 
 const TEMPLATE_HOTLIST_TOPN = 12;
 
 // 模板速生:6 步向导。
-//   Step 1 版式 · Step 2 内容 · Step 3 配音 · Step 4 音乐 · Step 5 出片 · Step 6 发布
-//   (2026-07-19 用户要求:版式独立成第一步,先选样子再填内容)
+//   Step 1 内容 · Step 2 版式 · Step 3 配音 · Step 4 音乐 · Step 5 出片 · Step 6 发布
+//   (2026-07-19 用户要求版式独立成步;2026-07-20 拍板顺序:先填内容,再选版式)
 type TplStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 // ── 热搜成片配置向导(engine='hotspot')──────────────────────────────────
@@ -6158,13 +6158,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const isEdit = !!editTask;
   const et = editTask?.input?.template;
   const [step, setStep] = useState<TplStep>(1);
-  // 步骤:1 版式 · 2 内容 · 3 配音 · 4 音乐 · 5 出片 · 6 发布。
-  // 版式独立成第一步(2026-07-19 用户要求:版式网格 + 内容表单挤一步太乱,先选样子再填内容)。
+  // 步骤:1 内容 · 2 版式 · 3 配音 · 4 音乐 · 5 出片 · 6 发布。
+  // 版式独立成步(2026-07-19 用户要求);顺序先内容后版式(2026-07-20 用户拍板)。
   // 出片(5)= 本地/上传去向 + 频率;发布(6)= 发布平台 + 每平台选号(matrix)。
   // 对齐热搜成片:平台与账号【同一步】,且与「出片去向」分开成独立的「发布」步。
   const PUBLISH_STEP = 6 as const;
   const MAX_STEP = 6;
-  // ── Step 1:版式 ──
+  // ── Step 2:版式 ──
   // 新任务默认从「适合榜单的精品模板」里随机挑一套(音画同步/质感稳),不固定 ai_freeform
   // (老任务保留其已存风格)。用户仍可在版式网格里自由改。
   const [style, setStyle] = useState<VideoTemplateStyle>(
@@ -6427,8 +6427,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
 
   // 「下一步」按 step 路由 + 必填校验。
   const goNext = () => {
-    // Step 2 = 内容/数据,必填校验放这里(Step 1 版式总有默认值,无需校验)。
-    if (step === 2) {
+    // Step 1 = 内容/数据,必填校验放这里(版式步总有默认值,无需校验)。
+    if (step === 1) {
       if (!effectiveDataText.trim()) {
         setErr(dataSourceMode === 'hotlist'
           ? (isZh ? '请先选一个热榜并等它加载出条目' : 'Pick a hot list and wait for it to load')
@@ -6453,9 +6453,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           <div>
             <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? (isEdit ? '编辑模板速生' : '模板速生') : (isEdit ? 'Edit Template' : 'Template Speed')}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '版式' : 'Layout'} />
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
               <div className={`h-px w-3 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '内容' : 'Content'} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '版式' : 'Layout'} />
               <div className={`h-px w-3 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '配音' : 'Voice'} />
               <div className={`h-px w-3 ${step > 3 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
@@ -6470,8 +6470,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {/* ── Step 1:版式(独立一步,先选样子再填内容)── */}
-          {step === 1 && (
+          {/* ── Step 2:版式(独立一步;先填内容再选版式,2026-07-20 用户拍板)── */}
+          {step === 2 && (
             <>
               <Field label={isZh ? '版式风格' : 'Layout style'} hint={isZh ? '选一套画面版式;AI 自由排版最灵活但风格随机' : 'pick a visual layout; AI freeform is flexible but random'}>
                 <div className="grid grid-cols-2 gap-2">
@@ -6506,8 +6506,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
             </>
           )}
 
-          {/* ── Step 2:内容 ── */}
-          {step === 2 && (
+          {/* ── Step 1:内容 ── */}
+          {step === 1 && (
             <>
               {/* 数据源二选一:粘贴任意内容 / 选一个热榜(取前 N 条) */}
               <Field label={isZh ? '内容来源' : 'Content source'} hint={isZh ? '自己粘贴,或选一个热榜自动取前几条当内容' : 'paste your own, or pull top items from a hot list'}>
