@@ -408,13 +408,19 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine
   const isAi = input?.engine === 'ai';
   const isTemplate = input?.engine === 'template';
   const isHotspot = input?.engine === 'hotspot';
-  const isLocal = !!input && !isAi && !isTemplate && !isHotspot && Array.isArray(input.localVideos) && input.localVideos.length > 0;
+  const isThread = input?.engine === 'thread';
+  const isLocalMix = input?.engine === 'localmix';
+  const isLocal = !!input && !isAi && !isTemplate && !isHotspot && !isThread && !isLocalMix && Array.isArray(input.localVideos) && input.localVideos.length > 0;
   const modeLabel = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
+    : isThread ? (isZh ? '🧵 爆帖成片' : '🧵 Viral Threads')
+    : isLocalMix ? (isZh ? '📁 本地混剪' : '📁 Local Mix')
     : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
     : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
     : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
     : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
   const modeColor = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
+    : isThread ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
+    : isLocalMix ? 'text-amber-500 bg-amber-500/10 border-amber-500/30'
     : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
     : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
     : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
