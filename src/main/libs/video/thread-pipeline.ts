@@ -65,27 +65,40 @@ const CARD_OPACITY = 0.92;
 /** 段间静音(秒),对齐 bot 的 silence_duration=0.3。 */
 const GAP_SEC = 0.3;
 
-/** 创作语言 → 默认音色(用户没选音色时);fallback 链由 getVoiceFallbacks 兜。 */
+/** 创作语言 → 默认音色(用户没选音色时);fallback 链由 getVoiceFallbacks 兜。
+ *  2026-07-20 从 4 语扩到 10 语(对齐在线素材/模板速生),与向导 THREAD_LANG_VOICE 同表。 */
 const LANG_DEFAULT_VOICE: Record<ContentLang, string> = {
   zh: 'zh-CN-YunjianNeural',
+  'zh-TW': 'zh-TW-HsiaoChenNeural',
   en: 'en-US-GuyNeural',
   ja: 'ja-JP-KeitaNeural',
   ko: 'ko-KR-InJoonNeural',
+  id: 'id-ID-GadisNeural',
+  vi: 'vi-VN-HoaiMyNeural',
+  es: 'es-MX-DaliaNeural',
+  pt: 'pt-BR-FranciscaNeural',
+  fr: 'fr-FR-DeniseNeural',
 };
 
-const LANG_NAME: Record<ContentLang, string> = { zh: '简体中文', en: 'English', ja: '日本語', ko: '한국어' };
+const LANG_NAME: Record<ContentLang, string> = {
+  zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어',
+  id: 'Bahasa Indonesia', vi: 'Tiếng Việt', es: 'Español', pt: 'Português', fr: 'Français',
+};
+
+/** 拉丁字母语种(标点/连接词用西式:'. ' 与 ': ')。 */
+const LATIN_LANGS = new Set<ContentLang>(['en', 'id', 'vi', 'es', 'pt', 'fr']);
 
 /**
  * 粗校验文本是否像目标语言(2026-07-20 用户实测:AI 会被 prompt 里的中文示例带偏,英文/日韩
  * 任务照样输出中文;英文 voice 念中文只会蹦出几个拉丁用户名,整条片报废)。
- * en 不得含汉字;ja 必须含假名(日文正常句子必带);ko 必须含谚文;zh 不校验。
- * 校验不过 → 调用方弃用该 AI 产物、回退原文,宁可少主持词也不出「哑巴音频」。
+ * 拉丁语种(en/id/vi/es/pt/fr)不得含汉字;ja 必须含假名(日文正常句子必带);ko 必须含谚文;
+ * zh/zh-TW 须含汉字。校验不过 → 调用方弃用该 AI 产物、回退原文,宁可少主持词也不出「哑巴音频」。
  */
 function looksLikeLang(text: string, lang: ContentLang): boolean {
-  if (lang === 'en') return !/[一-鿿]/.test(text);
+  if (LATIN_LANGS.has(lang)) return !/[一-鿿]/.test(text);
   if (lang === 'ja') return /[ぁ-ゖァ-ヺ]/.test(text);
   if (lang === 'ko') return /[가-힣]/.test(text);
-  return true;
+  return /[一-鿿]/.test(text); // zh / zh-TW
 }
 
 interface CardSeg {
@@ -509,7 +522,7 @@ export async function runThreadPipeline(
     return { ok: false, error: err };
   }
 
-  const lang: ContentLang = (['zh', 'en', 'ja', 'ko'] as ContentLang[]).includes(input.threadLang as ContentLang)
+  const lang: ContentLang = (['zh', 'zh-TW', 'en', 'ja', 'ko', 'id', 'vi', 'es', 'pt', 'fr'] as ContentLang[]).includes(input.threadLang as ContentLang)
     ? (input.threadLang as ContentLang) : 'zh';
   const targetSeconds = Math.max(20, Math.min(180, input.targetSeconds || 60));
 
@@ -602,7 +615,7 @@ export async function runThreadPipeline(
       // 语言兜底(2026-07-20 用户实测「英文配出来只有几个名字」):AI 会被中文示例带偏、
       // 非中文任务照样输出中文稿 → 目标语言 voice 念不出来。整稿语言校验不过就作废,
       // 回退原文生读(宁可没主持词,不能出「只念名字」的哑巴音频)。
-      if (tr && lang !== 'zh') {
+      if (tr) {
         const joined = [tr.title, tr.postBody || '', tr.intro || '', tr.outro || '',
           ...Object.values(tr.leadIns || {}), ...Object.values(tr.bodies)].filter(Boolean).join(' ');
         if (!looksLikeLang(joined, lang)) {
@@ -647,8 +660,9 @@ export async function runThreadPipeline(
     // 拼接补句号:前段已带句末标点就不再加(修「Think again.。今日…」双标点);英文用 '. '。
     const joinSpeech = (a: string, b: string) => {
       const t = a.trim();
+      const latin = LATIN_LANGS.has(lang);
       const ended = /[。.!?！?…"」』]$/.test(t);
-      return t + (ended ? (lang === 'en' ? ' ' : '') : (lang === 'en' ? '. ' : '。')) + b;
+      return t + (ended ? (latin ? ' ' : '') : (latin ? '. ' : '。')) + b;
     };
     if (hostIntro) titleText = joinSpeech(titleText, hostIntro);
     if (postBodyText) titleText = joinSpeech(titleText, postBodyText);
@@ -668,7 +682,7 @@ export async function runThreadPipeline(
       if (!text) continue;
       // 主持人引入:「网友XX直言」「有人反驳道」…(AI 给的;没给则不加,保持生读)
       const lead = (leadIns[c.id] || '').trim();
-      if (lead) text = lead + (lang === 'en' ? ': ' : ':') + text;
+      if (lead) text = lead + (LATIN_LANGS.has(lang) ? ': ' : ':') + text;
       plan.push({ key: c.id, text, voice, outPath: path.join(assetDir, `seg-${c.id}.mp3`) });
       planEstSec += estSec(text);
     }
@@ -945,18 +959,19 @@ export async function runThreadPipeline(
     tracker.progress(captionStyle === 'karaoke' ? '🎞️ 合成中(游戏背景 + 跳字大字幕)…' : '🎞️ 合成中(卡片按配音时间窗依次上屏)…');
     const outPath = path.join(destDir, outputFileName(0));
     // 顶部常驻抬头「今日 Reddit 热帖 · M月D日」(2026-07-20 用户要求,栏目感)。
-    // 思源黑体SC 无谚文,韩语退英文;日期用出片当天。
+    // 思源黑体SC 覆盖中/日/拉丁,无谚文 → 韩语和拉丁语种统一用英文抬头;日期用出片当天。
     const now = new Date();
-    const HEADER_TEXT: Record<ContentLang, string> = {
-      zh: `今日 Reddit 热帖 · ${now.getMonth() + 1}月${now.getDate()}日`,
-      en: `Reddit Daily Hot · ${now.toLocaleString('en-US', { month: 'short' })} ${now.getDate()}`,
-      ja: `本日のReddit人気投稿 · ${now.getMonth() + 1}月${now.getDate()}日`,
-      ko: `Reddit Daily Hot · ${now.getMonth() + 1}.${now.getDate()}`,
-    };
+    const headerText = (() => {
+      const m = now.getMonth() + 1; const d = now.getDate();
+      if (lang === 'zh') return `今日 Reddit 热帖 · ${m}月${d}日`;
+      if (lang === 'zh-TW') return `今日 Reddit 熱帖 · ${m}月${d}日`;
+      if (lang === 'ja') return `本日のReddit人気投稿 · ${m}月${d}日`;
+      return `Reddit Daily Hot · ${now.toLocaleString('en-US', { month: 'short' })} ${d}`;
+    })();
     const composed = await composeThreadVideo({
       basePath, narrationPath, segs: alive, totalSec,
       bgmPath: bgm, bgmVolume: typeof input.bgmVolume === 'number' ? input.bgmVolume : 0.15,
-      outPath, assPath, headerText: HEADER_TEXT[lang], signal,
+      outPath, assPath, headerText, signal,
     });
     if (!composed) {
       tracker.fail('compose', '视频合成失败(ffmpeg)');

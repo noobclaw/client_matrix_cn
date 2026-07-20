@@ -1101,8 +1101,14 @@ function voiceDisplayLabel(voiceId: string | undefined, isZh: boolean): string {
 function threadLangLabel(lang: string | undefined, isZh: boolean): string {
   switch (lang) {
     case 'en': return isZh ? '英文原声(不翻译)' : 'English (original)';
+    case 'zh-TW': return '繁體中文';
     case 'ja': return '日本語';
     case 'ko': return '한국어';
+    case 'id': return 'Bahasa Indonesia';
+    case 'vi': return 'Tiếng Việt';
+    case 'es': return 'Español';
+    case 'pt': return 'Português';
+    case 'fr': return 'Français';
     default: return isZh ? '中文(AI 翻译改写)' : 'Chinese (AI rewrite)';
   }
 }
@@ -5137,15 +5143,26 @@ const THREAD_BG_DY: Array<{ id: string; zh: string; en: string }> = [
   { id: 'gta-stunt',    zh: 'GTA 特技',     en: 'GTA Stunts' },
 ];
 
-// 创作语言(v1 支持 4 语;'en' = 原声不翻译)+ 各语言默认音色(与 thread-pipeline 同表)。
-const THREAD_LANGS: Array<{ id: 'zh' | 'en' | 'ja' | 'ko'; zh: string; en: string }> = [
-  { id: 'zh', zh: '🇨🇳 中文(AI 翻译改写)', en: '🇨🇳 Chinese (AI rewrite)' },
-  { id: 'en', zh: '🇺🇸 英文原声(不翻译)', en: '🇺🇸 English (original)' },
-  { id: 'ja', zh: '🇯🇵 日本語(AI 翻訳)',   en: '🇯🇵 Japanese (AI rewrite)' },
-  { id: 'ko', zh: '🇰🇷 한국어(AI 번역)',    en: '🇰🇷 Korean (AI rewrite)' },
+// 创作语言(2026-07-20 从 4 语扩到 10 语,对齐在线素材/模板速生;'en' = 原声不翻译)
+// + 各语言默认音色(与 thread-pipeline LANG_DEFAULT_VOICE 同表)。
+type ThreadLang = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'id' | 'vi' | 'es' | 'pt' | 'fr';
+const THREAD_LANGS: Array<{ id: ThreadLang; zh: string; en: string }> = [
+  { id: 'zh',    zh: '🇨🇳 中文(AI 翻译改写)', en: '🇨🇳 Chinese (AI rewrite)' },
+  { id: 'en',    zh: '🇺🇸 英文原声(不翻译)', en: '🇺🇸 English (original)' },
+  { id: 'zh-TW', zh: '🇹🇼 繁體中文(AI 翻譯)', en: '🇹🇼 Traditional Chinese' },
+  { id: 'ja',    zh: '🇯🇵 日本語(AI 翻訳)',   en: '🇯🇵 Japanese (AI rewrite)' },
+  { id: 'ko',    zh: '🇰🇷 한국어(AI 번역)',    en: '🇰🇷 Korean (AI rewrite)' },
+  { id: 'id',    zh: '🇮🇩 Bahasa Indonesia',  en: '🇮🇩 Indonesian' },
+  { id: 'vi',    zh: '🇻🇳 Tiếng Việt',        en: '🇻🇳 Vietnamese' },
+  { id: 'es',    zh: '🇪🇸 Español',           en: '🇪🇸 Spanish' },
+  { id: 'pt',    zh: '🇧🇷 Português',         en: '🇧🇷 Portuguese' },
+  { id: 'fr',    zh: '🇫🇷 Français',          en: '🇫🇷 French' },
 ];
-const THREAD_LANG_VOICE: Record<'zh' | 'en' | 'ja' | 'ko', string> = {
-  zh: 'zh-CN-YunjianNeural', en: 'en-US-GuyNeural', ja: 'ja-JP-KeitaNeural', ko: 'ko-KR-InJoonNeural',
+const THREAD_LANG_VOICE: Record<ThreadLang, string> = {
+  zh: 'zh-CN-YunjianNeural', 'zh-TW': 'zh-TW-HsiaoChenNeural', en: 'en-US-GuyNeural',
+  ja: 'ja-JP-KeitaNeural', ko: 'ko-KR-InJoonNeural',
+  id: 'id-ID-GadisNeural', vi: 'vi-VN-HoaiMyNeural', es: 'es-MX-DaliaNeural',
+  pt: 'pt-BR-FranciscaNeural', fr: 'fr-FR-DeniseNeural',
 };
 
 // 每次运行条数封顶:爆帖成片每条要开无头浏览器抓帖+截图,比热搜重,封 20 条防跑一天。
@@ -5175,8 +5192,8 @@ export const ThreadVideoModal: React.FC<{
     const saved: string[] = Array.isArray(ei.threadSubreddits) ? ei.threadSubreddits : [];
     return saved.filter((s: string) => !THREAD_SUBREDDITS.some((p) => p.id === s)).join(', ');
   });
-  const [lang, setLang] = useState<'zh' | 'en' | 'ja' | 'ko'>(
-    (['zh', 'en', 'ja', 'ko'] as const).includes(ei.threadLang) ? ei.threadLang : (isZh ? 'zh' : 'en'));
+  const [lang, setLang] = useState<ThreadLang>(
+    THREAD_LANGS.some((l) => l.id === ei.threadLang) ? ei.threadLang : (isZh ? 'zh' : 'en'));
   const [targetSeconds, setTargetSeconds] = useState<number>(ei.targetSeconds ?? 60);
   // 背景:国内默认抖音通道(界面中文),海外默认 YouTube;编辑沿用已存值。
   const [bgSource, setBgSource] = useState<'douyin' | 'youtube'>(
