@@ -90,7 +90,9 @@ interface CardSeg {
 }
 
 function sanitizeName(s: string): string {
-  return (s || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // 空格换 _:目录名进日志后要被链接化(renderVideoLog),含空格的路径链接会断;
+  // Finder/资源管理器里下划线也更整洁(2026-07-20 用户反馈「输出目录点不开」)。
+  return (s || '').replace(/[\\/:*?"<>|\r\n]+/g, ' ').replace(/\s+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 /** 一次 AI 调用把标题+评论翻译改写成目标语言。失败返回 null(保留英文原文出片)。 */

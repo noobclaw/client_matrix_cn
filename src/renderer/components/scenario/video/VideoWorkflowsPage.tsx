@@ -1252,7 +1252,11 @@ const StepList: React.FC<{ steps: VideoCreationProgressStep[] }> = ({ steps }) =
 /** 把日志里的 NoobClaw 路径(输出目录 / 成片文件)变成可点按钮 —— 点一下用
  *  Finder/资源管理器打开。用户反馈:日志只给一段文字路径,没法直接打开。 */
 function renderVideoLog(message: string): React.ReactNode {
-  const m = message.match(/([/\\][^\s:：]*NoobClaw[/\\][^\s]*|[A-Za-z]:[\\/][^\s]*NoobClaw[\\/][^\s]*)/);
+  // 路径可能含空格(爆帖成片用 Reddit 标题起目录名,如 "3_The Rabbit lost the...")——
+  // 优先「NoobClaw 起一直吃到行尾」的锚定匹配(带路径的日志行都以路径收尾),
+  // 匹配不上再退回老的「到空格为止」,双保险。
+  const m = message.match(/((?:[A-Za-z]:[\\/]|[/\\])\S*?NoobClaw[/\\].*\S)\s*$/)
+    || message.match(/([/\\][^\s:：]*NoobClaw[/\\][^\s]*|[A-Za-z]:[\\/][^\s]*NoobClaw[\\/][^\s]*)/);
   if (!m) return message;
   const p = m[1];
   const idx = message.indexOf(p);
