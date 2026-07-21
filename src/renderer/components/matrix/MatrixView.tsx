@@ -622,15 +622,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         issues.push(i18nService.t('mvProxyProtocolSuggest').replace('{p}', r.suggestProtocol));
         setProxyForm((f) => ({ ...f, protocol: r.suggestProtocol }));
       } else {
-        // 失败:若代理 host 本身是海外 IP(即使连不通也查得到)→ 精准提示「这是国际 IP,需开全局 TUN」;
-        //   否则(国内 IP / 查不到)→ 通用失败原因 + 双向诊断引导。
+        // 失败:代理 host 本身是海外 IP(即使连不通也查得到)→ 一句话「这是国际 IP,需开全局 TUN」;
+        //   否则(国内 IP / 查不到)→ 只显示一句通用失败原因(2026-07-21 用户拍板:不要「连不上通常是这两种」的长引导)。
         const hg = r?.hostGeo;
         const hgLabel = hg?.countryCode ? `${flagEmoji(hg.countryCode)} ${hg.country || hg.countryCode}${hg.city ? ' · ' + hg.city : ''}` : '';
         if (hg?.countryCode && hg.countryCode !== 'CN') {
           issues.push(i18nService.t('mvProxyFailOverseasTun').replace('{geo}', hgLabel));
         } else {
           issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
-          issues.push(i18nService.t('mvProxyFailGuide'));
         }
       }
     }
