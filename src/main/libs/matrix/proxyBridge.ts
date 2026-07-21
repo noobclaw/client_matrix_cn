@@ -228,28 +228,36 @@ export async function fetchProxyExitGeo(proxy: Proxy, timeoutMs = 7000): Promise
  *  单次握手超时 7s(跨境慢代理够用);整体 12s 硬上限,任何情况都保证返回,绝不让 UI 卡死
  *  (2026-07-21 用户实测:一条端口连不上的代理原来串行探测要 90s,UI 一直转「校验中」)。 */
 export async function probeProxyDetailed(proxy: Proxy, timeoutMs = 7_000): Promise<ProxyProbeResult> {
+  // 代理 host 归属地【提到 race 外面独立查】:即使连通性探测撞 12s 超时(deadline 赢),
+  //   也能补上归属地 → 关了 TUN、代理连不上时仍能识别「这是海外代理」(2026-07-21 用户实测:
+  //   原来 hostGeo 塞在 work 里,超时路径丢了它,退回通用提示)。
+  const hostGeoP = lookupIpGeo(proxy.host).catch(() => null);
   const deadline = new Promise<ProxyProbeResult>((resolve) =>
     setTimeout(() => resolve({ ok: false, error: '校验超时(代理响应过慢或不通)' }), 12_000));
   const work = (async (): Promise<ProxyProbeResult> => {
-    // 代理 host 本身归属地(本机直连,和连通性探测并行):失败时也能告诉用户「这是海外代理」。
-    const hostGeoP = lookupIpGeo(proxy.host).catch(() => null);
     // 先纯 TCP 探代理端口本身:连不上直接失败,不进 6 次满超时握手(坏代理最常见的死法)。
     if (!(await tcpReachable(proxy.host, proxy.port, 5_000))) {
-      return { ok: false, error: '代理地址无法连接(host/端口不通,或该 IP 未对本机授权)', hostGeo: (await hostGeoP) || undefined };
+      return { ok: false, error: '代理地址无法连接(host/端口不通,或该 IP 未对本机授权)' };
     }
     const err = await probeVia(proxy.protocol, proxy, timeoutMs);
     if (!err) {
       const geo = await fetchProxyExitGeo(proxy).catch(() => null);
-      return { ok: true, geo: geo || undefined, hostGeo: (await hostGeoP) || undefined };
+      return { ok: true, geo: geo || undefined };
     }
     // 连代理本身失败(端口通但握手超时/被拒)→ 换协议也没意义,直接报错。
-    if (isProxyUnreachable(err)) return { ok: false, error: err, hostGeo: (await hostGeoP) || undefined };
+    if (isProxyUnreachable(err)) return { ok: false, error: err };
     const alt: Proxy['protocol'] = (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') ? 'http' : 'socks5';
     const altErr = await probeVia(alt, proxy, timeoutMs);
-    if (!altErr) return { ok: false, error: err, suggestProtocol: alt, hostGeo: (await hostGeoP) || undefined };
-    return { ok: false, error: err, hostGeo: (await hostGeoP) || undefined };
+    if (!altErr) return { ok: false, error: err, suggestProtocol: alt };
+    return { ok: false, error: err };
   })();
-  return Promise.race([work, deadline]);
+  const result = await Promise.race([work, deadline]);
+  // 无论 work 正常返回还是 deadline 超时,都补上 host 归属地(hostGeoP 最坏 ~10s，早于 12s 超时完成)。
+  if (!result.geo && !result.hostGeo) {
+    const hg = await hostGeoP;
+    if (hg) result.hostGeo = hg;
+  }
+  return result;
 }
 
 /** 探测该账号代理并把结果写进 proxy.health(无代理跳过返回 null)。供连接/刷新/保活复用。 */
