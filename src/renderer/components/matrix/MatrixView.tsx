@@ -317,7 +317,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [proxyFor, setProxyFor] = useState<string | null>(null);
   const [proxyForm, setProxyForm] = useState({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' });
   // 配代理校验:状态行 + 校验中 + 「仍然保存」暂存动作(撞IP/不通时拦,点仍然保存才跳过)。
-  const [proxyMsg, setProxyMsg] = useState<{ kind: 'checking' | 'ok' | 'warn' | 'err'; text: string } | null>(null);
+  const [proxyMsg, setProxyMsg] = useState<{ kind: 'checking' | 'ok' | 'warn' | 'err'; text: string; tunGuide?: boolean } | null>(null);
   const [proxyBusy, setProxyBusy] = useState(false);
   const [pendingProxySave, setPendingProxySave] = useState<(() => Promise<void>) | null>(null);
 
@@ -615,6 +615,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     try { r = await M()?.validateProxy({ accountId, platform: plat, loginScope: scope, proxy }); } catch { r = null; }
     setProxyBusy(false);
     const issues: string[] = [];
+    let needTun = false; // 提示里含「需开全局 TUN」时,尾部挂一个「如何开启?」文档链接
     if (r?.duplicateName) issues.push(i18nService.t('mvProxyDuplicate').replace('{name}', r.duplicateName));
     if (!r?.reachable) {
       if (r?.suggestProtocol) {
@@ -630,10 +631,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         const hgLabel = hg?.countryCode ? `${flagEmoji(hg.countryCode)} ${hg.country || hg.countryCode}${hg.city ? ' · ' + hg.city : ''}` : '';
         if (r?.cloudReachable === true) {
           issues.push(i18nService.t('mvProxyCloudOkLocalFail').replace('{geo}', hgLabel || (hg?.country || '')));
+          needTun = true;
         } else if (r?.cloudReachable === false) {
           issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
         } else if (hg?.countryCode && hg.countryCode !== 'CN') {
           issues.push(i18nService.t('mvProxyFailOverseasTun').replace('{geo}', hgLabel));
+          needTun = true;
         } else {
           issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
         }
@@ -652,7 +655,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       if (mkey) issues.push(i18nService.t(mkey).replace('{geo}', geoLabel || (geo?.country || '')));
     }
     if (issues.length) {
-      setProxyMsg({ kind: 'warn', text: issues.join('\n') });
+      setProxyMsg({ kind: 'warn', text: issues.join('\n'), tunGuide: needTun });
       setPendingProxySave(() => async () => { setPendingProxySave(null); setProxyMsg(null); await save({ ...proxy, ...geoFields }); }); // 跳过校验保存(不带 health,待下次探测)
       return;
     }
@@ -1379,7 +1382,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder={i18nService.t('mvGeoOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-4" />
             </>)}
 
-            {proxyMsg && showProxy && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}
+            {proxyMsg && showProxy && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}{proxyMsg.tunGuide && (<> <button type="button" onClick={() => { const zh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW'; try { (window as any).electron?.shell?.openExternal(zh ? 'https://docs.noobclaw.com/zhong-wen-ban/ju-zhen-hao-she-zhi' : 'https://docs.noobclaw.com/english/matrix-setting'); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">{i18nService.t('mvHowToEnableTun')}</button></>)}</div>)}
             <div className="flex justify-end gap-2">
               {twoStep && addStep === 2
                 ? <button onClick={() => setAddStep(1)} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvPrevStep')}</button>
@@ -1480,7 +1483,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder={i18nService.t('mvUsernameOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-2" />
             <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder={i18nService.t('mvPasswordOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-2" />
             <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder={i18nService.t('mvGeoOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3" />
-            {proxyMsg && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}
+            {proxyMsg && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}{proxyMsg.tunGuide && (<> <button type="button" onClick={() => { const zh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW'; try { (window as any).electron?.shell?.openExternal(zh ? 'https://docs.noobclaw.com/zhong-wen-ban/ju-zhen-hao-she-zhi' : 'https://docs.noobclaw.com/english/matrix-setting'); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">{i18nService.t('mvHowToEnableTun')}</button></>)}</div>)}
             <div className="flex justify-end gap-2">
               <button onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvCancel')}</button>
               {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">{i18nService.t('mvSaveAnyway')}</button>)}
