@@ -622,9 +622,16 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         issues.push(i18nService.t('mvProxyProtocolSuggest').replace('{p}', r.suggestProtocol));
         setProxyForm((f) => ({ ...f, protocol: r.suggestProtocol }));
       } else {
-        // 失败:原因 + 人话诊断引导(境外代理需开 TUN / 国内代理查白名单),用户不再干瞪眼。
-        issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
-        issues.push(i18nService.t('mvProxyFailGuide'));
+        // 失败:若代理 host 本身是海外 IP(即使连不通也查得到)→ 精准提示「这是国际 IP,需开全局 TUN」;
+        //   否则(国内 IP / 查不到)→ 通用失败原因 + 双向诊断引导。
+        const hg = r?.hostGeo;
+        const hgLabel = hg?.countryCode ? `${flagEmoji(hg.countryCode)} ${hg.country || hg.countryCode}${hg.city ? ' · ' + hg.city : ''}` : '';
+        if (hg?.countryCode && hg.countryCode !== 'CN') {
+          issues.push(i18nService.t('mvProxyFailOverseasTun').replace('{geo}', hgLabel));
+        } else {
+          issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
+          issues.push(i18nService.t('mvProxyFailGuide'));
+        }
       }
     }
     // 出口归属地展示 + 地区错配警告(通了才有 geo)。
@@ -1448,8 +1455,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               </button>
             </div>
             <div className="text-xs opacity-60 mb-3">{i18nService.t('mvProxyHint')}{proxyPurchaseUrl && (<> {i18nService.t('mvNoneQ')}<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">{i18nService.t('mvClickHere')}</button></>)}</div>
-            {/* 常驻配置说明:国内号用国内IP或留空;海外号用海外IP并开VPN全局/TUN。降低「配错地区/不知道要TUN」的坑。 */}
-            <div className="text-[11px] leading-relaxed mb-3 rounded-lg px-3 py-2 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-pre-line">{i18nService.t('mvProxyGuideBanner')}</div>
+            {/* 常驻配置说明:按【当前账号所属平台】显示——国内平台荐大陆IP、全球平台荐国际IP,均提醒开全局TUN。 */}
+            {(() => {
+              const pp = accounts.find((x) => x.id === proxyFor)?.platform || '';
+              const key = CN_PLATFORMS.has(pp) ? 'mvProxyGuideBannerCn' : 'mvProxyGuideBannerOverseas';
+              return <div className="text-[11px] leading-relaxed mb-3 rounded-lg px-3 py-2 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-pre-line">{i18nService.t(key)}</div>;
+            })()}
             <div className="flex gap-2 mb-2">
               <select value={proxyForm.protocol} onChange={(e) => setProxyForm((f) => ({ ...f, protocol: e.target.value }))} className="text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent">
                 <option value="socks5">socks5</option><option value="socks5h">socks5h</option><option value="http">http</option><option value="https">https</option>

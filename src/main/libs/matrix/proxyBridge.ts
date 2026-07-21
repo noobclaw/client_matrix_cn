@@ -11,6 +11,7 @@
 
 import net from 'net';
 import dns from 'dns';
+import http from 'http';
 import { SocksClient } from 'socks';
 import { coworkLog } from '../coworkLogger';
 import type { Proxy } from './types';
@@ -127,8 +128,36 @@ export interface ProxyProbeResult {
   /** 按所选协议不通、但换这个协议能通 → 卖家标错协议(socks5↔http 很常见,AdsPower 等
    *  工具会自动探测所以「别家能用」)。UI 拿到后帮用户切协议。 */
   suggestProtocol?: Proxy['protocol'];
-  /** 通了才有:出口 IP 归属地。查询失败不影响 ok(锦上添花)。 */
+  /** 通了才有:出口 IP 归属地(经代理查)。查询失败不影响 ok(锦上添花)。 */
   geo?: ProxyGeo;
+  /** 代理服务器 host 本身的归属地(本机直连查,连不通也有值)。失败时据此判断「这是海外代理→需开 TUN」。 */
+  hostGeo?: ProxyGeo;
+}
+
+/**
+ * 本机直连 ip-api.com 查【任意 IP/域名本身】的归属地(不经代理)。代理连不通时也能拿到
+ * 「这个代理 IP 在哪个国家」→ 据此提示用户「这是海外代理,需开全局 TUN」。失败返回 null。
+ */
+export async function lookupIpGeo(hostOrIp: string, timeoutMs = 5000): Promise<ProxyGeo | null> {
+  const h = (hostOrIp || '').trim();
+  if (!h) return null;
+  return await new Promise<ProxyGeo | null>((resolve) => {
+    let buf = '';
+    const req = http.get(
+      { host: 'ip-api.com', path: `/json/${encodeURIComponent(h)}`, timeout: timeoutMs },
+      (res) => {
+        res.on('data', (d) => { buf += d.toString('utf8'); });
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(buf);
+            resolve(!j || j.status === 'fail' ? null : { ip: j.query, country: j.country, countryCode: j.countryCode, city: j.city });
+          } catch { resolve(null); }
+        });
+      },
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { try { req.destroy(); } catch { /* ignore */ } resolve(null); });
+  });
 }
 
 /** 从 HTTP 响应文本里解析 ip-api.com 的 JSON,取出归属地字段。解析失败返回 null。 */
@@ -188,21 +217,23 @@ export async function probeProxyDetailed(proxy: Proxy, timeoutMs = 7_000): Promi
   const deadline = new Promise<ProxyProbeResult>((resolve) =>
     setTimeout(() => resolve({ ok: false, error: '校验超时(代理响应过慢或不通)' }), 12_000));
   const work = (async (): Promise<ProxyProbeResult> => {
+    // 代理 host 本身归属地(本机直连,和连通性探测并行):失败时也能告诉用户「这是海外代理」。
+    const hostGeoP = lookupIpGeo(proxy.host).catch(() => null);
     // 先纯 TCP 探代理端口本身:连不上直接失败,不进 6 次满超时握手(坏代理最常见的死法)。
     if (!(await tcpReachable(proxy.host, proxy.port, 5_000))) {
-      return { ok: false, error: '代理地址无法连接(host/端口不通,或该 IP 未对本机授权)' };
+      return { ok: false, error: '代理地址无法连接(host/端口不通,或该 IP 未对本机授权)', hostGeo: (await hostGeoP) || undefined };
     }
     const err = await probeVia(proxy.protocol, proxy, timeoutMs);
     if (!err) {
       const geo = await fetchProxyExitGeo(proxy).catch(() => null);
-      return { ok: true, geo: geo || undefined };
+      return { ok: true, geo: geo || undefined, hostGeo: (await hostGeoP) || undefined };
     }
     // 连代理本身失败(端口通但握手超时/被拒)→ 换协议也没意义,直接报错。
-    if (isProxyUnreachable(err)) return { ok: false, error: err };
+    if (isProxyUnreachable(err)) return { ok: false, error: err, hostGeo: (await hostGeoP) || undefined };
     const alt: Proxy['protocol'] = (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') ? 'http' : 'socks5';
     const altErr = await probeVia(alt, proxy, timeoutMs);
-    if (!altErr) return { ok: false, error: err, suggestProtocol: alt };
-    return { ok: false, error: err };
+    if (!altErr) return { ok: false, error: err, suggestProtocol: alt, hostGeo: (await hostGeoP) || undefined };
+    return { ok: false, error: err, hostGeo: (await hostGeoP) || undefined };
   })();
   return Promise.race([work, deadline]);
 }

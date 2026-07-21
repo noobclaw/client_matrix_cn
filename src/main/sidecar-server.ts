@@ -1459,7 +1459,7 @@ const server = http.createServer(async (req, res) => {
               const probe = await probeProxyDetailed(proxy).catch(() => ({ ok: false } as any));
               return writeJSON(res, 200, {
                 ok: true, reachable: probe.ok, error: probe.error, suggestProtocol: probe.suggestProtocol,
-                geo: probe.geo,
+                geo: probe.geo, hostGeo: probe.hostGeo,
                 duplicateName: dup ? (dup.displayName || dup.nickname || dup.id) : undefined,
               });
             } catch (e: any) {
