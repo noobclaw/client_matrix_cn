@@ -19,7 +19,7 @@ import { HIDE_WEB3 } from '../../buildFlags';
 type AccountStatus = 'idle' | 'running' | 'login_required' | 'limited' | 'banned';
 interface MatrixAccount {
   id: string; platform: string; displayName: string; group?: string; persona?: string; status: AccountStatus;
-  proxy?: { protocol?: string; host: string; port: number; username?: string; password?: string; geo?: string; health?: string };
+  proxy?: { protocol?: string; host: string; port: number; username?: string; password?: string; geo?: string; geoCountry?: string; geoCountryCode?: string; geoCity?: string; health?: string };
   keywords?: string[]; kernelVersion?: string; nickname?: string; displayId?: string; avatar?: string; boundUid?: string;
   // 内容语言(赛道名/人设/关键词按哪种语言预填 + 卡片赛道名按哪种显示)。缺省=按界面语言。group 始终存中文规范名(供 main 侧 trackIdFromGroup 匹配),显示层按此再本地化。
   contentLang?: 'zh' | 'en';
@@ -638,19 +638,22 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const geoLabel = geo?.countryCode
       ? `${flagEmoji(geo.countryCode)} ${geo.country || geo.countryCode}${geo.city ? ' · ' + geo.city : ''}${geo.ip ? ' · ' + geo.ip : ''}`
       : '';
+    // 存进代理:出口(geo)优先,否则代理 host 归属地(hostGeo)。用于账号卡片「代理IP」旁显示归属地。
+    const gsrc = geo?.countryCode ? geo : (r?.hostGeo?.countryCode ? r.hostGeo : null);
+    const geoFields = gsrc ? { geoCountry: gsrc.country, geoCountryCode: gsrc.countryCode, geoCity: gsrc.city } : {};
     if (r?.reachable) {
       const mkey = proxyRegionMismatch(plat, geo?.countryCode);
       if (mkey) issues.push(i18nService.t(mkey).replace('{geo}', geoLabel || (geo?.country || '')));
     }
     if (issues.length) {
       setProxyMsg({ kind: 'warn', text: issues.join('\n') });
-      setPendingProxySave(() => async () => { setPendingProxySave(null); setProxyMsg(null); await save(proxy); }); // 跳过校验保存(不带 health,待下次探测)
+      setPendingProxySave(() => async () => { setPendingProxySave(null); setProxyMsg(null); await save({ ...proxy, ...geoFields }); }); // 跳过校验保存(不带 health,待下次探测)
       return;
     }
     // 通过 + 地区匹配:提示带上出口归属地,让用户看清「这个号在平台眼里来自哪」。
     setProxyMsg({ kind: 'ok', text: geoLabel ? i18nService.t('mvProxyOkGeo').replace('{geo}', geoLabel) : i18nService.t('mvProxyOkSaving') });
     await new Promise((r) => setTimeout(r, geoLabel ? 2200 : 1500)); // 有归属地多留一会儿让用户看清
-    await save({ ...proxy, health: 'ok' });
+    await save({ ...proxy, ...geoFields, health: 'ok' });
   };
 
   const saveProxy = async () => {
@@ -877,7 +880,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-semibold dark:text-white truncate">{a.nickname || a.displayName}</span>
                           {isSuspended && <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-400/20 text-gray-500 dark:text-gray-400" title={i18nService.t('mvSuspendedTitle')}>⏸️ {i18nService.t('mvSuspended')}</span>}
-                          <span className={`shrink-0 max-w-[16rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? (a.proxy.health === 'ok' ? 'text-green-600 dark:text-green-400 bg-green-500/15' : a.proxy.health === 'dead' ? 'text-red-600 dark:text-red-400 bg-red-500/15' : 'text-blue-600 dark:text-blue-400 bg-blue-500/15') : (idx === 0 ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15')}`}>{i18nService.t('mvProxyIpLabel')}{a.proxy ? ((a.proxy.geo || a.proxy.host) + (a.proxy.health === 'dead' ? i18nService.t('mvProxyDead') : '')) : (a.egressIp ? i18nService.t('mvLocalEgress').replace('{ip}', a.egressIp) : (idx === 0 ? i18nService.t('mvLocalIpDefault') : i18nService.t('mvNotConfigured')))}</span>
+                          <span className={`shrink-0 max-w-[16rem] truncate text-[10px] px-1.5 py-0.5 rounded-full ${a.proxy ? (a.proxy.health === 'ok' ? 'text-green-600 dark:text-green-400 bg-green-500/15' : a.proxy.health === 'dead' ? 'text-red-600 dark:text-red-400 bg-red-500/15' : 'text-blue-600 dark:text-blue-400 bg-blue-500/15') : (idx === 0 ? 'text-green-600 dark:text-green-400 bg-green-500/15' : 'text-amber-600 dark:text-amber-400 bg-amber-500/15')}`}>{i18nService.t('mvProxyIpLabel')}{a.proxy ? (a.proxy.host + (a.proxy.geoCountryCode ? ` · ${flagEmoji(a.proxy.geoCountryCode)} ${a.proxy.geoCountry || a.proxy.geoCountryCode}` : (a.proxy.geo ? ` · ${a.proxy.geo}` : '')) + (a.proxy.health === 'dead' ? i18nService.t('mvProxyDead') : '')) : (a.egressIp ? i18nService.t('mvLocalEgress').replace('{ip}', a.egressIp) : (idx === 0 ? i18nService.t('mvLocalIpDefault') : i18nService.t('mvNotConfigured')))}</span>
                         </div>
                         <div className="text-[11px] space-y-0.5" title={a.boundUid ? `uid: ${a.boundUid}` : undefined}>
                           {a.status === 'login_required'

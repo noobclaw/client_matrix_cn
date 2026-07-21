@@ -31,7 +31,11 @@ export interface Proxy {
   username?: string;
   password?: string;
   localBridgePort?: number;        // 带 auth 时:本地无认证中转端口(上游带 auth)
-  geo?: string;                    // 归属地,需与 fingerprint.timezone/lang 对齐
+  geo?: string;                    // 归属地(用户手填的显示标注)
+  // 校验时自动查到的出口/host 归属地(展示在账号卡片「代理IP」旁,让用户一眼看到 IP 在哪)。
+  geoCountry?: string;             // 'Vietnam'
+  geoCountryCode?: string;         // 'VN'
+  geoCity?: string;                // 'Quỳnh Lôi'
   ispType?: 'residential' | 'mobile' | 'datacenter';
   health?: 'ok' | 'leaking' | 'banned' | 'dead';
 }
