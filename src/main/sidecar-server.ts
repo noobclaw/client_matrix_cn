@@ -1459,6 +1459,7 @@ const server = http.createServer(async (req, res) => {
               const probe = await probeProxyDetailed(proxy).catch(() => ({ ok: false } as any));
               return writeJSON(res, 200, {
                 ok: true, reachable: probe.ok, error: probe.error, suggestProtocol: probe.suggestProtocol,
+                geo: probe.geo,
                 duplicateName: dup ? (dup.displayName || dup.nickname || dup.id) : undefined,
               });
             } catch (e: any) {
@@ -1500,11 +1501,17 @@ const server = http.createServer(async (req, res) => {
               // (~10min,对齐 reloginPrompt —— 原来只 3min,拿手机/收验证码常超时,登录成功了状态却不翻;窗口关了就停)。
               (async () => {
                 try {
-                for (let i = 0; i < 200; i++) {
-                  if (i === 0) {
-                    // 内核已在运行(复用)时不会按 startUrl 重开 → navigate 兜底;新起时是冗余的二次确保。
-                    try { await kernelNavigate(acc.id, a?.loginUrl || 'about:blank'); } catch { /* 导航失败轮询照跑(可能已在登录页) */ }
+                // 导航到登录页:复用内核不按 startUrl 重开、新起内核 CDP 偶尔就绪晚于此刻 →
+                //   原来只在第 0 轮 navigate 一次、失败就吞掉,页面永远停在 about:blank
+                //   (2026-07-21 用户实测「唤起指纹浏览器但不打开网址」)。改成重试到成功一次即停
+                //   (最多 ~8s),既补上首次失败,又不反复打断用户扫码。
+                if (a?.loginUrl) {
+                  for (let n = 0; n < 6; n++) {
+                    try { await kernelNavigate(acc.id, a.loginUrl); break; }
+                    catch { await new Promise((r) => setTimeout(r, 1300)); }
                   }
+                }
+                for (let i = 0; i < 200; i++) {
                   await new Promise((r) => setTimeout(r, 3000));
                   if (!getSession(acc.id)) break; // 窗口被关
                   let ok = false;

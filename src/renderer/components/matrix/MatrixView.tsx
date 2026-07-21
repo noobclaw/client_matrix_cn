@@ -56,6 +56,24 @@ const LOGIN_URL: Record<string, string> = {
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
   instagram: 'https://www.instagram.com/accounts/login/', facebook: 'https://www.facebook.com/login/', reddit: 'https://www.reddit.com/login/',
 };
+// 平台归属:国内平台该用国内 IP,海外平台该用海外 IP;binance/reddit 等全球平台不校验地区。
+const CN_PLATFORMS = new Set(['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao']);
+const OVERSEAS_PLATFORMS = new Set(['tiktok', 'youtube', 'instagram', 'facebook', 'x']);
+/** 两字母国家码 → 国旗 emoji(regional indicator)。非法码返回空。 */
+const flagEmoji = (cc?: string): string => {
+  const c = (cc || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return '';
+  return String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+};
+/** 代理出口国家 vs 账号平台是否「地区错配」→ 返回警告 i18n key,匹配/无从判断返回 null。 */
+const proxyRegionMismatch = (platform: string, countryCode?: string): string | null => {
+  const cc = (countryCode || '').toUpperCase();
+  if (!cc) return null;
+  if (CN_PLATFORMS.has(platform) && cc !== 'CN') return 'mvProxyGeoCnPlatOverseasIp';
+  if (OVERSEAS_PLATFORMS.has(platform) && cc === 'CN') return 'mvProxyGeoOverseasPlatCnIp';
+  return null;
+};
+
 // 登录/读身份导航 URL:快手按场景分流(创作端登 cp.kuaishou.com,主站登 www);其它平台用 LOGIN_URL。
 const loginUrlFor = (platform: string, loginScope?: string): string => {
   if (platform === 'kuaishou') return loginScope === 'creator' ? 'https://cp.kuaishou.com/profile' : 'https://www.kuaishou.com/';
@@ -604,16 +622,28 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         issues.push(i18nService.t('mvProxyProtocolSuggest').replace('{p}', r.suggestProtocol));
         setProxyForm((f) => ({ ...f, protocol: r.suggestProtocol }));
       } else {
+        // 失败:原因 + 人话诊断引导(境外代理需开 TUN / 国内代理查白名单),用户不再干瞪眼。
         issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
+        issues.push(i18nService.t('mvProxyFailGuide'));
       }
+    }
+    // 出口归属地展示 + 地区错配警告(通了才有 geo)。
+    const geo = r?.geo;
+    const geoLabel = geo?.countryCode
+      ? `${flagEmoji(geo.countryCode)} ${geo.country || geo.countryCode}${geo.city ? ' · ' + geo.city : ''}${geo.ip ? ' · ' + geo.ip : ''}`
+      : '';
+    if (r?.reachable) {
+      const mkey = proxyRegionMismatch(plat, geo?.countryCode);
+      if (mkey) issues.push(i18nService.t(mkey).replace('{geo}', geoLabel || (geo?.country || '')));
     }
     if (issues.length) {
       setProxyMsg({ kind: 'warn', text: issues.join('\n') });
       setPendingProxySave(() => async () => { setPendingProxySave(null); setProxyMsg(null); await save(proxy); }); // 跳过校验保存(不带 health,待下次探测)
       return;
     }
-    setProxyMsg({ kind: 'ok', text: i18nService.t('mvProxyOkSaving') });
-    await new Promise((r) => setTimeout(r, 1500)); // 让用户看清「正常工作」再保存关窗(原来一闪而过看不清)
+    // 通过 + 地区匹配:提示带上出口归属地,让用户看清「这个号在平台眼里来自哪」。
+    setProxyMsg({ kind: 'ok', text: geoLabel ? i18nService.t('mvProxyOkGeo').replace('{geo}', geoLabel) : i18nService.t('mvProxyOkSaving') });
+    await new Promise((r) => setTimeout(r, geoLabel ? 2200 : 1500)); // 有归属地多留一会儿让用户看清
     await save({ ...proxy, health: 'ok' });
   };
 
@@ -1410,7 +1440,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       {/* 代理 */}
       {proxyFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-[26rem] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
+          <div className="w-[32rem] max-w-[92vw] rounded-xl p-5 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
             <div className="flex items-center mb-1">
               <div className="text-sm font-medium">{i18nService.t('mvBindProxyIp')}</div>
               <button type="button" onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} aria-label={i18nService.t('mvClose')} title={i18nService.t('mvClose')} className="ml-auto shrink-0 -mr-1 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
@@ -1418,6 +1448,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               </button>
             </div>
             <div className="text-xs opacity-60 mb-3">{i18nService.t('mvProxyHint')}{proxyPurchaseUrl && (<> {i18nService.t('mvNoneQ')}<button type="button" onClick={() => { try { (window as any).electron?.shell?.openExternal(proxyPurchaseUrl); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">{i18nService.t('mvClickHere')}</button></>)}</div>
+            {/* 常驻配置说明:国内号用国内IP或留空;海外号用海外IP并开VPN全局/TUN。降低「配错地区/不知道要TUN」的坑。 */}
+            <div className="text-[11px] leading-relaxed mb-3 rounded-lg px-3 py-2 bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 whitespace-pre-line">{i18nService.t('mvProxyGuideBanner')}</div>
             <div className="flex gap-2 mb-2">
               <select value={proxyForm.protocol} onChange={(e) => setProxyForm((f) => ({ ...f, protocol: e.target.value }))} className="text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent">
                 <option value="socks5">socks5</option><option value="socks5h">socks5h</option><option value="http">http</option><option value="https">https</option>
@@ -1425,10 +1457,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <input value={proxyForm.host} onChange={(e) => setProxyForm((f) => ({ ...f, host: e.target.value }))} placeholder={i18nService.t('mvProxyHostPlaceholder')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
               <input value={proxyForm.port} onChange={(e) => setProxyForm((f) => ({ ...f, port: e.target.value.replace(/[^0-9]/g, '') }))} placeholder="port" className="w-20 text-sm px-2 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
             </div>
-            <div className="flex gap-2 mb-2">
-              <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder={i18nService.t('mvUsernameOptional')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-              <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder={i18nService.t('mvPasswordOptional')} className="flex-1 min-w-0 text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent" />
-            </div>
+            {/* 账号/密码各自独立整行(2026-07-21 用户反馈:长账号如 24A3NBgA10311199161A45379 挤一行看不全)。 */}
+            <input value={proxyForm.username} onChange={(e) => setProxyForm((f) => ({ ...f, username: e.target.value }))} placeholder={i18nService.t('mvUsernameOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-2" />
+            <input value={proxyForm.password} onChange={(e) => setProxyForm((f) => ({ ...f, password: e.target.value }))} placeholder={i18nService.t('mvPasswordOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-2" />
             <input value={proxyForm.geo} onChange={(e) => setProxyForm((f) => ({ ...f, geo: e.target.value }))} placeholder={i18nService.t('mvGeoOptional')} className="w-full text-sm px-3 py-2 rounded border dark:border-white/15 border-black/15 bg-transparent mb-3" />
             {proxyMsg && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}</div>)}
             <div className="flex justify-end gap-2">

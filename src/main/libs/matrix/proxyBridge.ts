@@ -112,6 +112,14 @@ export async function probeProxy(proxy: Proxy, timeoutMs = 6000): Promise<boolea
   try { return (await probeVia(proxy.protocol, proxy, timeoutMs)) === null; } catch { return false; }
 }
 
+/** 代理出口 IP 的归属地(经代理查 ip-api.com 得到)。让用户直观看到「这个号在平台眼里来自哪」。 */
+export interface ProxyGeo {
+  ip?: string;
+  country?: string;      // 'Vietnam'
+  countryCode?: string;  // 'VN'
+  city?: string;         // 'Quỳnh Lôi'
+}
+
 export interface ProxyProbeResult {
   ok: boolean;
   /** 不通时的原因(socks 库/CONNECT 的原始错误,给 UI 显示定位)。 */
@@ -119,6 +127,58 @@ export interface ProxyProbeResult {
   /** 按所选协议不通、但换这个协议能通 → 卖家标错协议(socks5↔http 很常见,AdsPower 等
    *  工具会自动探测所以「别家能用」)。UI 拿到后帮用户切协议。 */
   suggestProtocol?: Proxy['protocol'];
+  /** 通了才有:出口 IP 归属地。查询失败不影响 ok(锦上添花)。 */
+  geo?: ProxyGeo;
+}
+
+/** 从 HTTP 响应文本里解析 ip-api.com 的 JSON,取出归属地字段。解析失败返回 null。 */
+function parseGeoResponse(raw: string): ProxyGeo | null {
+  try {
+    const body = raw.split('\r\n\r\n')[1] || '';
+    const j = JSON.parse(body);
+    if (!j || j.status === 'fail') return null;
+    return { ip: j.query, country: j.country, countryCode: j.countryCode, city: j.city };
+  } catch { return null; }
+}
+
+/**
+ * 经代理查出口 IP 归属地(ip-api.com,免 key、http 80 端口)。socks5 走 socks 库拿裸 socket 发
+ * HTTP;http/https 代理发绝对 URL 的 GET 让代理转发。必须【经代理本身】发出,否则查到的是本机 IP。
+ * 失败/超时返回 null —— 归属地是展示增强,绝不阻塞校验主流程。
+ */
+export async function fetchProxyExitGeo(proxy: Proxy, timeoutMs = 7000): Promise<ProxyGeo | null> {
+  try {
+    if (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') {
+      const info = await SocksClient.createConnection({
+        proxy: { host: proxy.host, port: proxy.port, type: 5, userId: proxy.username, password: proxy.password },
+        command: 'connect', destination: { host: 'ip-api.com', port: 80 }, timeout: timeoutMs,
+      });
+      const sock = info.socket as net.Socket;
+      return await new Promise<ProxyGeo | null>((resolve) => {
+        let buf = '';
+        const timer = setTimeout(() => { try { sock.destroy(); } catch { /* ignore */ } resolve(null); }, timeoutMs);
+        sock.on('data', (d: Buffer) => { buf += d.toString('utf8'); });
+        sock.on('end', () => { clearTimeout(timer); resolve(parseGeoResponse(buf)); });
+        sock.on('error', () => { clearTimeout(timer); resolve(null); });
+        sock.write('GET /json HTTP/1.1\r\nHost: ip-api.com\r\nConnection: close\r\n\r\n');
+      });
+    }
+    // http/https 代理:直接对代理发绝对 URL 的 GET,代理负责转发。
+    return await new Promise<ProxyGeo | null>((resolve) => {
+      let buf = '';
+      const sock = net.connect(proxy.port, proxy.host);
+      const timer = setTimeout(() => { try { sock.destroy(); } catch { /* ignore */ } resolve(null); }, timeoutMs);
+      sock.on('connect', () => {
+        const auth = proxy.username
+          ? `Proxy-Authorization: Basic ${Buffer.from(`${proxy.username}:${proxy.password}`).toString('base64')}\r\n`
+          : '';
+        sock.write(`GET http://ip-api.com/json HTTP/1.1\r\nHost: ip-api.com\r\n${auth}Connection: close\r\n\r\n`);
+      });
+      sock.on('data', (d: Buffer) => { buf += d.toString('utf8'); });
+      sock.on('end', () => { clearTimeout(timer); resolve(parseGeoResponse(buf)); });
+      sock.on('error', () => { clearTimeout(timer); resolve(null); });
+    });
+  } catch { return null; }
 }
 
 /** 绑定代理时的详细校验:所选协议不通时自动换协议再试,能通就给出正确协议建议。
@@ -133,7 +193,10 @@ export async function probeProxyDetailed(proxy: Proxy, timeoutMs = 7_000): Promi
       return { ok: false, error: '代理地址无法连接(host/端口不通,或该 IP 未对本机授权)' };
     }
     const err = await probeVia(proxy.protocol, proxy, timeoutMs);
-    if (!err) return { ok: true };
+    if (!err) {
+      const geo = await fetchProxyExitGeo(proxy).catch(() => null);
+      return { ok: true, geo: geo || undefined };
+    }
     // 连代理本身失败(端口通但握手超时/被拒)→ 换协议也没意义,直接报错。
     if (isProxyUnreachable(err)) return { ok: false, error: err };
     const alt: Proxy['protocol'] = (proxy.protocol === 'socks5' || proxy.protocol === 'socks5h') ? 'http' : 'socks5';
