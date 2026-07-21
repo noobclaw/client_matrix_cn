@@ -1456,10 +1456,29 @@ const server = http.createServer(async (req, res) => {
               const { probeProxyDetailed } = await import('./libs/matrix/proxyBridge');
               const pk = platformKey({ platform: a?.platform, loginScope: a?.loginScope });
               const dup = listAccounts().find((x: any) => x.id !== a?.accountId && x.proxy && x.proxy.host === proxy.host && platformKey(x) === pk);
-              const probe = await probeProxyDetailed(proxy).catch(() => ({ ok: false } as any));
+              // 本地测(用户机器) + 云端测(我们海外服务器)并行:区分「代理坏了」vs「代理好但你区域连不上」。
+              const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+              const cloudP = (async () => {
+                try {
+                  const token = getNoobClawAuthToken();
+                  const cr = await fetch(`${base}/api/matrix/proxy-test`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                    body: JSON.stringify({ protocol: proxy.protocol, host: proxy.host, port: proxy.port, username: proxy.username, password: proxy.password }),
+                    signal: AbortSignal.timeout(15000),
+                  });
+                  const cj: any = await cr.json();
+                  return cj && cj.ok ? { reachable: !!cj.reachable, geo: cj.geo || null } : null;
+                } catch { return null; }
+              })();
+              const [probe, cloud] = await Promise.all([
+                probeProxyDetailed(proxy).catch(() => ({ ok: false } as any)),
+                cloudP,
+              ]);
               return writeJSON(res, 200, {
                 ok: true, reachable: probe.ok, error: probe.error, suggestProtocol: probe.suggestProtocol,
-                geo: probe.geo, hostGeo: probe.hostGeo,
+                geo: probe.geo, hostGeo: probe.hostGeo || cloud?.geo || undefined,
+                cloudReachable: cloud ? cloud.reachable : undefined,
                 duplicateName: dup ? (dup.displayName || dup.nickname || dup.id) : undefined,
               });
             } catch (e: any) {
