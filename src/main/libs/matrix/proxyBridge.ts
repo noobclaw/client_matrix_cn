@@ -135,12 +135,26 @@ export interface ProxyProbeResult {
 }
 
 /**
- * 本机直连 ip-api.com 查【任意 IP/域名本身】的归属地(不经代理)。代理连不通时也能拿到
- * 「这个代理 IP 在哪个国家」→ 据此提示用户「这是海外代理,需开全局 TUN」。失败返回 null。
+ * 查【任意 IP/域名本身】的归属地。代理连不通时也能拿到「这个代理 IP 在哪个国家」→ 据此提示
+ * 「海外代理需开全局 TUN」。**优先走后端中转**(api.noobclaw.com 客户端总连得上,后端在香港
+ * 直连 ip-api 稳,不受用户国内网络影响 —— 2026-07-21 用户实测国内 Mac 直连 ip-api 查不到);
+ * 后端不可用再退回本机直连 ip-api(海外用户 / 已开 VPN 时可用)。都失败返回 null。
  */
 export async function lookupIpGeo(hostOrIp: string, timeoutMs = 5000): Promise<ProxyGeo | null> {
   const h = (hostOrIp || '').trim();
   if (!h) return null;
+  // ① 后端中转(首选)
+  try {
+    const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(`${base}/api/matrix/ip-geo?ip=${encodeURIComponent(h)}`, { signal: ctrl.signal });
+      const j: any = await r.json();
+      if (j && j.ok && j.countryCode) return { ip: j.ip, country: j.country, countryCode: j.countryCode, city: j.city };
+    } finally { clearTimeout(timer); }
+  } catch { /* 后端不可用 → 退回本机直连 */ }
+  // ② 本机直连 ip-api 兜底
   return await new Promise<ProxyGeo | null>((resolve) => {
     let buf = '';
     const req = http.get(
