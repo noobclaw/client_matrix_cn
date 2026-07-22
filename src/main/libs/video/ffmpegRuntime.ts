@@ -120,23 +120,44 @@ export function getFfmpegPath(): string {
   return _ffmpegPath;
 }
 
-/** ffmpeg 是否可用(spawn 能跑通 -version)。UI 不可用时给友好提示。 */
+/** 一旦确认可用就记住:探测本身偶发超时(见下),不该让后续任务反复重判。 */
+let _ffmpegAvailable: boolean | null = null;
+
+/** ffmpeg 是否可用(spawn 能跑通 -version)。UI 不可用时给友好提示。
+ *
+ * ⚠️【2026-07-22 修「偶尔 ffmpeg 不可用」】原来单次 spawnSync -version、8s 超时、无重试、不缓存。
+ *   Windows 上首次 spawn 内置 ffmpeg.exe 偶尔慢(Defender 首扫该 exe / 出片时系统繁忙)→ 探测超 8s
+ *   → 误报不可用、任务第一步就挂(现象:开跑后恰好 8s 报错)。改为:① 成功结果缓存;② 超时放宽 20s
+ *   + 重试一次;③ 探测失败但【解析到的是真实存在的二进制文件】→ 判可用(文件在,只是 spawn 慢),
+ *   只有连文件都没有(裸名 / ENOENT)才真判不可用。 */
 export function isFfmpegAvailable(): boolean {
+  if (_ffmpegAvailable === true) return true;
   const p = getFfmpegPath();
-  try {
-    const r = spawnSync(p, ['-version'], { stdio: 'ignore', timeout: 8000 });
-    if (r.status !== 0) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const r = spawnSync(p, ['-version'], { stdio: 'ignore', timeout: 20000 });
+      if (r.status === 0) { _ffmpegAvailable = true; return true; }
       console.warn(
-        `[ffmpegRuntime] isFfmpegAvailable: spawn of "${p}" returned ` +
+        `[ffmpegRuntime] isFfmpegAvailable(try ${attempt + 1}): spawn of "${p}" returned ` +
           `status=${r.status} signal=${r.signal ?? 'none'}` +
           (r.error ? ` error=${String(r.error)}` : ''),
       );
+    } catch (e) {
+      console.warn(`[ffmpegRuntime] isFfmpegAvailable(try ${attempt + 1}): spawn of "${p}" threw ${String(e)}`);
     }
-    return r.status === 0;
-  } catch (e) {
-    console.warn(`[ffmpegRuntime] isFfmpegAvailable: spawn of "${p}" threw ${String(e)}`);
-    return false;
   }
+  // 探测两次都没跑通,但解析到的是【真实存在的文件】(非裸 "ffmpeg")→ 判可用:文件明明在,
+  //   多半只是首次 spawn 被杀软扫描/系统繁忙拖慢。只有连文件都没有才真判不可用。
+  if (p !== 'ffmpeg') {
+    let exists = false;
+    try { exists = fs.existsSync(p); } catch { /* ignore */ }
+    if (exists) {
+      console.warn(`[ffmpegRuntime] isFfmpegAvailable: -version probe failed but binary file exists ("${p}"); treating as available`);
+      _ffmpegAvailable = true;
+      return true;
+    }
+  }
+  return false;
 }
 
 export interface RunFfmpegOptions {
