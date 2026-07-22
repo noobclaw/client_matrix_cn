@@ -5200,7 +5200,8 @@ export const ThreadVideoModal: React.FC<{
     ei.threadBgSource === 'youtube' ? 'youtube' : ei.threadBgSource === 'douyin' ? 'douyin' : (isZh ? 'douyin' : 'youtube'));
   const [bgChoice, setBgChoice] = useState<string>(ei.threadBgChoice || 'random');
   // 画面风格:'cards'=Reddit 截图卡(经典)| 'karaoke'=跳字大字幕(TikTok 爆款风)。
-  const [captionStyle, setCaptionStyle] = useState<'cards' | 'karaoke'>(ei.threadCaptionStyle === 'karaoke' ? 'karaoke' : 'cards');
+  const [captionStyle, setCaptionStyle] = useState<'cards' | 'karaoke' | 'both'>(
+    ei.threadCaptionStyle === 'karaoke' ? 'karaoke' : ei.threadCaptionStyle === 'both' ? 'both' : 'cards');
   const [voice, setVoice] = useState<string>(ei.voice || THREAD_LANG_VOICE[isZh ? 'zh' : 'en']);
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
@@ -5458,15 +5459,12 @@ export const ThreadVideoModal: React.FC<{
           {step === 2 && (
             <>
               <Field label={isZh ? '创作语言' : 'Language'} hint={isZh ? '卡片文字 + 配音都用它' : 'cards & voice-over'}>
-                <div className="grid grid-cols-2 gap-2">
+                <select value={lang} onChange={(e) => { const id = e.target.value as ThreadLang; setLang(id); setVoice(THREAD_LANG_VOICE[id]); }}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
                   {THREAD_LANGS.map((l) => (
-                    <button key={l.id} type="button"
-                      onClick={() => { setLang(l.id); setVoice(THREAD_LANG_VOICE[l.id]); }}
-                      className={`px-3 py-2 rounded-lg border text-sm text-left ${lang === l.id ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10 font-semibold text-orange-700 dark:text-orange-400' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
-                      {isZh ? l.zh : l.en}
-                    </button>
+                    <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>
                   ))}
-                </div>
+                </select>
                 {lang !== 'en' && (
                   <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                     {isZh ? '💡 AI 会把帖子和神评翻译改写得口语地道,截图卡上的文字也会替换成译文(样式/赞数保持 Reddit 原样)。' : '💡 AI rewrites the thread into your language; card text is replaced in-place (Reddit look preserved).'}
@@ -5506,10 +5504,11 @@ export const ThreadVideoModal: React.FC<{
                 </p>
               </Field>
               <Field label={isZh ? '画面风格' : 'Caption style'}>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2">
                   {([
                     { v: 'cards', zh: '🗨️ Reddit 截图卡', en: '🗨️ Reddit cards', deszh: '经典形态 · 帖子/评论真截图依次上屏' },
                     { v: 'karaoke', zh: '🔤 跳字大字幕', en: '🔤 Jump-word captions', deszh: 'TikTok 爆款风 · 大字逐词弹出跟配音,无截图卡' },
+                    { v: 'both', zh: '🎬 截图卡 + 跳字', en: '🎬 Cards + jump-words', deszh: '两者叠加 · 截图卡在上、大跳字在下,信息量最全' },
                   ] as const).map((m) => (
                     <button key={m.v} type="button" onClick={() => setCaptionStyle(m.v)}
                       className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left ${captionStyle === m.v ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/10 text-orange-700 dark:text-orange-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>

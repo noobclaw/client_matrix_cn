@@ -233,7 +233,7 @@ function assEscape(s: string): string {
  * 词出现瞬间 120%→100% 缩放弹一下(爆款标志性 pop 动效)。
  * segs 的 startSec 必须已算好;cue 缺失的段按时长均分单词兜底。
  */
-function buildKaraokeAss(segs: CardSeg[], outPath: string): void {
+function buildKaraokeAss(segs: CardSeg[], outPath: string, centerRatio = 0.62): void {
   const lines: string[] = [
     '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${W}`, `PlayResY: ${H}`, 'WrapStyle: 2', '',
     '[V4+ Styles]',
@@ -254,9 +254,9 @@ function buildKaraokeAss(segs: CardSeg[], outPath: string): void {
       for (const w of splitCueWords(cue)) {
         const st = base + w.start, en = base + w.end;
         if (en - st < 0.04) continue;
-        // \an5 居中;pos 在画面 62% 高(卡片风格在中间,跳字放低一点避开截图卡区域也不挡脸)。
+        // \an5 居中;pos 高度按 centerRatio(karaoke 默认 0.62;both 模式传更低值避开中间的截图卡)。
         // \fscx120\fscy120 → 80ms 内缩回 100:pop 动效。
-        lines.push(`Dialogue: 0,${assTime(st)},${assTime(en)},Jump,,0,0,0,{\\an5\\pos(${Math.round(W / 2)},${Math.round(H * 0.62)})\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${assEscape(w.text)}`);
+        lines.push(`Dialogue: 0,${assTime(st)},${assTime(en)},Jump,,0,0,0,{\\an5\\pos(${Math.round(W / 2)},${Math.round(H * centerRatio)})\\fscx120\\fscy120\\t(0,80,\\fscx100\\fscy100)}${assEscape(w.text)}`);
       }
     }
   }
@@ -451,7 +451,7 @@ async function composeThreadVideo(opts: {
       parts.push(
         `[0:v]drawtext=fontfile='${fontEsc}':text='${textEsc}':fontsize=52:fontcolor=white`
         + `:borderw=2:bordercolor=black@0.6:box=1:boxcolor=black@0.4:boxborderw=18`
-        + `:x=(w-text_w)/2:y=96[vhdr]`,
+        + `:x=(w-text_w)/2:y=180[vhdr]`,
       );
       baseIn = '[vhdr]';
     }
@@ -748,6 +748,23 @@ export async function runThreadPipeline(
       return null;
     };
     const made = new Map<string, { audioPath: string; durationSec: number; cues?: TtsCue[] }>();
+    // 按【去空白字符数】把整段时长比例切成每句的 {start,end}(cue 对不齐时的兜底切法)。
+    //   整段音频已合成成功、只是拿不到精准 cue 边界 → 按字数占比估边界,零额外 edge-tts 请求,
+    //   避免跌回逐段 15 连发触发限频(修「配音段不足」根因)。边界略糙但完全可用。
+    const proportionalSpans = (sentences: string[], totalDur: number): Array<{ start: number; end: number }> | null => {
+      if (!sentences.length || !(totalDur > 0)) return null;
+      const lens = sentences.map((s) => Math.max(1, (s || '').replace(/\s+/g, '').length));
+      const total = lens.reduce((a, n) => a + n, 0);
+      const out: Array<{ start: number; end: number }> = [];
+      let acc = 0;
+      for (let i = 0; i < lens.length; i++) {
+        const start = (acc / total) * totalDur;
+        acc += lens[i];
+        const end = i === lens.length - 1 ? totalDur : (acc / total) * totalDur;
+        out.push({ start, end: Math.max(start + 0.3, end) });
+      }
+      return out;
+    };
     let gi = 0;
     for (const [gv, gsegs] of groups) {
       gi++;
@@ -765,7 +782,14 @@ export async function runThreadPipeline(
         const w = await oneShot(gsegs.map((s) => s.text).join('\n'), gv, groupMp3);
         if (w) {
           // 切段对齐照抄 stock(pipeline.ts 一口气路径):字符流锚 cue 真实时间戳,不累积误差。
-          const spans = alignSentencesToCues(gsegs.map((s) => s.text), w.rawCues, w.durationSec);
+          let spans = alignSentencesToCues(gsegs.map((s) => s.text), w.rawCues, w.durationSec);
+          // ⚠️【2026-07-21 修「配音段不足」根因】cue 对不齐(脏评论 URL/数字/emoji 被 edge-tts 规整→字符数比
+          //   越界,或本次没吐 cue)时,原来直接放弃整段 → 跌回逐段 15 连发 → edge-tts 限频 → 评论段全灭。
+          //   整段音频其实已合成成功,只是切不准 → 改按【字数比例】切【同一条整段音频】,零额外请求。
+          if (!spans || spans.length !== gsegs.length) {
+            spans = proportionalSpans(gsegs.map((s) => s.text), w.durationSec);
+            tracker.progress(`↩️ 音色 ${gv} cue 对不齐 → 按字数比例切分整段(不重发请求)`);
+          }
           if (spans && spans.length === gsegs.length) {
             let cutOk = true;
             for (let i = 0; i < gsegs.length; i++) {
@@ -804,9 +828,14 @@ export async function runThreadPipeline(
           continue;
         }
         if (gsegs.length > 1) tracker.progress(`↩️ 该组回退逐段配音(${gsegs.length} 段,已切好的保留)…`);
+        let fbFirst = true;
         for (const s of gsegs) {
           throwIfAborted(signal);
           if (made.has(s.key)) continue; // 切到一半失败的组:已切好的段不重配
+          // 节流:逐段兜底会对多条评论各发一次 edge-tts,连发触发微软限频/黑洞 → 后段全灭。
+          //   段间隔 ~900ms 降请求密度(可中断)。有比例切分兜底后这条路已很少走,慢一点无所谓。
+          if (!fbFirst) { await new Promise((r) => setTimeout(r, 900)); throwIfAborted(signal); }
+          fbFirst = false;
           tracker.progress(`🎙 逐段配音:${s.key === 'title' ? '标题+开场' : `评论 ${s.key}`}(${s.text.length} 字)…`);
           const r = await ttsSeg(s.text, s.voice, s.outPath, rate, signal, onTtsLog);
           if (r) made.set(s.key, r);
@@ -856,9 +885,11 @@ export async function runThreadPipeline(
 
     // ── STEP 3:画面素材 ─────────────────────────────────────────────────
     // 风格分流(threadCaptionStyle):'cards'(默认)= Reddit 真截图卡;'karaoke' = 跳字大字幕
-    //   (TikTok 爆款风,不放截图卡 → 跳过整个截图阶段,快很多)。
+    //   (TikTok 爆款风,不放截图卡 → 跳过整个截图阶段,快很多);'both' = 截图卡 + 跳字(既截图又烧跳字)。
     throwIfAborted(signal);
-    const captionStyle = String((input as any).threadCaptionStyle || 'cards') === 'karaoke' ? 'karaoke' : 'cards';
+    const rawCaptionStyle = String((input as any).threadCaptionStyle || 'cards');
+    const captionStyle: 'cards' | 'karaoke' | 'both' =
+      rawCaptionStyle === 'karaoke' ? 'karaoke' : rawCaptionStyle === 'both' ? 'both' : 'cards';
     let alive: CardSeg[];
     if (captionStyle === 'karaoke') {
       tracker.start('cards', '🔤 跳字大字幕模式:跳过截图,按词时间轴生成字幕…');
@@ -978,19 +1009,24 @@ export async function runThreadPipeline(
     const bgm = await resolveBgmPath(input.bgmPath, (m) => tracker.progress(m)).catch(() => undefined);
 
     throwIfAborted(signal);
-    // 跳字大字幕:按段起点 + 词时间轴生成 ASS(卡片模式不生成)。
+    // 跳字大字幕:按段起点 + 词时间轴生成 ASS(纯卡片模式不生成;karaoke / both 生成)。
+    //   both 模式截图卡在画面中间 → 跳字下移到 0.80H 避开卡片;karaoke 无卡 → 0.62H。
+    const karaokeRatio = captionStyle === 'both' ? 0.80 : 0.62;
     let assPath: string | undefined;
-    if (captionStyle === 'karaoke') {
+    if (captionStyle === 'karaoke' || captionStyle === 'both') {
       try {
         assPath = path.join(assetDir, 'karaoke.ass');
-        buildKaraokeAss(alive, assPath);
+        buildKaraokeAss(alive, assPath, karaokeRatio);
         tracker.progress('🔤 跳字字幕就绪(逐词弹出,随配音节奏)');
       } catch (e) {
         assPath = undefined;
         tracker.progress(`⚠️ 跳字字幕生成失败(${String((e as Error)?.message || e).slice(0, 60)}),本条无字幕出片`);
       }
     }
-    tracker.progress(captionStyle === 'karaoke' ? '🎞️ 合成中(游戏背景 + 跳字大字幕)…' : '🎞️ 合成中(卡片按配音时间窗依次上屏)…');
+    tracker.progress(
+      captionStyle === 'karaoke' ? '🎞️ 合成中(游戏背景 + 跳字大字幕)…'
+      : captionStyle === 'both' ? '🎞️ 合成中(截图卡 + 跳字大字幕)…'
+      : '🎞️ 合成中(卡片按配音时间窗依次上屏)…');
     const outPath = path.join(destDir, outputFileName(0));
     // 顶部常驻抬头「今日 Reddit 热帖 · M月D日」(2026-07-20 用户要求,栏目感)。
     // 思源黑体SC 覆盖中/日/拉丁,无谚文 → 韩语和拉丁语种统一用英文抬头;日期用出片当天。
@@ -1005,7 +1041,7 @@ export async function runThreadPipeline(
     // 底部口播字幕(2026-07-20 用户要求对齐热搜:大蒙层 + 字幕)。cards 模式烧短语字幕
     // (全局时间轴 = 段起点 + 段内 cue;无 cue 的段整段文本兜底);karaoke 模式跳字就是字幕,
     // 只把蒙层垫到跳字中心(0.62H)。
-    const globalSubCues = captionStyle === 'karaoke' ? undefined : alive.flatMap((s) => {
+    const globalSubCues = captionStyle !== 'cards' ? undefined : alive.flatMap((s) => {
       const base = s.startSec || 0;
       // 无 cue 的段(静音兜底等):整段文本按 ~14 字均分伪 cue,防一条字幕溢出一行。
       const cs: TtsCue[] = (s.cues && s.cues.length) ? s.cues : (() => {
@@ -1025,7 +1061,7 @@ export async function runThreadPipeline(
       bgmPath: bgm, bgmVolume: typeof input.bgmVolume === 'number' ? input.bgmVolume : 0.15,
       outPath, assPath, headerText, signal,
       subtitleCues: globalSubCues,
-      maskCenterRatio: captionStyle === 'karaoke' ? 0.62 : 0.86,
+      maskCenterRatio: captionStyle === 'cards' ? 0.86 : captionStyle === 'both' ? karaokeRatio : 0.62,
       workDir: assetDir,
     });
     if (!composed) {
