@@ -115,8 +115,9 @@ function makeAiCall(authToken: string | undefined, onCost?: (credits: number, us
     const data: any = await res.json().catch(() => ({}));
     // 后端非 2xx(余额不足 402 / 内容审核 / 限流 / 5xx)必须抛错,不能把 {error,message}
     //   当成空 content 静默吞掉 —— 否则 orchestrator 只看到空串,误报「改写返回空 (1秒)」,
-    //   用户看不出是余额不足。抛带原因的 Error → aiCallWithRetry 归类确定性失败不空转、
-    //   orchestrator catch 显示「改写失败: 余额不足...」;5xx 仍会重试一次。
+    //   用户完全看不出是余额不足。抛带原因的 Error 后:① 余额/权限类被 aiCallWithRetry
+    //   判定确定性失败不空转重试;② orchestrator catch 显示「改写失败: 余额不足...」真实原因;
+    //   ③ 5xx 仍会重试一次。
     if (!res.ok) {
       const beMsg = String((data && (data.message || data.error)) || ('http_' + res.status));
       if (res.status === 402 || /INSUFFICIENT_TOKENS|insufficient|余额/i.test(beMsg)) throw new Error('余额不足,请充值后重试 (' + beMsg + ')');
@@ -171,8 +172,10 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
   if (acc.platform !== opts.platform) { log('❌ 跳过:账号平台与任务不符'); return { accountId, state: 'skipped', reason: 'platform_mismatch' }; }
   if (acc.status === 'banned' || acc.status === 'limited') { log('❌ 跳过:账号状态为 ' + acc.status); return { accountId, state: 'skipped', reason: 'account_' + acc.status }; }
   // 网络图模式靠本号关键词搜实景图 —— 没关键词且没填参考文案就没法搜,跳过(AI 生图模式不强制)。
+  // v7:数据源模式下网络图搜图词跟【数据源标题】走(orchestrator 用标题覆盖搜索词),所以不再要求本号关键词。
   const accKeywords = effectiveKeywords(acc); // 原始 + AI 衍生池
-  if (cfg.useRealPhotos && accKeywords.length === 0) {
+  const usingSourcesForRealPhotos = cfg.contentSource === 'sources' && Array.isArray(cfg.sources) && cfg.sources.length > 0;
+  if (cfg.useRealPhotos && accKeywords.length === 0 && !usingSourcesForRealPhotos) {
     log('❌ 跳过:网络图模式需要本号关键词(到「我的矩阵账号」编辑里添加)');
     return { accountId, state: 'skipped', reason: 'no_keywords_for_real_photos' };
   }
