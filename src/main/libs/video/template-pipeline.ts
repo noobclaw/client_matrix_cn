@@ -18,7 +18,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { isFfmpegAvailable } from './ffmpegRuntime';
+import { isFfmpegAvailable, runFfmpeg, probeDuration } from './ffmpegRuntime';
 import { resolveBgmPath } from './bgm';
 import {
   ProgressTracker, resolveOutputDirs, outputFileName, throwIfAborted,
@@ -374,6 +374,9 @@ export async function runTemplatePipeline(
     let captionCues: CaptionCue[] | undefined;
     // 配音的真实时间戳 cue(不管字幕开没开都留着):分页翻页窗口用它对齐,比字数比例估算准。
     let narrCues: CaptionCue[] | undefined;
+    // 每页画面时间窗(固定模板分页 + 配音时在 STEP 2.5 结算;必须在时长决策/计费之前,
+    // 因为逐页重配兜底会重制配音轨、改变总时长)。
+    let pageTimings: Array<{ startSec: number; durSec: number }> | undefined;
     if (wantNarration) {
       tracker.start('voice', '🎤 正在合成配音…');
       const script = cleanForTts(tpl.voiceScript || data.voiceScript || '');
@@ -423,6 +426,100 @@ export async function runTemplatePipeline(
         fs.writeFileSync(path.join(destDir, '文案.txt'), lines.join('\n'), 'utf8');
       } catch { /* 写文案 txt 失败不影响出片 */ }
       tracker.done('voice', `✅ 配音已生成 · ${realDurationSec.toFixed(1)}s${captionCues ? ` · ${captionCues.length} 句字幕` : ''}`);
+
+      // ── STEP 2.5:分页音画同步结算(固定精品模板 + 多页 + AI 按页切了段)──────
+      // 三条腿按准确度排序,任何一腿成功即止:
+      //   ① 整段配音 + cue 真实时间戳对齐(零额外请求、零累积误差)
+      //   ② cue 对不齐 → 【逐页重新合成】:每页画面时长 = 该页配音实测时长(MoneyPrinterPlus
+      //     同款结构,按段落出音频、时长天然对齐)。热榜类内容满是数字/日期(「7月24日」2 字符
+      //     念 6 个音节),edge-tts 会把数字规整成读法 → 字符流差异超阈 → ① 常年失败;旧代码
+      //     此时退「字数比例估算」,数字段被系统性低估 → 画面翻页与口播漂移逐页累积,字幕
+      //     (走真实 cue)和画面(走估算)成了两条时间轴 —— 这就是「字幕和画面对不上」的根因。
+      //     逐页实测从结构上消灭该问题,代价是 N-1 次额外 TTS 请求(段间 900ms 限频)。
+      //   ③ 逐页合成也失败 → 字数比例估算(有累积误差但不至于失联)
+      if (!isFreeform) {
+        const syncPageSize = pageSizeFor(tpl.style);
+        const syncPageCount = calcPageCount(data.items.length, syncPageSize);
+        const segs = data.voiceSegments;
+        if (segs && segs.length === syncPageCount && syncPageCount > 1) {
+          // ① cue 真实时间戳对齐
+          if (narrCues && narrCues.length > 0) {
+            const spans = alignSentencesToCues(
+              segs,
+              narrCues.map((c) => ({ text: c.text, start: c.startSec, end: c.endSec })),
+              realDurationSec,
+            );
+            if (spans && spans.length === segs.length) {
+              pageTimings = spans.map((s, i) => ({
+                startSec: s.start,
+                // 末页吃掉尾留白(+0.4s 与时长决策同口径),画面撑到视频结束不黑屏。
+                durSec: (i === spans.length - 1 ? Math.max(s.end, realDurationSec + 0.4) : s.end) - s.start,
+              }));
+              tracker.progress(`🎬 音画同步就绪 · ${syncPageCount} 页按配音真实时间戳对齐`);
+            }
+          }
+          // ② 逐页重新合成(实测每页时长,零漂移;同时字幕换成逐段 cue 平移,与画面同一时间轴)
+          if (!pageTimings) {
+            tracker.progress(`↩️ cue 对不齐(念读与文本差异大,常见于数字/日期多的榜单)→ 逐页重新配音实测对齐(${syncPageCount} 页)…`);
+            const segAudios: Array<{ p: string; d: number; cues?: CaptionCue[] }> = [];
+            let segOk = true;
+            for (let i = 0; i < segs.length; i++) {
+              throwIfAborted(signal);
+              // edge-tts 连发限频:段间隔 ~900ms 降请求密度(与爆帖逐段兜底同口径)
+              if (i > 0) await new Promise((res) => setTimeout(res, 900));
+              const segPath = path.join(tmpAudioDir, `narr_page_${i}.mp3`);
+              const sr = await ttsWithFallback(cleanForTts(segs[i]), r.voice, segPath, rate);
+              if (!sr || !(sr.durationSec > 0)) { segOk = false; break; }
+              segAudios.push({ p: sr.audioPath, d: sr.durationSec, cues: sr.cues });
+            }
+            if (segOk && segAudios.length === segs.length) {
+              // mp3 同源同码流,concat demuxer + c copy 无损拼接(帧粒度 ~26ms 误差,末页兜底吸收)
+              const listPath = path.join(tmpAudioDir, 'narr_pages.txt');
+              fs.writeFileSync(listPath, segAudios.map((a) => `file '${a.p.replace(/'/g, "'\\''")}'`).join('\n'), 'utf8');
+              const concatPath = path.join(tmpAudioDir, 'narration_paged.mp3');
+              const cr = await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', concatPath], { timeoutMs: 60_000, signal });
+              if (cr.ok && fs.existsSync(concatPath)) {
+                let cursor = 0;
+                const newCues: CaptionCue[] = [];
+                pageTimings = segAudios.map((a) => {
+                  const startSec = cursor;
+                  for (const c of a.cues || []) newCues.push({ text: c.text, startSec: c.startSec + cursor, endSec: c.endSec + cursor });
+                  cursor += a.d;
+                  return { startSec, durSec: a.d };
+                });
+                const total = await probeDuration(concatPath).catch(() => 0);
+                realNarrationPath = concatPath;
+                realDurationSec = Math.max(cursor, total || 0);
+                pageTimings[pageTimings.length - 1].durSec =
+                  (realDurationSec + 0.4) - pageTimings[pageTimings.length - 1].startSec;
+                narrCues = newCues.length ? newCues : undefined;
+                if (tpl.subtitleEnabled !== false) captionCues = narrCues;
+                tracker.progress(`🎬 音画同步就绪 · ${syncPageCount} 页逐页实测配音时长(零漂移)· 共 ${realDurationSec.toFixed(1)}s`);
+              }
+            }
+            if (!pageTimings) tracker.progress('⚠️ 逐页配音对齐失败,退回按字数比例估算');
+          }
+          // ③ 字数比例估算兜底
+          if (!pageTimings) {
+            const totalChars = segs.reduce((s, x) => s + x.length, 0);
+            if (totalChars > 0) {
+              // 留 0.3s 入场 + 0.3s 尾留白(跟 paginate 兜底分支同口径)
+              const usable = Math.max(2.0, realDurationSec - 0.6);
+              let cursor = 0.3;
+              pageTimings = segs.map((seg) => {
+                const dur = (seg.length / totalChars) * usable;
+                const startSec = cursor;
+                cursor += dur;
+                return { startSec, durSec: dur };
+              });
+              tracker.progress(`🎬 音画同步就绪 · ${syncPageCount} 页按字数比例估算(时间戳不可用)`);
+            }
+          }
+        } else if (syncPageCount > 1) {
+          // 开了配音但 segments 没拿到/对不上 → 提示用户后会走均分,画面跟配音不严格对齐
+          tracker.progress(`⚠️ AI 未按页切分配音,画面将按时长均分(${syncPageCount} 页)`);
+        }
+      }
     } else {
       // 跳过这一步(UI 上仍显示但直接 done)
       tracker.done('voice', '⏭ 已跳过(未开配音)');
@@ -482,61 +579,8 @@ export async function runTemplatePipeline(
         themeId: tpl.themeId,
       }, tracker, (tk, usd) => tracker.addTokens(tk, usd));
     } else {
-      // ── 固定精品模板:音画同步(voiceSegments + 真实音频时长反算每页时间窗)+ 渲染 ──
-      //
-      // 原理:edge-tts 朗读速度恒定 → 段字符数比例 ≈ 段时间比例。我们把 AI 切好的
-      // voiceSegments(每段对应一页画面)按字符长度比例分配真实音频时长,得到每页
-      // 的 [startSec, durSec],传给 templateLibrary 替代均分,实现配音念到第 N 段
-      // 时画面正好在第 N 页。
-      //
-      // 触发条件(任一不满足就 fallback 到均分):
-      //   1) 开了配音,且 TTS 成功(realDurationSec > 0)
-      //   2) AI 返回了 voiceSegments(且长度等于实际 items 分页后的页数)
-      //   3) 实际 items 的分页页数 == AI 给的 segments 数量
-      const actualPageSize = pageSizeFor(tpl.style);
-      const actualPageCount = calcPageCount(data.items.length, actualPageSize);
-      let pageTimings: Array<{ startSec: number; durSec: number }> | undefined;
-      if (wantNarration && realDurationSec > 0 && data.voiceSegments && data.voiceSegments.length === actualPageCount) {
-        const segs = data.voiceSegments;
-        // ① 首选:配音真实时间戳对齐(2026-07-20 用户实测「口播念到第二屏画面还停第一屏」:
-        //   字数比例假设语速恒定,数字/英文/停顿都会让实际朗读偏离比例、误差逐页累积;
-        //   cue 锚定每页边界都是微软报的真实时间,零累积误差 —— 与爆帖/素材切段同一算法)。
-        if (narrCues && narrCues.length > 0) {
-          const spans = alignSentencesToCues(
-            segs,
-            narrCues.map((c) => ({ text: c.text, start: c.startSec, end: c.endSec })),
-            realDurationSec,
-          );
-          if (spans && spans.length === segs.length) {
-            pageTimings = spans.map((s, i) => ({
-              startSec: s.start,
-              // 末页吃掉尾留白,画面撑到视频结束不黑屏。
-              durSec: (i === spans.length - 1 ? Math.max(s.end, durationSec) : s.end) - s.start,
-            }));
-            tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页按配音真实时间戳对齐`);
-          }
-        }
-        // ② 兜底:字数比例估算(cue 缺失 / 念读与文本对不齐时;有累积误差但不至于失联)
-        if (!pageTimings) {
-          const totalChars = segs.reduce((s, x) => s + x.length, 0);
-          if (totalChars > 0) {
-            // 留 0.3s 入场 + 0.3s 尾留白(跟 paginate 兜底分支同口径)
-            const usable = Math.max(2.0, realDurationSec - 0.6);
-            let cursor = 0.3;
-            pageTimings = segs.map((seg) => {
-              const dur = (seg.length / totalChars) * usable;
-              const startSec = cursor;
-              cursor += dur;
-              return { startSec, durSec: dur };
-            });
-            tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页按字数比例估算(时间戳不可用)`);
-          }
-        }
-      } else if (wantNarration && actualPageCount > 1) {
-        // 开了配音但 segments 没拿到/对不上 → 提示用户后会走均分,画面跟配音不严格对齐
-        tracker.progress(`⚠️ AI 未按页切分配音,画面将按时长均分(${actualPageCount} 页 × ${(durationSec / actualPageCount).toFixed(1)}s)`);
-      }
-
+      // ── 固定精品模板:每页时间窗已在 STEP 2.5 结算(① cue 真实时间戳对齐 → ② 逐页
+      //    重配实测 → ③ 字数比例估算),这里直接下发给 templateLibrary 替代均分。
       const spec: TemplateSpec = {
         style: tpl.style,
         title: data.title || tpl.title,
