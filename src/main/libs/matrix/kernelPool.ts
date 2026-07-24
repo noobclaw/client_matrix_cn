@@ -46,6 +46,7 @@ export interface KernelSession {
   fileChooserWaiter?: ((params: any) => void) | null; // 等 Page.fileChooserOpened(真实文件选择器拦截上传)
   label?: string;                 // 账号标签(窗口左上角常驻角标,多窗区分用)
   slot: number;                   // 第几个窗口(用于错开层叠位置)
+  background?: boolean;           // 静默后台窗(保活/复验):起来即最小化、防最小化守卫跳过、不打扰用户
 }
 
 export interface LaunchKernelOptions {
@@ -62,6 +63,8 @@ export interface LaunchKernelOptions {
   startUrl?: string;              // 启动即打开的 URL(扫码登录用):内核直接开到平台登录页,
                                   //   避免「先开新标签页再 navigate」的 target 竞态(导航落到看不见的后台 tab)。
   skipLease?: boolean;            // 不占「按账号使用互斥锁」(openLogin:用户交互、只读 cookie 轮询,不驱动页面)
+  background?: boolean;           // 静默后台窗:headless 回退可见窗时不弹到用户脸上(起来即最小化 + 不被防最小化守卫复原)。
+                                  //   保活/复验专用;kernelBringToFront 会解除此标记并复原窗口。
 }
 
 const sessions = new Map<string, KernelSession>();
@@ -91,7 +94,6 @@ function releaseLease(accountId: string): void {
   const r = leaseHeld.get(accountId);
   if (r) { leaseHeld.delete(accountId); r(); }
 }
-let nextDebugPort = 9300;        // 每号一个端口,递增分配
 let nextSlot = 0;                // 第几个窗口(错开层叠位置用)
 
 // ── 防最小化 + 防系统休眠(对齐旧客户端 chrome-extension 的 unminimizeManagedWindows + chrome.power)──
@@ -120,6 +122,7 @@ async function windowGuardTick(): Promise<void> {
   if (sessions.size === 0) { stopWindowGuards(); return; }
   for (const s of Array.from(sessions.values())) {
     // 只在有活页面连接时被动检查(最小化不会断 CDP);headless 保活窗无窗口,getWindowForTarget 报错即跳过。
+    if (s.background) continue; // 静默后台窗(保活/复验)本来就该待在最小化,别复原
     if (!s.pageWs || s.pageWs.readyState !== WebSocket.OPEN || !s.pageTargetId) continue;
     try {
       const win = await send(s, 'Browser.getWindowForTarget', { targetId: s.pageTargetId });
@@ -221,6 +224,47 @@ export async function reapOrphanKernels(userDataDirs: string[]): Promise<void> {
   for (const dir of userDataDirs) {
     try { await reapProfileHolder(dir); clearSingletonLocks(dir); } catch { /* ignore */ }
   }
+}
+
+/**
+ * 全局孤儿清扫(跨账号,app 启动时跑一次):按命令行特征(--user-data-dir 指向我们的 matrix profiles
+ * 根目录)找出上次残留的【所有】指纹内核进程并强杀。reapProfileHolder 只能收「SingletonLock 软链里
+ * 记了 pid」的孤儿,mac 上 Chromium 不一定留这个软链 → 收不干净;漏网孤儿会继续监听旧调试端口,
+ * 曾导致新会话经 /json/version 误连到【别的账号】的浏览器(角标/导航串号)。此扫按进程表兜底。
+ * 必须在任何 launchKernel 之前跑完(否则会把刚拉起的内核当孤儿误杀)。
+ */
+export async function reapOrphanKernelsByProfileRoot(profilesRoot: string): Promise<number> {
+  const root = (profilesRoot || '').trim();
+  if (!root) return 0;
+  const pids: number[] = [];
+  try {
+    if (process.platform === 'win32') {
+      // Windows 有 Job Object 级联杀,理论无孤儿;仍兜底扫(JobObject 建失败/旧版本残留)。
+      // WQL 里反斜杠是转义字符 → 路径必须双写,否则整条查询语法错、静默扫不到。
+      const like = root.replace(/\\/g, '\\\\').replace(/'/g, "''").replace(/([%_\[])/g, '[$1]');
+      const psCmd = `Get-CimInstance Win32_Process -Filter "CommandLine like '%${like}%'" | Select-Object -ExpandProperty ProcessId`;
+      const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], { encoding: 'utf8', timeout: 15000 }).toString();
+      for (const line of out.split(/\r?\n/)) { const p = parseInt(line.trim(), 10); if (Number.isFinite(p)) pids.push(p); }
+    } else {
+      const out = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8', timeout: 10000 }).toString();
+      for (const line of out.split('\n')) {
+        if (!line.includes(root) || !line.includes('--user-data-dir')) continue;
+        const m = /^\s*(\d+)\s/.exec(line);
+        if (m) pids.push(parseInt(m[1], 10));
+      }
+    }
+  } catch { return 0; } // 进程表读不了就算了,不影响启动
+  let reaped = 0;
+  for (const pid of pids) {
+    if (!Number.isFinite(pid) || pid <= 1 || pid === process.pid) continue;
+    // 保险:本进程正管着的会话不杀(启动时 sessions 为空,此判断只防误用)。
+    let ours = false;
+    for (const s of sessions.values()) { if (s.process && s.process.pid === pid) { ours = true; break; } }
+    if (ours) continue;
+    try { process.kill(pid, 'SIGKILL'); reaped++; } catch { /* 已退出/无权限 */ }
+  }
+  if (reaped) coworkLog('INFO', 'kernelPool', `global orphan sweep: killed ${reaped} leftover kernel process(es) under ${root}`);
+  return reaped;
 }
 
 // ── 启动参数:指纹 + 代理 + 防泄漏 ──
@@ -337,37 +381,52 @@ async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
     await reapProfileHolder(opts.userDataDir);
     clearSingletonLocks(opts.userDataDir);
   }
-  const debugPort = prev?.debugPort ?? nextDebugPort++;
+  // 调试端口不再自分配(原 nextDebugPort 从 9300 递增,app 重启后从头再分 → 若上次的孤儿内核还监听着
+  // 同号端口,新进程绑不上但 /json/version 由【孤儿】应答 → CDP 接管了别的账号的浏览器:角标/导航/发布全
+  // 打错窗(串号)。改 --remote-debugging-port=0:内核自选空闲端口并写进 profile 下 DevToolsActivePort
+  // 文件,端口归属由目标进程自己落盘,物理上连不错实例。spawn 前先删陈旧文件,防读到上次的旧端口。
+  const portFile = path.join(opts.userDataDir, 'DevToolsActivePort');
+  try { fs.rmSync(portFile, { force: true }); } catch { /* ignore */ }
   // 带账密 SOCKS5:先起本地无认证中转(Chromium 不支持 SOCKS5 账密),拿到本地端口让 args 指向它。
   //   失败回退 null → 直连(仍连不上认证 SOCKS5,但不比现状差);HTTP/HTTPS 认证不走这里(还是 Fetch.authRequired)。
   let bridgePort: number | null = null;
   if (opts.proxy?.username && opts.proxy?.password && (opts.proxy.protocol === 'socks5' || opts.proxy.protocol === 'socks5h')) {
     try { bridgePort = await ensureProxyBridge(opts.proxy); } catch { bridgePort = null; }
   }
-  const args = buildKernelArgs(opts, debugPort, bridgePort);
+  const args = buildKernelArgs(opts, 0, bridgePort);
 
   // 把内核 stdout/stderr 落到 profile 下的 kernel.log:崩了能看到真实原因(原来 stdio:'ignore' 完全瞎)。
   let outFd: number | 'ignore' = 'ignore';
   const logPath = path.join(opts.userDataDir, 'kernel.log');
   try { outFd = fs.openSync(logPath, 'a'); } catch { outFd = 'ignore'; }
 
-  coworkLog('INFO', 'kernelPool', `launch kernel ${opts.accountId}`, { debugPort, seed: opts.fingerprint.seed });
+  coworkLog('INFO', 'kernelPool', `launch kernel ${opts.accountId}`, { seed: opts.fingerprint.seed });
   const proc = spawn(kernelPath, args, { detached: false, stdio: ['ignore', outFd, outFd] });
   if (typeof outFd === 'number') { try { fs.closeSync(outFd); } catch { /* 子进程已持有 fd */ } }
   proc.on('error', (err) => coworkLog('ERROR', 'kernelPool', `kernel ${opts.accountId} error: ${err.message}`));
 
   let ready = false;
+  let debugPort = 0;
   for (let i = 0; i < 40; i++) {
     await sleep(500);
-    try {
-      const r = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
-      if (r.ok) { ready = true; break; }
-    } catch { /* not ready */ }
+    if (proc.exitCode !== null) break; // 进程秒退 → 别再空等
+    if (!debugPort) {
+      try {
+        const p = parseInt(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0].trim(), 10);
+        if (Number.isFinite(p) && p > 0) debugPort = p;
+      } catch { continue; } // 文件还没写出来
+    }
+    if (debugPort) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
+        if (r.ok) { ready = true; break; }
+      } catch { /* not ready */ }
+    }
   }
   if (!ready) {
     try { proc.kill(); } catch { /* ignore */ }
     // 端口没起来 = 内核启动后秒退(单例锁/参数/损坏)。把日志路径带出去便于排查。
-    throw new Error(`指纹浏览器启动失败(调试端口 ${debugPort} 未就绪),日志: ${logPath}`);
+    throw new Error(`指纹浏览器启动失败(调试端口未就绪),日志: ${logPath}`);
   }
 
   const session: KernelSession = {
@@ -386,6 +445,7 @@ async function doLaunch(opts: LaunchKernelOptions): Promise<KernelSession> {
       : undefined,
     label: opts.label,
     slot: nextSlot++,
+    background: opts.background,
   };
   // 进程崩溃/退出 → 清 session + reject 挂起命令,避免后续复用死 session 卡满超时。
   proc.on('exit', () => {
@@ -487,12 +547,16 @@ async function doGetPage(s: KernelSession): Promise<KernelSession> {
       await send(s, 'Runtime.evaluate', { expression: script });
     } catch { /* 角标非关键 */ }
   }
-  // 错开窗口位置:多个号别完全重叠,便于分辨。
+  // 错开窗口位置:多个号别完全重叠,便于分辨。静默后台窗(保活/复验)则直接最小化,不打扰用户。
   try {
     const win = await send(s, 'Browser.getWindowForTarget', { targetId: s.pageTargetId });
     if (win?.windowId != null) {
-      const off = (s.slot % 6) * 40;
-      await send(s, 'Browser.setWindowBounds', { windowId: win.windowId, bounds: { left: 60 + off, top: 60 + off, width: 1180, height: 820 } });
+      if (s.background) {
+        await send(s, 'Browser.setWindowBounds', { windowId: win.windowId, bounds: { windowState: 'minimized' } });
+      } else {
+        const off = (s.slot % 6) * 40;
+        await send(s, 'Browser.setWindowBounds', { windowId: win.windowId, bounds: { left: 60 + off, top: 60 + off, width: 1180, height: 820 } });
+      }
     }
   } catch { /* 窗口定位非关键 */ }
   // 带 auth 代理:开 Fetch 拦截以应答代理认证挑战;拿到凭据后立即 Fetch.disable
@@ -601,7 +665,18 @@ export async function kernelScreenshot(
 
 /** 把该号窗口的页面提到前台(登录过期提醒:让用户一眼看到要重扫的那个窗口)。非关键,失败忽略。 */
 export async function kernelBringToFront(accountId: string): Promise<void> {
-  try { const s = await getPage(accountId); await send(s, 'Page.bringToFront'); } catch { /* 非关键 */ }
+  try {
+    const s = await getPage(accountId);
+    // 静默后台窗被用户流程(扫码/重连)复用时:解除 background 标记并从最小化复原,否则 bringToFront 无感。
+    if (s.background) {
+      s.background = false;
+      try {
+        const win = await send(s, 'Browser.getWindowForTarget', { targetId: s.pageTargetId });
+        if (win?.windowId != null) await send(s, 'Browser.setWindowBounds', { windowId: win.windowId, bounds: { windowState: 'normal' } });
+      } catch { /* 非关键 */ }
+    }
+    await send(s, 'Page.bringToFront');
+  } catch { /* 非关键 */ }
 }
 
 /** 在该号当前页注入红色「登录已过期,请重新扫码」角标(自愈;登录后导航离开会自然消失)。非关键,失败忽略。 */

@@ -73,15 +73,30 @@ export function ensureTabGroupExtension(accountId: string, title: string): strin
     fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
     const bg = `const TITLE = ${JSON.stringify(title)};
 const COLOR = 'blue';
+// 防重复建组:chrome.tabs.group 不带 groupId 每次都【新建】组 → 事件并发时窗口顶上长出一排同名 pill。
+// 改为:按标题找现有组复用;只把「不在该组里」的 tab 并进去(顺带把散落在别组的 tab 也归拢,旧空组自动消失);
+// running 互斥防两次并发都走「新建」分支。
+let running = false;
 async function groupAll() {
+  if (running) return; running = true;
   try {
     const tabs = await chrome.tabs.query({ currentWindow: true });
-    const ids = tabs.map(t => t.id).filter(id => id != null && id >= 0);
-    if (!ids.length) return;
-    const gid = await chrome.tabs.group({ tabIds: ids });
-    await chrome.tabGroups.update(gid, { title: TITLE, color: COLOR });
-    console.log('[matrix-tabgroup] grouped', ids.length, 'tabs as', TITLE);
+    if (!tabs.length) return;
+    // 只认【本窗口】里的同名组:跨窗复用 groupId 会把 tab 拽去别的窗口。
+    const groups = await chrome.tabGroups.query({ title: TITLE, windowId: tabs[0].windowId });
+    let gid = groups.length ? groups[0].id : null;
+    const ids = tabs.filter(t => t.id != null && t.id >= 0 && t.groupId !== gid).map(t => t.id);
+    if (ids.length) {
+      if (gid == null) {
+        gid = await chrome.tabs.group({ tabIds: ids });
+        await chrome.tabGroups.update(gid, { title: TITLE, color: COLOR });
+      } else {
+        await chrome.tabs.group({ tabIds: ids, groupId: gid });
+      }
+      console.log('[matrix-tabgroup] grouped', ids.length, 'tabs as', TITLE);
+    }
   } catch (e) { console.log('[matrix-tabgroup] err', e && e.message); }
+  finally { running = false; }
 }
 chrome.tabs.onCreated.addListener(() => setTimeout(groupAll, 250));
 chrome.tabs.onUpdated.addListener((_id, info) => { if (info.status) setTimeout(groupAll, 250); });

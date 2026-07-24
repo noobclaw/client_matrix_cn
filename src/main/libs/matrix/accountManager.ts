@@ -18,6 +18,8 @@ function baseDir(): string {
 }
 function storeFile(): string { return path.join(baseDir(), 'accounts.json'); }
 function profilesDir(): string { return path.join(baseDir(), 'profiles'); }
+/** 所有账号 profile 的根目录(启动时全局孤儿清扫按它匹配内核进程命令行)。 */
+export function matrixProfilesRoot(): string { return profilesDir(); }
 
 let cache: MatrixAccount[] | null = null;
 
@@ -170,6 +172,14 @@ export function setAccountStatus(id: string, status: AccountStatus): void {
   persist();
   // 状态真变了才广播(避免 running→running 之类空转刷屏);payload 带 id/status,渲染层收到即整表 reload。
   if (changed) { try { _accountSSEBroadcast?.('matrix:account', { id, status }); } catch { /* 广播失败不影响落盘 */ } }
+}
+
+/** 记「keepAlive 对该 login_required 号做过一次复验」的时间:24h 内不重复复验(降噪,防每 12h 白开窗)。 */
+export function markLoginRecheck(id: string): void {
+  const a = getAccount(id);
+  if (!a) return;
+  a.lastLoginRecheckAt = Date.now();
+  persist();
 }
 
 /** 标记「刚确认该号登录态有效」(任务/发布/保活成功时调)。主动保活据 lastAliveAt 筛「超 N 天没活跃」的号。 */

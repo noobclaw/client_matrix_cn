@@ -13,10 +13,14 @@
  *   · 真访问受【lastAliveAt 超过 ALIVE_THRESHOLD(3 天)】门槛,常跑任务的号 markAccountAlive 后进不了名单;
  *   · 扫描每 12h 一次(只比时间戳,几乎零成本)+ app 启动扫一次;
  *   · 串行 + 随机抖动,跳过正被占用(getSession 存活)的号,不并发不抢;
- *   · headless 优先(不打扰),失败回退普通(可见后台)窗;成功更新 lastAliveAt,失败标 login_required + 推 SSE。
+ *   · headless 优先(不打扰),失败回退可见窗 —— 但一律 background:true【静默】:起来即最小化、不抢焦点、
+ *     防最小化守卫跳过(用户反馈「没点连接却总弹窗」→ 保活/复验永不往用户脸上弹;要用户扫码的
+ *     reloginPrompt 才置顶)。成功更新 lastAliveAt,失败标 login_required + 推 SSE;
+ *   · login_required 复验每号 24h 至多一次(lastLoginRecheckAt 节流):真过期的号复验注定失败,
+ *     原来每 12h + 每次开 app 都白开一轮窗。
  */
 
-import { listAccounts, getAccount, setAccountStatus, markAccountAlive, accountBadgeLabel, platformKey } from './accountManager';
+import { listAccounts, getAccount, setAccountStatus, markAccountAlive, markLoginRecheck, accountBadgeLabel, platformKey } from './accountManager';
 import { launchKernel, kernelNavigate, checkKernelLogin, closeKernel, getSession } from './kernelPool';
 import { loginUrlFor } from './reloginPrompt';
 
@@ -24,6 +28,7 @@ import { loginUrlFor } from './reloginPrompt';
 //   (固定天数仍不贴各平台真实 TTL,精准做法是按 cookie expires 续(可选增强))。12h 扫一次让跨过门槛的号更快被续。
 const ALIVE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;  // 3 天没活跃就保活续期
 const SCAN_INTERVAL_MS = 12 * 60 * 60 * 1000;        // 每 12h 扫一遍名单(只比时间戳,几乎零成本)
+const RECHECK_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000; // login_required 复验节流:每号 24h 至多一次
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -46,11 +51,13 @@ export async function runKeepAliveSweep(): Promise<void> {
       && (
         // idle 且超 3 天没活跃 → 常规保活续期
         (a.status === 'idle' && (now - (a.lastAliveAt || 0)) > ALIVE_THRESHOLD_MS)
-        // login_required → 每轮都复验(误标自愈)。runner 预检单次误判(慢代理/导航失败/CDP 抖动)
+        // login_required → 复验(误标自愈)。runner 预检单次误判(慢代理/导航失败/CDP 抖动)
         // 标红后,原来没有任何机制再查一遍 → 好号永久红(用户实测「好多号显示过期、点开却登录着」)。
         // 复验成功走 markAccountAlive → login_required 翻回 idle;真过期的复验仍失败,保持红,无副作用。
-        // ⚠️ 用户【主动断开】的号除外(manualDisconnect):cookie 已清、永远验不过,复验只会每 12h 白开窗闪屏。
-        || (a.status === 'login_required' && !a.manualDisconnect)
+        // ⚠️ 用户【主动断开】的号除外(manualDisconnect):cookie 已清、永远验不过,复验只会白开窗。
+        // ⚠️ 24h 节流(lastLoginRecheckAt):真过期的号复验注定失败,原来每 12h + 每次开 app 都重来一轮。
+        || (a.status === 'login_required' && !a.manualDisconnect
+            && (now - (a.lastLoginRecheckAt || 0)) > RECHECK_MIN_INTERVAL_MS)
       ),
     );
     for (const acc of due) {
@@ -69,21 +76,23 @@ export async function runKeepAliveSweep(): Promise<void> {
 async function keepAliveOne(accountId: string): Promise<void> {
   const acc = getAccount(accountId);
   if (!acc) return;
+  // 复验节流时间戳在【尝试时】就记(不等结果):失败/异常同样算「查过了」,24h 内不再对它开窗。
+  if (acc.status === 'login_required') { try { markLoginRecheck(acc.id); } catch { /* ignore */ } }
   const pk = platformKey(acc);
   const home = loginUrlFor(acc.platform, acc.loginScope);
   let launched = false;
   try {
-    // headless 优先(不打扰);指纹内核 headless 跑不通时回退可见(后台、不置顶)窗。
+    // headless 优先(不打扰);指纹内核 headless 跑不通时回退可见窗,但 background:true 静默(最小化、不弹脸)。
     try {
       await launchKernel({
         accountId: acc.id, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir,
-        fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc), headless: true,
+        fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc), headless: true, background: true,
       });
       launched = true;
     } catch {
       await launchKernel({
         accountId: acc.id, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir,
-        fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc),
+        fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc), background: true,
       });
       launched = true;
     }
@@ -92,15 +101,16 @@ async function keepAliveOne(accountId: string): Promise<void> {
     let ok = true;
     try { ok = await checkKernelLogin(acc.id, pk); } catch { ok = true; } // cookie 读失败不误杀(不标过期)
     // 复验(2026-07-05,治小红书等「账号标过期、点开内核页面却登录着」的误报):headless 下部分平台
-    // 会被风控降级当游客(如小红书 /me 返回 guest)→ 单次「未登录」不可信。换【可见后台窗】重开重验,
-    // 仍未登录才标 login_required —— 宁可这轮漏标(保持 idle,下轮再查),绝不误杀登录着的好号。
+    // 会被风控降级当游客(如小红书 /me 返回 guest)→ 单次「未登录」不可信。换【可见后台窗】重开重验
+    // (background:true 静默最小化,不打扰),仍未登录才标 login_required —— 宁可这轮漏标(保持 idle,
+    // 下轮再查),绝不误杀登录着的好号。
     if (!ok) {
       try { closeKernel(acc.id); } catch { /* ignore */ }
       launched = false; // 已关;下面重开若失败(kernelPool 已回退计数/锁),finally 不能再 closeKernel(会错放别的流程)
       try {
         await launchKernel({
           accountId: acc.id, kernelVersion: acc.kernelVersion, userDataDir: acc.userDataDir,
-          fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc),
+          fingerprint: acc.fingerprint, proxy: acc.proxy, groupTitle: accountBadgeLabel(acc), background: true,
         });
         launched = true;
         if (home) { try { await kernelNavigate(acc.id, home); } catch { /* ignore */ } }

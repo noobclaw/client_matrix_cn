@@ -3151,17 +3151,20 @@ if (!IS_NATIVE_MESSAGING_HOST && parentPid && parentPid > 1) {
 if (!IS_NATIVE_MESSAGING_HOST) {
   void (async () => {
     try {
-      const { loadAccounts } = await import('./libs/matrix/accountManager');
-      const { reapOrphanKernels } = await import('./libs/matrix/kernelPool');
+      const { loadAccounts, matrixProfilesRoot } = await import('./libs/matrix/accountManager');
+      const { reapOrphanKernels, reapOrphanKernelsByProfileRoot } = await import('./libs/matrix/kernelPool');
+      // ① 全局扫进程表:杀掉一切 --user-data-dir 指向我们 profiles 根的残留内核(mac 上 SingletonLock
+      //    软链不一定在,靠它找孤儿会漏 → 漏网孤儿占着旧调试端口,曾导致新会话 CDP 串号连错账号)。
+      try { await reapOrphanKernelsByProfileRoot(matrixProfilesRoot()); } catch { /* ignore */ }
+      // ② 逐 profile 收尾:按 SingletonLock 补杀 + 清陈旧单例锁。
       const dirs = loadAccounts().map((a) => a.userDataDir).filter(Boolean);
       if (dirs.length) {
         await reapOrphanKernels(dirs);
         coworkLog('INFO', 'sidecar-server', `Startup orphan-kernel sweep done (${dirs.length} profiles)`);
       }
     } catch { /* ignore */ }
-  })();
-  // 主动保活续期:启动扫一遍 + 每 24h 扫一遍,对「超 5 天没活跃」的 idle 号 headless 访问续 cookie。
-  void (async () => {
+    // 主动保活续期(启动扫一遍 + 每 12h 一遍)。必须【等孤儿清扫完】再启动:
+    // 并发跑会把保活刚拉起的内核当孤儿误杀。
     try {
       const { startKeepAliveScheduler } = await import('./libs/matrix/keepAlive');
       startKeepAliveScheduler();

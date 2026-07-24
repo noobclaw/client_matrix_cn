@@ -57,6 +57,7 @@ export interface MatrixAccount {
   debugPort?: number;              // 运行时分配的 CDP 调试端口
   lastPostAt?: number;
   lastAliveAt?: number;            // 最近一次确认登录态有效的时间(任务/发布/保活成功时更新);主动保活据此筛「超 N 天没活跃」的号
+  lastLoginRecheckAt?: number;     // keepAlive 最近一次对 login_required 号开窗复验的时间:24h 内不重复复验(降噪,防每 12h 白开窗)
   // 互动配置:赛道关键词(自动点赞/评论/关注时按这些词搜内容)+ 赛道 id(engageHistory 去重维度)
   keywords?: string[];          // 【原始关键词】用户设的,永不被 AI 衍生覆盖/删除
   // 【AI 衍生关键词池】原始词搜尽时 AI 按赛道衍生的新词,持久化于此(与原始词分开存,上限 30,满了整批换)。
