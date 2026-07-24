@@ -1288,6 +1288,13 @@ const server = http.createServer(async (req, res) => {
             await oe(args[0]);
             return writeJSON(res, 200, { status: 'ok' });
           }
+          // 外链打开的 OS 级兜底:renderer 侧 opener 插件被拒/失败时走这里,
+          // 主进程直接 start/open/xdg-open,不经 webview 权限与弹窗拦截。
+          case 'shell:openExternal': {
+            const { openExternal: oe } = await import('./libs/platformAdapter');
+            const opened = await oe(String(args[0] || ''));
+            return writeJSON(res, 200, { status: 'ok', opened });
+          }
 
           // ── Multi-platform Video Creation (local synthesis) ──
           // 文件选择弹窗在渲染端走 Tauri 原生 dialog,不到这里。这里只处理:

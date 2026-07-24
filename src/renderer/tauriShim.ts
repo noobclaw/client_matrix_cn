@@ -545,11 +545,23 @@ export function createTauriElectronShim(): typeof window.electron {
       openPath: (p: string) => ipcInvoke('shell:openPath', p),
       showItemInFolder: (p: string) => ipcInvoke('shell:showItemInFolder', p),
       openExternal: async (url: string) => {
-        if (await openInSystemBrowser(url)) return;
+        // 服务端下发的外链(如 matrix_proxy_purchase_url)可能没带协议;
+        // opener 插件只认 http/https/mailto/tel,裸域名会被拒 → 先补全。
+        const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
+        if (await openInSystemBrowser(target)) return;
+        // opener invoke 失败(ACL 拒/解析失败)时,走 sidecar 在主进程用
+        // OS 命令开默认浏览器(start/open/xdg-open),不经 webview 权限
+        // 和弹窗拦截 —— 修「点这里/如何开启?」等外链点了没反应。
+        try {
+          const r: any = await ipcInvoke('shell:openExternal', target);
+          if (r?.opened !== false) return;
+        } catch (e) {
+          console.warn('[TauriShim] shell:openExternal sidecar fallback failed:', e);
+        }
         // Last-ditch fallback — almost certainly will be blocked by Tauri
         // webview, but matches Electron behavior on platforms where the
         // shell helper isn't available.
-        window.open(url, '_blank');
+        window.open(target, '_blank');
       },
     },
 
