@@ -197,6 +197,8 @@ export interface VideoCreationInput {
   localMixFolder?: string;
   /** engine==='localmix':素材形态。'video'=文件夹里的视频按换镜节奏循环拼接;'image'=图片逐镜 Ken Burns 合成。 */
   localMixMediaType?: 'video' | 'image';
+  /** engine==='localmix':原片直发。true=不写稿/不配音/不字幕/不混剪,从文件夹挑一条原片直接发布(script 字段此时当「视频介绍」,AI 据此生成标题/简介/标签)。 */
+  uploadOnly?: boolean;
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -773,6 +775,94 @@ async function runVideoPipeline(
   tracker.setLogFile(path.join(runDir, '运行记录.md'));
 
   try {
+    // ── 本地混剪 · 原片直发(uploadOnly):不写稿/不配音/不字幕/不混剪 —— 从素材文件夹
+    //    挑一条原片直接发布;AI 只产发布标题/简介/标签(向导填的「视频介绍」当素材)。
+    //    定时任务反复跑同一文件夹时随机挑片,组合各不相同。计费与本地混剪同口径(mode1 按条)。
+    if (input.engine === 'localmix' && input.uploadOnly) {
+      throwIfAborted(signal);
+      tracker.start('script', `输出目录:${taskDir}`);
+      tracker.done('script', '⏭ 原片直发:跳过写稿');
+      tracker.done('tts', '⏭ 原片直发:跳过配音/字幕');
+      tracker.start('visuals');
+      const mixDir = String(input.localMixFolder || '').trim();
+      const media = scanLocalMediaFolder(mixDir);
+      if (media.videos.length === 0) {
+        const err = `本地素材文件夹里没有可用视频(${mixDir || '未选择文件夹'}),请检查文件夹后重试`;
+        tracker.fail('visuals', err);
+        return { ok: false, error: err };
+      }
+      const pick = media.videos[Math.floor(Math.random() * media.videos.length)];
+      tracker.done('visuals', `🎬 已选原片:${path.basename(pick)}(文件夹共 ${media.videos.length} 个视频,每次运行随机挑一条)`);
+
+      tracker.start('compose');
+      const charge = await chargeMode1Video(input.targetSeconds ?? 45, { videoCount: 1, aiCostUsd: 0 });
+      if (!charge.ok) {
+        const err = charge.reason === 'insufficient' ? '余额不足,无法生成(需先预扣平台基础费,请充值后重试)'
+          : charge.reason === 'no_auth' ? '未登录 NoobClaw,无法生成'
+          : '平台基础费预扣失败,请稍后重试';
+        tracker.fail('compose', err);
+        return { ok: false, error: err };
+      }
+      chargeId = charge.chargeId;
+      refundOnExit = true;
+      tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
+      tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}），失败将自动退回`);
+      // 原片拷到本次运行目录(保留原扩展名):交付物与其它任务同构,详情页能点开回看。
+      fs.mkdirSync(destDir, { recursive: true });
+      const outPath = path.join(destDir, `原片直发_${path.basename(pick)}`);
+      fs.copyFileSync(pick, outPath);
+      refundOnExit = false; // 原片就绪即交付(发布失败不退费,与「合成成功」同口径)
+      tracker.done('compose', `📦 原片就绪(未做任何处理)· 📂 输出目录:${destDir}`);
+
+      tracker.start('publish');
+      const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
+      try {
+        const introText = String(input.script || '').trim();
+        const cap = await resolvePublishCaption({
+          wantPublish,
+          summary: introText || path.basename(pick, path.extname(pick)),
+          title: introText ? introText.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
+          keywords: input.keywords?.length ? input.keywords : undefined,
+          track: input.track || undefined,
+          lang: detectLang(introText || path.basename(pick)),
+          userTitle: input.publishTitle,
+          userCaption: input.publishCaption,
+          userTags: input.hashtags,
+          onLog: (m: string) => tracker.progress(m),
+          onCost: (tk, usd) => tracker.addTokens(tk, usd),
+        });
+        const { MATRIX_EDITION } = require('../../matrixEdition');
+        if (MATRIX_EDITION && wantPublish) {
+          const { runMatrixPublishStep } = require('./publishers/runMatrixPublish');
+          await runMatrixPublishStep({
+            platforms: Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [],
+            accounts: (input as any).publishAccounts || {},
+            videoPath: outPath,
+            title: cap.title,
+            description: cap.description,
+            tags: cap.tags,
+            onLog: (msg: string) => tracker.progress(msg),
+            signal,
+          });
+        } else {
+          const { runPublishStep } = require('./publishers/runPublish');
+          await runPublishStep({
+            platforms: Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [],
+            videoPath: outPath,
+            title: cap.title,
+            description: cap.description,
+            tags: cap.tags,
+            onLog: (msg: string) => tracker.progress(msg),
+            signal,
+          });
+        }
+      } catch (e) {
+        tracker.progress(`⚠️ 发布步骤异常:${String((e as Error)?.message || e).slice(0, 120)}`);
+      }
+      tracker.finish(outPath, 1);
+      return { ok: true, outputPath: outPath, outputPaths: [outPath] };
+    }
+
     // 0. 文案:strict = 逐字用用户文案;ai = DeepSeek 写稿(用户文案作参考)。
     //    缺省兼容老任务:有 script → strict,无 → ai。
     throwIfAborted(signal);

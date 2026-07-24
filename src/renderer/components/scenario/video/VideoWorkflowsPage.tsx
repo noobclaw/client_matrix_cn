@@ -1021,10 +1021,20 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
         <Row label={`📂 ${i18nService.t('vmixFolderLabel')}`}>{inp.localMixFolder || '-'}</Row>
         <Row label={`🎞️ ${i18nService.t('vmixMediaTypeLabel')}`}>{inp.localMixMediaType === 'image' ? i18nService.t('vmixMediaImage') : i18nService.t('vmixMediaVideo')}</Row>
-        <Row label={`📝 ${i18nService.t('vmixScriptModeLabel')}`}>{input.scriptMode === 'ai' ? i18nService.t('vmixScriptAi') : i18nService.t('vmixScriptStrict')}</Row>
-        <Row label={`🎬 ${isZh ? '换镜节奏' : 'Pacing'}`}>{`${input.maxClipSeconds ?? 4}s`}{scriptLangDisplay(input.scriptLang, isZh) ? ` · ${scriptLangDisplay(input.scriptLang, isZh)}` : ''}</Row>
-        <Row label={`🎤 ${i18nService.t('vmixVoiceLabel')}`}>{input.voice ? `${voiceDisplayLabel(input.voice, isZh)}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : ''}` : (isZh ? '无配音' : 'No voice-over')}</Row>
-        <Row label={`🎵 ${i18nService.t('vmixBgmLabel')}`}>{templateBgmSummary(input, isZh)}</Row>
+        {inp.uploadOnly ? (
+          <>
+            {/* 原片直发:写稿/配音/BGM 都不适用,只显示模式 + 介绍 + 发布 */}
+            <Row label={`📤 ${i18nService.t('vmixUploadOnlyLabel')}`}>{i18nService.t('vmixUploadOnlyBadge')}</Row>
+            {(input.script || '').trim() && <Row label={`📝 ${i18nService.t('vmixUploadOnlyIntroLabel')}`}><div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</div></Row>}
+          </>
+        ) : (
+          <>
+            <Row label={`📝 ${i18nService.t('vmixScriptModeLabel')}`}>{input.scriptMode === 'ai' ? i18nService.t('vmixScriptAi') : i18nService.t('vmixScriptStrict')}</Row>
+            <Row label={`🎬 ${isZh ? '换镜节奏' : 'Pacing'}`}>{`${input.maxClipSeconds ?? 4}s`}{scriptLangDisplay(input.scriptLang, isZh) ? ` · ${scriptLangDisplay(input.scriptLang, isZh)}` : ''}</Row>
+            <Row label={`🎤 ${i18nService.t('vmixVoiceLabel')}`}>{input.voice ? `${voiceDisplayLabel(input.voice, isZh)}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : ''}` : (isZh ? '无配音' : 'No voice-over')}</Row>
+            <Row label={`🎵 ${i18nService.t('vmixBgmLabel')}`}>{templateBgmSummary(input, isZh)}</Row>
+          </>
+        )}
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
@@ -5693,6 +5703,9 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   // ── Step 1:素材文件夹 ──
   const [folder, setFolder] = useState<string>(ei?.localMixFolder || '');
   const [mediaType, setMediaType] = useState<'video' | 'image'>(ei?.localMixMediaType === 'image' ? 'image' : 'video');
+  // 原片直发:不写稿/不配音/不字幕/不混剪,原片直接上传;script 字段此时当「视频介绍」给 AI 写标题/简介/标签。
+  // 仅视频形态支持(图片没有「原片上传」概念);切到图片自动关。
+  const [uploadOnly, setUploadOnly] = useState<boolean>(!!(ei as any)?.uploadOnly);
   const [scan, setScan] = useState<{ videoCount: number; imageCount: number } | null>(null);
   const [scanning, setScanning] = useState(false);
   useEffect(() => {
@@ -5821,20 +5834,22 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
         engine: 'localmix',
         localMixFolder: folder,
         localMixMediaType: mediaType,
+        // 原片直发:仅视频形态;写稿/配音/字幕/BGM 全部关掉(pipeline 早分流,不进合成)。
+        uploadOnly: uploadOnly && mediaType === 'video' ? true : undefined,
         referenceImages: [], aspect: '9:16',
         maxClipSeconds,
         scriptLang: scriptLang !== 'auto' ? scriptLang : undefined,
-        voice: narration ? voice : undefined,
-        voiceRate: narration ? voiceRate : undefined,
-        narrationEnabled: narration,
-        subtitleEnabled,
+        voice: !uploadOnly && narration ? voice : undefined,
+        voiceRate: !uploadOnly && narration ? voiceRate : undefined,
+        narrationEnabled: uploadOnly ? false : narration,
+        subtitleEnabled: uploadOnly ? false : subtitleEnabled,
         subtitlePosition,
         subtitleColor,
         subtitleFontSize,
         subtitleFont,
         subtitleStrokeColor: subtitleStrokeColor || undefined,
-        bgmPath: bgmPath || undefined,
-        bgmVolume: bgmPath ? bgmVolume : undefined,
+        bgmPath: uploadOnly ? undefined : (bgmPath || undefined),
+        bgmVolume: !uploadOnly && bgmPath ? bgmVolume : undefined,
         publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
         publishAccounts: matrixMode && outputMode === 'upload'
           ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => [p, accountByPlatform[p]]))
@@ -5873,12 +5888,22 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
     if (step === 1) {
       if (!folder) { setErr(t('vmixErrNoFolder')); return; }
       if (availableCount === 0) { setErr(mediaType === 'image' ? t('vmixErrNoImages') : t('vmixErrNoVideos')); return; }
+      // 原片直发:素材步直接跳出片步(文案/画面/音频/字幕全不适用);介绍必填(AI 靠它写标题/简介/标签)。
+      if (uploadOnly) {
+        if (!script.trim()) { setErr(t('vmixErrNoIntro')); return; }
+        setErr(null); setStep(MAX_STEP as LmStep); return;
+      }
     }
     if (step === 2 && !script.trim()) { setErr(scriptMode === 'strict' ? t('vmixErrNoScript') : t('vmixErrNoReference')); return; }
     setErr(null);
     setStep((s) => (s < MAX_STEP ? ((s + 1) as LmStep) : s));
   };
-  const goBack = () => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => ((s - 1) as LmStep)); };
+  const goBack = () => {
+    setErr(null);
+    if (step === 1) { onClose(); return; }
+    if (uploadOnly && step === MAX_STEP) { setStep(1); return; } // 原片直发只有 素材/出片 两步
+    setStep((s) => ((s - 1) as LmStep));
+  };
 
   const seg = (active: boolean) => `flex-1 py-2 rounded-lg text-sm border transition-colors ${active ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-emerald-500/50'}`;
 
@@ -5890,17 +5915,28 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           <div>
             <h3 className="text-lg font-bold dark:text-white">📁 {isEdit ? t('vmixTitleEdit') : t('vmixTitle')}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <StepDot n={1} active={step === 1} done={step > 1} label={t('vmixStepMaterial')} />
-              <div className={`h-px w-3 ${step > 1 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={t('vmixStepScript')} />
-              <div className={`h-px w-3 ${step > 2 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '画面' : 'Visuals'} />
-              <div className={`h-px w-3 ${step > 3 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音频' : 'Audio'} />
-              <div className={`h-px w-3 ${step > 4 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '字幕' : 'Subtitles'} />
-              <div className={`h-px w-3 ${step > 5 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={6} active={step === 6} done={false} label={t('vmixStepOutput')} />
+              {uploadOnly ? (
+                <>
+                  {/* 原片直发只有两步:素材 / 出片 */}
+                  <StepDot n={1} active={step === 1} done={step > 1} label={t('vmixStepMaterial')} />
+                  <div className={`h-px w-3 ${step > 1 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  <StepDot n={2} active={step === 6} done={false} label={t('vmixStepOutput')} />
+                </>
+              ) : (
+                <>
+                  <StepDot n={1} active={step === 1} done={step > 1} label={t('vmixStepMaterial')} />
+                  <div className={`h-px w-3 ${step > 1 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  <StepDot n={2} active={step === 2} done={step > 2} label={t('vmixStepScript')} />
+                  <div className={`h-px w-3 ${step > 2 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '画面' : 'Visuals'} />
+                  <div className={`h-px w-3 ${step > 3 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音频' : 'Audio'} />
+                  <div className={`h-px w-3 ${step > 4 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '字幕' : 'Subtitles'} />
+                  <div className={`h-px w-3 ${step > 5 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  <StepDot n={6} active={step === 6} done={false} label={t('vmixStepOutput')} />
+                </>
+              )}
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -5925,9 +5961,26 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
               <Field label={t('vmixMediaTypeLabel')} hint={t('vmixMediaTypeHint')}>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => { setMediaType('video'); setErr(null); }} className={seg(mediaType === 'video')}>🎬 {t('vmixMediaVideo')}</button>
-                  <button type="button" onClick={() => { setMediaType('image'); setErr(null); }} className={seg(mediaType === 'image')}>🖼️ {t('vmixMediaImage')}</button>
+                  <button type="button" onClick={() => { setMediaType('image'); setUploadOnly(false); setErr(null); }} className={seg(mediaType === 'image')}>🖼️ {t('vmixMediaImage')}</button>
                 </div>
               </Field>
+              {mediaType === 'video' && (
+                <Field label={t('vmixUploadOnlyLabel')} hint={t('vmixUploadOnlyHint')}>
+                  <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
+                    <input type="checkbox" checked={uploadOnly} onChange={(e) => { setUploadOnly(e.target.checked); setErr(null); }} className="h-4 w-4 accent-emerald-500" />
+                    {t('vmixUploadOnlyToggle')}
+                  </label>
+                  <div className="mt-1 text-[11px] text-gray-400">{t('vmixUploadOnlyDesc')}</div>
+                  {uploadOnly && (
+                    <div className="mt-3">
+                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('vmixUploadOnlyIntroLabel')}</div>
+                      <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={4}
+                        placeholder={t('vmixUploadOnlyIntroPh')}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" />
+                    </div>
+                  )}
+                </Field>
+              )}
             </>
           )}
 

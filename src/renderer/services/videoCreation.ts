@@ -80,6 +80,8 @@ export interface VideoCreationInput {
   localMixFolder?: string;
   /** engine==='localmix':素材形态。'video'=视频按换镜节奏循环混剪;'image'=图片逐镜缓慢运镜合成。 */
   localMixMediaType?: 'video' | 'image';
+  /** engine==='localmix':原片直发。true=不写稿/不配音/不字幕/不混剪,从文件夹挑一条原片直接发布(script 字段此时当「视频介绍」,AI 据此生成标题/简介/标签)。 */
+  uploadOnly?: boolean;
   /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
   template?: VideoTemplateOptions;
   /** engine==='hotspot'(热搜成片)专属:用户勾选的热点源('hotsearch'|'web3'|'tech')。
