@@ -563,6 +563,15 @@ export function createTauriElectronShim(): typeof window.electron {
         // 服务端下发的外链(如 matrix_proxy_purchase_url)可能没带协议;
         // opener 插件只认 http/https/mailto/tel,裸域名会被拒 → 先补全。
         const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
+        // 点击回执:app 自绘小提示条,系统坏不坏都会出现 —— 保证「点了必有反应」,
+        // 也能区分「点击没进代码」vs「系统打不开」(2026-07-25 用户排障时全程无声,难定位)。
+        try {
+          const toast = document.createElement('div');
+          toast.textContent = `🔗 正在打开:${target.slice(0, 64)}${target.length > 64 ? '…' : ''}`;
+          toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(17,20,26,.92);color:#fff;padding:8px 14px;border-radius:10px;font-size:12px;z-index:2147483647;pointer-events:none;max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          document.body.appendChild(toast);
+          setTimeout(() => { try { toast.remove(); } catch { /* ignore */ } }, 2500);
+        } catch { /* 提示条失败不影响打开 */ }
         // ① 首选 sidecar OS 级打开(主进程 start/open/xdg-open):最稳、不经 webview
         //    权限/弹窗拦截,且成功与否有明确布尔返回。2026-07-25 用户实测 opener 插件
         //    存在「调用不报错但浏览器没弹」的假成功 → opener 降为第二顺位。
