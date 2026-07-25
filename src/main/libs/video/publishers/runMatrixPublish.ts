@@ -23,13 +23,61 @@ import type { VideoPlatform, PublishInput } from './types';
 import { VIDEO_PLATFORMS } from './types';
 import type { RunPublishResult } from './runPublish';
 import { getAccount, platformKey, accountBadgeLabel, setAccountStatus, markAccountAlive } from '../../matrix/accountManager';
-import { launchKernel, kernelNavigate, checkKernelLogin, closeKernel } from '../../matrix/kernelPool';
+import { launchKernel, kernelNavigate, kernelEval, checkKernelLogin, closeKernel } from '../../matrix/kernelPool';
 import { runMatrixDriver } from '../../matrix/driverCtx';
 import { PUBLISHER_ANCHOR_URL } from './publisherUtils';
 import { getVideoConfig } from '../videoConfig';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 let POST_SUBMIT_WAIT_MS = 120_000;
+// 提交后自适应等待上限(2026-07-25 用户实测:大视频 120s 传不完丢片;拍板改「每轮检查、
+// 传完即关、封顶 20 分钟」)。
+const UPLOAD_SETTLE_CAP_MS = 20 * 60_000;
+
+// 页面「上传仍在进行」探测表达式:扫 class 含 upload/progress 的元素文本,命中
+// 「已上传/上传中/正在上传/uploading + 百分比 < 100」才算仍在传(YouTube Studio 的
+// 「已上传 53%」/「Uploading 53%」等)。⚠️ cdp_eval 契约:必须返回【裸值】(字符串),
+// 不能包 {ok,value};'' = 未检出上传迹象。检不出=按传完处理(不劣于老口径的固定等待)。
+const UPLOAD_PROBE_EXPR = `(() => {
+  try {
+    const els = document.querySelectorAll('[class*="upload" i], [class*="progress" i], ytcp-video-upload-progress');
+    for (const el of els) {
+      const t = (el.textContent || '').trim().slice(0, 160);
+      if (!t) continue;
+      const m = t.match(/(已上传|上传中|正在上传|uploading)[^%]{0,24}?(\\d{1,3})\\s*%/i);
+      if (m) { const p = parseInt(m[2], 10); if (p >= 0 && p < 100) return t.slice(0, 80); }
+      if (/^(上传中|正在上传|uploading)(\\b|…|\\.{3})/i.test(t)) return t.slice(0, 80);
+    }
+  } catch (e) { /* 探测失败按未检出处理 */ }
+  return '';
+})()`;
+
+/**
+ * 提交后自适应等上传:每 roundMs(默认=postSubmitWaitMs,即老的一轮时长)探一次页面,
+ * 检测不到「上传中」迹象 → 视为传完返回;还在传 → 继续下一轮;封顶 20 分钟。
+ * 首轮探测前至少等满一轮 —— 探测误报「传完」时行为也不早于老的固定等待。
+ */
+async function waitUploadSettled(accountId: string, roundMs: number, onLog?: (m: string) => void, signal?: AbortSignal): Promise<void> {
+  const round = Math.max(30_000, Math.min(roundMs, 120_000));
+  let waited = 0;
+  onLog?.(`   ⏳ 等平台把视频传完:每 ${Math.round(round / 1000)}s 检查一次,传完即关,最多等 ${Math.round(UPLOAD_SETTLE_CAP_MS / 60_000)} 分钟…`);
+  for (;;) {
+    await sleep(round);
+    waited += round;
+    if (signal?.aborted) return;
+    let probe = '';
+    try { probe = String((await kernelEval(accountId, UPLOAD_PROBE_EXPR, 10_000)) || ''); } catch { probe = ''; }
+    if (!probe) {
+      onLog?.(`   ✅ 已等 ${Math.round(waited / 1000)}s,页面无「上传中」迹象,视为传完`);
+      return;
+    }
+    if (waited >= UPLOAD_SETTLE_CAP_MS) {
+      onLog?.(`   ⚠️ 已达 ${Math.round(UPLOAD_SETTLE_CAP_MS / 60_000)} 分钟上限(页面仍显示「${probe.slice(0, 40)}」),不再等待`);
+      return;
+    }
+    onLog?.(`   ⏫ 平台仍在上传(${probe.slice(0, 40)}),继续等 ${Math.round(round / 1000)}s…`);
+  }
+}
 
 export interface RunMatrixPublishOptions {
   /** 用户勾选的发布平台 id 列表(来自 input.publishPlatforms)。 */
@@ -166,9 +214,15 @@ export async function runMatrixPublishStep(opts: RunMatrixPublishOptions): Promi
         // 提交后等平台把视频传完再关内核(过早关内核会把正在上传的作品弄丢)。
         // 例外:小红书/币安/推特/快手/头条/【视频号】/【TikTok】点发布前视频已传完(这些 driver 都已等"上传+处理完成"
         //   才点发布,点发布后平台不再继续上传)→ 封顶 20s,不用再等 120s。
+        // 其余平台(YouTube/抖音/B站 等,点提交后浏览器还在后台续传)走【自适应等待】:
+        //   每轮探一次页面「上传中/已上传 xx%」迹象,传完即关、还在传继续等、封顶 20 分钟。
         const postWaitMs = (id === 'xhs' || id === 'binance' || id === 'x' || id === 'kuaishou' || id === 'toutiao' || id === 'shipinhao' || id === 'tiktok') ? Math.min(20_000, POST_SUBMIT_WAIT_MS) : POST_SUBMIT_WAIT_MS;
-        opts.onLog?.(`   ⏳ 等 ${Math.round(postWaitMs / 1000)}s 让平台把视频上传完…`);
-        await sleep(postWaitMs);
+        if (postWaitMs <= 20_000) {
+          opts.onLog?.(`   ⏳ 等 ${Math.round(postWaitMs / 1000)}s 让平台把视频上传完…`);
+          await sleep(postWaitMs);
+        } else {
+          await waitUploadSettled(accountId, postWaitMs, opts.onLog, opts.signal);
+        }
       } else {
         opts.onLog?.(`❌ ${label} 发布失败:${pr.reason || 'unknown'}`);
         result.failedCount++;
