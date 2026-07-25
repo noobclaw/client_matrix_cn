@@ -58,7 +58,7 @@ const UPLOAD_PROBE_EXPR = `(() => {
  * 首轮探测前至少等满一轮 —— 探测误报「传完」时行为也不早于老的固定等待。
  */
 async function waitUploadSettled(accountId: string, roundMs: number, onLog?: (m: string) => void, signal?: AbortSignal): Promise<void> {
-  const round = Math.max(30_000, Math.min(roundMs, 120_000));
+  const round = Math.max(20_000, Math.min(roundMs, 120_000));
   let waited = 0;
   onLog?.(`   ⏳ 等平台把视频传完:每 ${Math.round(round / 1000)}s 检查一次,传完即关,最多等 ${Math.round(UPLOAD_SETTLE_CAP_MS / 60_000)} 分钟…`);
   for (;;) {
@@ -214,15 +214,11 @@ export async function runMatrixPublishStep(opts: RunMatrixPublishOptions): Promi
         // 提交后等平台把视频传完再关内核(过早关内核会把正在上传的作品弄丢)。
         // 例外:小红书/币安/推特/快手/头条/【视频号】/【TikTok】点发布前视频已传完(这些 driver 都已等"上传+处理完成"
         //   才点发布,点发布后平台不再继续上传)→ 封顶 20s,不用再等 120s。
-        // 其余平台(YouTube/抖音/B站 等,点提交后浏览器还在后台续传)走【自适应等待】:
-        //   每轮探一次页面「上传中/已上传 xx%」迹象,传完即关、还在传继续等、封顶 20 分钟。
+        // 【全平台自适应等待】(2026-07-25 用户追问后统一):首轮等 postWaitMs(快平台 20s /
+        //   慢平台 120s),关窗前都探一次页面「上传中/已上传 xx%」迹象 —— 快平台 driver 理论上
+        //   提交前已传完,探测只是保险:没迹象照旧 20s 走人,真还在传就继续轮询,封顶 20 分钟。
         const postWaitMs = (id === 'xhs' || id === 'binance' || id === 'x' || id === 'kuaishou' || id === 'toutiao' || id === 'shipinhao' || id === 'tiktok') ? Math.min(20_000, POST_SUBMIT_WAIT_MS) : POST_SUBMIT_WAIT_MS;
-        if (postWaitMs <= 20_000) {
-          opts.onLog?.(`   ⏳ 等 ${Math.round(postWaitMs / 1000)}s 让平台把视频上传完…`);
-          await sleep(postWaitMs);
-        } else {
-          await waitUploadSettled(accountId, postWaitMs, opts.onLog, opts.signal);
-        }
+        await waitUploadSettled(accountId, postWaitMs, opts.onLog, opts.signal);
       } else {
         opts.onLog?.(`❌ ${label} 发布失败:${pr.reason || 'unknown'}`);
         result.failedCount++;
