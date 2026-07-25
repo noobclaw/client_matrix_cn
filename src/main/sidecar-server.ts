@@ -1291,9 +1291,28 @@ const server = http.createServer(async (req, res) => {
           // 外链打开的 OS 级路径(2026-07-25 起为首选):主进程直接 start/open/xdg-open,
           // 不经 webview 权限与弹窗拦截;打日志便于真机排查「点了没反应」。
           case 'shell:openExternal': {
-            const { openExternal: oe } = await import('./libs/platformAdapter');
-            const opened = await oe(String(args[0] || ''));
-            console.log('[sidecar] shell:openExternal', String(args[0] || '').slice(0, 120), '->', opened);
+            const { openExternal: oe, getUserDataPath } = await import('./libs/platformAdapter');
+            const url = String(args[0] || '');
+            let opened = await oe(url);
+            // 系统默认浏览器打不开(如 LaunchServices/默认浏览器关联损坏)→ 兜底:用已装的
+            // 指纹内核(完整 Chromium)直接开这个 URL。独立小 profile(kernel_link_profile),
+            // 不碰矩阵账号的指纹环境;没装内核则维持 false,由 renderer 弹「打开链接失败」。
+            // ⚠️ 只覆盖「系统明确报错」的失败;系统假成功(exit 0 但没弹窗)无从检测,仍需修系统。
+            if (!opened && /^https?:\/\//i.test(url)) {
+              try {
+                const { installedKernelPath } = await import('./libs/matrix/kernelInstaller');
+                const bin = installedKernelPath();
+                if (bin) {
+                  const { spawn } = await import('child_process');
+                  const prof = require('path').join(getUserDataPath(), 'kernel_link_profile');
+                  const child = spawn(bin, ['--no-first-run', '--no-default-browser-check', `--user-data-dir=${prof}`, url], { detached: true, stdio: 'ignore' });
+                  child.unref();
+                  opened = true;
+                  console.log('[sidecar] shell:openExternal fallback via fingerprint kernel:', bin);
+                }
+              } catch (e) { console.warn('[sidecar] kernel-open fallback failed:', e); }
+            }
+            console.log('[sidecar] shell:openExternal', url.slice(0, 120), '->', opened);
             return writeJSON(res, 200, { status: 'ok', opened });
           }
 
@@ -1468,6 +1487,9 @@ const server = http.createServer(async (req, res) => {
               const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
               const cloudP = (async () => {
                 try {
+                  // ⚠️ 此处原来直接引用 getNoobClawAuthToken(只在别的 case 里块级 import 过)
+                  //   → 运行时 ReferenceError 被本 try 吞掉 → 云端测永远静默失败。补上局部 import。
+                  const { getNoobClawAuthToken } = await import('./libs/claudeSettings');
                   const token = getNoobClawAuthToken();
                   const cr = await fetch(`${base}/api/matrix/proxy-test`, {
                     method: 'POST',

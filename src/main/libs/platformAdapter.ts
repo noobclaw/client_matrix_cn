@@ -247,7 +247,16 @@ export async function openExternal(url: string): Promise<boolean> {
         execFile('explorer.exe', [url], { windowsHide: false }, () => {});
       }
     } else if (process.platform === 'darwin') {
-      execSync(`open "${url}"`);
+      // 不只看退出码:LaunchServices 损坏时 `open` 可能 exit 0 但打印错误(或啥都不干)。
+      // 捕获 stderr,出现错误字样也判失败 —— 让 sidecar 的指纹内核兜底有机会接手。
+      // (「exit 0 + 零输出 + 没弹窗」的纯静默失败仍无法从调用方检测,只能修系统。)
+      const { spawnSync } = require('child_process');
+      const r = spawnSync('open', [url], { encoding: 'utf8', timeout: 15_000 });
+      const errText = String(r.stderr || '');
+      if (r.status !== 0 || /unable to find|lsopen|does not exist|error/i.test(errText)) {
+        console.warn('[platformAdapter] open failed:', r.status, errText.slice(0, 200));
+        return false;
+      }
     } else {
       execSync(`xdg-open "${url}"`);
     }
