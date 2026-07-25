@@ -548,20 +548,24 @@ export function createTauriElectronShim(): typeof window.electron {
         // 服务端下发的外链(如 matrix_proxy_purchase_url)可能没带协议;
         // opener 插件只认 http/https/mailto/tel,裸域名会被拒 → 先补全。
         const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
-        if (await openInSystemBrowser(target)) return;
-        // opener invoke 失败(ACL 拒/解析失败)时,走 sidecar 在主进程用
-        // OS 命令开默认浏览器(start/open/xdg-open),不经 webview 权限
-        // 和弹窗拦截 —— 修「点这里/如何开启?」等外链点了没反应。
+        // ① 首选 sidecar OS 级打开(主进程 start/open/xdg-open):最稳、不经 webview
+        //    权限/弹窗拦截,且成功与否有明确布尔返回。2026-07-25 用户实测 opener 插件
+        //    存在「调用不报错但浏览器没弹」的假成功 → opener 降为第二顺位。
         try {
           const r: any = await ipcInvoke('shell:openExternal', target);
-          if (r?.opened !== false) return;
+          if (r?.opened === true) return;
+          console.warn('[TauriShim] sidecar openExternal reported not-opened:', r);
         } catch (e) {
-          console.warn('[TauriShim] shell:openExternal sidecar fallback failed:', e);
+          console.warn('[TauriShim] sidecar openExternal failed:', e);
         }
-        // Last-ditch fallback — almost certainly will be blocked by Tauri
-        // webview, but matches Electron behavior on platforms where the
-        // shell helper isn't available.
-        window.open(target, '_blank');
+        // ② opener 插件(Tauri 桥)。
+        if (await openInSystemBrowser(target)) return;
+        // ③ window.open(几乎必被 webview 弹窗拦截,聊胜于无)。
+        let w: Window | null = null;
+        try { w = window.open(target, '_blank'); } catch { /* ignore */ }
+        if (w) return;
+        // ④ 全部失败:弹系统提示把链接亮出来,让用户手动复制打开 —— 绝不再静默。
+        try { await tauriDialogMessage(`无法自动打开浏览器,请手动访问 / Could not open the browser, please visit:\n\n${target}`, '打开链接失败 / Open link failed'); } catch { /* ignore */ }
       },
     },
 
