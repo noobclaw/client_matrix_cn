@@ -6160,41 +6160,46 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   <button type="button" onClick={() => setOutputMode('upload')} className={seg(outputMode === 'upload')}>🚀 {t('vmixOutputUpload')}</button>
                 </div>
               </Field>
-              {outputMode === 'upload' && (
-                <Field label={t('vmixPlatformsLabel')} hint={t('vmixPlatformsHint')}>
-                  <div className="grid grid-cols-3 gap-2">
-                    {PUBLISH_PLATFORMS.map((p) => (
-                      <button key={p.id} type="button" onClick={() => togglePlatform(p.id)}
-                        className={`py-2 px-2 rounded-lg text-xs border text-left transition-colors ${platforms[p.id] ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-emerald-500/50'}`}>
-                        {p.emoji} {isZh ? p.zh : p.en}
-                      </button>
-                    ))}
+              {/* 发布平台 + 发布账号:复用标准组件(PublishPlatformPicker + MatrixAccountSelect),
+                  与热搜/爆帖向导同一观感(2026-07-25 用户反馈原手搓版丑)。 */}
+              <PublishPlatformPicker
+                isZh={isZh}
+                outputMode={outputMode}
+                platforms={platforms}
+                togglePlatform={togglePlatform}
+              >
+                {matrixMode && selectedPlatformIds.length > 0 && (
+                  <div className="mt-4">
+                    <Field
+                      label={isZh ? '发布账号' : 'Publish accounts'}
+                      hint={isZh ? '每个平台选一个矩阵账号,出片后用该号的指纹浏览器上传' : 'one matrix account per platform'}
+                    >
+                      <div className="space-y-2.5">
+                        {selectedPlatformIds.map((pid) => {
+                          const meta = PUBLISH_PLATFORMS.find((m) => m.id === pid);
+                          const label = meta ? `${meta.emoji} ${isZh ? meta.zh : meta.en}` : pid;
+                          const accs = accountsFor(pid);
+                          return (
+                            <div key={pid} className="flex items-center gap-3">
+                              <div className="w-24 shrink-0 text-sm font-medium dark:text-gray-200">{label}</div>
+                              <MatrixAccountSelect
+                                isZh={isZh}
+                                accounts={accs}
+                                value={accountByPlatform[pid] || ''}
+                                onChange={(id) => setAccountByPlatform((m) => ({ ...m, [pid]: id }))}
+                                onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: pid } })); onClose(); }}
+                              />
+                            </div>
+                          );
+                        })}
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-1">
+                          {isZh ? '每个平台必须选一个【已连接】账号;未连接的已置灰不可选,选好才能创建。发布时用该号的指纹浏览器上传。' : 'Each platform needs a LINKED account (unlinked ones are greyed out). Published via that account\'s fingerprint browser.'}
+                        </p>
+                      </div>
+                    </Field>
                   </div>
-                  {matrixMode && selectedPlatformIds.length > 0 && (
-                    <div className="mt-3 space-y-2">
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('vmixAccountsLabel')}</div>
-                      {selectedPlatformIds.map((pid) => {
-                        const opts = accountsFor(pid);
-                        const meta = PUBLISH_PLATFORMS.find((m) => m.id === pid);
-                        return (
-                          <div key={pid} className="flex items-center gap-2">
-                            <span className="w-24 shrink-0 text-xs dark:text-gray-300">{meta?.emoji} {isZh ? meta?.zh : meta?.en}</span>
-                            {opts.length === 0 ? (
-                              <span className="text-[11px] text-amber-500">{t('vmixNoAccounts')}</span>
-                            ) : (
-                              <select value={accountByPlatform[pid] || ''} onChange={(e) => setAccountByPlatform((m) => ({ ...m, [pid]: e.target.value }))}
-                                className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs dark:text-white">
-                                <option value="">{t('vmixPickAccount')}</option>
-                                {opts.map((a) => (<option key={a.id} value={a.id} disabled={a.status === 'login_required'}>{(a.nickname || a.displayName)}{a.status === 'login_required' ? ` (${t('vmixAcctExpired')})` : ''}</option>))}
-                              </select>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </Field>
-              )}
+                )}
+              </PublishPlatformPicker>
               <Field label={t('vmixFreqLabel')}>
                 <div className="flex gap-2 flex-wrap">
                   {(['once', '3h', '6h', 'daily_random'] as VideoRunInterval[]).map((v) => (
