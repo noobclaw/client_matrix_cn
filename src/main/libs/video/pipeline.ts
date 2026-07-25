@@ -199,6 +199,8 @@ export interface VideoCreationInput {
   localMixMediaType?: 'video' | 'image';
   /** engine==='localmix':原片直发。true=不写稿/不配音/不字幕/不混剪,从文件夹挑一条原片直接发布(script 字段此时当「视频介绍」,AI 据此生成标题/简介/标签)。 */
   uploadOnly?: boolean;
+  /** engine==='localmix':直接选中的素材文件(与 localMixFolder 二选一,非空时优先于文件夹)。 */
+  localMixFiles?: string[];
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -571,6 +573,20 @@ export function scanLocalMediaFolder(dir: string): { videos: string[]; images: s
   return out;
 }
 
+/** 直接选中的素材文件(localMixFiles)按扩展名分视频/图片;不存在的文件跳过。 */
+export function classifyLocalMediaFiles(paths: string[]): { videos: string[]; images: string[] } {
+  const out = { videos: [] as string[], images: [] as string[] };
+  for (const raw of Array.isArray(paths) ? paths : []) {
+    const p = String(raw || '').trim();
+    if (!p) continue;
+    try { if (!fs.existsSync(p) || !fs.statSync(p).isFile()) continue; } catch { continue; }
+    const ext = path.extname(p).toLowerCase();
+    if (LOCALMIX_VIDEO_EXTS.has(ext)) out.videos.push(p);
+    else if (LOCALMIX_IMAGE_EXTS.has(ext)) out.images.push(p);
+  }
+  return out;
+}
+
 /**
  * 批量编排:决定一次任务出几条,外层逐条独立跑 generateVideo,聚合成【唯一一次】终态。
  *   · stock      → N = videoCount(1~100)
@@ -785,9 +801,12 @@ async function runVideoPipeline(
       tracker.done('tts', '⏭ 原片直发:跳过配音/字幕');
       tracker.start('visuals');
       const mixDir = String(input.localMixFolder || '').trim();
-      const media = scanLocalMediaFolder(mixDir);
+      const pickedFiles = Array.isArray(input.localMixFiles) ? input.localMixFiles.filter(Boolean) : [];
+      const media = pickedFiles.length > 0 ? classifyLocalMediaFiles(pickedFiles) : scanLocalMediaFolder(mixDir);
       if (media.videos.length === 0) {
-        const err = `本地素材文件夹里没有可用视频(${mixDir || '未选择文件夹'}),请检查文件夹后重试`;
+        const err = pickedFiles.length > 0
+          ? '选中的素材文件里没有可用视频(文件可能已被移动/删除),请重新选择后重试'
+          : `本地素材文件夹里没有可用视频(${mixDir || '未选择文件夹'}),请检查文件夹后重试`;
         tracker.fail('visuals', err);
         return { ok: false, error: err };
       }
@@ -1417,7 +1436,8 @@ async function runVideoPipeline(
       //    图片逐镜 Ken Burns 合成(imageByScene,复用抖音图文的合成路径)。
       //    纯本地素材零下载零搜索词;文件夹空/不存在 → 本条失败并给可读原因。
       const mixDir = String(input.localMixFolder || '').trim();
-      const media = scanLocalMediaFolder(mixDir);
+      const lmFiles = Array.isArray(input.localMixFiles) ? input.localMixFiles.filter(Boolean) : [];
+      const media = lmFiles.length > 0 ? classifyLocalMediaFiles(lmFiles) : scanLocalMediaFolder(mixDir);
       const wantImages = input.localMixMediaType === 'image';
       if (wantImages && media.images.length > 0) {
         const imgs = media.images;
@@ -1449,9 +1469,13 @@ async function runVideoPipeline(
         };
         tracker.done('visuals', `🎬 画面就绪(本地视频 ${vids.length} 个 · 换镜混剪)`);
       } else {
-        const err = wantImages
-          ? `本地素材文件夹里没有可用图片(${mixDir || '未选择文件夹'}),请检查文件夹后重试`
-          : `本地素材文件夹里没有可用视频(${mixDir || '未选择文件夹'}),请检查文件夹后重试`;
+        const err = lmFiles.length > 0
+          ? (wantImages
+            ? '选中的素材文件里没有可用图片(文件可能已被移动/删除),请重新选择后重试'
+            : '选中的素材文件里没有可用视频(文件可能已被移动/删除),请重新选择后重试')
+          : (wantImages
+            ? `本地素材文件夹里没有可用图片(${mixDir || '未选择文件夹'}),请检查文件夹后重试`
+            : `本地素材文件夹里没有可用视频(${mixDir || '未选择文件夹'}),请检查文件夹后重试`);
         tracker.fail('visuals', err);
         return { ok: false, error: err };
       }

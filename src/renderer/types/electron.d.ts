@@ -526,6 +526,7 @@ interface IElectronAPI {
     pickImages: (max: number) => Promise<string[]>;
     pickVideos: (max: number) => Promise<string[]>;
     pickLocalFolder: () => Promise<{ dir: string; videoCount: number; imageCount: number } | null>;
+    pickLocalFiles: () => Promise<{ files: string[]; videoCount: number; imageCount: number } | null>;
     scanLocalFolder: (dir: string) => Promise<{ videoCount: number; imageCount: number }>;
     readImageDataUrl: (filePath: string) => Promise<string>;
     pickAudio: () => Promise<string>;

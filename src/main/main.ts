@@ -2980,6 +2980,20 @@ if (!gotTheLock) {
       const media = scanLocalMediaFolder(String(dir || ''));
       return { videoCount: media.videos.length, imageCount: media.images.length };
     });
+    // 本地混剪:直接多选素材文件(与选文件夹二选一),回 { files, videoCount, imageCount }。
+    ipcMain.handle('video:pickLocalFiles', async () => {
+      const parent = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
+      const opts = {
+        title: '选择本地素材文件(可多选)',
+        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+        filters: [{ name: 'Media', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
+      };
+      const result = parent ? await dialog.showOpenDialog(parent, opts) : await dialog.showOpenDialog(opts);
+      if (result.canceled || !Array.isArray(result.filePaths) || result.filePaths.length === 0) return null;
+      const { classifyLocalMediaFiles } = require('./libs/video/pipeline');
+      const media = classifyLocalMediaFiles(result.filePaths);
+      return { files: result.filePaths, videoCount: media.videos.length, imageCount: media.images.length };
+    });
 
     // Read a local image file and return it as a data: URL so the renderer
     // can show a real thumbnail (renderer can't load file:// under CSP).

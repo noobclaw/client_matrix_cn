@@ -486,6 +486,21 @@ export function createTauriElectronShim(): typeof window.electron {
         return { dir, videoCount: Number(scan?.videoCount) || 0, imageCount: Number(scan?.imageCount) || 0 };
       },
       scanLocalFolder: (dir: string) => ipcInvoke('video:scanLocalFolder', dir).then((r: any) => r ?? { videoCount: 0, imageCount: 0 }),
+      // 本地混剪:直接多选素材文件(与选文件夹二选一);扩展名分类在 shim 端做(无 fs 依赖)。
+      pickLocalFiles: async () => {
+        const filters = [{ name: 'Media', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'jpg', 'jpeg', 'png', 'webp', 'bmp'] }];
+        const selected = await tauriDialogOpen({ directory: false, multiple: true, filters, title: '选择本地素材文件(可多选)' });
+        const arr = typeof selected === 'string' ? [selected] : (Array.isArray(selected) ? selected : []);
+        const files = arr.map((p) => String(p || '')).filter(Boolean);
+        if (files.length === 0) return null;
+        const VEXT = ['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi'];
+        let v = 0; let i = 0;
+        for (const f of files) {
+          const ext = ('.' + (f.split('.').pop() || '')).toLowerCase();
+          if (VEXT.includes(ext)) v++; else i++;
+        }
+        return { files, videoCount: v, imageCount: i };
+      },
       pickAudio: async () => {
         const filters = [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'] }];
         const selected = await tauriDialogOpen({ directory: false, multiple: false, filters, title: '选择背景音乐' });

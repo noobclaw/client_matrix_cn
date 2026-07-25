@@ -82,6 +82,8 @@ export interface VideoCreationInput {
   localMixMediaType?: 'video' | 'image';
   /** engine==='localmix':原片直发。true=不写稿/不配音/不字幕/不混剪,从文件夹挑一条原片直接发布(script 字段此时当「视频介绍」,AI 据此生成标题/简介/标签)。 */
   uploadOnly?: boolean;
+  /** engine==='localmix':直接选中的素材文件(与 localMixFolder 二选一,非空时优先于文件夹)。 */
+  localMixFiles?: string[];
   /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
   template?: VideoTemplateOptions;
   /** engine==='hotspot'(热搜成片)专属:用户勾选的热点源('hotsearch'|'web3'|'tech')。
@@ -277,6 +279,18 @@ class VideoCreationService {
       const r = await this.api.pickLocalFolder();
       if (!r || typeof r.dir !== 'string' || !r.dir) return null;
       return { dir: r.dir, videoCount: Number(r.videoCount) || 0, imageCount: Number(r.imageCount) || 0 };
+    } catch {
+      return null;
+    }
+  }
+
+  /** 本地混剪:弹系统文件选择框直接多选素材文件(与选文件夹二选一);取消/失败返回 null。 */
+  async pickLocalMixFiles(): Promise<{ files: string[]; videoCount: number; imageCount: number } | null> {
+    if (!this.api?.pickLocalFiles) return null;
+    try {
+      const r = await this.api.pickLocalFiles();
+      if (!r || !Array.isArray(r.files) || r.files.length === 0) return null;
+      return { files: r.files, videoCount: Number(r.videoCount) || 0, imageCount: Number(r.imageCount) || 0 };
     } catch {
       return null;
     }

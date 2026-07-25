@@ -1019,7 +1019,9 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     const inp: any = input;
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
-        <Row label={`📂 ${i18nService.t('vmixFolderLabel')}`}>{inp.localMixFolder || '-'}</Row>
+        <Row label={`📂 ${i18nService.t('vmixSourceLabel')}`}>{Array.isArray(inp.localMixFiles) && inp.localMixFiles.length > 0
+          ? i18nService.t('vmixFilesPicked').replace('{n}', String(inp.localMixFiles.length))
+          : (inp.localMixFolder || '-')}</Row>
         <Row label={`🎞️ ${i18nService.t('vmixMediaTypeLabel')}`}>{inp.localMixMediaType === 'image' ? i18nService.t('vmixMediaImage') : i18nService.t('vmixMediaVideo')}</Row>
         {inp.uploadOnly ? (
           <>
@@ -5700,8 +5702,9 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   type LmStep = 1 | 2 | 3 | 4 | 5 | 6;
   const [step, setStep] = useState<LmStep>(1);
   const MAX_STEP = 6;
-  // ── Step 1:素材文件夹 ──
+  // ── Step 1:素材来源(文件夹 / 直接选文件,二选一)──
   const [folder, setFolder] = useState<string>(ei?.localMixFolder || '');
+  const [pickedFiles, setPickedFiles] = useState<string[]>(Array.isArray((ei as any)?.localMixFiles) ? (ei as any).localMixFiles : []);
   const [mediaType, setMediaType] = useState<'video' | 'image'>(ei?.localMixMediaType === 'image' ? 'image' : 'video');
   // 原片直发:不写稿/不配音/不字幕/不混剪,原片直接上传;script 字段此时当「视频介绍」给 AI 写标题/简介/标签。
   // 仅视频形态支持(图片没有「原片上传」概念);切到图片自动关。
@@ -5709,7 +5712,14 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [scan, setScan] = useState<{ videoCount: number; imageCount: number } | null>(null);
   const [scanning, setScanning] = useState(false);
   useEffect(() => {
-    // 编辑回填:重扫文件夹刷新素材统计(素材可能已增删)。
+    // 编辑回填:文件夹模式重扫刷新统计(素材可能已增删);文件模式按扩展名本地分类。
+    if (pickedFiles.length > 0) {
+      const VEXT = ['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi'];
+      let v = 0; let i = 0;
+      for (const f of pickedFiles) { const ext = ('.' + (f.split('.').pop() || '')).toLowerCase(); if (VEXT.includes(ext)) v++; else i++; }
+      setScan({ videoCount: v, imageCount: i });
+      return;
+    }
     if (!folder) return;
     let alive = true;
     setScanning(true);
@@ -5717,15 +5727,26 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const applyPickedCounts = (videoCount: number, imageCount: number) => {
+    setScan({ videoCount, imageCount });
+    // 按扫描结果自动定素材形态(只有一类时);两类都有保留用户当前选择。
+    if (videoCount > 0 && imageCount === 0) setMediaType('video');
+    else if (imageCount > 0 && videoCount === 0) setMediaType('image');
+    setErr(null);
+  };
   const pickFolder = async () => {
     const r = await videoCreationService.pickLocalMixFolder();
     if (!r) return;
     setFolder(r.dir);
-    setScan({ videoCount: r.videoCount, imageCount: r.imageCount });
-    // 按扫描结果自动定素材形态(只有一类时);两类都有保留用户当前选择。
-    if (r.videoCount > 0 && r.imageCount === 0) setMediaType('video');
-    else if (r.imageCount > 0 && r.videoCount === 0) setMediaType('image');
-    setErr(null);
+    setPickedFiles([]); // 与选文件二选一
+    applyPickedCounts(r.videoCount, r.imageCount);
+  };
+  const pickFiles = async () => {
+    const r = await videoCreationService.pickLocalMixFiles();
+    if (!r) return;
+    setPickedFiles(r.files);
+    setFolder(''); // 与选文件夹二选一
+    applyPickedCounts(r.videoCount, r.imageCount);
   };
   const availableCount = mediaType === 'image' ? (scan?.imageCount ?? 0) : (scan?.videoCount ?? 0);
   // ── Step 2:文案(口播照读 / AI 参考改写) ──
@@ -5833,6 +5854,8 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
         scriptMode,
         engine: 'localmix',
         localMixFolder: folder,
+        // 直接选中的文件(与文件夹二选一,pipeline 非空时优先用它)。
+        localMixFiles: pickedFiles.length > 0 ? pickedFiles : undefined,
         localMixMediaType: mediaType,
         // 原片直发:仅视频形态;写稿/配音/字幕/BGM 全部关掉(pipeline 早分流,不进合成)。
         uploadOnly: uploadOnly && mediaType === 'video' ? true : undefined,
@@ -5886,7 +5909,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
 
   const goNext = () => {
     if (step === 1) {
-      if (!folder) { setErr(t('vmixErrNoFolder')); return; }
+      if (!folder && pickedFiles.length === 0) { setErr(t('vmixErrNoSource')); return; }
       if (availableCount === 0) { setErr(mediaType === 'image' ? t('vmixErrNoImages') : t('vmixErrNoVideos')); return; }
       // 原片直发:素材步直接跳出片步(文案/画面/音频/字幕全不适用);介绍必填(AI 靠它写标题/简介/标签)。
       if (uploadOnly) {
@@ -5945,12 +5968,16 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {step === 1 && (
             <>
-              <Field label={t('vmixFolderLabel')} hint={t('vmixFolderHint')}>
+              <Field label={t('vmixSourceLabel')} hint={t('vmixSourceHint')}>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={pickFolder} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">📂 {t('vmixPickFolder')}</button>
-                  <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={folder}>{folder || t('vmixNoFolderYet')}</div>
+                  <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold border border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10">🎞️ {t('vmixPickFiles')}</button>
+                  <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={folder || pickedFiles.join('\n')}>
+                    {folder
+                      || (pickedFiles.length > 0 ? t('vmixFilesPicked').replace('{n}', String(pickedFiles.length)) : t('vmixNoFolderYet'))}
+                  </div>
                 </div>
-                {folder && (
+                {(folder || pickedFiles.length > 0) && (
                   <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
                     {scanning
                       ? t('vmixScanning')

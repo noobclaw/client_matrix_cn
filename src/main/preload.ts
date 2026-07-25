@@ -109,6 +109,7 @@ contextBridge.exposeInMainWorld('electron', {
     pickVideos: (max: number) => ipcRenderer.invoke('video:pickVideos', max),
     /** Local remix: pick a local material folder; returns { dir, videoCount, imageCount } or null. */
     pickLocalFolder: () => ipcRenderer.invoke('video:pickLocalFolder'),
+    pickLocalFiles: () => ipcRenderer.invoke('video:pickLocalFiles'),
     /** Local remix: re-scan a folder for video/image counts. */
     scanLocalFolder: (dir: string) => ipcRenderer.invoke('video:scanLocalFolder', dir),
     /** Read a local image file as a data: URL for thumbnail preview. */
