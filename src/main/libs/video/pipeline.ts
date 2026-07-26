@@ -37,6 +37,7 @@ import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, typ
 import type { TemplateOptions } from './templateHtmlWriter';
 import { runTemplatePipeline } from './template-pipeline';
 import { runThreadPipeline } from './thread-pipeline';
+import { runRepostPipeline } from './repost-pipeline';
 import { generateStoryboardAnchor } from './storyboardAnchor';
 import { resolvePublishCaption } from './publishCaptionWriter';
 import { setCurrentVideoTask, clearCurrentVideoTask, videoTypeLabel } from './videoRunWindow';
@@ -161,7 +162,17 @@ export interface VideoCreationInput {
    *                      参考图(≤2)做风格/人设统一;失败镜降级到参考图静帧/邻镜。
    *                      走服务端代理(/api/video/seedance/*),逐片段计费 + 失败退款。
    */
-  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix' | 'repost';
+  /** engine==='repost'(翻译搬运):源视频链接(与 repostSourceFile 二选一,走 yt-dlp 通用下载)。 */
+  repostSourceUrl?: string;
+  /** engine==='repost':本地源视频文件绝对路径(与 repostSourceUrl 二选一,优先)。 */
+  repostSourceFile?: string;
+  /** engine==='repost':目标语言(翻译+配音,如 'zh'/'en'/'ja');空回落 scriptLang。 */
+  repostTargetLang?: string;
+  /** engine==='repost':源语言 hint(可选,给 ASR;空=auto 检测)。 */
+  repostSourceLang?: string;
+  /** engine==='repost':是否把原声压低垫底保留 BGM/音效(默认关=纯配音替换)。 */
+  repostKeepBgm?: boolean;
   /** AI 引擎分辨率档(成本敏感):'480p'|'720p'(默认)|'1080p'。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
@@ -748,6 +759,8 @@ async function runVideoPipeline(
   if (input.engine === 'template') return runTemplatePipeline(input, emit, signal);
   // engine==='thread'(爆帖成片):Reddit 神帖截图卡 + 游戏录屏背景。同样独立流水线早分流。
   if (input.engine === 'thread') return runThreadPipeline(input, emit, signal);
+  // engine==='repost'(翻译搬运):源视频 → 转写 → 翻译 → 换配音 → 发布。独立流水线早分流。
+  if (input.engine === 'repost') return runRepostPipeline(input, emit, signal);
 
   const jobId = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const tracker = new ProgressTracker(jobId, emit);

@@ -156,7 +156,16 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ matrixMo
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && editingTask.input?.engine !== 'localmix' && (
+        {editingTask && editingTask.input?.engine === 'repost' && (
+          <RepostVideoModal
+            isZh={isZh}
+            matrixMode={matrixMode}
+            editTask={editingTask}
+            onClose={() => setEditTaskId(null)}
+            onSaved={() => setEditTaskId(null)}
+          />
+        )}
+        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && editingTask.input?.engine !== 'localmix' && editingTask.input?.engine !== 'repost' && (
           <VideoConfigModal
             isZh={isZh}
             matrixMode={matrixMode}
@@ -1010,6 +1019,22 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{voiceDisplayLabel(input.voice, isZh)}</Row>
         <Row label={`🎮 ${isZh ? '背景' : 'Background'}`}>{threadBgLabel(input, isZh)}</Row>
+        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
+      </div>
+    );
+  }
+  // 翻译搬运:源/目标语言/原声保留/配音/字幕/发布(赛道/人设/关键词无意义)。
+  if (input.engine === 'repost') {
+    const inp: any = input;
+    const LANG: Record<string, string> = { zh: '简体中文', 'zh-TW': '繁体中文', en: 'English', ja: '日本語', ko: '한국어', vi: 'Tiếng Việt', es: 'Español', pt: 'Português', fr: 'Français', de: 'Deutsch', id: 'Bahasa Indonesia' };
+    return (
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+        <Row label={`🌐 ${i18nService.t('rpstSourceLabel')}`}>{inp.repostSourceFile
+          ? i18nService.t('rpstSourceFile')
+          : (inp.repostSourceUrl || '-')}</Row>
+        <Row label={`🈯 ${i18nService.t('rpstTargetLangLabel')}`}>{LANG[String(inp.repostTargetLang || 'zh')] || inp.repostTargetLang || '简体中文'}</Row>
+        <Row label={`🎤 ${i18nService.t('vmixVoiceLabel')}`}>{inp.voice ? `${voiceDisplayLabel(inp.voice, isZh)}${inp.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : ''}` : (isZh ? '无配音' : 'No voice-over')}</Row>
+        <Row label={`🎵 ${i18nService.t('rpstBgmLabel')}`}>{inp.repostKeepBgm ? (isZh ? '保留原声垫底' : 'Keep original BGM') : (isZh ? '纯配音替换' : 'Voice only')}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
@@ -1966,6 +1991,7 @@ const VideoCreateFlow: React.FC<{
   const [hotspotOpen, setHotspotOpen] = useState(false);   // 热搜成片 → HotspotVideoModal
   const [threadOpen, setThreadOpen] = useState(false);     // 爆帖成片 → ThreadVideoModal
   const [localMixOpen, setLocalMixOpen] = useState(false); // 本地混剪 → LocalMixVideoModal
+  const [repostOpen, setRepostOpen] = useState(false);     // 翻译搬运 → RepostVideoModal
   // 热搜成片仅简体/繁体中文显示(数据源是中文热榜;韩/日/英先不支持)。繁体也走中文文案。
   const isZhHot = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
@@ -2031,6 +2057,12 @@ const VideoCreateFlow: React.FC<{
           descZh={i18nService.t('vmixCardDesc')} descEn={i18nService.t('vmixCardDesc')}
           costZh={i18nService.t('vmixCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('vmixCardCost').replace('{fee}', feeEn)}
           btnZh={i18nService.t('vmixCardBtn')} btnEn={i18nService.t('vmixCardBtn')} />
+        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🌐" onOpen={openWithLogin(() => setRepostOpen(true))} onGoTasks={onGoTasks}
+          tagZh={i18nService.t('rpstCardTag')} tagEn={i18nService.t('rpstCardTag')}
+          titleZh={i18nService.t('rpstCardTitle')} titleEn={i18nService.t('rpstCardTitle')}
+          descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
+          costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
+          btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
         <VideoScenarioEntryCard isZh={isZh} accent="orange" icon="🧵" onOpen={openWithLogin(() => setThreadOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 爆帖成片" tagEn="AI Auto · Viral Threads"
           titleZh="爆帖成片 · 海外神帖神评" titleEn="Viral Threads · Reddit Stories"
@@ -2090,6 +2122,9 @@ const VideoCreateFlow: React.FC<{
       )}
       {localMixOpen && (
         <LocalMixVideoModal isZh={isZh} matrixMode={matrixMode} onClose={() => setLocalMixOpen(false)} onCreated={onCreated} />
+      )}
+      {repostOpen && (
+        <RepostVideoModal isZh={isZh} matrixMode={matrixMode} onClose={() => setRepostOpen(false)} onCreated={onCreated} />
       )}
     </div>
   );
@@ -5687,6 +5722,296 @@ export const ThreadVideoModal: React.FC<{
           />
         )}
       </div>
+    </div>
+  );
+};
+
+// ── 翻译搬运(engine='repost'):源视频(链接/本地)→ 转写 → 翻译 → 换配音 + 字幕 → 发布 ──
+// 3 步向导:源与语言 / 配音字幕 / 出片发布。文案 i18n 前缀 rpst(9 语)。
+export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+  const t = (k: string) => i18nService.t(k);
+  const isEdit = !!editTask;
+  const ei = editTask?.input as VideoCreationInput | undefined;
+  type RpStep = 1 | 2 | 3;
+  const [step, setStep] = useState<RpStep>(1);
+  const MAX_STEP = 3;
+  const [sourceMode, setSourceMode] = useState<'link' | 'file'>((ei as any)?.repostSourceFile ? 'file' : 'link');
+  const [sourceUrl, setSourceUrl] = useState<string>((ei as any)?.repostSourceUrl || '');
+  const [sourceFile, setSourceFile] = useState<string>((ei as any)?.repostSourceFile || '');
+  const [targetLang, setTargetLang] = useState<string>((ei as any)?.repostTargetLang || 'zh');
+  const [keepBgm, setKeepBgm] = useState<boolean>(!!(ei as any)?.repostKeepBgm);
+  const langDefaultVoice = (code: string) => SCRIPT_LANGS.find((l) => l.code === code)?.defaultVoice || 'zh-CN-YunjianNeural';
+  const [voice, setVoice] = useState<string>(ei?.voice || langDefaultVoice((ei as any)?.repostTargetLang || 'zh'));
+  const [voiceRate, setVoiceRate] = useState<number>(typeof ei?.voiceRate === 'number' ? ei.voiceRate : 0);
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
+  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(typeof (ei as any)?.subtitleFontSize === 'number' ? (ei as any).subtitleFontSize : 20);
+  const pickTargetLang = (code: string) => {
+    setTargetLang(code);
+    const opt = SCRIPT_LANGS.find((l) => l.code === code);
+    if (opt && opt.defaultVoice && (!opt.voicePrefixes.length || !opt.voicePrefixes.some((p) => voice.startsWith(p)))) setVoice(opt.defaultVoice);
+  };
+  const pickSourceFile = async () => {
+    const r = await videoCreationService.pickLocalMixFiles();
+    if (!r || r.files.length === 0) return;
+    const vid = r.files.find((f) => /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(f)) || r.files[0];
+    setSourceFile(vid); setErr(null);
+  };
+  const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    if (!editTask) return 'upload';
+    const list = Array.isArray(ei?.publishPlatforms) ? ei!.publishPlatforms as string[] : [];
+    return list.length > 0 ? 'upload' : 'local';
+  });
+  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
+    const init: Record<Platform, boolean> = {
+      douyin: false, xhs: false, binance: false, x: false, tiktok: false,
+      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false, youtube: false, instagram: false, facebook: false,
+    };
+    const list = Array.isArray(ei?.publishPlatforms) ? ei!.publishPlatforms as string[] : null;
+    if (list && list.length > 0) list.forEach((p) => { if (p in init) init[p as Platform] = true; });
+    else if (!editTask) DEFAULT_PUBLISH_PLATFORMS.forEach((p) => { init[p] = true; });
+    return init;
+  });
+  const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
+  const selectedPlatformIds = PUBLISH_PLATFORMS.map((m) => m.id).filter((p) => platforms[p]);
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
+  const [matrixAccounts, setMatrixAccounts] = useState<MatrixAcctLite[]>([]);
+  const [accountByPlatform, setAccountByPlatform] = useState<Record<string, string>>(
+    () => (matrixMode && (ei as any)?.publishAccounts && typeof (ei as any).publishAccounts === 'object' ? { ...(ei as any).publishAccounts } : {}),
+  );
+  useEffect(() => {
+    if (!matrixMode) return;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await (window as any).electron?.matrix?.listAccounts?.();
+        const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+        if (alive) setMatrixAccounts(accs.map((a) => ({ id: a.id, platform: a.platform, displayName: a.displayName, status: a.status, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar, loginScope: a.loginScope })));
+      } catch { if (alive) setMatrixAccounts([]); }
+    })();
+    return () => { alive = false; };
+  }, [matrixMode]);
+  const accountsFor = (platform: string) => matrixAccounts.filter((a) => a.platform === platform && (platform !== 'kuaishou' || (a as any).loginScope === 'creator'));
+  const matrixAccountsReady = !matrixMode || outputMode !== 'upload'
+    || selectedPlatformIds.every((p) => !!accountByPlatform[p] && accountsFor(p).some((a) => a.id === accountByPlatform[p] && a.status !== 'login_required'));
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [showLoginCheck, setShowLoginCheck] = useState(false);
+
+  const handleCreate = async () => {
+    if (submitting) return;
+    setSubmitting(true); setErr(null);
+    try {
+      if (!isEdit && !(await videoQueue.canCreate())) {
+        setErr(t('rpstErrTasksFull').replace(/\{n\}/g, String(VIDEO_TASK_LIMIT)));
+        return;
+      }
+      const input: VideoCreationInput = {
+        persona: '', track: '', keywords: [],
+        script: '',
+        engine: 'repost',
+        repostSourceUrl: sourceMode === 'link' ? sourceUrl.trim() : undefined,
+        repostSourceFile: sourceMode === 'file' ? sourceFile : undefined,
+        repostTargetLang: targetLang,
+        repostKeepBgm: keepBgm || undefined,
+        referenceImages: [], aspect: '9:16',
+        voice, voiceRate,
+        narrationEnabled: true,
+        subtitleEnabled,
+        subtitleFontSize,
+        publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
+        publishAccounts: matrixMode && outputMode === 'upload'
+          ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => [p, accountByPlatform[p]]))
+          : undefined,
+        publishAccountNames: matrixMode && outputMode === 'upload'
+          ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => { const a = matrixAccounts.find((x) => x.id === accountByPlatform[p]); return [p, a ? (a.nickname || a.displayName) : accountByPlatform[p]]; }))
+          : undefined,
+      } as VideoCreationInput;
+      const name = t('rpstTaskName');
+      const schedule: VideoSchedule = { runInterval };
+      if (isEdit) {
+        const ok = videoTaskStore.updateTask(editTask.id, input, name, schedule);
+        if (!ok) { setErr(t('rpstErrTaskRunning')); return; }
+        if (onSaved) onSaved(); else onClose();
+      } else {
+        const id = videoTaskStore.createTask(input, name, schedule);
+        onCreated?.(id);
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleFinalClick = () => {
+    if (outputMode === 'upload' && selectedPlatformIds.length === 0) { setErr(t('rpstErrPickPlatform')); return; }
+    if (matrixMode) {
+      if (outputMode === 'upload' && !matrixAccountsReady) { setErr(t('rpstErrPickAccount')); return; }
+      void handleCreate();
+      return;
+    }
+    if (outputMode === 'upload' && selectedPlatformIds.length > 0) { setErr(null); setShowLoginCheck(true); }
+    else { void handleCreate(); }
+  };
+
+  const goNext = () => {
+    if (step === 1) {
+      if (sourceMode === 'link' && !sourceUrl.trim()) { setErr(t('rpstErrNoUrl')); return; }
+      if (sourceMode === 'file' && !sourceFile) { setErr(t('rpstErrNoFile')); return; }
+    }
+    setErr(null);
+    setStep((s) => (s < MAX_STEP ? ((s + 1) as RpStep) : s));
+  };
+  const goBack = () => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => ((s - 1) as RpStep)); };
+
+  const seg = (active: boolean) => `flex-1 py-2 rounded-lg text-sm border transition-colors ${active ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-sky-500/50'}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative w-full max-w-2xl h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl">
+        <div className="shrink-0 px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold dark:text-white">🌐 {isEdit ? t('rpstTitleEdit') : t('rpstTitle')}</h3>
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <StepDot n={1} active={step === 1} done={step > 1} label={t('rpstStepSource')} />
+              <div className={`h-px w-3 ${step > 1 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={t('rpstStepVoice')} />
+              <div className={`h-px w-3 ${step > 2 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={false} label={t('rpstStepOutput')} />
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+          {step === 1 && (
+            <>
+              <Field label={t('rpstSourceLabel')} hint={t('rpstSourceHint')}>
+                <div className="flex gap-2 mb-2">
+                  <button type="button" onClick={() => { setSourceMode('link'); setErr(null); }} className={seg(sourceMode === 'link')}>🔗 {t('rpstSourceLink')}</button>
+                  <button type="button" onClick={() => { setSourceMode('file'); setErr(null); }} className={seg(sourceMode === 'file')}>🎞️ {t('rpstSourceFile')}</button>
+                </div>
+                {sourceMode === 'link' ? (
+                  <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder={t('rpstUrlPlaceholder')}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40" />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={pickSourceFile} className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600">🎞️ {t('rpstPickFile')}</button>
+                    <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={sourceFile}>{sourceFile || t('rpstNoFileYet')}</div>
+                  </div>
+                )}
+              </Field>
+              <Field label={t('rpstTargetLangLabel')} hint={t('rpstTargetLangHint')}>
+                <select value={targetLang} onChange={(e) => pickTargetLang(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                  {SCRIPT_LANGS.filter((l) => l.code !== 'auto').map((l) => (<option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>))}
+                </select>
+              </Field>
+              <Field label={t('rpstBgmLabel')} hint={t('rpstBgmHint')}>
+                <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
+                  <input type="checkbox" checked={keepBgm} onChange={(e) => setKeepBgm(e.target.checked)} className="h-4 w-4 accent-sky-500" />
+                  {t('rpstBgmToggle')}
+                </label>
+              </Field>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成,免费' : 'edge-tts, free'}>
+                <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                  {VOICE_GROUPS.map((g) => (
+                    <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                      {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+                    </optgroup>
+                  ))}
+                </select>
+                <div className="flex gap-2 mt-2">
+                  {RATE_OPTIONS.map((r) => (
+                    <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-sky-400'}`}>
+                      {isZh ? r.zh : r.en}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label={isZh ? '字幕' : 'Subtitles'} hint={t('rpstSubHint')}>
+                <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
+                  <input type="checkbox" checked={subtitleEnabled} onChange={(e) => setSubtitleEnabled(e.target.checked)} className="h-4 w-4 accent-sky-500" />
+                  {t('rpstSubToggle')}
+                </label>
+                {subtitleEnabled && (
+                  <div className="flex gap-1 mt-2">
+                    {SUB_FONTSIZE_OPTIONS.map((f) => (
+                      <button key={f.v} type="button" onClick={() => setSubtitleFontSize(f.v === 64 ? 20 : f.v === 80 ? 26 : 16)}
+                        className={`px-3 py-1.5 rounded-lg text-xs border ${(subtitleFontSize <= 18 && f.v !== 64 && f.v !== 80) || (subtitleFontSize > 18 && subtitleFontSize <= 22 && f.v === 64) || (subtitleFontSize > 22 && f.v === 80) ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-sky-400'}`}>{isZh ? f.zh : f.en}</button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+            </>
+          )}
+
+          {step === 3 && (
+            <>
+              <Field label={t('rpstOutputLabel')}>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setOutputMode('local')} className={seg(outputMode === 'local')}>💾 {t('rpstOutputLocal')}</button>
+                  <button type="button" onClick={() => setOutputMode('upload')} className={seg(outputMode === 'upload')}>🚀 {t('rpstOutputUpload')}</button>
+                </div>
+              </Field>
+              <PublishPlatformPicker isZh={isZh} outputMode={outputMode} platforms={platforms} togglePlatform={togglePlatform}>
+                {matrixMode && outputMode === 'upload' && selectedPlatformIds.length > 0 && (
+                  <div className="mt-4">
+                    <Field label={isZh ? '发布账号' : 'Publish accounts'} hint={isZh ? '每个平台选一个矩阵账号,出片后用该号的指纹浏览器上传' : 'one matrix account per platform'}>
+                      <div className="space-y-2.5">
+                        {selectedPlatformIds.map((pid) => {
+                          const meta = PUBLISH_PLATFORMS.find((m) => m.id === pid);
+                          const label = meta ? `${meta.emoji} ${isZh ? meta.zh : meta.en}` : pid;
+                          const accs = accountsFor(pid);
+                          return (
+                            <div key={pid} className="flex items-center gap-3">
+                              <div className="w-24 shrink-0 text-sm font-medium dark:text-gray-200">{label}</div>
+                              <MatrixAccountSelect isZh={isZh} accounts={accs} value={accountByPlatform[pid] || ''}
+                                onChange={(id) => setAccountByPlatform((m) => ({ ...m, [pid]: id }))}
+                                onAddAccount={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: pid } })); onClose(); }} />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                  </div>
+                )}
+              </PublishPlatformPicker>
+              <Field label={t('rpstFreqLabel')}>
+                <div className="flex gap-2 flex-wrap">
+                  {(['once', '3h', '6h', 'daily_random'] as VideoRunInterval[]).map((v) => (
+                    <button key={v} type="button" onClick={() => setRunInterval(v)} className={`px-3 py-1.5 rounded-md text-xs border ${runInterval === v ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                      {v === 'once' ? t('rpstFreqOnce') : v === '3h' ? t('rpstFreq3h') : v === '6h' ? t('rpstFreq6h') : t('rpstFreqDailyRandom')}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 px-6 py-3.5 border-t dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
+          {err && (<p className="mb-2.5 rounded-lg border border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-600 dark:text-rose-400">{err}</p>)}
+          <div className="flex gap-3">
+            <button onClick={goBack} className="px-4 py-2.5 rounded-lg text-sm border dark:border-gray-700 dark:text-gray-300">{step === 1 ? (isZh ? '取消' : 'Cancel') : (isZh ? '上一步' : 'Back')}</button>
+            {step < MAX_STEP ? (
+              <button onClick={goNext} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600">{isZh ? '下一步' : 'Next'}</button>
+            ) : (
+              <button onClick={handleFinalClick} disabled={submitting} className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50">
+                {submitting ? (isZh ? '创建中…' : 'Creating…') : isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🌐 ${isZh ? '创建任务' : 'Create'}`}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {showLoginCheck && (
+        <VideoLoginCheckModal platforms={selectedPlatformIds} onCancel={() => setShowLoginCheck(false)} onConfirmed={() => { setShowLoginCheck(false); void handleCreate(); }} />
+      )}
     </div>
   );
 };

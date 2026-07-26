@@ -75,7 +75,17 @@ export interface VideoCreationInput {
    * 画面引擎:'stock'(默认,AI 分镜 + 在线素材库) | 'ai'(Seedance AI 自动成片,
    * 逐镜生成视频片段,参考图统一风格,走服务端代理逐片段计费)。
    */
-  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix' | 'repost';
+  /** engine==='repost'(翻译搬运):源视频链接(与 repostSourceFile 二选一,走 yt-dlp 通用下载)。 */
+  repostSourceUrl?: string;
+  /** engine==='repost':本地源视频文件绝对路径(与 repostSourceUrl 二选一,优先)。 */
+  repostSourceFile?: string;
+  /** engine==='repost':目标语言(翻译+配音,如 'zh'/'en'/'ja');空回落 scriptLang。 */
+  repostTargetLang?: string;
+  /** engine==='repost':源语言 hint(可选,给 ASR;空=auto 检测)。 */
+  repostSourceLang?: string;
+  /** engine==='repost':是否把原声压低垫底保留 BGM/音效(默认关=纯配音替换)。 */
+  repostKeepBgm?: boolean;
   /** engine==='localmix'(本地混剪)专属:本地素材文件夹绝对路径(出片时实时扫,新增素材自动用上)。 */
   localMixFolder?: string;
   /** engine==='localmix':素材形态。'video'=视频按换镜节奏循环混剪;'image'=图片逐镜缓慢运镜合成。 */
