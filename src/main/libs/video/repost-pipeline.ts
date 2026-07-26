@@ -217,7 +217,7 @@ async function translateSegments(
 
 // ── 逐句配音 + 对齐:静音填充 + atempo 微压 + 顺延漂移 ──
 async function synthAndAlign(
-  segs: Seg[], voice: string, rate: number, assetDir: string,
+  segs: Seg[], voice: string, rate: number, assetDir: string, targetTotalDur: number,
   onLog: (m: string) => void, signal?: AbortSignal,
 ): Promise<{ voiceTrackPath: string; totalDur: number; cues: TtsCue[] } | null> {
   const pieces: string[] = []; // 按时间轴排好的音频片段(含静音)文件列表
@@ -253,18 +253,16 @@ async function synthAndAlign(
     if (!ttsPath) { onLog(`⚠️ 第 ${i + 1} 句配音失败,跳过:${getLastTtsError().slice(0, 60)}`); continue; }
 
     const targetDur = Math.max(0.6, seg.end - seg.start);
-    let placed = ttsPath;
-    let effDur = ttsDur;
-    if (ttsDur > targetDur) {
-      // 溢出:压到原时长,但真实压缩封顶 1.15x(超过就只压 1.15、剩余顺延)。
-      const tempo = Math.min(1.15, ttsDur / targetDur);
-      if (tempo > 1.005) {
-        const comp = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_c.m4a`);
-        const r = await runFfmpeg(['-y', '-i', ttsPath, '-filter:a', `atempo=${tempo.toFixed(3)}`, '-c:a', 'aac', '-b:a', '128k', comp], { timeoutMs: 30_000, signal });
-        if (r.ok && fs.existsSync(comp)) { placed = comp; effDur = ttsDur / tempo; }
-      }
-    }
-    pieces.push(placed);
+    // 溢出压到原时长,真实压缩封顶 1.15x(再多就只压 1.15、剩余顺延)。
+    const tempo = ttsDur > targetDur ? Math.min(1.15, ttsDur / targetDur) : 1;
+    // ⚠️ 必须把每句【归一化成 aac 48k 立体声】:TTS 出的是 mp3、静音片段是 aac,格式不统一
+    //    concat demuxer -c copy 会失败。这一步同时做 atempo(需要时),一趟 ffmpeg 搞定。
+    const norm = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_n.m4a`);
+    const filt = tempo > 1.005 ? `atempo=${tempo.toFixed(3)}` : 'anull';
+    const nr = await runFfmpeg(['-y', '-i', ttsPath, '-filter:a', filt, '-ar', '48000', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', norm], { timeoutMs: 30_000, signal });
+    if (!nr.ok || !fs.existsSync(norm)) { onLog(`⚠️ 第 ${i + 1} 句音频归一化失败,跳过`); continue; }
+    const effDur = tempo > 1.005 ? ttsDur / tempo : ttsDur;
+    pieces.push(norm);
     // 记字幕 cue(最终时间轴)。
     cues.push({ text: seg.text, start: placeStart, end: placeStart + effDur });
     cursor = placeStart + effDur;
@@ -288,8 +286,16 @@ async function synthAndAlign(
     const cr2 = await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c:a', 'aac', '-b:a', '128k', voiceTrack], { timeoutMs: 120_000, signal });
     if (!cr2.ok || !fs.existsSync(voiceTrack)) return null;
   }
-  const totalDur = await probeDuration(voiceTrack).catch(() => cursor);
-  return { voiceTrackPath: voiceTrack, totalDur: totalDur || cursor, cues };
+  // 垫静音到源视频总长:末句配音结束点通常早于视频尾,不垫的话换音轨时 -shortest 会把
+  //   视频尾巴截掉。apad 补尾部静音,-t 钉到目标总长。
+  let finalTrack = voiceTrack;
+  if (targetTotalDur > 0.1) {
+    const padded = path.join(assetDir, 'voice_track_pad.m4a');
+    const pr = await runFfmpeg(['-y', '-i', voiceTrack, '-af', 'apad', '-t', targetTotalDur.toFixed(3), '-ar', '48000', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', padded], { timeoutMs: 120_000, signal });
+    if (pr.ok && fs.existsSync(padded)) finalTrack = padded;
+  }
+  const totalDur = await probeDuration(finalTrack).catch(() => cursor);
+  return { voiceTrackPath: finalTrack, totalDur: totalDur || cursor, cues };
 }
 
 // ── SRT(最终时间轴)──
@@ -378,7 +384,7 @@ export async function runRepostPipeline(
     tracker.start('voice', '🎤 逐句配音并对齐原时间轴…');
     const voice = input.voice || 'zh-CN-YunjianNeural';
     const rate = typeof input.voiceRate === 'number' ? input.voiceRate : 0;
-    const aligned = await synthAndAlign(translated, voice, rate, assetDir, (m) => tracker.progress(m), signal);
+    const aligned = await synthAndAlign(translated, voice, rate, assetDir, srcDur, (m) => tracker.progress(m), signal);
     if (!aligned) { const err = '配音失败(edge-tts 不可用或全部句子合成失败)'; tracker.fail('voice', err); return { ok: false, error: err }; }
     tracker.done('voice', `✅ 配音就绪 · ${aligned.cues.length} 句 · 共 ${aligned.totalDur.toFixed(1)}s`);
 
