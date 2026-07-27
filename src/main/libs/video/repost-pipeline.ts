@@ -17,7 +17,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
-import { runFfmpeg, probeDuration, isFfmpegAvailable } from './ffmpegRuntime';
+import { runFfmpeg, probeDuration, isFfmpegAvailable, getFfmpegPath } from './ffmpegRuntime';
 import { getYtdlpPath } from './ytdlpRuntime';
 import { synthesize, getVoiceFallbacks, getLastTtsError, alignSentencesToCues, type TtsCue } from './tts';
 import { resolvePublishCaption } from './publishCaptionWriter';
@@ -77,6 +77,10 @@ async function resolveSourceVideo(
       '--merge-output-format', 'mp4',
       '-o', outPath, url,
     ];
+    // ⚠️ 关键:显式告诉 yt-dlp 打包 ffmpeg 的位置。用户机器 ffmpeg 不在 PATH,yt-dlp 找不到
+    //   就放弃合并、退回下"单个最佳格式" —— TikTok 的单格式可能是纯视频流(无音轨),
+    //   这正是「抽取音轨失败」的根因。传了 location 合并必然可用。
+    try { const ff = getFfmpegPath(); if (ff && ff !== 'ffmpeg') args.push('--ffmpeg-location', ff); } catch { /* PATH 上有就不传 */ }
     const proxy = process.env.HTTPS_PROXY || process.env.https_proxy;
     if (proxy) args.push('--proxy', proxy);
     const child = spawn(ytdlp, args, { windowsHide: true });
