@@ -23,6 +23,7 @@ import { getYtdlpPath } from './ytdlpRuntime';
 import { synthesize, getVoiceFallbacks, getLastTtsError, alignSentencesToCues, type TtsCue } from './tts';
 import { resolvePublishCaption } from './publishCaptionWriter';
 import { callDeepSeek } from './scriptWriter';
+import { chargeRepostVideo, refundMode1Video } from './billing';
 import { getNoobClawAuthToken } from '../claudeSettings';
 import {
   ProgressTracker, resolveOutputDirs, throwIfAborted,
@@ -119,8 +120,8 @@ async function transcribeAudio(
       .map((s: any) => ({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text || '').trim() }))
       .filter((s: Seg) => s.text && s.end > s.start);
     if (segs.length === 0) return { ok: false, error: '转写结果为空' };
-    // ASR 端点自己按真实时长扣费(billableTokens 不外露),这里成本记 0,费用已在服务端扣。
-    return { ok: true, segments: segs, language: String(j?.language || '').trim(), tokens: 0, costUsd: 0 };
+    // ASR 端点已按真实时长扣了【一份】;返回 costUsd 供 pipeline 累计 →「token 消耗翻倍」时再扣一份。
+    return { ok: true, segments: segs, language: String(j?.language || '').trim(), tokens: Number(j?.chargedTokens) || 0, costUsd: Number(j?.costUsd) || 0 };
   } catch (e: any) {
     return { ok: false, error: `转写请求异常:${String(e?.message || e).slice(0, 120)}` };
   }
@@ -340,6 +341,11 @@ export async function runRepostPipeline(
   };
   const targetLabel = LANG_LABEL[targetLang] || '简体中文';
 
+  // 计费:token 消耗(ASR+翻译)累计,合成前扣「平台费 + 翻倍那份」;失败按 chargeId 退回。
+  let aiCostUsd = 0;
+  let chargeId: string | undefined;
+  let refundOnExit = false;
+
   try {
     // ── STEP 1:源视频 ──
     throwIfAborted(signal);
@@ -368,13 +374,15 @@ export async function runRepostPipeline(
       tracker.fail('transcribe', err); return { ok: false, error: err };
     }
     const asrSegments = asr.segments;
+    tracker.addTokens(asr.tokens || 0, asr.costUsd || 0); // 显示;翻倍靠下面累计 aiCostUsd
+    aiCostUsd += asr.costUsd || 0;
     const regrouped = regroupSegments(asrSegments);
     tracker.done('transcribe', `✅ 转写完成 · ${asrSegments.length} 条 → 重组 ${regrouped.length} 句`);
 
     // ── STEP 3:翻译 ──
     throwIfAborted(signal);
     tracker.start('translate', `🌐 翻译为 ${targetLabel}…`);
-    const translated = await translateSegments(regrouped, targetLabel, (tk, usd) => tracker.addTokens(tk, usd), signal);
+    const translated = await translateSegments(regrouped, targetLabel, (tk, usd) => { tracker.addTokens(tk, usd); aiCostUsd += usd; }, signal);
     const nonEmpty = translated.filter((s) => s.text.trim());
     if (nonEmpty.length === 0) { const err = '翻译结果为空'; tracker.fail('translate', err); return { ok: false, error: err }; }
     tracker.done('translate', `✅ 翻译完成 · ${nonEmpty.length} 句`);
@@ -391,6 +399,20 @@ export async function runRepostPipeline(
     // ── STEP 5:合成(换音轨 + 可选保留原声垫底 + 可选烧字幕)──
     throwIfAborted(signal);
     tracker.start('compose', '🎞️ 合成成片…');
+
+    // 计费:合成前扣「每条视频平台费 + token 消耗翻倍那份(=aiCostUsd 折算)」;失败退回。
+    const charge = await chargeRepostVideo(aiCostUsd);
+    if (!charge.ok) {
+      const err = charge.reason === 'insufficient' ? '余额不足,无法生成(请充值后重试)'
+        : charge.reason === 'no_auth' ? '未登录 NoobClaw,无法生成'
+        : '平台基础费预扣失败,请稍后重试';
+      tracker.fail('compose', err);
+      return { ok: false, error: err };
+    }
+    chargeId = charge.chargeId;
+    refundOnExit = true;
+    tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
+    tracker.progress(`💎 已扣 ${charge.chargedTokens || 0} 积分(平台费 + token 消耗翻倍),失败将自动退回`);
 
     // 组装最终音轨:配音为主;可选把原声压低(0.12)垫底保 BGM/音效。
     let finalAudio = aligned.voiceTrackPath;
@@ -431,6 +453,7 @@ export async function runRepostPipeline(
       if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(换音轨出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
     }
     tracker.done('compose', `📦 成片就绪 · 📂 ${destDir}`);
+    refundOnExit = false; // 成片已产出 → 费用照收(发布失败不退,与其它引擎一致)
 
     // ── STEP 6:发布(复用现有)──
     tracker.start('publish');
@@ -477,6 +500,13 @@ export async function runRepostPipeline(
     tracker.fail('compose', err.slice(0, 300));
     return { ok: false, error: err.slice(0, 300) };
   } finally {
+    // 成片失败 → 退回合成前预扣的(平台费 + 翻倍那份)。幂等,按 chargeId。
+    if (refundOnExit && chargeId) {
+      try {
+        const refunded = await refundMode1Video(chargeId);
+        tracker.progress(refunded ? '↩️ 成片失败,已退回预扣费用' : '⚠️ 成片失败,退款请求未成功(可联系客服核对)');
+      } catch { /* 退款失败仅忽略 */ }
+    }
     try { fs.rmSync(assetDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }

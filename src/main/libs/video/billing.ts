@@ -114,6 +114,17 @@ export async function chargeHotspotImages(imageCount: number, cloudProxied: bool
 }
 
 /**
+ * 翻译搬运计费:每条视频平台费 + token 消耗费【翻倍】(ASR+翻译已各扣一份,服务端凭
+ * aiCostUsd 再扣第二份)。aiCostUsd = ASR costUsd + 翻译 costUsd + 发布文案 costUsd 之和。
+ * 绝不抛错。
+ */
+export async function chargeRepostVideo(aiCostUsd: number): Promise<VideoChargeResult> {
+  const token = getNoobClawAuthToken();
+  if (!token) return { ok: false, reason: 'no_auth' };
+  return postCharge(token, { mode: 'repost', videoCount: 1, aiCostUsd: Math.max(0, Number(aiCostUsd) || 0) });
+}
+
+/**
  * 退回此前预扣的平台基础费(成片失败时调)。绝不抛错 —— 失败仅返回 false。
  * 幂等:服务端按 chargeId 防重复退,客户端可安全重试。
  */
