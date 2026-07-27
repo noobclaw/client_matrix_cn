@@ -93,7 +93,7 @@ async function resolveSourceVideo(
 // ── 后端 ASR:上传音轨 → 带时间戳字幕 ──
 async function transcribeAudio(
   audioPath: string, durationSec: number, sourceLang: string,
-): Promise<{ ok: boolean; segments?: Seg[]; language?: string; tokens?: number; costUsd?: number; error?: string }> {
+): Promise<{ ok: boolean; segments?: Seg[]; language?: string; tokens?: number; costUsd?: number; error?: string; noSpeech?: boolean }> {
   const token = getNoobClawAuthToken();
   if (!token) return { ok: false, error: '未登录 NoobClaw,无法转写' };
   try {
@@ -110,7 +110,8 @@ async function transcribeAudio(
     if (!resp.ok) {
       const j: any = await resp.json().catch(() => ({}));
       if (resp.status === 402) return { ok: false, error: '积分余额不足,无法转写(请充值后重试)' };
-      if (resp.status === 422) return { ok: false, error: '未识别到可用语音(纯音乐/静音?)' };
+      // 422=未识别到人声(纯音乐/静音)。不算错误 → 让 pipeline 走「原片直发保留原声」兜底。
+      if (resp.status === 422) return { ok: true, segments: [], noSpeech: true, tokens: 0, costUsd: 0 };
       if (resp.status === 503) return { ok: false, error: '转写服务未配置(请联系管理员填 ASR key)' };
       return { ok: false, error: `转写失败:${j?.message || j?.error || resp.status}` };
     }
@@ -118,7 +119,7 @@ async function transcribeAudio(
     const segs: Seg[] = (Array.isArray(j?.segments) ? j.segments : [])
       .map((s: any) => ({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text || '').trim() }))
       .filter((s: Seg) => s.text && s.end > s.start);
-    if (segs.length === 0) return { ok: false, error: '转写结果为空' };
+    if (segs.length === 0) return { ok: true, segments: [], noSpeech: true, tokens: 0, costUsd: 0 };
     // ASR 端点已按真实时长扣了【一份】;返回 costUsd 供 pipeline 累计 →「token 消耗翻倍」时再扣一份。
     return { ok: true, segments: segs, language: String(j?.language || '').trim(), tokens: Number(j?.chargedTokens) || 0, costUsd: Number(j?.costUsd) || 0 };
   } catch (e: any) {
@@ -354,12 +355,12 @@ export async function runRepostPipeline(
     const sourceVideoPath = src.videoPath;
     tracker.done('source', '✅ 源视频就绪');
 
-    // 抽音轨(用于 ASR)。抽成 mp3 —— 火山「录音文件极速版」只吃 WAV/MP3/OGG,不认 m4a/aac;
-    //   mp3 两个 provider(火山 / OpenAI whisper)都认。44.1k 立体声、q4 体积够小(base64 上传)。
+    // 抽音轨(用于 ASR)。抽成 WAV(pcm_s16le)—— 任何 ffmpeg 都自带 pcm 编码器(不像 libmp3lame
+    //   可能没编进静态包,Mac 版尤其);火山/whisper 都收 WAV。16k 单声道正是火山要的格式、体积小。
     throwIfAborted(signal);
     tracker.start('transcribe', '🎧 抽取音轨…');
-    const audioPath = path.join(assetDir, 'source_audio.mp3');
-    const ax = await runFfmpeg(['-y', '-i', sourceVideoPath, '-vn', '-ac', '2', '-ar', '44100', '-c:a', 'libmp3lame', '-q:a', '4', audioPath], { timeoutMs: 180_000, signal });
+    const audioPath = path.join(assetDir, 'source_audio.wav');
+    const ax = await runFfmpeg(['-y', '-i', sourceVideoPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', audioPath], { timeoutMs: 180_000, signal });
     if (!ax.ok || !fs.existsSync(audioPath)) {
       const err = '抽取音轨失败(源视频可能无音频轨)';
       tracker.fail('transcribe', err); return { ok: false, error: err };
@@ -369,38 +370,47 @@ export async function runRepostPipeline(
     // ── STEP 2:转写 ──
     tracker.progress('☁️ 上传音轨转写(按音频分钟计费)…');
     const asr = await transcribeAudio(audioPath, srcDur, String((input as any).repostSourceLang || 'auto'));
-    if (!asr.ok || !asr.segments || asr.segments.length === 0) {
-      const err = asr.error || '转写结果为空';
-      tracker.fail('transcribe', err); return { ok: false, error: err };
+    if (!asr.ok) { const err = asr.error || '转写失败'; tracker.fail('transcribe', err); return { ok: false, error: err }; }
+    const noSpeech = !!asr.noSpeech || !asr.segments || asr.segments.length === 0;
+
+    let translated: Seg[] = [];
+    let aligned: { voiceTrackPath: string; totalDur: number; cues: TtsCue[] } | null = null;
+
+    if (noSpeech) {
+      // 无人声(纯音乐/风景片)→ 原片直发,保留原有全部声音,只 AI 配目标语言标题/简介。
+      tracker.done('transcribe', '⏭ 未检测到人声 → 原片直发(保留原声)');
+      tracker.done('translate', '⏭ 无人声,跳过翻译');
+      tracker.done('voice', '⏭ 无人声,跳过配音');
+    } else {
+      const asrSegments = asr.segments!;
+      tracker.addTokens(asr.tokens || 0, asr.costUsd || 0); // 显示;翻倍靠下面累计 aiCostUsd
+      aiCostUsd += asr.costUsd || 0;
+      const regrouped = regroupSegments(asrSegments);
+      tracker.done('transcribe', `✅ 转写完成 · ${asrSegments.length} 条 → 重组 ${regrouped.length} 句`);
+
+      // ── STEP 3:翻译 ──
+      throwIfAborted(signal);
+      tracker.start('translate', `🌐 翻译为 ${targetLabel}…`);
+      translated = await translateSegments(regrouped, targetLabel, (tk, usd) => { tracker.addTokens(tk, usd); aiCostUsd += usd; }, signal);
+      const nonEmpty = translated.filter((s) => s.text.trim());
+      if (nonEmpty.length === 0) { const err = '翻译结果为空'; tracker.fail('translate', err); return { ok: false, error: err }; }
+      tracker.done('translate', `✅ 翻译完成 · ${nonEmpty.length} 句`);
+
+      // ── STEP 4:配音 + 对齐 ──
+      throwIfAborted(signal);
+      tracker.start('voice', '🎤 逐句配音并对齐原时间轴…');
+      const voice = input.voice || 'zh-CN-YunjianNeural';
+      const rate = typeof input.voiceRate === 'number' ? input.voiceRate : 0;
+      aligned = await synthAndAlign(translated, voice, rate, assetDir, srcDur, (m) => tracker.progress(m), signal);
+      if (!aligned) { const err = '配音失败(edge-tts 不可用或全部句子合成失败)'; tracker.fail('voice', err); return { ok: false, error: err }; }
+      tracker.done('voice', `✅ 配音就绪 · ${aligned.cues.length} 句 · 共 ${aligned.totalDur.toFixed(1)}s`);
     }
-    const asrSegments = asr.segments;
-    tracker.addTokens(asr.tokens || 0, asr.costUsd || 0); // 显示;翻倍靠下面累计 aiCostUsd
-    aiCostUsd += asr.costUsd || 0;
-    const regrouped = regroupSegments(asrSegments);
-    tracker.done('transcribe', `✅ 转写完成 · ${asrSegments.length} 条 → 重组 ${regrouped.length} 句`);
 
-    // ── STEP 3:翻译 ──
-    throwIfAborted(signal);
-    tracker.start('translate', `🌐 翻译为 ${targetLabel}…`);
-    const translated = await translateSegments(regrouped, targetLabel, (tk, usd) => { tracker.addTokens(tk, usd); aiCostUsd += usd; }, signal);
-    const nonEmpty = translated.filter((s) => s.text.trim());
-    if (nonEmpty.length === 0) { const err = '翻译结果为空'; tracker.fail('translate', err); return { ok: false, error: err }; }
-    tracker.done('translate', `✅ 翻译完成 · ${nonEmpty.length} 句`);
-
-    // ── STEP 4:配音 + 对齐 ──
-    throwIfAborted(signal);
-    tracker.start('voice', '🎤 逐句配音并对齐原时间轴…');
-    const voice = input.voice || 'zh-CN-YunjianNeural';
-    const rate = typeof input.voiceRate === 'number' ? input.voiceRate : 0;
-    const aligned = await synthAndAlign(translated, voice, rate, assetDir, srcDur, (m) => tracker.progress(m), signal);
-    if (!aligned) { const err = '配音失败(edge-tts 不可用或全部句子合成失败)'; tracker.fail('voice', err); return { ok: false, error: err }; }
-    tracker.done('voice', `✅ 配音就绪 · ${aligned.cues.length} 句 · 共 ${aligned.totalDur.toFixed(1)}s`);
-
-    // ── STEP 5:合成(换音轨 + 可选保留原声垫底 + 可选烧字幕)──
+    // ── STEP 5:合成 ──
     throwIfAborted(signal);
     tracker.start('compose', '🎞️ 合成成片…');
 
-    // 计费:合成前扣「每条视频平台费 + token 消耗翻倍那份(=aiCostUsd 折算)」;失败退回。
+    // 计费:无人声(原片直发)只扣平台费(aiCostUsd=0,不翻倍);有配音则平台费 + token 消耗翻倍。
     const charge = await chargeRepostVideo(aiCostUsd);
     if (!charge.ok) {
       const err = charge.reason === 'insufficient' ? '余额不足,无法生成(请充值后重试)'
@@ -412,47 +422,58 @@ export async function runRepostPipeline(
     chargeId = charge.chargeId;
     refundOnExit = true;
     tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
-    tracker.progress(`💎 已扣 ${charge.chargedTokens || 0} 积分(平台费 + token 消耗翻倍),失败将自动退回`);
-
-    // 组装最终音轨:配音为主;可选把原声压低(0.12)垫底保 BGM/音效。
-    let finalAudio = aligned.voiceTrackPath;
-    if ((input as any).repostKeepBgm && audioPath) {
-      const mixed = path.join(assetDir, 'final_audio.m4a');
-      const r = await runFfmpeg([
-        '-y', '-i', aligned.voiceTrackPath, '-i', audioPath,
-        '-filter_complex', '[1:a]volume=0.12[bg];[0:a][bg]amix=inputs=2:duration=first:normalize=0[a]',
-        '-map', '[a]', '-c:a', 'aac', '-b:a', '160k', mixed,
-      ], { timeoutMs: 120_000, signal });
-      if (r.ok && fs.existsSync(mixed)) finalAudio = mixed;
-      else tracker.progress('⚠️ 原声混音失败,改用纯配音');
-    }
+    tracker.progress(`💎 已扣 ${charge.chargedTokens || 0} 积分(${noSpeech ? '平台费' : '平台费 + token 消耗翻倍'}),失败将自动退回`);
 
     const outPath = path.join(destDir, `翻译搬运_${targetLang}.mp4`);
-    const burn = input.subtitleEnabled !== false;
-    if (burn) {
-      // 烧译文字幕:需重编码视频(subtitles 滤镜)。写 SRT → -vf subtitles。
-      const srtPath = path.join(assetDir, 'sub.srt');
-      fs.writeFileSync(srtPath, buildSrt(aligned.cues), 'utf8');
-      const fontSize = input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 20;
-      const style = `FontSize=${fontSize},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1,Shadow=0,MarginV=40`;
-      const r = await runFfmpeg([
-        '-y', '-i', sourceVideoPath, '-i', finalAudio,
-        '-vf', `subtitles='${escSubPath(srtPath)}':force_style='${style}'`,
-        '-map', '0:v:0', '-map', '1:a:0',
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-        '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
-      ], { timeoutMs: 600_000, signal });
-      if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(字幕烧录/编码出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+
+    if (noSpeech || !aligned) {
+      // 原片直发:保留原声,直接 remux(零转码 + faststart);容器不兼容再重编码兜底。
+      const r = await runFfmpeg(['-y', '-i', sourceVideoPath, '-c', 'copy', '-movflags', '+faststart', outPath], { timeoutMs: 180_000, signal });
+      if (!r.ok || !fs.existsSync(outPath)) {
+        const r2 = await runFfmpeg(['-y', '-i', sourceVideoPath, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', outPath], { timeoutMs: 600_000, signal });
+        if (!r2.ok || !fs.existsSync(outPath)) { const err = '合成失败(原片直发出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+      }
+      tracker.done('compose', `📦 原片直发就绪(保留原声)· 📂 ${destDir}`);
     } else {
-      // 不烧字幕:换音轨零转码。
-      const r = await runFfmpeg([
-        '-y', '-i', sourceVideoPath, '-i', finalAudio,
-        '-map', '0:v:0', '-map', '1:a:0',
-        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
-      ], { timeoutMs: 300_000, signal });
-      if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(换音轨出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+      // 有配音:组装最终音轨(配音为主;可选原声压低垫底保 BGM/音效)+ 换音轨(可选烧字幕)。
+      let finalAudio = aligned.voiceTrackPath;
+      if ((input as any).repostKeepBgm) {
+        const mixed = path.join(assetDir, 'final_audio.m4a');
+        // ⚠️ 原声垫底用【源视频音轨】,不用上面抽的 wav(那是 16k 单声道给 ASR 用的,做垫底会难听)。
+        const r = await runFfmpeg([
+          '-y', '-i', aligned.voiceTrackPath, '-i', sourceVideoPath,
+          '-filter_complex', '[1:a]volume=0.12[bg];[0:a][bg]amix=inputs=2:duration=first:normalize=0[a]',
+          '-map', '[a]', '-c:a', 'aac', '-b:a', '160k', mixed,
+        ], { timeoutMs: 120_000, signal });
+        if (r.ok && fs.existsSync(mixed)) finalAudio = mixed;
+        else tracker.progress('⚠️ 原声混音失败,改用纯配音');
+      }
+      const burn = input.subtitleEnabled !== false;
+      if (burn) {
+        // 烧译文字幕:需重编码视频(subtitles 滤镜)。写 SRT → -vf subtitles。
+        const srtPath = path.join(assetDir, 'sub.srt');
+        fs.writeFileSync(srtPath, buildSrt(aligned.cues), 'utf8');
+        const fontSize = input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 20;
+        const style = `FontSize=${fontSize},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1,Shadow=0,MarginV=40`;
+        const r = await runFfmpeg([
+          '-y', '-i', sourceVideoPath, '-i', finalAudio,
+          '-vf', `subtitles='${escSubPath(srtPath)}':force_style='${style}'`,
+          '-map', '0:v:0', '-map', '1:a:0',
+          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+          '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
+        ], { timeoutMs: 600_000, signal });
+        if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(字幕烧录/编码出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+      } else {
+        // 不烧字幕:换音轨零转码。
+        const r = await runFfmpeg([
+          '-y', '-i', sourceVideoPath, '-i', finalAudio,
+          '-map', '0:v:0', '-map', '1:a:0',
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
+        ], { timeoutMs: 300_000, signal });
+        if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(换音轨出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+      }
+      tracker.done('compose', `📦 成片就绪 · 📂 ${destDir}`);
     }
-    tracker.done('compose', `📦 成片就绪 · 📂 ${destDir}`);
     refundOnExit = false; // 成片已产出 → 费用照收(发布失败不退,与其它引擎一致)
 
     // ── STEP 6:发布(复用现有)──

@@ -2026,7 +2026,13 @@ const VideoCreateFlow: React.FC<{
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 2026-06-22 用户要求:在线素材(素材)放第一、热搜成片放第二。 */}
+        {/* 2026-07-27 用户要求:翻译搬运放第一,其余依次往后。 */}
+        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🌐" onOpen={openWithLogin(() => setRepostOpen(true))} onGoTasks={onGoTasks}
+          tagZh={i18nService.t('rpstCardTag')} tagEn={i18nService.t('rpstCardTag')}
+          titleZh={i18nService.t('rpstCardTitle')} titleEn={i18nService.t('rpstCardTitle')}
+          descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
+          costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
+          btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
@@ -2057,12 +2063,6 @@ const VideoCreateFlow: React.FC<{
           descZh={i18nService.t('vmixCardDesc')} descEn={i18nService.t('vmixCardDesc')}
           costZh={i18nService.t('vmixCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('vmixCardCost').replace('{fee}', feeEn)}
           btnZh={i18nService.t('vmixCardBtn')} btnEn={i18nService.t('vmixCardBtn')} />
-        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🌐" onOpen={openWithLogin(() => setRepostOpen(true))} onGoTasks={onGoTasks}
-          tagZh={i18nService.t('rpstCardTag')} tagEn={i18nService.t('rpstCardTag')}
-          titleZh={i18nService.t('rpstCardTitle')} titleEn={i18nService.t('rpstCardTitle')}
-          descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
-          costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
-          btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
         <VideoScenarioEntryCard isZh={isZh} accent="orange" icon="🧵" onOpen={openWithLogin(() => setThreadOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 爆帖成片" tagEn="AI Auto · Viral Threads"
           titleZh="爆帖成片 · 海外神帖神评" titleEn="Viral Threads · Reddit Stories"
@@ -5732,9 +5732,9 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
-  type RpStep = 1 | 2 | 3;
+  type RpStep = 1 | 2 | 3 | 4;
   const [step, setStep] = useState<RpStep>(1);
-  const MAX_STEP = 3;
+  const MAX_STEP = 4;
   const [sourceMode, setSourceMode] = useState<'link' | 'file'>((ei as any)?.repostSourceFile ? 'file' : 'link');
   const [sourceUrl, setSourceUrl] = useState<string>((ei as any)?.repostSourceUrl || '');
   const [sourceFile, setSourceFile] = useState<string>((ei as any)?.repostSourceFile || '');
@@ -5876,7 +5876,9 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
               <div className={`h-px w-3 ${step > 1 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={2} active={step === 2} done={step > 2} label={t('rpstStepVoice')} />
               <div className={`h-px w-3 ${step > 2 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={false} label={t('rpstStepOutput')} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={t('rpstStepOutput')} />
+              <div className={`h-px w-3 ${step > 3 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={false} label={t('rpstStepFreq')} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -5982,16 +5984,19 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                   </div>
                 )}
               </PublishPlatformPicker>
-              <Field label={t('rpstFreqLabel')}>
-                <div className="flex gap-2 flex-wrap">
-                  {(['once', '3h', '6h', 'daily_random'] as VideoRunInterval[]).map((v) => (
-                    <button key={v} type="button" onClick={() => setRunInterval(v)} className={`px-3 py-1.5 rounded-md text-xs border ${runInterval === v ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}>
-                      {v === 'once' ? t('rpstFreqOnce') : v === '3h' ? t('rpstFreq3h') : v === '6h' ? t('rpstFreq6h') : t('rpstFreqDailyRandom')}
-                    </button>
-                  ))}
-                </div>
-              </Field>
             </>
+          )}
+
+          {step === 4 && (
+            <Field label={t('rpstFreqLabel')}>
+              <div className="flex gap-2 flex-wrap">
+                {(['once', '3h', '6h', 'daily_random'] as VideoRunInterval[]).map((v) => (
+                  <button key={v} type="button" onClick={() => setRunInterval(v)} className={`px-3 py-1.5 rounded-md text-xs border ${runInterval === v ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                    {v === 'once' ? t('rpstFreqOnce') : v === '3h' ? t('rpstFreq3h') : v === '6h' ? t('rpstFreq6h') : t('rpstFreqDailyRandom')}
+                  </button>
+                ))}
+              </div>
+            </Field>
           )}
         </div>
 
