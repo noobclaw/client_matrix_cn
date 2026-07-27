@@ -18,7 +18,6 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import { runFfmpeg, probeDuration, isFfmpegAvailable } from './ffmpegRuntime';
-import { deriveVideoExtras } from './deriveExtras';
 import { getYtdlpPath } from './ytdlpRuntime';
 import { synthesize, getVoiceFallbacks, getLastTtsError, alignSentencesToCues, type TtsCue } from './tts';
 import { resolvePublishCaption } from './publishCaptionWriter';
@@ -355,12 +354,13 @@ export async function runRepostPipeline(
     const sourceVideoPath = src.videoPath;
     tracker.done('source', '✅ 源视频就绪');
 
-    // 抽音轨(用于 ASR)。
+    // 抽音轨(用于 ASR)。抽成 mp3 —— 火山「录音文件极速版」只吃 WAV/MP3/OGG,不认 m4a/aac;
+    //   mp3 两个 provider(火山 / OpenAI whisper)都认。44.1k 立体声、q4 体积够小(base64 上传)。
     throwIfAborted(signal);
     tracker.start('transcribe', '🎧 抽取音轨…');
-    const extras = await deriveVideoExtras(sourceVideoPath, { audio: true });
-    const audioPath = extras.audioPath;
-    if (!audioPath || !fs.existsSync(audioPath)) {
+    const audioPath = path.join(assetDir, 'source_audio.mp3');
+    const ax = await runFfmpeg(['-y', '-i', sourceVideoPath, '-vn', '-ac', '2', '-ar', '44100', '-c:a', 'libmp3lame', '-q:a', '4', audioPath], { timeoutMs: 180_000, signal });
+    if (!ax.ok || !fs.existsSync(audioPath)) {
       const err = '抽取音轨失败(源视频可能无音频轨)';
       tracker.fail('transcribe', err); return { ok: false, error: err };
     }
