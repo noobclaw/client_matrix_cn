@@ -69,8 +69,10 @@ async function resolveSourceVideo(
   onLog(`正在下载源视频:${url.slice(0, 80)}`);
   const ok = await new Promise<boolean>((resolve) => {
     // 优先 mp4(h264/aac,后续换音轨可 -c:v copy);合并交给 yt-dlp/ffmpeg。
+    // ⚠️ 别用 ext=mp4 限制:个别站(TikTok)的"最佳 mp4"可能是【纯视频无音轨】,下下来抽音必挂。
+    //   bv*+ba/b = 最佳视频+最佳音频合并,再不行退最佳单流(通常也带音轨)→ 保证有声音。
     const args = [
-      '-f', 'bv*[ext=mp4][height<=1080]+ba[ext=m4a]/b[ext=mp4]/b',
+      '-f', 'bv*+ba/b',
       '--no-playlist', '--retries', '5', '--no-progress',
       '--merge-output-format', 'mp4',
       '-o', outPath, url,
@@ -360,9 +362,15 @@ export async function runRepostPipeline(
     throwIfAborted(signal);
     tracker.start('transcribe', '🎧 抽取音轨…');
     const audioPath = path.join(assetDir, 'source_audio.wav');
-    const ax = await runFfmpeg(['-y', '-i', sourceVideoPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', audioPath], { timeoutMs: 180_000, signal });
+    let ax = await runFfmpeg(['-y', '-i', sourceVideoPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', audioPath], { timeoutMs: 180_000, signal });
     if (!ax.ok || !fs.existsSync(audioPath)) {
-      const err = '抽取音轨失败(源视频可能无音频轨)';
+      // 兜底:去掉重采样直接抽(个别源的采样率/声道让第一条挂);仍失败就把 ffmpeg 真实报错亮出来。
+      tracker.progress(`⚠️ 抽音重试(第一次:${((ax.stderr || '').trim().split('\n').pop() || '').slice(0, 140)})…`);
+      ax = await runFfmpeg(['-y', '-i', sourceVideoPath, '-vn', '-c:a', 'pcm_s16le', audioPath], { timeoutMs: 180_000, signal });
+    }
+    if (!ax.ok || !fs.existsSync(audioPath)) {
+      const reason = (ax.stderr || '').split('\n').map((l) => l.trim()).filter(Boolean).slice(-3).join(' | ').slice(-240);
+      const err = `抽取音轨失败:${reason || '源视频可能无音频轨/文件损坏'}`;
       tracker.fail('transcribe', err); return { ok: false, error: err };
     }
     const srcDur = await probeDuration(sourceVideoPath).catch(() => 0);
