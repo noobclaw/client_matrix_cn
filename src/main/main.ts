@@ -3030,6 +3030,27 @@ if (!gotTheLock) {
       }
     });
 
+    // prepareBgmPreview(内嵌试听用):把 token 解析成真实音频(云端按需下载),返回可播 URL。
+    // Electron 开发态没有 sidecar HTTP,直接回 data: URL(webview 能播);Tauri 出货走 sidecar。
+    ipcMain.handle('video:prepareBgmPreview', async (_e, token: string) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const { resolveBgmPath } = require('./libs/video/bgm');
+        const file: string | undefined = await resolveBgmPath(token);
+        if (!file || !fs.existsSync(file)) return '';
+        const buf = fs.readFileSync(file);
+        if (buf.length > 25 * 1024 * 1024) return '';
+        const ext = path.extname(file).toLowerCase().replace('.', '');
+        const mime = ext === 'm4a' ? 'audio/mp4' : ext === 'wav' ? 'audio/wav'
+          : ext === 'aac' ? 'audio/aac' : ext === 'ogg' ? 'audio/ogg'
+          : ext === 'flac' ? 'audio/flac' : 'audio/mpeg';
+        return `data:${mime};base64,${buf.toString('base64')}`;
+      } catch {
+        return '';
+      }
+    });
+
     ipcMain.handle('video:pickAudio', async () => {
       const parent = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
       const result = await dialog.showOpenDialog({

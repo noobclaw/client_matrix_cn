@@ -1362,6 +1362,22 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, '');
             }
           }
+          case 'video:prepareBgmPreview': {
+            // BGM 内嵌试听:把 token 解析成真实音频文件(云端曲目会在此按需下载并缓存),
+            // 注册到 localFileServer,回一个 http://127.0.0.1:PORT/api/local-file?token= 的
+            // 可播 URL(渲染端 <audio> 直接播)。比 data: URL 稳、不占内存。失败回 ''。
+            try {
+              const fs = await import('fs');
+              const { resolveBgmPath } = await import('./libs/video/bgm');
+              const { registerFile, buildUrl } = await import('./libs/localFileServer');
+              const file = await resolveBgmPath(args[0]);
+              if (!file || !fs.existsSync(file)) return writeJSON(res, 200, '');
+              const token = registerFile(file, { ttlMs: 30 * 60 * 1000 });
+              return writeJSON(res, 200, buildUrl(token, PORT));
+            } catch {
+              return writeJSON(res, 200, '');
+            }
+          }
           case 'video:validateMedia': {
             // Tauri 下文件选择走渲染端原生弹窗,无法在那里 fs.stat;由这里按
             // 格式 + 大小白名单校验选中的路径,回 { valid, rejected } 给 shim 提示用户。

@@ -353,6 +353,20 @@ class VideoCreationService {
     }
   }
 
+  /**
+   * 内嵌试听用:把 BGM token 解析成一个可直接喂给 <audio> 的 URL(云端曲目按需下载)。
+   * Tauri 走 sidecar 的 /api/local-file 流式端点;Electron 开发态回 data: URL。''=失败/未挂。
+   */
+  async prepareBgmPreview(token: string): Promise<string> {
+    if (!this.api?.prepareBgmPreview) return '';
+    try {
+      const u = await this.api.prepareBgmPreview(token);
+      return typeof u === 'string' ? u : '';
+    } catch {
+      return '';
+    }
+  }
+
   /** 用系统默认播放器打开成片。 */
   async openFile(path: string): Promise<void> {
     try {

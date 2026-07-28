@@ -118,6 +118,7 @@ contextBridge.exposeInMainWorld('electron', {
     pickAudio: () => ipcRenderer.invoke('video:pickAudio'),
     /** Resolve a BGM token to its local absolute path (downloads cloud tracks on first use) so the renderer can reveal it in the file manager. */
     resolveBgmPath: (token: string) => ipcRenderer.invoke('video:resolveBgmPath', token),
+    prepareBgmPreview: (token: string) => ipcRenderer.invoke('video:prepareBgmPreview', token),
     /** Open a produced file with the OS default player. */
     openFile: (filePath: string) => ipcRenderer.invoke('video:openFile', filePath),
     /** Subscribe to per-job progress events. Returns an unsubscribe fn. */

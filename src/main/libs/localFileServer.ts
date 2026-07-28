@@ -129,6 +129,8 @@ function guessMime(fileName: string): string {
     avi: 'video/x-msvideo', wmv: 'video/x-ms-wmv', flv: 'video/x-flv',
     jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
     gif: 'image/gif', webp: 'image/webp',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac',
+    wav: 'audio/wav', ogg: 'audio/ogg', flac: 'audio/flac',
   };
   return m[ext] || 'application/octet-stream';
 }

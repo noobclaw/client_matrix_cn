@@ -2847,8 +2847,25 @@ const VideoConfigModal: React.FC<{
       setBgmOpening(false);
     }
   };
-  // 切换曲目时清掉上一首的「打开失败」红字,避免残留误导(选 A 失败 → 切 B 仍显红字)。
-  useEffect(() => { setPreviewError(''); }, [bgmPath]);
+  // BGM 内嵌试听:解析成可播 URL(云端按需下载),用 <audio controls autoPlay> 直接播。
+  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
+  const previewBgm = async (token: string) => {
+    if (!token || bgmPreviewLoading) return;
+    setBgmPreviewLoading(true);
+    setPreviewError('');
+    try {
+      const url = await videoCreationService.prepareBgmPreview(token);
+      if (url) setBgmPreviewUrl(url);
+      else setPreviewError(isZh ? '试听失败：未取到音频' : 'Preview failed: no audio');
+    } catch {
+      setPreviewError(isZh ? '试听失败' : 'Preview failed');
+    } finally {
+      setBgmPreviewLoading(false);
+    }
+  };
+  // 切换曲目时清掉上一首的「打开失败」红字 + 试听播放器,避免残留误导(选 A → 切 B 仍在)。
+  useEffect(() => { setPreviewError(''); setBgmPreviewUrl(''); }, [bgmPath]);
 
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
 
@@ -3688,13 +3705,24 @@ const VideoConfigModal: React.FC<{
                       </select>
                       <button
                         type="button"
-                        onClick={() => openBgmFolder(bgmPath)}
-                        disabled={bgmOpening}
+                        onClick={() => previewBgm(bgmPath)}
+                        disabled={bgmPreviewLoading}
                         className="shrink-0 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 bg-rose-500 hover:bg-rose-600"
                       >
-                        {bgmOpening ? (isZh ? '⏳ 打开中…' : '⏳') : (isZh ? '📂 打开文件夹' : '📂 Open folder')}
+                        {bgmPreviewLoading ? (isZh ? '⏳ 加载中…' : '⏳') : (isZh ? '▶ 试听' : '▶ Preview')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openBgmFolder(bgmPath)}
+                        disabled={bgmOpening}
+                        className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 border border-rose-400 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                      >
+                        {bgmOpening ? (isZh ? '⏳' : '⏳') : (isZh ? '📂 文件夹' : '📂 Folder')}
                       </button>
                     </div>
+                    {bgmPreviewUrl && (
+                      <audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />
+                    )}
                     {previewError && (
                       <div className="text-[11px] text-red-500">{previewError}</div>
                     )}
@@ -3715,16 +3743,31 @@ const VideoConfigModal: React.FC<{
                     <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
                   </div>
                 )}
-                {/* 上传曲目的「打开文件夹」(内置/云端在上方列表已有同款按钮)。 */}
+                {/* 上传曲目的「试听 + 打开文件夹」。 */}
                 {bgmIsUpload && (
-                  <button
-                    type="button"
-                    onClick={() => openBgmFolder(bgmPath)}
-                    disabled={bgmOpening}
-                    className="mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 bg-rose-500 hover:bg-rose-600"
-                  >
-                    {bgmOpening ? (isZh ? '⏳ 打开中…' : 'Opening…') : (isZh ? '📂 打开文件夹' : '📂 Open folder')}
-                  </button>
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => previewBgm(bgmPath)}
+                        disabled={bgmPreviewLoading}
+                        className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 bg-rose-500 hover:bg-rose-600"
+                      >
+                        {bgmPreviewLoading ? (isZh ? '⏳ 加载中…' : '⏳') : (isZh ? '▶ 试听' : '▶ Preview')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openBgmFolder(bgmPath)}
+                        disabled={bgmOpening}
+                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 border border-rose-400 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                      >
+                        {bgmOpening ? '⏳' : (isZh ? '📂 文件夹' : '📂 Folder')}
+                      </button>
+                    </div>
+                    {bgmPreviewUrl && (
+                      <audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />
+                    )}
+                  </div>
                 )}
                 {bgmPath && (
                   <div className="flex gap-2 mt-2">
@@ -6719,6 +6762,18 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
       if (dir) { try { (window as any).electron?.shell?.openPath?.(dir); } catch { /* ignore */ } }
     } finally { setBgmOpening(false); }
   };
+  // BGM 内嵌试听:解析成可播 URL(云端按需下载),<audio autoPlay> 直接播。
+  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
+  const previewBgm = async (token: string) => {
+    if (!token || bgmPreviewLoading) return;
+    setBgmPreviewLoading(true);
+    try {
+      const url = await videoCreationService.prepareBgmPreview(token);
+      setBgmPreviewUrl(url || '');
+    } catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+  };
+  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
   const bgmIsBuiltin = bgmPath.startsWith(BUILTIN_BGM_PREFIX);
   const bgmIsRemote = bgmPath.startsWith(REMOTE_BGM_PREFIX);
   const bgmIsLibrary = bgmIsBuiltin || bgmIsRemote;
@@ -7099,34 +7154,45 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   </button>
                 </div>
                 {bgmIsLibrary && (
-                  <div className="flex items-center gap-2">
-                    <select value={bgmPath} onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
-                      className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                      <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
-                        {BUILTIN_BGM.map((b) => (
-                          <option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>
-                        ))}
-                      </optgroup>
-                      {remoteBgm.length > 0 && (
-                        <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
-                          {remoteBgm.map((b) => (
-                            <option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <select value={bgmPath} onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
+                        className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                        <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                          {BUILTIN_BGM.map((b) => (
+                            <option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>
                           ))}
                         </optgroup>
-                      )}
-                    </select>
-                    <button type="button" onClick={() => openBgmFolder(bgmPath)} disabled={bgmOpening}
-                      className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium text-white bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-60">
-                      {bgmOpening ? '⏳' : (isZh ? '📂 文件夹' : '📂 Folder')}
-                    </button>
+                        {remoteBgm.length > 0 && (
+                          <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
+                            {remoteBgm.map((b) => (
+                              <option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                      <button type="button" onClick={() => previewBgm(bgmPath)} disabled={bgmPreviewLoading}
+                        className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium text-white bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-60">
+                        {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
+                      </button>
+                      <button type="button" onClick={() => openBgmFolder(bgmPath)} disabled={bgmOpening}
+                        className="shrink-0 px-2.5 py-2 rounded-lg text-xs font-medium border border-fuchsia-400 text-fuchsia-500 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-500/10 disabled:opacity-60">
+                        {bgmOpening ? '⏳' : '📂'}
+                      </button>
+                    </div>
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
                   </div>
                 )}
                 {bgmIsUpload && (
-                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2">
-                    <span className="text-sm">🎵</span>
-                    <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{bgmPath.split(/[\\/]/).pop()}</span>
-                    <button type="button" onClick={pickBgm} className="text-xs text-fuchsia-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
-                    <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2">
+                      <span className="text-sm">🎵</span>
+                      <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{bgmPath.split(/[\\/]/).pop()}</span>
+                      <button type="button" onClick={() => previewBgm(bgmPath)} disabled={bgmPreviewLoading} className="text-xs text-fuchsia-500 hover:underline shrink-0">{bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}</button>
+                      <button type="button" onClick={pickBgm} className="text-xs text-fuchsia-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
+                      <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
+                    </div>
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
                   </div>
                 )}
                 {bgmPath && (
