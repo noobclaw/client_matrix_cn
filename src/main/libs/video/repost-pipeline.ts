@@ -17,7 +17,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
-import { runFfmpeg, probeDuration, isFfmpegAvailable, getFfmpegPath } from './ffmpegRuntime';
+import { runFfmpeg, probeDuration, probeImageSize, isFfmpegAvailable, getFfmpegPath } from './ffmpegRuntime';
 import { getYtdlpPath } from './ytdlpRuntime';
 import { getVideoConfig } from './videoConfig';
 import { synthesize, getVoiceFallbacks, getLastTtsError, alignSentencesToCues, type TtsCue } from './tts';
@@ -310,16 +310,38 @@ async function synthAndAlign(
   return { voiceTrackPath: finalTrack, totalDur: totalDur || cursor, cues };
 }
 
-// ── SRT(最终时间轴)──
-function toSrtTime(sec: number): string {
+// ── ASS 字幕(修「巨字挡画面」bug)──
+// SRT + force_style 的 FontSize 是按 libass 内部 288 高虚拟画布算的:竖屏 1920 高会放大
+// ~6.7 倍 → 20 号变 130+px 巨字。改为生成 ASS:PlayRes = 视频真实分辨率,字号按视频高度
+// 换算(setting 16/20/26 ≈ 高度的 2.3%/2.9%/3.7%),样式(白字黑边/底部边距)完全受控。
+function toAssTime(sec: number): string {
   const s = Math.max(0, sec);
   const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60);
-  const ss = Math.floor(s % 60); const ms = Math.round((s - Math.floor(s)) * 1000);
-  const p = (n: number, w = 2) => String(n).padStart(w, '0');
-  return `${p(h)}:${p(m)}:${p(ss)},${p(ms, 3)}`;
+  const ss = Math.floor(s % 60); const cs = Math.round((s - Math.floor(s)) * 100);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${h}:${p(m)}:${p(ss)}.${p(cs)}`;
 }
-function buildSrt(cues: TtsCue[]): string {
-  return cues.map((c, i) => `${i + 1}\n${toSrtTime(c.start)} --> ${toSrtTime(c.end)}\n${c.text}\n`).join('\n');
+function buildAss(cues: TtsCue[], W: number, H: number, fontSetting: number): string {
+  const fontPx = Math.max(18, Math.round(H * (fontSetting / 700))); // 20 → 1920高≈55px / 1080高≈31px
+  const marginV = Math.round(H * 0.05); // 距底 5%,落在底部蒙层带内
+  const outline = Math.max(1, Math.round(fontPx / 18));
+  const esc = (t: string) => t.replace(/[{}]/g, '').replace(/\r?\n/g, '\\N');
+  const lines = [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    `PlayResX: ${W}`,
+    `PlayResY: ${H}`,
+    'ScaledBorderAndShadow: yes',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: Default,Arial,${fontPx},&H00FFFFFF,&H00FFFFFF,&H00000000,&H7F000000,0,0,0,0,100,100,0,0,1,${outline},0,2,${Math.round(W * 0.04)},${Math.round(W * 0.04)},${marginV},1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Text',
+    ...cues.map((c) => `Dialogue: 0,${toAssTime(c.start)},${toAssTime(c.end)},Default,,0,0,0,${esc(c.text)}`),
+  ];
+  return lines.join('\n');
 }
 
 // subtitles 滤镜的路径转义(Windows 反斜杠 + 冒号)。
@@ -468,15 +490,16 @@ export async function runRepostPipeline(
       }
       const burn = input.subtitleEnabled !== false;
       if (burn) {
-        // 烧译文字幕:需重编码视频(subtitles 滤镜)。写 SRT → -vf subtitles。
-        const srtPath = path.join(assetDir, 'sub.srt');
-        fs.writeFileSync(srtPath, buildSrt(aligned.cues), 'utf8');
-        const fontSize = input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 20;
-        const style = `FontSize=${fontSize},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1,Shadow=0,MarginV=40`;
-        // 底部蒙层(跟热搜混剪一样):在画面底部一条局部高斯模糊带,盖住原视频烧死的字幕,
-        //   我们的译文字幕再画在带上(MarginV=40 落在带内)。band = 底部 22% 高。
-        const vf = `[0:v]split[vb][vm];[vm]crop=iw:ih*0.22:0:ih*0.78,boxblur=20:2[vmb];`
-          + `[vb][vmb]overlay=0:H*0.78[vbg];[vbg]subtitles='${escSubPath(srtPath)}':force_style='${style}'[v]`;
+        // 烧译文字幕:生成 ASS(画布=真实分辨率,字号按视频高换算 —— 修 SRT force_style 的
+        //   288 虚拟画布导致的巨字挡画面 bug)。底部蒙层收窄到 16%,字幕居中落在带内。
+        const dim = await probeImageSize(sourceVideoPath).catch(() => ({ width: 1080, height: 1920 }));
+        const W = dim.width > 0 ? dim.width : 1080;
+        const H = dim.height > 0 ? dim.height : 1920;
+        const fontSetting = input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 20;
+        const assPath = path.join(assetDir, 'sub.ass');
+        fs.writeFileSync(assPath, buildAss(aligned.cues, W, H, fontSetting), 'utf8');
+        const vf = `[0:v]split[vb][vm];[vm]crop=iw:ih*0.16:0:ih*0.84,boxblur=20:2[vmb];`
+          + `[vb][vmb]overlay=0:H*0.84[vbg];[vbg]subtitles='${escSubPath(assPath)}'[v]`;
         const r = await runFfmpeg([
           '-y', '-i', sourceVideoPath, '-i', finalAudio,
           '-filter_complex', vf,
