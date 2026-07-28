@@ -558,6 +558,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     // 各号各自参考文案(wizard 已过滤空值,只含填了的号);每号每轮固定 1 篇。
     const imageText = {
       useRealPhotos: input.useRealPhotos,
+      // 图源三选一('ai'/'real'/'local');local 带本地图绝对路径(≤6,runner 读盘转 base64)。
+      imageSource: input.imageSource,
+      localImages: input.localImages,
       imageCount: input.imageCount,
       dailyCount: 1,
       aiImageStyle: input.aiImageStyle,

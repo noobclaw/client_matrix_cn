@@ -37,6 +37,10 @@ export interface ImageTextWizardSave {
   sources: PostSourceSel[];             // 仅 sources 模式:多选数据源
   sourceTrackMatch: boolean;            // 仅 sources 模式:仅账号赛道相关(默认开)
   useRealPhotos: boolean;
+  // 图源三选一:'ai'=AI 生图 / 'real'=网络图 / 'local'=本地图(用户自选 ≤6 张,计费同网络图)。
+  //   useRealPhotos 保留做后向兼容(= imageSource==='real'),runner/老任务仍认它。
+  imageSource: 'ai' | 'real' | 'local';
+  localImages: string[];                // 仅 local 模式:本地图片绝对路径(≤6)
   imageCount: number;
   aiImageStyle: string;
   autoPublish: boolean;
@@ -83,7 +87,24 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
   // ── 图文配置(全局) ──
   const it = initialTask?.imageText || {};
-  const [useRealPhotos, setUseRealPhotos] = useState<boolean>(!!it.useRealPhotos);
+  // 图源三选一(老任务只有 useRealPhotos 布尔 → 映射 real/ai)。
+  const [imageSource, setImageSource] = useState<'ai' | 'real' | 'local'>(
+    it.imageSource === 'local' ? 'local' : it.imageSource === 'real' ? 'real' : it.imageSource === 'ai' ? 'ai' : (it.useRealPhotos ? 'real' : 'ai'),
+  );
+  const useRealPhotos = imageSource === 'real';
+  // 本地图:绝对路径,≤6 张(用系统文件选择框挑,主进程校验格式)。
+  const [localImages, setLocalImages] = useState<string[]>(
+    Array.isArray(it.localImages) ? it.localImages.filter((p: unknown) => typeof p === 'string').slice(0, 6) : [],
+  );
+  const pickLocalImages = async () => {
+    const remaining = 6 - localImages.length;
+    if (remaining <= 0) return;
+    try {
+      const paths = await (window as any).electron?.pickImages?.(remaining);
+      if (Array.isArray(paths) && paths.length) setLocalImages((prev) => [...prev, ...paths.filter((p: unknown) => typeof p === 'string')].slice(0, 6));
+    } catch { /* 取消/未挂,忽略 */ }
+  };
+  const removeLocalImage = (idx: number) => setLocalImages((prev) => prev.filter((_, i) => i !== idx));
   const [imageCount, setImageCount] = useState<number>(Math.max(2, Math.min(6, Number(it.imageCount) || (it.useRealPhotos ? 6 : 4))));
   const [aiImageStyle, setAiImageStyle] = useState<string>(it.aiImageStyle || 'ai_auto');
   // 全量风格目录(server-side 单源;拉不到回退兜底列表)。
@@ -118,7 +139,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, useRealPhotos, imageCount, references, contentSource, sourceIds, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, imageSource, localImages, imageCount, references, contentSource, sourceIds, runInterval]);
 
   // 网络图模式要求每个选中号都配了关键词(没词没法搜);AI 生图模式不强制。
   const selectedNoKeyword = useMemo(
@@ -131,11 +152,13 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
     2: contentSource === 'sources'
       ? { ok: sourceIds.length > 0, reason: T('请至少选择一个数据源', 'Select at least one data source') }
       : { ok: true }, // 参考文案全选填,随时可下一步
-    3: useRealPhotos && selectedNoKeyword.length > 0
-      ? { ok: false, reason: i18nService.t('wzImgErrNoKeyword').replace('{n}', String(selectedNoKeyword.length)) }
-      : (useRealPhotos && needsDownloadAccount && !downloadAccountId)
-        ? { ok: false, reason: i18nService.t('wzImgErrNoDownloadAccount').replace('{platform}', platformLabel) }
-        : { ok: true },
+    3: imageSource === 'local'
+      ? (localImages.length > 0 ? { ok: true } : { ok: false, reason: i18nService.t('wzImgErrNoLocalImages') })
+      : useRealPhotos && selectedNoKeyword.length > 0
+        ? { ok: false, reason: i18nService.t('wzImgErrNoKeyword').replace('{n}', String(selectedNoKeyword.length)) }
+        : (useRealPhotos && needsDownloadAccount && !downloadAccountId)
+          ? { ok: false, reason: i18nService.t('wzImgErrNoDownloadAccount').replace('{platform}', platformLabel) }
+          : { ok: true },
     4: { ok: allTermsAccepted, reason: i18nService.t('wzImgErrAcceptTerms') },
   };
 
@@ -158,7 +181,9 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         sources: contentSource === 'sources' ? selsFromSourceIds(sourceIds) : [],
         sourceTrackMatch,
         useRealPhotos,
-        imageCount,
+        imageSource,
+        localImages: imageSource === 'local' ? localImages.slice(0, 6) : [],
+        imageCount: imageSource === 'local' ? Math.max(1, localImages.length) : imageCount,
         aiImageStyle,
         autoPublish,
         references: refsOut,
@@ -312,14 +337,37 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ {i18nService.t('wzImgImageModeLabel')}<span className="text-xs text-gray-400 font-normal ml-1">· {i18nService.t('wzImgImageModeHint')}</span></label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setUseRealPhotos(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!useRealPhotos ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" onClick={() => setImageSource('ai')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageSource === 'ai' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
                   🎨 {i18nService.t('wzImgModeAiTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzImgModeAiDesc')}</div>
                 </button>
-                <button type="button" onClick={() => setUseRealPhotos(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${useRealPhotos ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
+                <button type="button" onClick={() => setImageSource('real')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageSource === 'real' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
                   🌐 {i18nService.t('wzImgModeWebTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzImgModeWebDesc')}</div>
                 </button>
+                <button type="button" onClick={() => setImageSource('local')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageSource === 'local' ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-500/50'}`}>
+                  📁 {i18nService.t('wzImgModeLocalTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzImgModeLocalDesc')}</div>
+                </button>
               </div>
+              {imageSource === 'local' && (
+                <div className="mt-3 space-y-1.5">
+                  <button type="button" onClick={pickLocalImages} disabled={saving || localImages.length >= 6}
+                    className="w-full px-3 py-2 rounded-lg text-sm border border-dashed border-emerald-400 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 disabled:opacity-50 transition-colors">
+                    ➕ {i18nService.t('wzImgLocalPick').replace('{n}', String(localImages.length))}
+                  </button>
+                  {localImages.length > 0 && (
+                    <div className="space-y-1 max-h-36 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+                      {localImages.map((p, i) => (
+                        <div key={`${p}_${i}`} className="flex items-center gap-2 text-xs">
+                          <span className="shrink-0">🖼️</span>
+                          <span className="flex-1 truncate text-gray-600 dark:text-gray-300">{p.split(/[\\/]/).pop()}</span>
+                          <button type="button" onClick={() => removeLocalImage(i)} className="shrink-0 text-gray-400 hover:text-red-500">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="text-[11px] text-gray-400">{i18nService.t('wzImgLocalHint')}</div>
+                </div>
+              )}
               {useRealPhotos && selectedNoKeyword.length > 0 && (
                 <div className="text-[11px] text-amber-500 mt-1.5">⚠ {i18nService.t('wzImgWebNoKeywordWarn').replace('{n}', String(selectedNoKeyword.length))}</div>
               )}
@@ -365,7 +413,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               )}
             </div>
 
-            {!useRealPhotos && (
+            {imageSource === 'ai' && (
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🎨 {i18nService.t('wzImgAiStyleLabel')}</label>
                 <select value={aiImageStyle} onChange={(e) => setAiImageStyle(e.target.value)} disabled={saving} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40">
@@ -374,11 +422,13 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </div>
             )}
 
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgImageCountLabel')} <span className="text-emerald-500 font-bold">{imageCount}</span><span className="text-xs text-gray-400 font-normal ml-2">· {i18nService.t('wzImgImageCountHint')}</span></label>
-              <input type="range" min={2} max={6} value={imageCount} onChange={(e) => setImageCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>2</span><span>6</span></div>
-            </div>
+            {imageSource !== 'local' && (
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgImageCountLabel')} <span className="text-emerald-500 font-bold">{imageCount}</span><span className="text-xs text-gray-400 font-normal ml-2">· {i18nService.t('wzImgImageCountHint')}</span></label>
+                <input type="range" min={2} max={6} value={imageCount} onChange={(e) => setImageCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
+                <div className="flex justify-between text-[10px] text-gray-400"><span>2</span><span>6</span></div>
+              </div>
+            )}
 
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 {i18nService.t('wzImgAfterGenLabel')}</label>
@@ -408,7 +458,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzImgSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzImgSummaryAccounts')} value={i18nService.t('wzImgSummaryAccountsVal').replace('{n}', String(selectedIds.length))} />
-              <SummaryRow label={i18nService.t('wzImgSummaryImage')} value={useRealPhotos ? i18nService.t('wzImgSummaryImageWeb').replace('{n}', String(imageCount)) : i18nService.t('wzImgSummaryImageAi').replace('{n}', String(imageCount)).replace('{style}', (() => { const s = stylesList.find((x) => x.id === aiImageStyle); return s ? (isZhStyle ? s.zh : s.en) : aiImageStyle; })())} />
+              <SummaryRow label={i18nService.t('wzImgSummaryImage')} value={imageSource === 'local' ? i18nService.t('wzImgSummaryImageLocal').replace('{n}', String(localImages.length)) : useRealPhotos ? i18nService.t('wzImgSummaryImageWeb').replace('{n}', String(imageCount)) : i18nService.t('wzImgSummaryImageAi').replace('{n}', String(imageCount)).replace('{style}', (() => { const s = stylesList.find((x) => x.id === aiImageStyle); return s ? (isZhStyle ? s.zh : s.en) : aiImageStyle; })())} />
               <SummaryRow label={i18nService.t('wzImgSummaryCount')} value={i18nService.t('wzImgSummaryCountVal').replace('{n}', String(selectedIds.length))} />
               <SummaryRow label={i18nService.t('wzImgSummaryPublish')} value={autoPublish ? i18nService.t('wzImgSummaryPublishAuto') : i18nService.t('wzImgSummaryPublishLocal')} />
               {contentSource === 'sources'

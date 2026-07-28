@@ -179,6 +179,26 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
     log('❌ 跳过:网络图模式需要本号关键词(到「我的矩阵账号」编辑里添加)');
     return { accountId, state: 'skipped', reason: 'no_keywords_for_real_photos' };
   }
+  // 本地图模式:把用户选的本地图读盘转 base64(≤6 张、单张 ≤10MB),传给 orchestrator 直接
+  // 当 draft.images 用(跳过搜图/生图,上传与计费走网络图同一条路)。文件被移动/删除的跳过。
+  const localImagePayload: Array<{ type: string; base64: string; mimeType: string; url: string }> = [];
+  if ((cfg as any).imageSource === 'local') {
+    const paths: string[] = Array.isArray((cfg as any).localImages) ? (cfg as any).localImages : [];
+    for (const p of paths.slice(0, 6)) {
+      try {
+        const st = fs.statSync(p);
+        if (!st.isFile() || st.size > 10 * 1024 * 1024) { log(`⚠️ 本地图跳过(不存在或超10MB):${path.basename(p)}`); continue; }
+        const ext = path.extname(p).toLowerCase().replace('.', '');
+        const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+        localImagePayload.push({ type: 'content', base64: fs.readFileSync(p).toString('base64'), mimeType: mime, url: 'file://' + p });
+      } catch { log(`⚠️ 本地图读取失败,跳过:${path.basename(p)}`); }
+    }
+    if (localImagePayload.length === 0) {
+      log('❌ 跳过:本地图模式但一张图都读不到(文件被移动/删除?重新编辑任务选图)');
+      return { accountId, state: 'skipped', reason: 'no_local_images' };
+    }
+    log(`📁 本地图就绪:${localImagePayload.length} 张`);
+  }
 
   await abortableSleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000), opts.signal); // 错峰(可中断:停止立即结束)
 
@@ -232,6 +252,8 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
       keywords: accKeywords,
       daily_count: Math.max(1, Math.min(50, Number(cfg.dailyCount) || 1)),
       use_real_photos: !!cfg.useRealPhotos,
+      // 本地图模式:直接带 base64 图组,orchestrator 优先用它(跳过搜图/生图,按张计费同网络图)。
+      local_images: localImagePayload.length > 0 ? localImagePayload : undefined,
       real_photo_count: Math.max(2, Math.min(6, Number(cfg.imageCount) || 2)),
       real_photo_keywords: accKeywords.join(' '),
       ai_image_style: cfg.aiImageStyle || 'ai_auto',

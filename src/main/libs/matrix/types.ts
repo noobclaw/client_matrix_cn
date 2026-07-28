@@ -123,6 +123,8 @@ export interface ImageTextConfig {
   sources?: PostSourceSel[];               // 仅 contentSource='sources':多选数据源
   sourceTrackMatch?: boolean;              // 数据源模式:仅取账号赛道相关的选题(缺省 true)
   useRealPhotos: boolean;        // 配图方式【全局】:false=AI 生图,true=网络图(按账号关键词搜实景图)
+  imageSource?: 'ai' | 'real' | 'local'; // 图源三选一(缺省按 useRealPhotos 映射;'local'=用户本地图)
+  localImages?: string[];        // 仅 imageSource='local':本地图片绝对路径(≤6,runner 读盘转 base64 传给 orchestrator)
   imageCount: number;            // 每篇配图张数 2-6
   dailyCount: number;            // 每号每轮生成几篇 1-50
   aiImageStyle?: string;         // AI 生图风格(仅 useRealPhotos=false 用,缺省 'ai_auto')

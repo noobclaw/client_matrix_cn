@@ -224,7 +224,7 @@ function taskConfigChips(task: Task): string[] {
     if (c.isBlueV) chips.push(i18nService.t('chipBlueV'));
   } else if (/_image_text$/.test(sid) && t.imageText) {
     const c = t.imageText;
-    chips.push(c.useRealPhotos ? (i18nService.t('chipWebImg')) : (i18nService.t('chipAiImg')));
+    chips.push(c.imageSource === 'local' ? (i18nService.t('chipLocalImg')) : c.useRealPhotos ? (i18nService.t('chipWebImg')) : (i18nService.t('chipAiImg')));
     if (c.imageCount) chips.push(i18nService.t('chipImgsPer').replace('{n}', String(c.imageCount)));
     if (c.dailyCount) chips.push(i18nService.t('chipPerAcct').replace('{n}', String(c.dailyCount)));
     chips.push(pubChip(c.autoPublish !== false));
