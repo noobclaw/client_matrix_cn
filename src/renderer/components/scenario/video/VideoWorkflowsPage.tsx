@@ -156,7 +156,7 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ matrixMo
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine === 'repost' && (
+        {editingTask && (editingTask.input?.engine === 'repost' || (editingTask.input as any)?.repostSourceUrl || (editingTask.input as any)?.repostSourceFile) && (
           <RepostVideoModal
             isZh={isZh}
             matrixMode={matrixMode}
@@ -165,7 +165,7 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ matrixMo
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && editingTask.input?.engine !== 'localmix' && editingTask.input?.engine !== 'repost' && (
+        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && editingTask.input?.engine !== 'localmix' && editingTask.input?.engine !== 'repost' && !(editingTask.input as any)?.repostSourceUrl && !(editingTask.input as any)?.repostSourceFile && (
           <VideoConfigModal
             isZh={isZh}
             matrixMode={matrixMode}
@@ -419,7 +419,7 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine
   const isHotspot = input?.engine === 'hotspot';
   const isThread = input?.engine === 'thread';
   const isLocalMix = input?.engine === 'localmix';
-  const isRepost = input?.engine === 'repost';
+  const isRepost = input?.engine === 'repost' || !!(input as any)?.repostSourceUrl || !!(input as any)?.repostSourceFile;
   const isLocal = !!input && !isAi && !isTemplate && !isHotspot && !isThread && !isLocalMix && !isRepost && Array.isArray(input.localVideos) && input.localVideos.length > 0;
   const modeLabel = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
     : isThread ? (isZh ? '🧵 爆帖成片' : '🧵 Viral Threads')
@@ -615,7 +615,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           const isTemplate = task.input.engine === 'template';
           const isHotspot = task.input.engine === 'hotspot';
           const isLocalMix = task.input.engine === 'localmix';
-          const isRepost = task.input.engine === 'repost';
+          const isRepost = task.input.engine === 'repost' || !!(task.input as any).repostSourceUrl || !!(task.input as any).repostSourceFile;
           const isThread = task.input.engine === 'thread';
           const isLocal = !isAi && !isTemplate && !isHotspot && !isLocalMix && !isRepost && !isThread && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
           const label = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
@@ -1033,7 +1033,9 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     );
   }
   // 翻译搬运:源/目标语言/原声保留/配音/字幕/发布(赛道/人设/关键词无意义)。
-  if (input.engine === 'repost') {
+  // 兜底:老任务或 engine 字段缺失时,靠 repostSourceUrl/File 也判定为搬运(否则错落到
+  //   通用「赛道/人设/关键词/视频文案」布局 —— 用户实测详情页显示了不相干的字段)。
+  if (input.engine === 'repost' || (input as any).repostSourceUrl || (input as any).repostSourceFile) {
     const inp: any = input;
     const LANG: Record<string, string> = { zh: '简体中文', 'zh-TW': '繁体中文', en: 'English', ja: '日本語', ko: '한국어', vi: 'Tiếng Việt', es: 'Español', pt: 'Português', fr: 'Français', de: 'Deutsch', id: 'Bahasa Indonesia' };
     return (

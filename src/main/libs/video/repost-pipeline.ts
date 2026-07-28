@@ -298,12 +298,14 @@ async function synthAndAlign(
     const cr2 = await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c:a', 'aac', '-b:a', '128k', voiceTrack], { timeoutMs: 120_000, signal });
     if (!cr2.ok || !fs.existsSync(voiceTrack)) return null;
   }
-  // 垫静音到源视频总长:末句配音结束点通常早于视频尾,不垫的话换音轨时 -shortest 会把
-  //   视频尾巴截掉。apad 补尾部静音,-t 钉到目标总长。
+  // 垫静音到目标总长,但【绝不截断配音】:译文语速比原文长时,末句会超过源视频尾。
+  //   padTo = max(源视频长, 配音自然长度) —— 短则补静音填满视频,长则保留完整配音(视频那边靠
+  //   compose 冻结末帧延长,别把译文尾巴切掉,否则「音频没播完画面停了」)。
   let finalTrack = voiceTrack;
-  if (targetTotalDur > 0.1) {
+  const padTo = Math.max(targetTotalDur, cursor);
+  if (padTo > 0.1) {
     const padded = path.join(assetDir, 'voice_track_pad.m4a');
-    const pr = await runFfmpeg(['-y', '-i', voiceTrack, '-af', 'apad', '-t', targetTotalDur.toFixed(3), '-ar', '48000', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', padded], { timeoutMs: 120_000, signal });
+    const pr = await runFfmpeg(['-y', '-i', voiceTrack, '-af', 'apad', '-t', padTo.toFixed(3), '-ar', '48000', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', padded], { timeoutMs: 120_000, signal });
     if (pr.ok && fs.existsSync(padded)) finalTrack = padded;
   }
   const totalDur = await probeDuration(finalTrack).catch(() => cursor);
@@ -321,17 +323,43 @@ function toAssTime(sec: number): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${h}:${p(m)}:${p(ss)}.${p(cs)}`;
 }
+// 按字号 + 画宽把一句硬折行(插 \N):libass 对无空格的中文自动折行不可靠,长句会顶出画面
+// (用户实测中文字幕超出屏幕宽度不换行)。中日韩全角字≈1 个字宽(fontPx),拉丁/数字≈0.55。
+// 边距两侧各留 4%(与样式 MarginL/R 一致)→ 可用宽 = W*0.92。
+function wrapAssLine(text: string, W: number, fontPx: number): string {
+  const usable = W * 0.92;
+  const maxUnits = Math.max(6, usable / fontPx);
+  const isWide = (ch: string) => /[ᄀ-ᇿ⺀-鿿ꥠ-꥿가-퟿豈-﫿＀-￯]/.test(ch);
+  const unit = (ch: string) => (isWide(ch) ? 1 : 0.55);
+  const breakable = (ch: string) => ch === ' ' || isWide(ch) || '，。！？、；：,.!?;:)】」）'.includes(ch);
+  const out: string[] = [];
+  let line = ''; let units = 0; let lastBreak = -1;
+  for (const ch of Array.from(text)) {
+    line += ch; units += unit(ch);
+    if (breakable(ch)) lastBreak = line.length;
+    if (units >= maxUnits) {
+      const cut = (lastBreak > 0 && lastBreak < line.length) ? lastBreak : line.length;
+      out.push(line.slice(0, cut).replace(/\s+$/, ''));
+      line = line.slice(cut);
+      units = 0; for (const c of Array.from(line)) units += unit(c);
+      lastBreak = -1;
+    }
+  }
+  if (line.replace(/\s+$/, '')) out.push(line.replace(/\s+$/, ''));
+  return out.join('\\N');
+}
 function buildAss(cues: TtsCue[], W: number, H: number, fontSetting: number): string {
   const fontPx = Math.max(18, Math.round(H * (fontSetting / 700))); // 20 → 1920高≈55px / 1080高≈31px
   const marginV = Math.round(H * 0.05); // 距底 5%,落在底部蒙层带内
   const outline = Math.max(1, Math.round(fontPx / 18));
-  const esc = (t: string) => t.replace(/[{}]/g, '').replace(/\r?\n/g, '\\N');
+  const esc = (t: string) => wrapAssLine(t.replace(/[{}]/g, '').replace(/\r?\n/g, ' ').trim(), W, fontPx);
   const lines = [
     '[Script Info]',
     'ScriptType: v4.00+',
     `PlayResX: ${W}`,
     `PlayResY: ${H}`,
     'ScaledBorderAndShadow: yes',
+    'WrapStyle: 0',
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
@@ -498,24 +526,42 @@ export async function runRepostPipeline(
         const fontSetting = input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 20;
         const assPath = path.join(assetDir, 'sub.ass');
         fs.writeFileSync(assPath, buildAss(aligned.cues, W, H, fontSetting), 'utf8');
-        const vf = `[0:v]split[vb][vm];[vm]crop=iw:ih*0.16:0:ih*0.84,boxblur=20:2[vmb];`
+        // 配音可能比源视频长(译文语速慢)→ 冻结末帧把画面延长到音频总长,再 -t 钉总长,
+        //   杜绝「音频没播完画面停了」;短则 -t 就是视频长,无副作用。
+        const finalDur = aligned.totalDur;
+        const vf = `[0:v]tpad=stop_mode=clone:stop_duration=${finalDur.toFixed(3)}[vext];`
+          + `[vext]split[vb][vm];[vm]crop=iw:ih*0.16:0:ih*0.84,boxblur=20:2[vmb];`
           + `[vb][vmb]overlay=0:H*0.84[vbg];[vbg]subtitles='${escSubPath(assPath)}'[v]`;
         const r = await runFfmpeg([
           '-y', '-i', sourceVideoPath, '-i', finalAudio,
           '-filter_complex', vf,
           '-map', '[v]', '-map', '1:a:0',
           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-          '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
+          '-c:a', 'aac', '-b:a', '160k', '-t', finalDur.toFixed(3), '-movflags', '+faststart', outPath,
         ], { timeoutMs: 600_000, signal });
         if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(字幕烧录/编码出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
       } else {
-        // 不烧字幕:换音轨零转码。
-        const r = await runFfmpeg([
-          '-y', '-i', sourceVideoPath, '-i', finalAudio,
-          '-map', '0:v:0', '-map', '1:a:0',
-          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
-        ], { timeoutMs: 300_000, signal });
-        if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(换音轨出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+        const finalDur = aligned.totalDur;
+        // 配音比源视频长 → 必须冻结末帧延长画面(copy 无法延长,得重编码);否则「音频没播完画面停了」。
+        const needExtend = !(srcDur > 0) || finalDur > srcDur + 0.3;
+        if (needExtend) {
+          const r = await runFfmpeg([
+            '-y', '-i', sourceVideoPath, '-i', finalAudio,
+            '-filter_complex', `[0:v]tpad=stop_mode=clone:stop_duration=${finalDur.toFixed(3)}[v]`,
+            '-map', '[v]', '-map', '1:a:0',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+            '-c:a', 'aac', '-b:a', '160k', '-t', finalDur.toFixed(3), '-movflags', '+faststart', outPath,
+          ], { timeoutMs: 600_000, signal });
+          if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(换音轨/延长画面出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+        } else {
+          // 配音不长于视频:换音轨零转码(音频已 apad 到视频长,-shortest 对齐)。
+          const r = await runFfmpeg([
+            '-y', '-i', sourceVideoPath, '-i', finalAudio,
+            '-map', '0:v:0', '-map', '1:a:0',
+            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
+          ], { timeoutMs: 300_000, signal });
+          if (!r.ok || !fs.existsSync(outPath)) { const err = '合成失败(换音轨出错)'; tracker.fail('compose', err); return { ok: false, error: err }; }
+        }
       }
       tracker.done('compose', `📦 成片就绪 · 📂 ${destDir}`);
     }
