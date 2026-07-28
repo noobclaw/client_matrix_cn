@@ -432,9 +432,10 @@ export async function runRepostPipeline(
       return { ok: false, error: err };
     }
     chargeId = charge.chargeId;
-    refundOnExit = true;
+    void chargeId;
+    // 用户要求(2026-07-28):不显示扣费明细提示、且【绝不退回】(ASR/翻译已产生真实成本)。
+    //   refundOnExit 保持 false → finally 不退款;只把消耗静默计入「本次消耗」显示。
     tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
-    tracker.progress(`💎 已扣 ${charge.chargedTokens || 0} 积分(${noSpeech ? '平台费' : '平台费 + token 消耗翻倍'}),失败将自动退回`);
 
     const outPath = path.join(destDir, `翻译搬运_${targetLang}.mp4`);
 
@@ -467,10 +468,14 @@ export async function runRepostPipeline(
         fs.writeFileSync(srtPath, buildSrt(aligned.cues), 'utf8');
         const fontSize = input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 20;
         const style = `FontSize=${fontSize},PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1,Shadow=0,MarginV=40`;
+        // 底部蒙层(跟热搜混剪一样):在画面底部一条局部高斯模糊带,盖住原视频烧死的字幕,
+        //   我们的译文字幕再画在带上(MarginV=40 落在带内)。band = 底部 22% 高。
+        const vf = `[0:v]split[vb][vm];[vm]crop=iw:ih*0.22:0:ih*0.78,boxblur=20:2[vmb];`
+          + `[vb][vmb]overlay=0:H*0.78[vbg];[vbg]subtitles='${escSubPath(srtPath)}':force_style='${style}'[v]`;
         const r = await runFfmpeg([
           '-y', '-i', sourceVideoPath, '-i', finalAudio,
-          '-vf', `subtitles='${escSubPath(srtPath)}':force_style='${style}'`,
-          '-map', '0:v:0', '-map', '1:a:0',
+          '-filter_complex', vf,
+          '-map', '[v]', '-map', '1:a:0',
           '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
           '-c:a', 'aac', '-b:a', '160k', '-shortest', '-movflags', '+faststart', outPath,
         ], { timeoutMs: 600_000, signal });

@@ -1330,7 +1330,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="mb-3">
                 <button type="button" onClick={() => setTrackOpen((v) => !v)}
                   className="relative w-full text-left text-sm pl-3 pr-9 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent dark:bg-gray-800 cursor-pointer">
-                  {curPreset ? trackDisplayName(curPreset, newContentLang) : i18nService.t('mvCustomTrack')}
+                  {curPreset ? trackDisplayName(curPreset, newContentLang) : (newGroup.trim() ? newGroup.trim() : i18nService.t('mvCustomTrack'))}
                   <svg className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${trackOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -1351,6 +1351,11 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       {!isPreset ? '✓ ' : ''}{i18nService.t('mvCustomTrack')}
                     </button>
                   </div>
+                )}
+                {/* 选了「自定义」(非预设)→ 露出输入框让用户填自己的赛道名(不填保存会失败提示)。 */}
+                {!isPreset && (
+                  <input value={newGroup} onChange={(e) => setNewGroup(e.target.value)} placeholder={i18nService.t('mvCustomTrackPlaceholder')}
+                    className="w-full text-sm px-3 py-2.5 rounded-lg border dark:border-white/15 border-black/15 bg-transparent mt-1.5" />
                 )}
               </div>
               ); })()}

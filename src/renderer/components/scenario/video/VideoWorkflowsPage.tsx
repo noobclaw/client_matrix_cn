@@ -419,9 +419,11 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine
   const isHotspot = input?.engine === 'hotspot';
   const isThread = input?.engine === 'thread';
   const isLocalMix = input?.engine === 'localmix';
-  const isLocal = !!input && !isAi && !isTemplate && !isHotspot && !isThread && !isLocalMix && Array.isArray(input.localVideos) && input.localVideos.length > 0;
+  const isRepost = input?.engine === 'repost';
+  const isLocal = !!input && !isAi && !isTemplate && !isHotspot && !isThread && !isLocalMix && !isRepost && Array.isArray(input.localVideos) && input.localVideos.length > 0;
   const modeLabel = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
     : isThread ? (isZh ? '🧵 爆帖成片' : '🧵 Viral Threads')
+    : isRepost ? (isZh ? '🌐 翻译搬运' : '🌐 Translate & Repost')
     : isLocalMix ? (isZh ? '📁 本地混剪' : '📁 Local Mix')
     : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
     : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
@@ -429,6 +431,7 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine
     : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
   const modeColor = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
     : isThread ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
+    : isRepost ? 'text-sky-500 bg-sky-500/10 border-sky-500/30'
     : isLocalMix ? 'text-amber-500 bg-amber-500/10 border-amber-500/30'
     : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
     : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
@@ -612,14 +615,20 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           const isTemplate = task.input.engine === 'template';
           const isHotspot = task.input.engine === 'hotspot';
           const isLocalMix = task.input.engine === 'localmix';
-          const isLocal = !isAi && !isTemplate && !isHotspot && !isLocalMix && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
+          const isRepost = task.input.engine === 'repost';
+          const isThread = task.input.engine === 'thread';
+          const isLocal = !isAi && !isTemplate && !isHotspot && !isLocalMix && !isRepost && !isThread && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
           const label = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
+            : isThread ? (isZh ? '🧵 爆帖成片' : '🧵 Viral Threads')
+            : isRepost ? (isZh ? '🌐 翻译搬运' : '🌐 Translate & Repost')
             : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
             : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
             : isLocalMix ? i18nService.t('vmixTaskName')
             : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
             : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
           const color = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
+            : isThread ? 'text-orange-500 bg-orange-500/10 border-orange-500/30'
+            : isRepost ? 'text-sky-500 bg-sky-500/10 border-sky-500/30'
             : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
             : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
             : isLocalMix ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
@@ -5893,8 +5902,11 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                   <button type="button" onClick={() => { setSourceMode('file'); setErr(null); }} className={seg(sourceMode === 'file')}>🎞️ {t('rpstSourceFile')}</button>
                 </div>
                 {sourceMode === 'link' ? (
-                  <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder={t('rpstUrlPlaceholder')}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40" />
+                  <>
+                    <textarea value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value.trim())} placeholder={t('rpstUrlPlaceholder')} rows={2}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40 resize-none break-all" />
+                    <div className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{t('rpstSourcePlatforms')}</div>
+                  </>
                 ) : (
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={pickSourceFile} className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600">🎞️ {t('rpstPickFile')}</button>
