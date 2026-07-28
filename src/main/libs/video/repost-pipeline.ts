@@ -19,6 +19,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { runFfmpeg, probeDuration, isFfmpegAvailable, getFfmpegPath } from './ffmpegRuntime';
 import { getYtdlpPath } from './ytdlpRuntime';
+import { getVideoConfig } from './videoConfig';
 import { synthesize, getVoiceFallbacks, getLastTtsError, alignSentencesToCues, type TtsCue } from './tts';
 import { resolvePublishCaption } from './publishCaptionWriter';
 import { callDeepSeek } from './scriptWriter';
@@ -61,8 +62,12 @@ async function resolveSourceVideo(
   const url = String((input as any).repostSourceUrl || '').trim();
   if (!url) return { ok: false, error: '未提供源视频(请粘贴视频链接或选择本地文件)' };
 
-  onLog('正在解析下载器(yt-dlp)…');
-  const ytdlp = await getYtdlpPath(undefined, onLog);
+  onLog('正在准备下载器…');
+  // yt-dlp 本体走服务端下发地址(与爆帖成片同一份,~35MB 首次下、之后缓存复用)。
+  //   ⚠️ 之前传 undefined → 没缓存的新用户下不了 yt-dlp,翻译搬运直接不可用。
+  const vcfg = await getVideoConfig().catch(() => null as any);
+  const ytdlpUrl = process.platform === 'win32' ? vcfg?.threadYtdlpUrlWin : vcfg?.threadYtdlpUrlMac;
+  const ytdlp = await getYtdlpPath(ytdlpUrl, onLog);
   if (!ytdlp) return { ok: false, error: '下载器(yt-dlp)不可用,请改用本地文件,或检查网络后重试' };
 
   const outPath = path.join(destDir, 'source.mp4');
