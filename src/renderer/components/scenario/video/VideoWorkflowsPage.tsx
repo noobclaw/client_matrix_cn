@@ -6146,7 +6146,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                     <textarea value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value.trim())} placeholder={curPlat.ph} rows={2}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40 resize-none break-all" />
                     <div className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                      {isZh ? `只支持 ${curPlat.zh} 的公开视频链接;抖音链接暂需下载后用「本地文件」。` : `Public ${curPlat.en} video links only.`}
+                      {isZh ? `只支持 ${curPlat.zh} 的公开视频链接` : `Public ${curPlat.en} video links only`}
                     </div>
                   </>
                 ) : (
