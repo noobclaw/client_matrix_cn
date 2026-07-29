@@ -6540,7 +6540,8 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
       if (availableCount === 0) { setErr(mediaType === 'image' ? t('vmixErrNoImages') : t('vmixErrNoVideos')); return; }
       // 原片直发:素材步直接跳出片步(文案/画面/音频/字幕全不适用);介绍必填(AI 靠它写标题/简介/标签)。
       if (uploadOnly) {
-        if (uaIntroMode === 'strict' && !script.trim()) { setErr(t('vmixErrNoIntro')); return; }
+        // 两种介绍模式都必填:直传没有账号赛道/人设可兜底,AI 没参考写不出靠谱文案。
+        if (!script.trim()) { setErr(t('vmixErrNoIntro')); return; }
         setErr(null); setStep(MAX_STEP as LmStep); return;
       }
     }
@@ -6614,6 +6615,12 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                     <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={4}
                       placeholder={uaIntroMode === 'strict' ? t('uaIntroStrictPh') : t('uaIntroAiPh')}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" />
+                  </Field>
+                  <Field label={t('uaLangLabel')} hint={t('uaLangHint')}>
+                    <select value={scriptLang} onChange={(e) => setScriptLang(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                      {SCRIPT_LANGS.map((l) => (<option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>))}
+                    </select>
                   </Field>
                 </>
               ) : (

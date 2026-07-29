@@ -843,7 +843,8 @@ async function runVideoPipeline(
         // 之前 fallback 到【文件名】,十六进制文件名被判成英文,发抖音出英文文案(真机实报)。
         const CN_PLATS = new Set(['douyin', 'xhs', 'shipinhao', 'toutiao', 'kuaishou', 'bilibili']);
         const uaPlats = Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [];
-        const uaLang = introText ? detectLang(introText) : (uaPlats.some((p) => CN_PLATS.has(p)) || uaPlats.length === 0 ? 'zh' : 'en');
+        const uaLang = (input.scriptLang && input.scriptLang !== 'auto') ? input.scriptLang
+          : introText ? detectLang(introText) : (uaPlats.some((p) => CN_PLATS.has(p)) || uaPlats.length === 0 ? 'zh' : 'en');
         const cap = await resolvePublishCaption({
           wantPublish,
           summary: introText || path.basename(pick, path.extname(pick)),
