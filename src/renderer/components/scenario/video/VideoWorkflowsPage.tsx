@@ -147,7 +147,7 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ matrixMo
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine === 'localmix' && (
+        {editingTask && (editingTask.input?.engine === 'localmix' || (editingTask.input?.engine as any) === 'uploadonly') && (
           <LocalMixVideoModal
             isZh={isZh}
             matrixMode={matrixMode}
@@ -165,7 +165,7 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ matrixMo
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && editingTask.input?.engine !== 'localmix' && editingTask.input?.engine !== 'repost' && !(editingTask.input as any)?.repostSourceUrl && !(editingTask.input as any)?.repostSourceFile && (
+        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && editingTask.input?.engine !== 'thread' && editingTask.input?.engine !== 'localmix' && (editingTask.input?.engine as any) !== 'uploadonly' && editingTask.input?.engine !== 'repost' && !(editingTask.input as any)?.repostSourceUrl && !(editingTask.input as any)?.repostSourceFile && (
           <VideoConfigModal
             isZh={isZh}
             matrixMode={matrixMode}
@@ -419,11 +419,13 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine
   const isHotspot = input?.engine === 'hotspot';
   const isThread = input?.engine === 'thread';
   const isLocalMix = input?.engine === 'localmix';
+  const isUploadOnly = input?.engine === 'uploadonly' || (isLocalMix && !!(input as any)?.uploadOnly);
   const isRepost = input?.engine === 'repost' || !!(input as any)?.repostSourceUrl || !!(input as any)?.repostSourceFile;
   const isLocal = !!input && !isAi && !isTemplate && !isHotspot && !isThread && !isLocalMix && !isRepost && Array.isArray(input.localVideos) && input.localVideos.length > 0;
   const modeLabel = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
     : isThread ? (isZh ? '🧵 爆帖成片' : '🧵 Viral Threads')
     : isRepost ? (isZh ? '🌐 翻译搬运' : '🌐 Translate & Repost')
+    : isUploadOnly ? (isZh ? '📤 原片直传' : '📤 Upload As-Is')
     : isLocalMix ? (isZh ? '📁 本地混剪' : '📁 Local Mix')
     : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
     : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
@@ -432,6 +434,7 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine
   const modeColor = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
     : isThread ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
     : isRepost ? 'text-sky-500 bg-sky-500/10 border-sky-500/30'
+    : isUploadOnly ? 'text-teal-500 bg-teal-500/10 border-teal-500/30'
     : isLocalMix ? 'text-amber-500 bg-amber-500/10 border-amber-500/30'
     : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
     : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
@@ -615,12 +618,14 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           const isTemplate = task.input.engine === 'template';
           const isHotspot = task.input.engine === 'hotspot';
           const isLocalMix = task.input.engine === 'localmix';
+          const isUploadOnly = (task.input.engine as any) === 'uploadonly' || (isLocalMix && !!(task.input as any).uploadOnly);
           const isRepost = task.input.engine === 'repost' || !!(task.input as any).repostSourceUrl || !!(task.input as any).repostSourceFile;
           const isThread = task.input.engine === 'thread';
           const isLocal = !isAi && !isTemplate && !isHotspot && !isLocalMix && !isRepost && !isThread && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
           const label = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
             : isThread ? (isZh ? '🧵 爆帖成片' : '🧵 Viral Threads')
             : isRepost ? (isZh ? '🌐 翻译搬运' : '🌐 Translate & Repost')
+            : isUploadOnly ? (isZh ? '📤 原片直传' : '📤 Upload As-Is')
             : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
             : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
             : isLocalMix ? i18nService.t('vmixTaskName')
@@ -629,6 +634,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           const color = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
             : isThread ? 'text-orange-500 bg-orange-500/10 border-orange-500/30'
             : isRepost ? 'text-sky-500 bg-sky-500/10 border-sky-500/30'
+            : isUploadOnly ? 'text-teal-500 bg-teal-500/10 border-teal-500/30'
             : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
             : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
             : isLocalMix ? 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
@@ -660,6 +666,26 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
               <div className="flex items-start gap-1.5">
                 <span className="text-gray-400 shrink-0">🚀 {isZh ? '发布' : 'Publish'}</span>
                 <span className="truncate">{pubN > 0 ? (isZh ? `${pubN} 个平台` : `${pubN} platforms`) : (isZh ? '仅存本地' : 'Local only')}</span>
+              </div>
+            </>
+          );
+        })() : ((task.input.engine as any) === 'uploadonly' || (task.input.engine === 'localmix' && (task.input as any).uploadOnly)) ? (() => {
+          const pubN = Array.isArray(task.input.publishPlatforms) ? task.input.publishPlatforms.length : 0;
+          const inp: any = task.input;
+          const file = Array.isArray(inp.localMixFiles) && inp.localMixFiles.length > 0 ? String(inp.localMixFiles[0]).split(/[\\/]/).pop() : '-';
+          return (
+            <>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🎞️ {isZh ? '视频' : 'Video'}</span>
+                <span className="truncate">{file}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">📝 {isZh ? '介绍' : 'Intro'}</span>
+                <span className="truncate">{inp.uaStrictIntro === false ? (isZh ? 'AI 按参考写' : 'AI-written') : (isZh ? '按原文' : 'Verbatim')}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🚀 {isZh ? '发布' : 'Publish'}</span>
+                <span className="truncate">{pubN > 0 ? (isZh ? `${pubN} 个平台` : `${pubN} platforms`) : '-'}</span>
               </div>
             </>
           );
@@ -1051,7 +1077,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     );
   }
   // 本地混剪:素材文件夹/形态/文案模式/配音/BGM/发布(赛道/人设/关键词对它无意义)。
-  if (input.engine === 'localmix') {
+  if (input.engine === 'localmix' || (input.engine as any) === 'uploadonly') {
     const inp: any = input;
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
@@ -1273,7 +1299,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     );
   }
   // 本地混剪:同样漏了扁平文本版 → 补齐(与 ConfigCard 的 localmix 分支字段对齐)。
-  if (input.engine === 'localmix') {
+  if (input.engine === 'localmix' || (input.engine as any) === 'uploadonly') {
     const inp: any = input;
     return (
       <>
@@ -2469,6 +2495,15 @@ function scriptLangDisplay(code: string | undefined, isZh: boolean): string | nu
 // value 用 builtin:<id> token 传给主进程,bgm.ts 还原成 resources/bgm/<id>.mp3。
 // id 必须与 client/resources/bgm/<id>.mp3 文件名(去扩展名)一致。
 const BUILTIN_BGM_PREFIX = 'builtin:';
+// BGM 试听统一取流:sidecar http URL 一律 fetch→blob(排除 webview 对 <audio src=http> 的差异),
+// 'ERR:' 前缀 = sidecar 侧解析失败的诊断(打到 console 便于真机定位)。
+async function bgmPlayableUrl(u: string): Promise<string> {
+  if (!u) return '';
+  if (u.startsWith('ERR:')) { try { console.warn('[bgm-preview]', u); } catch { /* ignore */ } return ''; }
+  if (!/^https?:/i.test(u)) return u; // data: 直接播
+  try { const b = await fetch(u).then((r) => r.blob()); return URL.createObjectURL(b); } catch { return u; }
+}
+
 const BUILTIN_BGM: { id: string; zh: string; en: string }[] = [
   { id: 'bgm-01', zh: '内置曲目 1', en: 'Track 1' },
   { id: 'bgm-02', zh: '内置曲目 2', en: 'Track 2' },
@@ -2905,7 +2940,7 @@ const VideoConfigModal: React.FC<{
     setBgmPreviewLoading(true);
     setPreviewError('');
     try {
-      const url = await videoCreationService.prepareBgmPreview(token);
+      const url = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(token));
       if (url) setBgmPreviewUrl(url);
       else setPreviewError(isZh ? '试听失败：未取到音频' : 'Preview failed: no audio');
     } catch {
@@ -4610,7 +4645,7 @@ export const HotspotVideoModal: React.FC<{
   const previewBgm = async () => {
     if (!bgmPath || bgmPreviewLoading) return;
     setBgmPreviewLoading(true);
-    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
     catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
   };
   useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
@@ -5379,7 +5414,7 @@ export const ThreadVideoModal: React.FC<{
   const previewBgm = async () => {
     if (!bgmPath || bgmPreviewLoading) return;
     setBgmPreviewLoading(true);
-    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
     catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
   };
   useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
@@ -5908,7 +5943,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const previewBgm = async () => {
     if (!bgmPath || bgmPreviewLoading) return;
     setBgmPreviewLoading(true);
-    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
     catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
   };
   useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
@@ -6257,8 +6292,10 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   // 仅视频形态支持(图片没有「原片上传」概念);切到图片自动关。
   // 原片直传独立化(用户拍板):不再是混剪里的勾选项 —— 从「原片直传」卡进来(presetUploadOnly)
   // 或编辑历史 uploadOnly 任务时,整个 modal 切成两步极简形态;普通混剪不再出现该选项。
-  const uaMode = !!presetUploadOnly || (isEdit && !!(ei as any)?.uploadOnly);
+  const uaMode = !!presetUploadOnly || (isEdit && ((ei as any)?.engine === 'uploadonly' || !!(ei as any)?.uploadOnly));
   const uploadOnly = uaMode;
+  // 介绍二选一:'strict'=简介按原文直接用;'ai'=当参考文案让 AI 写(不填则按赛道/人设/关键词)。
+  const [uaIntroMode, setUaIntroMode] = useState<'strict' | 'ai'>((ei as any)?.uaStrictIntro === false ? 'ai' : 'strict');
   const [scan, setScan] = useState<{ videoCount: number; imageCount: number } | null>(null);
   const [scanning, setScanning] = useState(false);
   useEffect(() => {
@@ -6295,7 +6332,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
     const r = await videoCreationService.pickLocalMixFiles();
     if (!r) return;
     // 原片直传:只收视频文件(不支持图片,混入的图片直接过滤掉)。
-    const files = uaMode ? r.files.filter((p: string) => /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(p)) : r.files;
+    const files = uaMode ? r.files.filter((p: string) => /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(p)).slice(0, 1) : r.files;
     if (uaMode && files.length === 0) { setErr(t('uaPickVideoHint')); return; }
     setPickedFiles(files);
     setFolder(''); // 与选文件夹二选一
@@ -6316,7 +6353,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const previewBgm = async () => {
     if (!bgmPath || bgmPreviewLoading) return;
     setBgmPreviewLoading(true);
-    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
     catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
   };
   useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
@@ -6362,10 +6399,12 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const bgmInLibraryList = remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath);
   // ── Step 4:出片去向 + 发布平台 + 频率 ──
   const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    if (uaMode) return 'upload'; // 原片直传:没有「仅存本地」,直接选平台
     if (!editTask) return 'local'; // 本地素材场景默认「仅存本地」(先看效果再发)
     const list = Array.isArray(ei?.publishPlatforms) ? ei!.publishPlatforms as string[] : [];
     return list.length > 0 ? 'upload' : 'local';
   });
+  useEffect(() => { if (uaMode) { setOutputMode('upload'); setRunInterval('once'); } /* eslint-disable-next-line */ }, [uaMode]);
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const init: Record<Platform, boolean> = {
       douyin: false, xhs: false, binance: false, x: false, tiktok: false,
@@ -6415,13 +6454,14 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
         persona: '', track: '', keywords: [],
         script: script.trim(),
         scriptMode,
-        engine: 'localmix',
+        engine: (uaMode ? 'uploadonly' : 'localmix') as any,
         localMixFolder: folder,
         // 直接选中的文件(与文件夹二选一,pipeline 非空时优先用它)。
         localMixFiles: pickedFiles.length > 0 ? pickedFiles : undefined,
         localMixMediaType: mediaType,
         // 原片直发:仅视频形态;写稿/配音/字幕/BGM 全部关掉(pipeline 早分流,不进合成)。
         uploadOnly: uploadOnly && mediaType === 'video' ? true : undefined,
+        uaStrictIntro: uaMode ? uaIntroMode === 'strict' : undefined,
         referenceImages: [], aspect: '9:16',
         maxClipSeconds,
         scriptLang: scriptLang !== 'auto' ? scriptLang : undefined,
@@ -6476,7 +6516,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
       if (availableCount === 0) { setErr(mediaType === 'image' ? t('vmixErrNoImages') : t('vmixErrNoVideos')); return; }
       // 原片直发:素材步直接跳出片步(文案/画面/音频/字幕全不适用);介绍必填(AI 靠它写标题/简介/标签)。
       if (uploadOnly) {
-        if (!script.trim()) { setErr(t('vmixErrNoIntro')); return; }
+        if (uaIntroMode === 'strict' && !script.trim()) { setErr(t('vmixErrNoIntro')); return; }
         setErr(null); setStep(MAX_STEP as LmStep); return;
       }
     }
@@ -6506,7 +6546,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   {/* 原片直发只有两步:素材 / 出片 */}
                   <StepDot n={1} active={step === 1} done={step > 1} label={t('vmixStepMaterial')} />
                   <div className={`h-px w-3 ${step > 1 ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-                  <StepDot n={2} active={step === 6} done={false} label={t('vmixStepOutput')} />
+                  <StepDot n={2} active={step === 6} done={false} label={uaMode ? t('uaStepUpload') : t('vmixStepOutput')} />
                 </>
               ) : (
                 <>
@@ -6542,9 +6582,13 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       </div>
                     </div>
                   </Field>
-                  <Field label={t('vmixUploadOnlyIntroLabel')} hint={t('vmixUploadOnlyDesc')}>
+                  <Field label={t('vmixUploadOnlyIntroLabel')} hint={t('uaIntroHint')}>
+                    <div className="flex gap-2 mb-2">
+                      <button type="button" onClick={() => setUaIntroMode('strict')} className={seg(uaIntroMode === 'strict')}>📝 {t('uaIntroModeStrict')}</button>
+                      <button type="button" onClick={() => setUaIntroMode('ai')} className={seg(uaIntroMode === 'ai')}>✨ {t('uaIntroModeAi')}</button>
+                    </div>
                     <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={4}
-                      placeholder={t('vmixUploadOnlyIntroPh')}
+                      placeholder={uaIntroMode === 'strict' ? t('uaIntroStrictPh') : t('uaIntroAiPh')}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" />
                   </Field>
                 </>
@@ -6553,7 +6597,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   <Field label={t('vmixSourceLabel')} hint={t('vmixSourceHint')}>
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={pickFolder} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">📂 {t('vmixPickFolder')}</button>
-                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold border border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10">🎞️ {t('vmixPickFiles')}</button>
+                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">🎞️ {t('vmixPickFiles')}</button>
                       <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={folder || pickedFiles.join('\n')}>
                         {folder
                           || (pickedFiles.length > 0 ? t('vmixFilesPicked').replace('{n}', String(pickedFiles.length)) : t('vmixNoFolderYet'))}
@@ -6649,10 +6693,11 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                 </>
               )}
               <Field label={isZh ? '背景音乐（选填）' : 'Background music (optional)'} hint={isZh ? '混在旁白下方,出片末尾自动淡出' : 'mixed under narration, fades out'}>
-                <div className="grid grid-cols-3 gap-2 mb-2">
+                <div className="grid grid-cols-4 gap-2 mb-2">
                   <button type="button" onClick={() => setBgmPath('')} className={`px-2 py-1.5 rounded-lg text-xs border ${!bgmPath ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '无' : 'None'}</button>
                   <button type="button" onClick={() => { if (!bgmIsLibrary) setBgmPath(BUILTIN_BGM_PREFIX + BUILTIN_BGM[0].id); }} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsLibrary ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '曲库' : 'Library'}</button>
                   <button type="button" onClick={pickBgmFile} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsUpload ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '上传' : 'Upload'}</button>
+                  <button type="button" onClick={previewBgm} disabled={!bgmPath || bgmPreviewLoading} className="px-2 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40">{bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Play')}</button>
                 </div>
                 {bgmIsLibrary && (
                   <select value={bgmPath} onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
@@ -6684,15 +6729,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   </div>
                 )}
 
-                {bgmPath && (
-                  <div className="mt-2 space-y-1.5">
-                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
-                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60">
-                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
-                    </button>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
-                  </div>
-                )}
+                {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="mt-2 w-full h-9" />)}
               </Field>
             </>
           )}
@@ -6758,12 +6795,14 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
 
           {step === 6 && (
             <>
+              {!uaMode && (
               <Field label={t('vmixOutputLabel')}>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setOutputMode('local')} className={seg(outputMode === 'local')}>💾 {t('vmixOutputLocal')}</button>
                   <button type="button" onClick={() => setOutputMode('upload')} className={seg(outputMode === 'upload')}>🚀 {t('vmixOutputUpload')}</button>
                 </div>
               </Field>
+              )}
               {/* 发布平台 + 发布账号:复用标准组件(PublishPlatformPicker + MatrixAccountSelect),
                   与热搜/爆帖向导同一观感(2026-07-25 用户反馈原手搓版丑)。 */}
               <PublishPlatformPicker
@@ -6804,6 +6843,11 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   </div>
                 )}
               </PublishPlatformPicker>
+              {uaMode ? (
+              <Field label={t('vmixFreqLabel')}>
+                <div className="text-sm dark:text-gray-200">🕐 {t('vmixFreqOnce')}<span className="ml-2 text-[11px] text-gray-400">{t('uaFreqOnceOnly')}</span></div>
+              </Field>
+              ) : (
               <Field label={t('vmixFreqLabel')}>
                 <div className="flex gap-2 flex-wrap">
                   {(['once', '3h', '6h', 'daily_random'] as VideoRunInterval[]).map((v) => (
@@ -6813,6 +6857,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   ))}
                 </div>
               </Field>
+              )}
             </>
           )}
         </div>
@@ -6961,7 +7006,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
     if (!token || bgmPreviewLoading) return;
     setBgmPreviewLoading(true);
     try {
-      const url = await videoCreationService.prepareBgmPreview(token);
+      const url = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(token));
       setBgmPreviewUrl(url || '');
     } catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
   };

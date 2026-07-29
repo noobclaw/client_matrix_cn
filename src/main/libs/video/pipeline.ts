@@ -162,7 +162,7 @@ export interface VideoCreationInput {
    *                      参考图(≤2)做风格/人设统一;失败镜降级到参考图静帧/邻镜。
    *                      走服务端代理(/api/video/seedance/*),逐片段计费 + 失败退款。
    */
-  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix' | 'repost';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot' | 'thread' | 'localmix' | 'repost' | 'uploadonly';
   /** engine==='repost'(翻译搬运):源视频链接(与 repostSourceFile 二选一,走 yt-dlp 通用下载)。 */
   repostSourceUrl?: string;
   /** engine==='repost':本地源视频文件绝对路径(与 repostSourceUrl 二选一,优先)。 */
@@ -807,7 +807,7 @@ async function runVideoPipeline(
     // ── 本地混剪 · 原片直发(uploadOnly):不写稿/不配音/不字幕/不混剪 —— 从素材文件夹
     //    挑一条原片直接发布;AI 只产发布标题/简介/标签(向导填的「视频介绍」当素材)。
     //    定时任务反复跑同一文件夹时随机挑片,组合各不相同。计费与本地混剪同口径(mode1 按条)。
-    if (input.engine === 'localmix' && input.uploadOnly) {
+    if (input.engine === 'uploadonly' || (input.engine === 'localmix' && input.uploadOnly)) {
       throwIfAborted(signal);
       tracker.start('script', `输出目录:${taskDir}`);
       tracker.done('script', '⏭ 原片直发:跳过写稿');
@@ -827,23 +827,12 @@ async function runVideoPipeline(
       tracker.done('visuals', `🎬 已选原片:${path.basename(pick)}(文件夹共 ${media.videos.length} 个视频,每次运行随机挑一条)`);
 
       tracker.start('compose');
-      const charge = await chargeMode1Video(input.targetSeconds ?? 45, { videoCount: 1, aiCostUsd: 0 });
-      if (!charge.ok) {
-        const err = charge.reason === 'insufficient' ? '余额不足,无法生成(需先预扣平台基础费,请充值后重试)'
-          : charge.reason === 'no_auth' ? '未登录 NoobClaw,无法生成'
-          : '平台基础费预扣失败,请稍后重试';
-        tracker.fail('compose', err);
-        return { ok: false, error: err };
-      }
-      chargeId = charge.chargeId;
-      refundOnExit = true;
-      tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
-      tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}），失败将自动退回`);
+      // 原片直传/原片直发:免平台基础费(用户拍板)——只收 AI 撰写标题/简介/标签的 token
+      // (resolvePublishCaption 内部走 /api/ai 已按量计费),视频本体零处理不收平台费。
       // 原片拷到本次运行目录(保留原扩展名):交付物与其它任务同构,详情页能点开回看。
       fs.mkdirSync(destDir, { recursive: true });
       const outPath = path.join(destDir, `原片直发_${path.basename(pick)}`);
       fs.copyFileSync(pick, outPath);
-      refundOnExit = false; // 原片就绪即交付(发布失败不退费,与「合成成功」同口径)
       tracker.done('compose', `📦 原片就绪(未做任何处理)· 📂 输出目录:${destDir}`);
 
       tracker.start('publish');
@@ -857,8 +846,9 @@ async function runVideoPipeline(
           keywords: input.keywords?.length ? input.keywords : undefined,
           track: input.track || undefined,
           lang: detectLang(introText || path.basename(pick)),
-          userTitle: input.publishTitle,
-          userCaption: input.publishCaption,
+          userTitle: input.publishTitle || ((input as any).uaStrictIntro && introText ? (introText.split(/[。！？.!?
+]/).filter(Boolean)[0] || introText).slice(0, 40) : undefined),
+          userCaption: input.publishCaption || ((input as any).uaStrictIntro && introText ? introText : undefined),
           userTags: input.hashtags,
           onLog: (m: string) => tracker.progress(m),
           onCost: (tk, usd) => tracker.addTokens(tk, usd),

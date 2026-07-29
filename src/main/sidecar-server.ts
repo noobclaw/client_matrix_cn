@@ -1371,11 +1371,14 @@ const server = http.createServer(async (req, res) => {
               const { resolveBgmPath } = await import('./libs/video/bgm');
               const { registerFile, buildUrl } = await import('./libs/localFileServer');
               const file = await resolveBgmPath(args[0]);
-              if (!file || !fs.existsSync(file)) return writeJSON(res, 200, '');
+              if (!file || !fs.existsSync(file)) {
+                // 带诊断返回(前端打 console),定位「内置曲在打包资源里没探到」这类真机问题。
+                return writeJSON(res, 200, 'ERR:resolve_failed token=' + String(args[0]).slice(0, 60));
+              }
               const token = registerFile(file, { ttlMs: 30 * 60 * 1000 });
               return writeJSON(res, 200, buildUrl(token, PORT));
-            } catch {
-              return writeJSON(res, 200, '');
+            } catch (e) {
+              return writeJSON(res, 200, 'ERR:' + String((e as Error)?.message || e).slice(0, 120));
             }
           }
           case 'video:validateMedia': {
