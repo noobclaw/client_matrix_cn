@@ -846,8 +846,7 @@ async function runVideoPipeline(
           keywords: input.keywords?.length ? input.keywords : undefined,
           track: input.track || undefined,
           lang: detectLang(introText || path.basename(pick)),
-          userTitle: input.publishTitle || ((input as any).uaStrictIntro && introText ? (introText.split(/[。！？.!?
-]/).filter(Boolean)[0] || introText).slice(0, 40) : undefined),
+          userTitle: input.publishTitle || ((input as any).uaStrictIntro && introText ? (introText.split(/[。！？.!?\n]/).filter(Boolean)[0] || introText).slice(0, 40) : undefined),
           userCaption: input.publishCaption || ((input as any).uaStrictIntro && introText ? introText : undefined),
           userTags: input.hashtags,
           onLog: (m: string) => tracker.progress(m),
