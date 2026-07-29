@@ -37,6 +37,41 @@ function apiBase(): string {
 }
 
 // 翻译搬运专属步骤集(替代默认 script/tts/visuals/compose/publish)。
+// ── 服务端可调参数(admin repost_* → /api/video/config 下发;拉不到用默认=历史行为)。
+// 模块级单例:每次 runRepostPipeline 开跑时刷新一次。调这些不用重新打包客户端。
+const TUNE = {
+  budgetCjk: 5, budgetLatin: 3.2,
+  rateHi: 1.08, rateLo: 0.9, rateUpMax: 15, rateDownMax: 10,
+  lineBoost: 20, atempoMax: 1.25, stretchMax: 1.15,
+  gapSplit: 1.0, unitsSplit: 36,
+  maskRatio: 0.16, fontDivisor: 700,
+  ytdlpFormat: 'bv*+ba/b', ytdlpExtractorArgs: 'youtube:player_client=android,ios',
+  translatePrompt: '', condensePrompt: '',
+};
+async function refreshTune(): Promise<void> {
+  try {
+    const c: any = await getVideoConfig();
+    const n = (v: unknown, dv: number) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : dv);
+    TUNE.budgetCjk = n(c?.repostBudgetCjk, TUNE.budgetCjk);
+    TUNE.budgetLatin = n(c?.repostBudgetLatin, TUNE.budgetLatin);
+    TUNE.rateHi = n(c?.repostRateHi, TUNE.rateHi);
+    TUNE.rateLo = n(c?.repostRateLo, TUNE.rateLo);
+    TUNE.rateUpMax = n(c?.repostRateUpMax, TUNE.rateUpMax);
+    TUNE.rateDownMax = n(c?.repostRateDownMax, TUNE.rateDownMax);
+    TUNE.lineBoost = n(c?.repostLineBoost, TUNE.lineBoost);
+    TUNE.atempoMax = n(c?.repostAtempoMax, TUNE.atempoMax);
+    TUNE.stretchMax = n(c?.repostStretchMax, TUNE.stretchMax);
+    TUNE.gapSplit = n(c?.repostGapSplit, TUNE.gapSplit);
+    TUNE.unitsSplit = n(c?.repostUnitsSplit, TUNE.unitsSplit);
+    TUNE.maskRatio = n(c?.repostMaskRatio, TUNE.maskRatio);
+    TUNE.fontDivisor = n(c?.repostFontDivisor, TUNE.fontDivisor);
+    if (typeof c?.repostYtdlpFormat === 'string' && c.repostYtdlpFormat.trim()) TUNE.ytdlpFormat = c.repostYtdlpFormat.trim();
+    if (typeof c?.repostYtdlpExtractorArgs === 'string' && c.repostYtdlpExtractorArgs.trim()) TUNE.ytdlpExtractorArgs = c.repostYtdlpExtractorArgs.trim();
+    TUNE.translatePrompt = typeof c?.repostTranslatePrompt === 'string' ? c.repostTranslatePrompt : '';
+    TUNE.condensePrompt = typeof c?.repostCondensePrompt === 'string' ? c.repostCondensePrompt : '';
+  } catch { /* 没网/没登录 → 保持默认 */ }
+}
+
 const REPOST_STEPS = [
   { key: 'source', label: '获取源视频' },
   { key: 'transcribe', label: '语音转写' },
@@ -122,7 +157,7 @@ async function resolveSourceVideo(
   // ⚠️ 别用 ext=mp4 限制:个别站(TikTok)的"最佳 mp4"可能是【纯视频无音轨】,下下来抽音必挂。
   //   bv*+ba/b = 最佳视频+最佳音频合并,再不行退最佳单流(通常也带音轨)→ 保证有声音。
   const baseArgs = [
-    '-f', 'bv*+ba/b',
+    '-f', TUNE.ytdlpFormat,
     '--no-playlist', '--retries', '5', '--no-progress',
     '--merge-output-format', 'mp4',
     '-o', outPath, url,
@@ -151,7 +186,7 @@ async function resolveSourceVideo(
   if (!r.ok && !signal?.aborted && /youtu\.?be/i.test(url) && /403|EJS|signature|s may be missing|nsig/i.test(r.err)) {
     onLog('⚙️ YouTube 签名受限,自动换 android/ios 播放端重试…');
     try { fs.unlinkSync(outPath); } catch { /* 无残留 */ }
-    r = await runYtdlp(['--extractor-args', 'youtube:player_client=android,ios', ...baseArgs]);
+    r = await runYtdlp(['--extractor-args', TUNE.ytdlpExtractorArgs, ...baseArgs]);
   }
   if (!r.ok || !fs.existsSync(outPath)) {
     if (r.err && r.err !== 'aborted') onLog(`yt-dlp 失败 · ${r.err.slice(-200)}`);
@@ -265,7 +300,7 @@ function regroupSegments(segs: Seg[]): Seg[] {
     bEnd = seg.end;
     const gapNext = i + 1 < segs.length ? segs[i + 1].start - seg.end : 99;
     const endsSent = SENT_END.test(seg.text.trim().slice(-1));
-    if (endsSent || gapNext > 1.0 || unitsOf(buf) >= 36) flush();
+    if (endsSent || gapNext > TUNE.gapSplit || unitsOf(buf) >= TUNE.unitsSplit) flush();
   }
   flush();
   // 过短碎句(<4 字宽)并入前句,别单独占屏。
@@ -296,6 +331,8 @@ async function translateSegments(
     '   译文绝不允许超过 max —— 超长会导致配音拖过画面。空间不够就精简表达:删冗余修饰、换短说法、保核心信息。',
     '# 只返回 JSON:{ "translations": ["译文1", "译文2", ...] },数组长度必须等于输入长度。',
   ].join('\n');
+  // admin 可整体覆盖翻译 prompt({{TARGET}} 占位;必须保持 translations 输出契约)。
+  const systemFinal = TUNE.translatePrompt.trim() ? TUNE.translatePrompt.split('{{TARGET}}').join(targetLangLabel) : system;
   // 每句长度预算直接算成【具体数字】给模型(比让它自己按语速换算服从得多):
   // CJK ≈ 5 字/秒,其它 ≈ 2.6 词/秒(边界略宽松 —— 超出的部分配音端先自动提速、
   // 再 atempo,轻度压缩只做最后手段,避免译文被砍得太干)。
@@ -304,7 +341,7 @@ async function translateSegments(
     const sec = Math.max(0.6, s.end - s.start);
     // 拉丁语预算 2.6→3.2 词/秒:中文信息密度高,2.6 逼着模型狠删细节(真机反馈英文太简短);
     // 超出部分交给 全局提速≤15% + 画面伸缩≤15% + 逐句提速 消化,极端才精简。
-    return Math.max(3, Math.floor(sec * (cjkTarget ? 5 : 3.2)));
+    return Math.max(3, Math.floor(sec * (cjkTarget ? TUNE.budgetCjk : TUNE.budgetLatin)));
   };
 
   const out: Seg[] = [];
@@ -319,7 +356,7 @@ async function translateSegments(
     let translations: string[] | null = null;
     for (let attempt = 0; attempt < 2 && !translations; attempt++) {
       try {
-        const r = await callDeepSeek(system, user, true, 60_000, 'noobclawai-chat', 0.2);
+        const r = await callDeepSeek(systemFinal, user, true, 60_000, 'noobclawai-chat', 0.2);
         onCost(r.tokens || 0, r.costUsd || 0);
         const m = r.content.match(/\{[\s\S]*\}/);
         const parsed = m ? JSON.parse(m[0]) : JSON.parse(r.content);
@@ -375,8 +412,8 @@ async function synthAndAlign(
   let globalRate = rate;
   if (preTarget > 3 && preTts.size >= 3) {
     const ratio = preSum / preTarget;
-    if (ratio > 1.08) globalRate = Math.min(50, rate + Math.min(15, Math.round((ratio - 1) * 100)));
-    else if (ratio < 0.9) globalRate = Math.max(-50, rate - Math.min(10, Math.round((1 - ratio) * 50)));
+    if (ratio > TUNE.rateHi) globalRate = Math.min(50, rate + Math.min(TUNE.rateUpMax, Math.round((ratio - 1) * 100)));
+    else if (ratio < TUNE.rateLo) globalRate = Math.max(-50, rate - Math.min(TUNE.rateDownMax, Math.round((1 - ratio) * 50)));
     if (globalRate !== rate) onLog(`🎚️ 语速自适应:配音/原口播时长比 ${ratio.toFixed(2)} → 全片语速 ${globalRate > 0 ? '+' : ''}${globalRate}%`);
   }
 
@@ -420,7 +457,7 @@ async function synthAndAlign(
     if (ttsDur > targetDur * 1.6 && !signal?.aborted) {
       const outF = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_f.mp3`);
       for (const v of chain) {
-        const rf = await synthesize(seg.text, outF, v, Math.min(50, globalRate + 20));
+        const rf = await synthesize(seg.text, outF, v, Math.min(50, globalRate + TUNE.lineBoost));
         if (rf.synthesized && rf.durationSec > 0 && rf.durationSec < ttsDur) {
           onLog(`⏩ 第 ${i + 1} 句偏长,自动提速重配(${ttsDur.toFixed(1)}s→${rf.durationSec.toFixed(1)}s)`);
           ttsPath = rf.audioPath; ttsDur = rf.durationSec;
@@ -432,14 +469,14 @@ async function synthAndAlign(
       const budget = Math.max(6, Math.floor(seg.text.trim().length * ((targetDur * 1.6) / ttsDur)));
       try {
         const r = await callDeepSeek(
-          '你是口播精简器。把给定句子用【同一种语言】略微精简:删冗余修饰和口头语,核心信息一个都不能丢,输出不超过 ' + budget + ' 个字符。只返回精简后的句子,不要引号、不要解释。',
+          (TUNE.condensePrompt.trim() ? TUNE.condensePrompt.split('{{BUDGET}}').join(String(budget)) : '你是口播精简器。把给定句子用【同一种语言】略微精简:删冗余修饰和口头语,核心信息一个都不能丢,输出不超过 ' + budget + ' 个字符。只返回精简后的句子,不要引号、不要解释。'),
           seg.text, false, 30_000, 'noobclawai-chat', 0.3);
         onCost?.(r.tokens || 0, r.costUsd || 0);
         const short = (r.content || '').trim().replace(/^["'「『]|["'」』]$/g, '').trim();
         if (short && short.length < seg.text.trim().length) {
           const out2 = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_c.mp3`);
           for (const v of chain) {
-            const r2 = await synthesize(short, out2, v, Math.min(50, globalRate + 20));
+            const r2 = await synthesize(short, out2, v, Math.min(50, globalRate + TUNE.lineBoost));
             if (r2.synthesized && r2.durationSec > 0 && r2.durationSec < ttsDur) {
               onLog(`✂️ 第 ${i + 1} 句仍超长,轻度精简重配(${ttsDur.toFixed(1)}s→${r2.durationSec.toFixed(1)}s)`);
               ttsPath = r2.audioPath; ttsDur = r2.durationSec; seg.text = short;
@@ -450,7 +487,7 @@ async function synthAndAlign(
       } catch { /* 精简失败走 atempo+顺延兜底 */ }
     }
     // 溢出压到原时长,真实压缩封顶 1.3x(听感仍自然;再多就只压 1.3、剩余顺延)。
-    const tempo = ttsDur > targetDur ? Math.min(1.25, ttsDur / targetDur) : 1;
+    const tempo = ttsDur > targetDur ? Math.min(TUNE.atempoMax, ttsDur / targetDur) : 1;
     // ⚠️ 必须把每句【归一化成 aac 48k 立体声】:TTS 出的是 mp3、静音片段是 aac,格式不统一
     //    concat demuxer -c copy 会失败。这一步同时做 atempo(需要时),一趟 ffmpeg 搞定。
     const norm = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_n.m4a`);
@@ -533,7 +570,7 @@ function wrapAssLine(text: string, W: number, fontPx: number): string {
   return out.join('\\N');
 }
 function buildAss(cues: TtsCue[], W: number, H: number, fontSetting: number): string {
-  const fontPx = Math.max(18, Math.round(H * (fontSetting / 700))); // 20 → 1920高≈55px / 1080高≈31px
+  const fontPx = Math.max(18, Math.round(H * (fontSetting / TUNE.fontDivisor))); // 20 → 1920高≈55px / 1080高≈31px
   const marginV = Math.round(H * 0.05); // 距底 5%,落在底部蒙层带内
   const outline = Math.max(1, Math.round(fontPx / 18));
   const esc = (t: string) => wrapAssLine(t.replace(/[{}]/g, '').replace(/\r?\n/g, ' ').trim(), W, fontPx);
@@ -566,6 +603,8 @@ export async function runRepostPipeline(
   emit?: ProgressEmitter,
   signal?: AbortSignal,
 ): Promise<VideoCreationResult> {
+  await refreshTune(); // 服务端可调参数(admin repost_*),拉不到用默认
+
   const jobId = `rpt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const tracker = new ProgressTracker(jobId, emit, REPOST_STEPS);
 
@@ -714,7 +753,7 @@ export async function runRepostPipeline(
       // ── 画面微伸缩(温和版,用户拍板):配音总长超过原片 ≤15% 时,整条画面 setpts 放慢
       //    到正好匹配(15% 以内肉眼基本无感),超出部分仍靠冻结末帧。配音不长则不动画面。
       const vStretch = srcDur > 0 && aligned.totalDur > srcDur + 0.3
-        ? Math.min(1.15, aligned.totalDur / srcDur) : 1;
+        ? Math.min(TUNE.stretchMax, aligned.totalDur / srcDur) : 1;
       if (vStretch > 1.005) tracker.progress(`🎬 画面微伸缩 ×${vStretch.toFixed(2)}(配音略长,放慢画面代替冻结)`);
       if ((input as any).repostKeepBgm) {
         const mixed = path.join(assetDir, 'final_audio.m4a');
@@ -757,8 +796,8 @@ export async function runRepostPipeline(
         //   杜绝「音频没播完画面停了」;短则 -t 就是视频长,无副作用。
         const finalDur = aligned.totalDur;
         const vf = `[0:v]${vStretch > 1.005 ? `setpts=PTS*${vStretch.toFixed(4)},` : ''}tpad=stop_mode=clone:stop_duration=${finalDur.toFixed(3)}[vext];`
-          + `[vext]split[vb][vm];[vm]crop=iw:ih*0.16:0:ih*0.84,boxblur=20:2[vmb];`
-          + `[vb][vmb]overlay=0:H*0.84[vbg];[vbg]subtitles='${escSubPath(assPath)}'[v]`;
+          + `[vext]split[vb][vm];[vm]crop=iw:ih*${TUNE.maskRatio.toFixed(3)}:0:ih*${(1 - TUNE.maskRatio).toFixed(3)},boxblur=20:2[vmb];`
+          + `[vb][vmb]overlay=0:H*${(1 - TUNE.maskRatio).toFixed(3)}[vbg];[vbg]subtitles='${escSubPath(assPath)}'[v]`;
         const r = await runFfmpeg([
           '-y', '-i', sourceVideoPath, '-i', finalAudio,
           '-filter_complex', vf,

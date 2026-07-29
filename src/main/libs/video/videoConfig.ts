@@ -51,6 +51,14 @@ export interface VideoPipelineConfig {
   /** 爆帖成片:yt-dlp 单文件二进制下载地址(win/mac)。 */
   threadYtdlpUrlWin: string;
   threadYtdlpUrlMac: string;
+  // ── 翻译搬运可调参数(admin repost_* 下发;详见 repost-pipeline TUNE)──
+  repostBudgetCjk: number; repostBudgetLatin: number;
+  repostRateHi: number; repostRateLo: number; repostRateUpMax: number; repostRateDownMax: number;
+  repostLineBoost: number; repostAtempoMax: number; repostStretchMax: number;
+  repostGapSplit: number; repostUnitsSplit: number;
+  repostMaskRatio: number; repostFontDivisor: number;
+  repostYtdlpFormat: string; repostYtdlpExtractorArgs: string;
+  repostTranslatePrompt: string; repostCondensePrompt: string;
   /** 爆帖成片:subreddit 预设(向导多选,cat 分组 qa/story/tech)。 */
   threadSubredditPresets: Array<{ id: string; label: string; cat: string }>;
 }
@@ -127,6 +135,13 @@ export const DEFAULT_VIDEO_CONFIG: VideoPipelineConfig = {
     { id: 'racing',        label: '赛车漂移',     term: '赛车漂移 手游录屏' },
     { id: 'gta-stunt',     label: 'GTA 特技',     term: 'gta 特技跑酷' },
   ],
+  repostBudgetCjk: 5, repostBudgetLatin: 3.2,
+  repostRateHi: 1.08, repostRateLo: 0.9, repostRateUpMax: 15, repostRateDownMax: 10,
+  repostLineBoost: 20, repostAtempoMax: 1.25, repostStretchMax: 1.15,
+  repostGapSplit: 1.0, repostUnitsSplit: 36,
+  repostMaskRatio: 0.16, repostFontDivisor: 700,
+  repostYtdlpFormat: 'bv*+ba/b', repostYtdlpExtractorArgs: 'youtube:player_client=android,ios',
+  repostTranslatePrompt: '', repostCondensePrompt: '',
   threadYtdlpUrlWin: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe',
   threadYtdlpUrlMac: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos',
   threadSubredditPresets: [
@@ -206,6 +221,23 @@ export async function getVideoConfig(): Promise<VideoPipelineConfig> {
       loginWaitMs: num(c?.loginWaitMs, d.loginWaitMs),
       threadBgVideos: arr(c?.threadBgVideos, d.threadBgVideos),
       threadBgDouyinTerms: arr(c?.threadBgDouyinTerms, d.threadBgDouyinTerms),
+      repostBudgetCjk: num(c?.repostBudgetCjk, d.repostBudgetCjk),
+      repostBudgetLatin: num(c?.repostBudgetLatin, d.repostBudgetLatin),
+      repostRateHi: num(c?.repostRateHi, d.repostRateHi),
+      repostRateLo: num(c?.repostRateLo, d.repostRateLo),
+      repostRateUpMax: num(c?.repostRateUpMax, d.repostRateUpMax),
+      repostRateDownMax: num(c?.repostRateDownMax, d.repostRateDownMax),
+      repostLineBoost: num(c?.repostLineBoost, d.repostLineBoost),
+      repostAtempoMax: num(c?.repostAtempoMax, d.repostAtempoMax),
+      repostStretchMax: num(c?.repostStretchMax, d.repostStretchMax),
+      repostGapSplit: num(c?.repostGapSplit, d.repostGapSplit),
+      repostUnitsSplit: num(c?.repostUnitsSplit, d.repostUnitsSplit),
+      repostMaskRatio: num(c?.repostMaskRatio, d.repostMaskRatio),
+      repostFontDivisor: num(c?.repostFontDivisor, d.repostFontDivisor),
+      repostYtdlpFormat: str(c?.repostYtdlpFormat, d.repostYtdlpFormat),
+      repostYtdlpExtractorArgs: str(c?.repostYtdlpExtractorArgs, d.repostYtdlpExtractorArgs),
+      repostTranslatePrompt: str(c?.repostTranslatePrompt, d.repostTranslatePrompt),
+      repostCondensePrompt: str(c?.repostCondensePrompt, d.repostCondensePrompt),
       threadYtdlpUrlWin: str(c?.threadYtdlpUrlWin, d.threadYtdlpUrlWin),
       threadYtdlpUrlMac: str(c?.threadYtdlpUrlMac, d.threadYtdlpUrlMac),
       threadSubredditPresets: arr(c?.threadSubredditPresets, d.threadSubredditPresets),
