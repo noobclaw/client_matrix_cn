@@ -1257,6 +1257,43 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       </>
     );
   }
+  // 翻译搬运:扁平文本版(任务详情页)。ConfigCard 早修了,这份漏了 → 用户实测详情页
+  // 仍显示「赛道/人设/关键词/在线素材」。engine 缺失的老任务靠 repostSourceUrl/File 兜底。
+  if (input.engine === 'repost' || (input as any).repostSourceUrl || (input as any).repostSourceFile) {
+    const inp: any = input;
+    const LANG: Record<string, string> = { zh: '简体中文', 'zh-TW': '繁体中文', en: 'English', ja: '日本語', ko: '한국어', vi: 'Tiếng Việt', es: 'Español', pt: 'Português', fr: 'Français', de: 'Deutsch', id: 'Bahasa Indonesia' };
+    return (
+      <>
+        <div className="break-words">🌐 {i18nService.t('rpstSourceLabel')}：{inp.repostSourceFile ? i18nService.t('rpstSourceFile') : (inp.repostSourceUrl || '-')}</div>
+        <div>🈯 {i18nService.t('rpstTargetLangLabel')}：{LANG[String(inp.repostTargetLang || 'zh')] || inp.repostTargetLang || '简体中文'}</div>
+        <div>🎤 {i18nService.t('vmixVoiceLabel')}：{input.voice ? `${voiceDisplayLabel(input.voice, isZh)}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : ''}` : (isZh ? '无配音' : 'No voice-over')}</div>
+        <div>🎵 {i18nService.t('rpstBgmLabel')}：{inp.repostKeepBgm ? (isZh ? '保留原声垫底' : 'Keep original BGM') : (isZh ? '纯配音替换' : 'Voice only')}</div>
+        <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
+      </>
+    );
+  }
+  // 本地混剪:同样漏了扁平文本版 → 补齐(与 ConfigCard 的 localmix 分支字段对齐)。
+  if (input.engine === 'localmix') {
+    const inp: any = input;
+    return (
+      <>
+        <div className="break-words">📂 {i18nService.t('vmixSourceLabel')}：{Array.isArray(inp.localMixFiles) && inp.localMixFiles.length > 0
+          ? i18nService.t('vmixFilesPicked').replace('{n}', String(inp.localMixFiles.length))
+          : (inp.localMixFolder || '-')}</div>
+        <div>🎞️ {i18nService.t('vmixMediaTypeLabel')}：{inp.localMixMediaType === 'image' ? i18nService.t('vmixMediaImage') : i18nService.t('vmixMediaVideo')}</div>
+        {inp.uploadOnly ? (
+          <div>📤 {i18nService.t('vmixUploadOnlyLabel')}：{i18nService.t('vmixUploadOnlyBadge')}</div>
+        ) : (
+          <>
+            <div>📝 {i18nService.t('vmixScriptModeLabel')}：{input.scriptMode === 'ai' ? i18nService.t('vmixScriptAi') : i18nService.t('vmixScriptStrict')}</div>
+            <div>🎤 {i18nService.t('vmixVoiceLabel')}：{input.voice ? `${voiceDisplayLabel(input.voice, isZh)}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : ''}` : (isZh ? '无配音' : 'No voice-over')}</div>
+            <div>🎵 {i18nService.t('vmixBgmLabel')}：{templateBgmSummary(input, isZh)}</div>
+          </>
+        )}
+        <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
+      </>
+    );
+  }
   const kw = (input.keywords || []).filter(Boolean).join(' · ');
   const s = (input.script || '').trim();
   const mode = input.scriptMode || (s ? 'strict' : 'ai');
@@ -2044,6 +2081,13 @@ const VideoCreateFlow: React.FC<{
           descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
           costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
           btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
+        {/* 2026-07-29 用户定的顺序:翻译搬运 → 本地混剪 → 在线素材 → 热搜 → 模板速生 → 爆帖 → 电影级。 */}
+        <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📁" onOpen={openWithLogin(() => setLocalMixOpen(true))} onGoTasks={onGoTasks}
+          tagZh={i18nService.t('vmixCardTag')} tagEn={i18nService.t('vmixCardTag')}
+          titleZh={i18nService.t('vmixCardTitle')} titleEn={i18nService.t('vmixCardTitle')}
+          descZh={i18nService.t('vmixCardDesc')} descEn={i18nService.t('vmixCardDesc')}
+          costZh={i18nService.t('vmixCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('vmixCardCost').replace('{fee}', feeEn)}
+          btnZh={i18nService.t('vmixCardBtn')} btnEn={i18nService.t('vmixCardBtn')} />
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
@@ -2060,7 +2104,6 @@ const VideoCreateFlow: React.FC<{
           costZh={`单条约 ${feeZh}(写稿/联网/配图/合成)`} costEn={`~${feeEn} per clip (script / web / footage / compose)`}
           btnZh="🔥 开始创作 →" btnEn="🔥 Start →" />
         )}
-        {/* 2026-07-09 用户定的顺序:在线素材、热搜成片保持前二,然后 模板速生 → 本地混剪(新) → 爆帖成片 → 电影级。 */}
         <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={openWithLogin(() => setTemplateOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
           titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
@@ -2068,12 +2111,6 @@ const VideoCreateFlow: React.FC<{
           descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally, optional voice-over + subtitles. Seconds to render, stable and controllable. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={`单条约 ${feeZh}(数据/写稿/合成)`} costEn={`~${feeEn} per clip (data / script / compose)`}
           btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
-        <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📁" onOpen={openWithLogin(() => setLocalMixOpen(true))} onGoTasks={onGoTasks}
-          tagZh={i18nService.t('vmixCardTag')} tagEn={i18nService.t('vmixCardTag')}
-          titleZh={i18nService.t('vmixCardTitle')} titleEn={i18nService.t('vmixCardTitle')}
-          descZh={i18nService.t('vmixCardDesc')} descEn={i18nService.t('vmixCardDesc')}
-          costZh={i18nService.t('vmixCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('vmixCardCost').replace('{fee}', feeEn)}
-          btnZh={i18nService.t('vmixCardBtn')} btnEn={i18nService.t('vmixCardBtn')} />
         <VideoScenarioEntryCard isZh={isZh} accent="orange" icon="🧵" onOpen={openWithLogin(() => setThreadOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 爆帖成片" tagEn="AI Auto · Viral Threads"
           titleZh="爆帖成片 · 海外神帖神评" titleEn="Viral Threads · Reddit Stories"
