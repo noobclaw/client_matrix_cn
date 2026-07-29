@@ -967,6 +967,7 @@ function templateDataPreview(dataText: string | undefined, isZh: boolean): { cou
 // 存量任务用中文建的,切到英文界面后 task.title 仍是中文 → 展示层把【已知默认名】按当前界面语言映射回去。
 // 用户自定义标题不在表内 → 原样显示(只精确匹配这几个默认串,几乎不会误伤)。
 const VIDEO_DEFAULT_TITLES: { zh: string; en: string }[] = [
+  { zh: '原片直传', en: 'Upload As-Is' },
   { zh: '热搜成片', en: 'Hotspot Video' },
   { zh: '爆帖成片', en: 'Viral Thread Video' },
   { zh: '模板速生', en: 'Template' },
@@ -1079,6 +1080,18 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
   // 本地混剪:素材文件夹/形态/文案模式/配音/BGM/发布(赛道/人设/关键词对它无意义)。
   if (input.engine === 'localmix' || (input.engine as any) === 'uploadonly') {
     const inp: any = input;
+    // 原片直传:专属精简行(不显示素材形态/原片直发开关那套混剪概念)。
+    if ((input.engine as any) === 'uploadonly' || inp.uploadOnly) {
+      const uaFile = Array.isArray(inp.localMixFiles) && inp.localMixFiles.length > 0 ? String(inp.localMixFiles[0]).split(/[\/]/).pop() : '-';
+      return (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+          <Row label={`🎞️ ${isZh ? '视频' : 'Video'}`}>{uaFile}</Row>
+          <Row label={`📝 ${isZh ? '介绍' : 'Intro'}`}>{inp.uaStrictIntro === false ? (isZh ? 'AI 按参考写' : 'AI-written') : (isZh ? '按原文直接用' : 'Verbatim')}</Row>
+          {(input.script || '').trim() && <Row label={`🗒️ ${isZh ? '内容' : 'Text'}`}><div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</div></Row>}
+          <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
+        </div>
+      );
+    }
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
         <Row label={`📂 ${i18nService.t('vmixSourceLabel')}`}>{Array.isArray(inp.localMixFiles) && inp.localMixFiles.length > 0
@@ -1301,6 +1314,17 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
   // 本地混剪:同样漏了扁平文本版 → 补齐(与 ConfigCard 的 localmix 分支字段对齐)。
   if (input.engine === 'localmix' || (input.engine as any) === 'uploadonly') {
     const inp: any = input;
+    if ((input.engine as any) === 'uploadonly' || inp.uploadOnly) {
+      const uaFile = Array.isArray(inp.localMixFiles) && inp.localMixFiles.length > 0 ? String(inp.localMixFiles[0]).split(/[\/]/).pop() : '-';
+      return (
+        <>
+          <div className="break-words">🎞️ {isZh ? '视频' : 'Video'}：{uaFile}</div>
+          <div>📝 {isZh ? '介绍' : 'Intro'}：{inp.uaStrictIntro === false ? (isZh ? 'AI 按参考写' : 'AI-written') : (isZh ? '按原文直接用' : 'Verbatim')}</div>
+          {(input.script || '').trim() ? <div className="break-words whitespace-pre-wrap">🗒️ {isZh ? '内容' : 'Text'}：{input.script}</div> : null}
+          <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
+        </>
+      );
+    }
     return (
       <>
         <div className="break-words">📂 {i18nService.t('vmixSourceLabel')}：{Array.isArray(inp.localMixFiles) && inp.localMixFiles.length > 0
@@ -6484,7 +6508,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           ? Object.fromEntries(selectedPlatformIds.filter((p) => accountByPlatform[p]).map((p) => { const a = matrixAccounts.find((x) => x.id === accountByPlatform[p]); return [p, a ? (a.nickname || a.displayName) : accountByPlatform[p]]; }))
           : undefined,
       } as VideoCreationInput;
-      const name = t('vmixTaskName');
+      const name = uaMode ? t('uaModalTitle') : t('vmixTaskName');
       const schedule: VideoSchedule = { runInterval };
       if (isEdit) {
         const ok = videoTaskStore.updateTask(editTask.id, input, name, schedule);
@@ -6578,7 +6602,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                     <div className="flex items-center gap-2">
                       <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">🎞️ {t('uaPickVideo')}</button>
                       <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={pickedFiles.join('\n')}>
-                        {pickedFiles.length > 0 ? t('vmixFilesPicked').replace('{n}', String(pickedFiles.length)) : t('vmixNoFolderYet')}
+                        {pickedFiles.length > 0 ? String(pickedFiles[0]).split(/[\/]/).pop() : t('uaNoVideoYet')}
                       </div>
                     </div>
                   </Field>

@@ -839,13 +839,18 @@ async function runVideoPipeline(
       const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
       try {
         const introText = String(input.script || '').trim();
+        // 文案语言:有介绍按介绍语言;没介绍时按发布平台猜(国内平台→中文)——
+        // 之前 fallback 到【文件名】,十六进制文件名被判成英文,发抖音出英文文案(真机实报)。
+        const CN_PLATS = new Set(['douyin', 'xhs', 'shipinhao', 'toutiao', 'kuaishou', 'bilibili']);
+        const uaPlats = Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [];
+        const uaLang = introText ? detectLang(introText) : (uaPlats.some((p) => CN_PLATS.has(p)) || uaPlats.length === 0 ? 'zh' : 'en');
         const cap = await resolvePublishCaption({
           wantPublish,
           summary: introText || path.basename(pick, path.extname(pick)),
           title: introText ? introText.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
           keywords: input.keywords?.length ? input.keywords : undefined,
           track: input.track || undefined,
-          lang: detectLang(introText || path.basename(pick)),
+          lang: uaLang,
           userTitle: input.publishTitle || ((input as any).uaStrictIntro && introText ? (introText.split(/[。！？.!?\n]/).filter(Boolean)[0] || introText).slice(0, 40) : undefined),
           userCaption: input.publishCaption || ((input as any).uaStrictIntro && introText ? introText : undefined),
           userTags: input.hashtags,
