@@ -290,8 +290,10 @@ function regroupSegments(segs: Seg[]): Seg[] {
 // ── 翻译:批量调 DeepSeek,协议壳强制一一对应,不合并不拆分 ──
 async function translateSegments(
   segs: Seg[], targetLangLabel: string, onCost: (tk: number, usd: number) => void, signal?: AbortSignal,
+  onLog?: (m: string) => void,
 ): Promise<Seg[]> {
   const BATCH = 20;
+  let failedBatches = 0;
   const system = [
     '你是配音字幕翻译器(json)。把输入 items 数组每一项的 text 翻译成【' + targetLangLabel + '】。',
     '# 硬规则(违反任一 = 失败):',
@@ -319,18 +321,33 @@ async function translateSegments(
     const user = '翻译下面 ' + batch.length + ' 条:\n' + JSON.stringify({
       items: batch.map((s) => ({ text: s.text, max: budgetOf(s) })),
     });
+    // 真机 bug:单批失败静默保原文 → 全部批失败时整条片就是原语言,用户看到「选了英文出来还是中文」。
+    // 现在:每批失败重试 1 次;仍失败记 failedBatches 并打日志;循环后全败则抛错,不再静默产出原文。
     let translations: string[] | null = null;
-    try {
-      const r = await callDeepSeek(system, user, true, 60_000, 'noobclawai-chat', 0.2);
-      onCost(r.tokens || 0, r.costUsd || 0);
-      const m = r.content.match(/\{[\s\S]*\}/);
-      const parsed = m ? JSON.parse(m[0]) : JSON.parse(r.content);
-      if (Array.isArray(parsed?.translations)) translations = parsed.translations.map((x: any) => String(x ?? ''));
-    } catch { /* 单批失败 → 保原文,不炸整任务 */ }
+    for (let attempt = 0; attempt < 2 && !translations; attempt++) {
+      try {
+        const r = await callDeepSeek(system, user, true, 60_000, 'noobclawai-chat', 0.2);
+        onCost(r.tokens || 0, r.costUsd || 0);
+        const m = r.content.match(/\{[\s\S]*\}/);
+        const parsed = m ? JSON.parse(m[0]) : JSON.parse(r.content);
+        if (Array.isArray(parsed?.translations) && parsed.translations.length === batch.length) {
+          translations = parsed.translations.map((x: any) => String(x ?? ''));
+        } else if (attempt === 1) {
+          onLog?.(`⚠️ 第 ${Math.floor(i / BATCH) + 1} 批翻译返回不规整(条数不匹配),该批保留原文`);
+        }
+      } catch (e: any) {
+        if (attempt === 1) onLog?.(`⚠️ 第 ${Math.floor(i / BATCH) + 1} 批翻译失败:${String(e?.message || e).slice(0, 80)},该批保留原文`);
+      }
+    }
+    if (!translations) failedBatches++;
     for (let k = 0; k < batch.length; k++) {
-      const t = translations && translations.length === batch.length ? translations[k].trim() : batch[k].text;
+      const t = translations ? translations[k].trim() : batch[k].text;
       out.push({ start: batch[k].start, end: batch[k].end, text: t });
     }
+  }
+  // 全部批都失败 = 翻译一句没成 → 明确报错(否则配音/合成照跑,产出原语言成片还照常扣费)。
+  if (failedBatches > 0 && failedBatches === Math.ceil(segs.length / BATCH)) {
+    throw new Error('翻译服务全部失败(网络/AI 异常),已中止,请稍后重试');
   }
   return out;
 }
@@ -624,7 +641,7 @@ export async function runRepostPipeline(
       // ── STEP 3:翻译 ──
       throwIfAborted(signal);
       tracker.start('translate', `🌐 翻译为 ${targetLabel}…`);
-      translated = await translateSegments(regrouped, targetLabel, (tk, usd) => { tracker.addTokens(tk, usd); aiCostUsd += usd; }, signal);
+      translated = await translateSegments(regrouped, targetLabel, (tk, usd) => { tracker.addTokens(tk, usd); aiCostUsd += usd; }, signal, (m) => tracker.progress(m));
       const nonEmpty = translated.filter((s) => s.text.trim());
       if (nonEmpty.length === 0) { const err = '翻译结果为空'; tracker.fail('translate', err); return { ok: false, error: err }; }
       tracker.done('translate', `✅ 翻译完成 · ${nonEmpty.length} 句`);
