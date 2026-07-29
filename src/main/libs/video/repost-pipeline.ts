@@ -302,7 +302,9 @@ async function translateSegments(
   const cjkTarget = /中文|日本|日語|한국|Chinese|Japanese|Korean/i.test(targetLangLabel);
   const budgetOf = (s: Seg) => {
     const sec = Math.max(0.6, s.end - s.start);
-    return Math.max(3, Math.floor(sec * (cjkTarget ? 5 : 2.6)));
+    // 拉丁语预算 2.6→3.2 词/秒:中文信息密度高,2.6 逼着模型狠删细节(真机反馈英文太简短);
+    // 超出部分交给 全局提速≤15% + 画面伸缩≤15% + 逐句提速 消化,极端才精简。
+    return Math.max(3, Math.floor(sec * (cjkTarget ? 5 : 3.2)));
   };
 
   const out: Seg[] = [];
