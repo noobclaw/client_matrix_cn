@@ -20,6 +20,7 @@ import path from 'path';
 import { spawn } from 'child_process';
 import { runFfmpeg, probeDuration, probeImageSize, isFfmpegAvailable, getFfmpegPath } from './ffmpegRuntime';
 import { getYtdlpPath, detectSystemProxy } from './ytdlpRuntime';
+import { resolveBgmPath } from './bgm';
 import { getVideoConfig } from './videoConfig';
 import { synthesize, getVoiceFallbacks, getLastTtsError, alignSentencesToCues, type TtsCue } from './tts';
 import { resolvePublishCaption } from './publishCaptionWriter';
@@ -698,6 +699,21 @@ export async function runRepostPipeline(
         ], { timeoutMs: 120_000, signal });
         if (r.ok && fs.existsSync(mixed)) finalAudio = mixed;
         else tracker.progress('⚠️ 原声混音失败,改用纯配音');
+      }
+      // 背景音乐(可选,向导曲库/上传):循环铺满配音长度、按 bgmVolume 压低垫底。失败不阻塞。
+      if (input.bgmPath) {
+        const bgm = await resolveBgmPath(input.bgmPath, (m) => tracker.progress(m)).catch(() => undefined);
+        if (bgm && fs.existsSync(bgm)) {
+          const vol = typeof input.bgmVolume === 'number' ? input.bgmVolume : 0.18;
+          const withBgm = path.join(assetDir, 'final_audio_bgm.m4a');
+          const rb = await runFfmpeg([
+            '-y', '-i', finalAudio, '-stream_loop', '-1', '-i', bgm,
+            '-filter_complex', `[1:a]volume=${vol}[bg];[0:a][bg]amix=inputs=2:duration=first:normalize=0[a]`,
+            '-map', '[a]', '-c:a', 'aac', '-b:a', '160k', withBgm,
+          ], { timeoutMs: 180_000, signal });
+          if (rb.ok && fs.existsSync(withBgm)) { finalAudio = withBgm; tracker.progress('🎵 已叠加背景音乐'); }
+          else tracker.progress('⚠️ 背景音乐混音失败,跳过');
+        }
       }
       const burn = input.subtitleEnabled !== false;
       if (burn) {

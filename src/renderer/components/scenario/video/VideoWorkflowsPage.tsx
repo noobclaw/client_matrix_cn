@@ -2075,13 +2075,6 @@ const VideoCreateFlow: React.FC<{
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 2026-07-27 用户要求:翻译搬运放第一,其余依次往后。 */}
-        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🌐" onOpen={openWithLogin(() => setRepostOpen(true))} onGoTasks={onGoTasks}
-          tagZh={i18nService.t('rpstCardTag')} tagEn={i18nService.t('rpstCardTag')}
-          titleZh={i18nService.t('rpstCardTitle')} titleEn={i18nService.t('rpstCardTitle')}
-          descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
-          costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
-          btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
         {/* 原片直传:选视频 → 选平台直接上传,零处理(复用本地混剪 uploadOnly 链路,AI 只写标题/简介/标签)。 */}
         <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📤" onOpen={openWithLogin(() => setUploadAsIsOpen(true))} onGoTasks={onGoTasks}
           tagZh={i18nService.t('uaCardTag')} tagEn={i18nService.t('uaCardTag')}
@@ -2096,6 +2089,13 @@ const VideoCreateFlow: React.FC<{
           descZh={i18nService.t('vmixCardDesc')} descEn={i18nService.t('vmixCardDesc')}
           costZh={i18nService.t('vmixCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('vmixCardCost').replace('{fee}', feeEn)}
           btnZh={i18nService.t('vmixCardBtn')} btnEn={i18nService.t('vmixCardBtn')} />
+        {/* 2026-07-29 用户定稿顺序:原片直传 → 本地混剪 → 翻译搬运 → 在线素材 → … */}
+        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🌐" onOpen={openWithLogin(() => setRepostOpen(true))} onGoTasks={onGoTasks}
+          tagZh={i18nService.t('rpstCardTag')} tagEn={i18nService.t('rpstCardTag')}
+          titleZh={i18nService.t('rpstCardTitle')} titleEn={i18nService.t('rpstCardTitle')}
+          descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
+          costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
+          btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
@@ -5844,8 +5844,10 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const [keepBgm, setKeepBgm] = useState<boolean>(!!(ei as any)?.repostKeepBgm);
   const langDefaultVoice = (code: string) => SCRIPT_LANGS.find((l) => l.code === code)?.defaultVoice || 'zh-CN-YunjianNeural';
   const [voice, setVoice] = useState<string>(ei?.voice || langDefaultVoice((ei as any)?.repostTargetLang || 'zh'));
-  const [voiceRate, setVoiceRate] = useState<number>(typeof ei?.voiceRate === 'number' ? ei.voiceRate : 0);
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
+  // 背景音乐(可选):无 / 内置曲库;音量三档。压低垫在配音下(合成端循环铺满)。
+  const [bgmPath, setBgmPath] = useState<string>((ei as any)?.bgmPath || '');
+  const [bgmVolume, setBgmVolume] = useState<number>(typeof (ei as any)?.bgmVolume === 'number' ? (ei as any).bgmVolume : 0.18);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(typeof (ei as any)?.subtitleFontSize === 'number' ? (ei as any).subtitleFontSize : 20);
   const pickTargetLang = (code: string) => {
     setTargetLang(code);
@@ -5916,7 +5918,10 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
         repostTargetLang: targetLang,
         repostKeepBgm: keepBgm || undefined,
         referenceImages: [], aspect: '9:16',
-        voice, voiceRate,
+        // 语速恒 0(正常):系统按每句时长自动控速,不让用户手选(手选偏快/偏慢都会破坏对齐)。
+        voice, voiceRate: 0,
+        bgmPath: bgmPath || undefined,
+        bgmVolume: bgmPath ? bgmVolume : undefined,
         narrationEnabled: true,
         subtitleEnabled,
         subtitleFontSize,
@@ -6032,14 +6037,8 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                     </optgroup>
                   ))}
                 </select>
-                <div className="flex gap-2 mt-2">
-                  {RATE_OPTIONS.map((r) => (
-                    <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-sky-400'}`}>
-                      {isZh ? r.zh : r.en}
-                    </button>
-                  ))}
-                </div>
+                {/* 语速不给用户选(用户拍板):系统按原片每句时长自动控速(超长句自动提速),手选反而总拖后。 */}
+                <div className="mt-2 text-[11px] text-gray-400">⚡ {isZh ? '语速自动:按原片节奏逐句适配,无需手选' : 'Auto pacing: matched to the source rhythm sentence by sentence'}</div>
               </Field>
               <Field label={isZh ? '字幕' : 'Subtitles'} hint={t('rpstSubHint')}>
                 <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
@@ -6051,6 +6050,23 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                     {SUB_FONTSIZE_OPTIONS.map((f) => (
                       <button key={f.v} type="button" onClick={() => setSubtitleFontSize(f.v === 64 ? 20 : f.v === 80 ? 26 : 16)}
                         className={`px-3 py-1.5 rounded-lg text-xs border ${(subtitleFontSize <= 18 && f.v !== 64 && f.v !== 80) || (subtitleFontSize > 18 && subtitleFontSize <= 22 && f.v === 64) || (subtitleFontSize > 22 && f.v === 80) ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-sky-400'}`}>{isZh ? f.zh : f.en}</button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+              <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'} hint={isZh ? '压低垫在配音下,循环铺满全片' : 'Ducked under the dub, looped to fit'}>
+                <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                  <option value="">{isZh ? '无背景音乐' : 'None'}</option>
+                  {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
+                </select>
+                {bgmPath && (
+                  <div className="flex gap-2 mt-2">
+                    {BGM_VOLUME_OPTIONS.map((b) => (
+                      <button key={b.v} type="button" onClick={() => setBgmVolume(b.v)}
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${bgmVolume === b.v ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                        {isZh ? b.zh : b.en}
+                      </button>
                     ))}
                   </div>
                 )}
@@ -6143,7 +6159,10 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [mediaType, setMediaType] = useState<'video' | 'image'>(ei?.localMixMediaType === 'image' ? 'image' : 'video');
   // 原片直发:不写稿/不配音/不字幕/不混剪,原片直接上传;script 字段此时当「视频介绍」给 AI 写标题/简介/标签。
   // 仅视频形态支持(图片没有「原片上传」概念);切到图片自动关。
-  const [uploadOnly, setUploadOnly] = useState<boolean>(!!(ei as any)?.uploadOnly || (!editTask && !!presetUploadOnly));
+  // 原片直传独立化(用户拍板):不再是混剪里的勾选项 —— 从「原片直传」卡进来(presetUploadOnly)
+  // 或编辑历史 uploadOnly 任务时,整个 modal 切成两步极简形态;普通混剪不再出现该选项。
+  const uaMode = !!presetUploadOnly || (isEdit && !!(ei as any)?.uploadOnly);
+  const uploadOnly = uaMode;
   const [scan, setScan] = useState<{ videoCount: number; imageCount: number } | null>(null);
   const [scanning, setScanning] = useState(false);
   useEffect(() => {
@@ -6179,9 +6198,12 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const pickFiles = async () => {
     const r = await videoCreationService.pickLocalMixFiles();
     if (!r) return;
-    setPickedFiles(r.files);
+    // 原片直传:只收视频文件(不支持图片,混入的图片直接过滤掉)。
+    const files = uaMode ? r.files.filter((p: string) => /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(p)) : r.files;
+    if (uaMode && files.length === 0) { setErr(t('uaPickVideoHint')); return; }
+    setPickedFiles(files);
     setFolder(''); // 与选文件夹二选一
-    applyPickedCounts(r.videoCount, r.imageCount);
+    applyPickedCounts(uaMode ? files.length : r.videoCount, uaMode ? 0 : r.imageCount);
   };
   const availableCount = mediaType === 'image' ? (scan?.imageCount ?? 0) : (scan?.videoCount ?? 0);
   // ── Step 2:文案(口播照读 / AI 参考改写) ──
@@ -6371,7 +6393,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
       <div className="relative w-full max-w-2xl h-[85vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl">
         <div className="shrink-0 px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-bold dark:text-white">📁 {isEdit ? t('vmixTitleEdit') : t('vmixTitle')}</h3>
+            <h3 className="text-lg font-bold dark:text-white">{uaMode ? <>📤 {isEdit ? t('uaModalTitleEdit') : t('uaModalTitle')}</> : <>📁 {isEdit ? t('vmixTitleEdit') : t('vmixTitle')}</>}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               {uploadOnly ? (
                 <>
@@ -6403,45 +6425,49 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {step === 1 && (
             <>
-              <Field label={t('vmixSourceLabel')} hint={t('vmixSourceHint')}>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={pickFolder} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">📂 {t('vmixPickFolder')}</button>
-                  <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold border border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10">🎞️ {t('vmixPickFiles')}</button>
-                  <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={folder || pickedFiles.join('\n')}>
-                    {folder
-                      || (pickedFiles.length > 0 ? t('vmixFilesPicked').replace('{n}', String(pickedFiles.length)) : t('vmixNoFolderYet'))}
-                  </div>
-                </div>
-                {(folder || pickedFiles.length > 0) && (
-                  <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                    {scanning
-                      ? t('vmixScanning')
-                      : t('vmixScanResult').replace('{v}', String(scan?.videoCount ?? 0)).replace('{i}', String(scan?.imageCount ?? 0))}
-                  </div>
-                )}
-              </Field>
-              <Field label={t('vmixMediaTypeLabel')} hint={t('vmixMediaTypeHint')}>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => { setMediaType('video'); setErr(null); }} className={seg(mediaType === 'video')}>🎬 {t('vmixMediaVideo')}</button>
-                  <button type="button" onClick={() => { setMediaType('image'); setUploadOnly(false); setErr(null); }} className={seg(mediaType === 'image')}>🖼️ {t('vmixMediaImage')}</button>
-                </div>
-              </Field>
-              {mediaType === 'video' && (
-                <Field label={t('vmixUploadOnlyLabel')} hint={t('vmixUploadOnlyHint')}>
-                  <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
-                    <input type="checkbox" checked={uploadOnly} onChange={(e) => { setUploadOnly(e.target.checked); setErr(null); }} className="h-4 w-4 accent-emerald-500" />
-                    {t('vmixUploadOnlyToggle')}
-                  </label>
-                  <div className="mt-1 text-[11px] text-gray-400">{t('vmixUploadOnlyDesc')}</div>
-                  {uploadOnly && (
-                    <div className="mt-3">
-                      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('vmixUploadOnlyIntroLabel')}</div>
-                      <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={4}
-                        placeholder={t('vmixUploadOnlyIntroPh')}
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" />
+              {uaMode ? (
+                <>
+                  {/* 原片直传:只选视频文件(可多选,轮流直发),不选文件夹、不选形态、不支持图片。 */}
+                  <Field label={t('vmixSourceLabel')} hint={t('uaPickVideoHint')}>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">🎞️ {t('uaPickVideo')}</button>
+                      <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={pickedFiles.join('\n')}>
+                        {pickedFiles.length > 0 ? t('vmixFilesPicked').replace('{n}', String(pickedFiles.length)) : t('vmixNoFolderYet')}
+                      </div>
                     </div>
-                  )}
-                </Field>
+                  </Field>
+                  <Field label={t('vmixUploadOnlyIntroLabel')} hint={t('vmixUploadOnlyDesc')}>
+                    <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={4}
+                      placeholder={t('vmixUploadOnlyIntroPh')}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field label={t('vmixSourceLabel')} hint={t('vmixSourceHint')}>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={pickFolder} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">📂 {t('vmixPickFolder')}</button>
+                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold border border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10">🎞️ {t('vmixPickFiles')}</button>
+                      <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={folder || pickedFiles.join('\n')}>
+                        {folder
+                          || (pickedFiles.length > 0 ? t('vmixFilesPicked').replace('{n}', String(pickedFiles.length)) : t('vmixNoFolderYet'))}
+                      </div>
+                    </div>
+                    {(folder || pickedFiles.length > 0) && (
+                      <div className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                        {scanning
+                          ? t('vmixScanning')
+                          : t('vmixScanResult').replace('{v}', String(scan?.videoCount ?? 0)).replace('{i}', String(scan?.imageCount ?? 0))}
+                      </div>
+                    )}
+                  </Field>
+                  <Field label={t('vmixMediaTypeLabel')} hint={t('vmixMediaTypeHint')}>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => { setMediaType('video'); setErr(null); }} className={seg(mediaType === 'video')}>🎬 {t('vmixMediaVideo')}</button>
+                      <button type="button" onClick={() => { setMediaType('image'); setErr(null); }} className={seg(mediaType === 'image')}>🖼️ {t('vmixMediaImage')}</button>
+                    </div>
+                  </Field>
+                </>
               )}
             </>
           )}
