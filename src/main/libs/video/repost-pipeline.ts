@@ -84,8 +84,13 @@ function pickSubFile(destDir: string, srcLang: string): string | null {
   let files: string[] = [];
   try { files = fs.readdirSync(destDir).filter((f) => /^ytsub\..+\.srt$/i.test(f)); } catch { return null; }
   if (!files.length) return null;
-  const prefer = files.find((f) => srcLang && srcLang !== 'auto' && f.toLowerCase().includes(`.${srcLang.toLowerCase()}`))
+  // 偏好序:显式源语言 → 原语言自动轨(-orig)→ 中文 → 英文 → 第一个。
+  // (多语言手动字幕的视频,'auto' 模式老逻辑按字母序取 files[0],可能抓到阿语等错轨。)
+  const lc = (x: string) => x.toLowerCase();
+  const prefer = files.find((f) => srcLang && srcLang !== 'auto' && lc(f).includes('.' + srcLang.toLowerCase()))
     || files.find((f) => /-orig\./i.test(f))
+    || files.find((f) => /\.(zh|chi)([-_.])/i.test(f) || /\.zh\.srt$/i.test(f))
+    || files.find((f) => /\.en([-_.])/i.test(f) || /\.en\.srt$/i.test(f))
     || files[0];
   return path.join(destDir, prefer);
 }
