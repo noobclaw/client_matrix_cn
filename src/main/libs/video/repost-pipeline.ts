@@ -363,6 +363,31 @@ async function synthAndAlign(
   let cursor = 0; // 当前已排到的音频末尾(秒)
   const chain = getVoiceFallbacks(voice);
 
+  // ── 全局自适应语速(温和版):先按基准语速把全部句子配一遍测总长,算 r=配音总长/原口播总长。
+  //    r>1.08 → 全片统一提速(封顶 +15%);r<0.90 → 全片统一放慢(封顶 -10%,治「译文偏短
+  //    →到处垫静音很怪」)。语速全片一致(不再忽快忽慢);首轮结果缓存,r 正常时零额外开销。
+  const preTts = new Map<number, { path: string; dur: number }>();
+  let preSum = 0, preTarget = 0;
+  for (let i = 0; i < segs.length; i++) {
+    throwIfAborted(signal);
+    const seg = segs[i];
+    if (!seg.text.trim()) continue;
+    for (const v of chain) {
+      const out = path.join(assetDir, `seg_${String(i).padStart(3, '0')}.mp3`);
+      const r0 = await synthesize(seg.text, out, v, rate);
+      if (r0.synthesized && r0.durationSec > 0) { preTts.set(i, { path: r0.audioPath, dur: r0.durationSec }); break; }
+    }
+    const got = preTts.get(i);
+    if (got) { preSum += got.dur; preTarget += Math.max(0.6, seg.end - seg.start); }
+  }
+  let globalRate = rate;
+  if (preTarget > 3 && preTts.size >= 3) {
+    const ratio = preSum / preTarget;
+    if (ratio > 1.08) globalRate = Math.min(50, rate + Math.min(15, Math.round((ratio - 1) * 100)));
+    else if (ratio < 0.9) globalRate = Math.max(-50, rate - Math.min(10, Math.round((1 - ratio) * 50)));
+    if (globalRate !== rate) onLog(`🎚️ 语速自适应:配音/原口播时长比 ${ratio.toFixed(2)} → 全片语速 ${globalRate > 0 ? '+' : ''}${globalRate}%`);
+  }
+
   const makeSilence = async (dur: number, out: string): Promise<boolean> => {
     if (dur <= 0.02) return false;
     const r = await runFfmpeg(['-y', '-f', 'lavfi', '-i', `anullsrc=r=48000:cl=stereo`, '-t', dur.toFixed(3), '-c:a', 'aac', '-b:a', '128k', out], { timeoutMs: 30_000, signal });
@@ -381,12 +406,17 @@ async function synthAndAlign(
     }
     const placeStart = Math.max(cursor, seg.start);
 
-    // TTS 本句(带 voice fallback)。
+    // TTS 本句:全局率=基准 → 直接复用预测速那轮;否则按全局率重配(失败退回首轮结果)。
     let ttsPath = ''; let ttsDur = 0;
-    for (const v of chain) {
-      const out = path.join(assetDir, `seg_${String(i).padStart(3, '0')}.mp3`);
-      const r = await synthesize(seg.text, out, v, rate);
-      if (r.synthesized && r.durationSec > 0) { ttsPath = r.audioPath; ttsDur = r.durationSec; break; }
+    const cached = preTts.get(i);
+    if (globalRate === rate && cached) { ttsPath = cached.path; ttsDur = cached.dur; }
+    else {
+      for (const v of chain) {
+        const out = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_g.mp3`);
+        const r = await synthesize(seg.text, out, v, globalRate);
+        if (r.synthesized && r.durationSec > 0) { ttsPath = r.audioPath; ttsDur = r.durationSec; break; }
+      }
+      if (!ttsPath && cached) { ttsPath = cached.path; ttsDur = cached.dur; }
     }
     if (!ttsPath) { onLog(`⚠️ 第 ${i + 1} 句配音失败,跳过:${getLastTtsError().slice(0, 60)}`); continue; }
 
@@ -398,7 +428,7 @@ async function synthAndAlign(
     if (ttsDur > targetDur * 1.6 && !signal?.aborted) {
       const outF = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_f.mp3`);
       for (const v of chain) {
-        const rf = await synthesize(seg.text, outF, v, Math.min(50, rate + 20));
+        const rf = await synthesize(seg.text, outF, v, Math.min(50, globalRate + 20));
         if (rf.synthesized && rf.durationSec > 0 && rf.durationSec < ttsDur) {
           onLog(`⏩ 第 ${i + 1} 句偏长,自动提速重配(${ttsDur.toFixed(1)}s→${rf.durationSec.toFixed(1)}s)`);
           ttsPath = rf.audioPath; ttsDur = rf.durationSec;
@@ -417,7 +447,7 @@ async function synthAndAlign(
         if (short && short.length < seg.text.trim().length) {
           const out2 = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_c.mp3`);
           for (const v of chain) {
-            const r2 = await synthesize(short, out2, v, Math.min(50, rate + 20));
+            const r2 = await synthesize(short, out2, v, Math.min(50, globalRate + 20));
             if (r2.synthesized && r2.durationSec > 0 && r2.durationSec < ttsDur) {
               onLog(`✂️ 第 ${i + 1} 句仍超长,轻度精简重配(${ttsDur.toFixed(1)}s→${r2.durationSec.toFixed(1)}s)`);
               ttsPath = r2.audioPath; ttsDur = r2.durationSec; seg.text = short;
@@ -689,12 +719,18 @@ export async function runRepostPipeline(
     } else {
       // 有配音:组装最终音轨(配音为主;可选原声压低垫底保 BGM/音效)+ 换音轨(可选烧字幕)。
       let finalAudio = aligned.voiceTrackPath;
+      // ── 画面微伸缩(温和版,用户拍板):配音总长超过原片 ≤15% 时,整条画面 setpts 放慢
+      //    到正好匹配(15% 以内肉眼基本无感),超出部分仍靠冻结末帧。配音不长则不动画面。
+      const vStretch = srcDur > 0 && aligned.totalDur > srcDur + 0.3
+        ? Math.min(1.15, aligned.totalDur / srcDur) : 1;
+      if (vStretch > 1.005) tracker.progress(`🎬 画面微伸缩 ×${vStretch.toFixed(2)}(配音略长,放慢画面代替冻结)`);
       if ((input as any).repostKeepBgm) {
         const mixed = path.join(assetDir, 'final_audio.m4a');
-        // ⚠️ 原声垫底用【源视频音轨】,不用上面抽的 wav(那是 16k 单声道给 ASR 用的,做垫底会难听)。
+        // ⚠️ 原声垫底用【源视频音轨】;画面被放慢时垫底同步 atempo 放慢,避免音效跟画面错位。
+        const bgFilt = vStretch > 1.005 ? `atempo=${(1 / vStretch).toFixed(4)},volume=0.12` : 'volume=0.12';
         const r = await runFfmpeg([
           '-y', '-i', aligned.voiceTrackPath, '-i', sourceVideoPath,
-          '-filter_complex', '[1:a]volume=0.12[bg];[0:a][bg]amix=inputs=2:duration=first:normalize=0[a]',
+          '-filter_complex', `[1:a]${bgFilt}[bg];[0:a][bg]amix=inputs=2:duration=first:normalize=0[a]`,
           '-map', '[a]', '-c:a', 'aac', '-b:a', '160k', mixed,
         ], { timeoutMs: 120_000, signal });
         if (r.ok && fs.existsSync(mixed)) finalAudio = mixed;
@@ -728,7 +764,7 @@ export async function runRepostPipeline(
         // 配音可能比源视频长(译文语速慢)→ 冻结末帧把画面延长到音频总长,再 -t 钉总长,
         //   杜绝「音频没播完画面停了」;短则 -t 就是视频长,无副作用。
         const finalDur = aligned.totalDur;
-        const vf = `[0:v]tpad=stop_mode=clone:stop_duration=${finalDur.toFixed(3)}[vext];`
+        const vf = `[0:v]${vStretch > 1.005 ? `setpts=PTS*${vStretch.toFixed(4)},` : ''}tpad=stop_mode=clone:stop_duration=${finalDur.toFixed(3)}[vext];`
           + `[vext]split[vb][vm];[vm]crop=iw:ih*0.16:0:ih*0.84,boxblur=20:2[vmb];`
           + `[vb][vmb]overlay=0:H*0.84[vbg];[vbg]subtitles='${escSubPath(assPath)}'[v]`;
         const r = await runFfmpeg([
@@ -746,7 +782,7 @@ export async function runRepostPipeline(
         if (needExtend) {
           const r = await runFfmpeg([
             '-y', '-i', sourceVideoPath, '-i', finalAudio,
-            '-filter_complex', `[0:v]tpad=stop_mode=clone:stop_duration=${finalDur.toFixed(3)}[v]`,
+            '-filter_complex', `[0:v]${vStretch > 1.005 ? `setpts=PTS*${vStretch.toFixed(4)},` : ''}tpad=stop_mode=clone:stop_duration=${finalDur.toFixed(3)}[v]`,
             '-map', '[v]', '-map', '1:a:0',
             '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
             '-c:a', 'aac', '-b:a', '160k', '-t', finalDur.toFixed(3), '-movflags', '+faststart', outPath,
