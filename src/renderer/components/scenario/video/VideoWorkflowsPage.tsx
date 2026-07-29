@@ -2039,6 +2039,7 @@ const VideoCreateFlow: React.FC<{
   const [hotspotOpen, setHotspotOpen] = useState(false);   // 热搜成片 → HotspotVideoModal
   const [threadOpen, setThreadOpen] = useState(false);     // 爆帖成片 → ThreadVideoModal
   const [localMixOpen, setLocalMixOpen] = useState(false); // 本地混剪 → LocalMixVideoModal
+  const [uploadAsIsOpen, setUploadAsIsOpen] = useState(false); // 原片直传 → 同一 modal,预置 uploadOnly
   const [repostOpen, setRepostOpen] = useState(false);     // 翻译搬运 → RepostVideoModal
   // 热搜成片仅简体/繁体中文显示(数据源是中文热榜;韩/日/英先不支持)。繁体也走中文文案。
   const isZhHot = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
@@ -2081,7 +2082,15 @@ const VideoCreateFlow: React.FC<{
           descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
           costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
           btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
-        {/* 2026-07-29 用户定的顺序:翻译搬运 → 本地混剪 → 在线素材 → 热搜 → 模板速生 → 爆帖 → 电影级。 */}
+        {/* 原片直传:选视频 → 选平台直接上传,零处理(复用本地混剪 uploadOnly 链路,AI 只写标题/简介/标签)。 */}
+        <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📤" onOpen={openWithLogin(() => setUploadAsIsOpen(true))} onGoTasks={onGoTasks}
+          tagZh="工具 · 原片直传" tagEn="Tool · Upload As-Is"
+          titleZh="原片直传 · 一键多平台" titleEn="Upload As-Is · One-click Multi-platform"
+          descZh="选好视频,挑好平台,原封不动帮你传上去 —— 不混剪、不配音、不加字幕,AI 只代写标题/简介/标签。适合已剪好的成片快速铺量分发。"
+          descEn="Pick a video, pick the platforms, and it uploads untouched — no remixing, no dubbing, no subtitles. AI only writes the title / description / tags. Perfect for distributing finished videos fast."
+          costZh="仅按发布平台数计费" costEn="Billed per publish platform only"
+          btnZh="📤 开始直传 →" btnEn="📤 Upload →" />
+        {/* 2026-07-29 用户定的顺序:翻译搬运 → 原片直传 → 本地混剪 → 在线素材 → 热搜 → 模板速生 → 爆帖 → 电影级。 */}
         <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📁" onOpen={openWithLogin(() => setLocalMixOpen(true))} onGoTasks={onGoTasks}
           tagZh={i18nService.t('vmixCardTag')} tagEn={i18nService.t('vmixCardTag')}
           titleZh={i18nService.t('vmixCardTitle')} titleEn={i18nService.t('vmixCardTitle')}
@@ -2170,6 +2179,9 @@ const VideoCreateFlow: React.FC<{
       )}
       {localMixOpen && (
         <LocalMixVideoModal isZh={isZh} matrixMode={matrixMode} onClose={() => setLocalMixOpen(false)} onCreated={onCreated} />
+      )}
+      {uploadAsIsOpen && (
+        <LocalMixVideoModal isZh={isZh} matrixMode={matrixMode} presetUploadOnly onClose={() => setUploadAsIsOpen(false)} onCreated={onCreated} />
       )}
       {repostOpen && (
         <RepostVideoModal isZh={isZh} matrixMode={matrixMode} onClose={() => setRepostOpen(false)} onCreated={onCreated} />
@@ -6117,7 +6129,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
 
 // ── 本地混剪(engine='localmix'):本地视频/图片文件夹 → 智能混剪/图片合成 + 配音 + 字幕 + BGM → 本地/发布 ──
 // 与其它视频向导同壳(StepDot/Field/发布步),文案走 i18nService(9 语言,key 前缀 vmix)。
-export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void; presetUploadOnly?: boolean }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved, presetUploadOnly }) => {
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
@@ -6132,7 +6144,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [mediaType, setMediaType] = useState<'video' | 'image'>(ei?.localMixMediaType === 'image' ? 'image' : 'video');
   // 原片直发:不写稿/不配音/不字幕/不混剪,原片直接上传;script 字段此时当「视频介绍」给 AI 写标题/简介/标签。
   // 仅视频形态支持(图片没有「原片上传」概念);切到图片自动关。
-  const [uploadOnly, setUploadOnly] = useState<boolean>(!!(ei as any)?.uploadOnly);
+  const [uploadOnly, setUploadOnly] = useState<boolean>(!!(ei as any)?.uploadOnly || (!editTask && !!presetUploadOnly));
   const [scan, setScan] = useState<{ videoCount: number; imageCount: number } | null>(null);
   const [scanning, setScanning] = useState(false);
   useEffect(() => {
