@@ -240,52 +240,37 @@ async function transcribeAudio(
 const SENT_END = /[。！？.!?…]/;
 function regroupSegments(segs: Seg[]): Seg[] {
   if (segs.length === 0) return [];
-  // 1) 相邻 gap ≤1s 归一组
-  const groups: Seg[][] = [];
-  let cur: Seg[] = [segs[0]];
-  for (let i = 1; i < segs.length; i++) {
-    const gap = segs[i].start - segs[i - 1].end;
-    if (gap <= 1.0) cur.push(segs[i]);
-    else { groups.push(cur); cur = [segs[i]]; }
-  }
-  groups.push(cur);
-
+  // v2(真机 bug):抖音/TikTok 的自动字幕【没有标点】——老逻辑先并组再按句末标点切,
+  // 一个标点都没有 → 58 条并成 1 句 119s,整片文字糊满屏、一次 TTS 念全文。
+  // 现在沿【原始字幕条】滚动累积,三个断句条件任一命中即收句(时间轴用真实条边界,不再按字符比例摊):
+  //   ① 本条以句末标点收尾;② 与下一条停顿 >1s;③ 累积口播量到上限(≈8s,无标点字幕的兜底)。
+  const unitsOf = (t: string) => Array.from(t.replace(/\s/g, '')).reduce((acc, ch) => acc + (/[\u2e80-\u9fff\uac00-\ud7ff\u3040-\u30ff]/.test(ch) ? 1 : 0.5), 0);
   const out: Seg[] = [];
-  for (const g of groups) {
-    const gStart = g[0].start;
-    const gEnd = g[g.length - 1].end;
-    const gDur = Math.max(0.5, gEnd - gStart);
-    const joined = g.map((s) => s.text).join(' ').replace(/\s+/g, ' ').trim();
-    if (!joined) continue;
-    // 2) 按句末标点切;标点跟随前句。
-    const sents: string[] = [];
-    let buf = '';
-    for (const ch of joined) {
-      buf += ch;
-      if (SENT_END.test(ch)) { sents.push(buf.trim()); buf = ''; }
-    }
-    if (buf.trim()) sents.push(buf.trim());
-    // 3) 过短不完整句并入上一句(<8 CJK 字符视为碎句)。
-    const merged: string[] = [];
-    for (const s of sents) {
-      const isShort = s.replace(/\s/g, '').length < 8 && !SENT_END.test(s.slice(-1));
-      if (isShort && merged.length > 0) merged[merged.length - 1] += s;
-      else merged.push(s);
-    }
-    const finalSents = merged.length > 0 ? merged : [joined];
-    // 4) 时间按字符比例回摊(起点接上一句终点,夹在组边界内)。
-    const totalChars = finalSents.reduce((a, s) => a + Math.max(1, s.replace(/\s/g, '').length), 0);
-    let cursor = gStart;
-    for (const s of finalSents) {
-      const share = Math.max(1, s.replace(/\s/g, '').length) / totalChars;
-      const dur = Math.max(0.8, gDur * share);
-      const start = cursor;
-      const end = Math.min(gEnd, start + dur);
-      out.push({ start, end: end > start ? end : start + 0.8, text: s });
-      cursor = end;
-    }
+  let buf = ''; let bStart = -1; let bEnd = 0;
+  const flush = () => {
+    const t = buf.replace(/\s+/g, ' ').trim();
+    if (t && bStart >= 0 && bEnd > bStart) out.push({ start: bStart, end: bEnd, text: t });
+    buf = ''; bStart = -1;
+  };
+  for (let i = 0; i < segs.length; i++) {
+    const seg = segs[i];
+    if (!seg.text.trim()) continue;
+    if (bStart < 0) bStart = seg.start;
+    buf += (buf ? ' ' : '') + seg.text;
+    bEnd = seg.end;
+    const gapNext = i + 1 < segs.length ? segs[i + 1].start - seg.end : 99;
+    const endsSent = SENT_END.test(seg.text.trim().slice(-1));
+    if (endsSent || gapNext > 1.0 || unitsOf(buf) >= 36) flush();
   }
-  return out;
+  flush();
+  // 过短碎句(<4 字宽)并入前句,别单独占屏。
+  const merged: Seg[] = [];
+  for (const s2 of out) {
+    if (merged.length > 0 && unitsOf(s2.text) < 4 && s2.start - merged[merged.length - 1].end <= 1.0) {
+      const p = merged[merged.length - 1]; p.text += ' ' + s2.text; p.end = s2.end;
+    } else merged.push({ ...s2 });
+  }
+  return merged;
 }
 
 // ── 翻译:批量调 DeepSeek,协议壳强制一一对应,不合并不拆分 ──
