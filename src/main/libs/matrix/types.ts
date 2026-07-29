@@ -142,6 +142,8 @@ export interface ImageTextConfig {
 export interface ViralRewriteConfig {
   dailyCount: number;            // 每号每轮仿写几篇 1-50
   aiImageStyle?: string;         // AI 生图风格(缺省 'ai_auto')
+  imageMode?: 'auto' | 'local';   // 配图来源:'auto'(缺省,AI 生图)/ 'local'=用户本地图
+  localImages?: string[];        // 仅 imageMode='local':本地图绝对路径(≤6,runner 读盘转 base64)
   autoPublish: boolean;          // true=直接发布(坐标),false=仅本地保存
 }
 
@@ -157,6 +159,8 @@ export interface TweetPostConfig {
   sources?: PostSourceSel[];     // 数据源模式的多选源(每轮随机挑 1 个取题;老任务无此字段=仅 web3 资讯)
   sourceTrackMatch?: boolean;    // 数据源模式:仅取账号赛道相关的选题(缺省 true)
   withImage: boolean;            // true=AI 生图配图,false=纯文字推
+  imageMode?: 'auto' | 'local';   // 配图来源:'auto'(缺省,AI 生图)/ 'local'=用户本地图
+  localImages?: string[];        // 仅 imageMode='local':本地图绝对路径(≤6,runner 读盘转 base64)
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   isBlueV: boolean;              // 蓝V(X Premium)→ 字数自由(三档随机);普通号 ≤140 字
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
@@ -171,6 +175,8 @@ export interface TweetPostConfig {
  */
 export interface BinancePostConfig {
   withImage: boolean;            // true=配图(源图优先→AI 生图),false=纯文字
+  imageMode?: 'auto' | 'local';   // 配图来源:'auto'(缺省,源图优先→AI 生图)/ 'local'=用户本地图
+  localImages?: string[];        // 仅 imageMode='local':本地图绝对路径(≤6,runner 读盘转 base64)
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
 }
@@ -183,6 +189,8 @@ export interface BinancePostConfig {
  */
 export interface FacebookPostConfig {
   withImage: boolean;
+  imageMode?: 'auto' | 'local';   // 配图来源:'auto'(缺省,源图优先→AI 生图)/ 'local'=用户本地图
+  localImages?: string[];        // 仅 imageMode='local':本地图绝对路径(≤6,runner 读盘转 base64)
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
   // 内容来源二选一(contentSource):'sources'(缺省)=数据源选题;'reference'=参考文案(按本号身份+可选参考文案自由创作,跳过数据源)。
@@ -221,6 +229,8 @@ export interface RedditPostConfig {
  */
 export interface InstagramPostConfig {
   withImage: boolean; // 恒 true(IG 帖必带图);保留字段与 facebook 对齐
+  imageMode?: 'auto' | 'local';   // 配图来源:'auto'(缺省,源图优先→AI 生图)/ 'local'=用户本地图
+  localImages?: string[];        // 仅 imageMode='local':本地图绝对路径(≤6,runner 读盘转 base64)
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
   // 内容来源二选一(contentSource):'sources'(缺省)=数据源选题;'reference'=参考文案(按本号身份+可选参考文案自由创作,跳过数据源)。

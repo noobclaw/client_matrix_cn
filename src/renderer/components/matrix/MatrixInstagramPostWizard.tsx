@@ -17,6 +17,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
 import { POST_SOURCE_OPTIONS, PostSourceSel, defaultSourceIdsFor, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
+import MatrixLocalImagePicker from './MatrixLocalImagePicker';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -28,6 +29,8 @@ export interface InstagramPostWizardSave {
   concurrency: number;
   frequency: string;
   withImage: boolean;   // 恒 true(IG 帖必带图)
+  imageMode: 'auto' | 'local';
+  localImages: string[];
   language: string;
   autoPublish: boolean;
   // 内容来源二选一:'reference'=参考文案(按身份+可选参考文案自由创作);'sources'=数据源选题。
@@ -80,6 +83,9 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(ip.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
   const [language, setLanguage] = useState<string>(ip.language || 'mixed');
+  // 图源:'auto'(缺省,源图优先→AI 生图)/ 'local'(用户本地图 ≤6,每帖随机取 1)。IG 必带图,无纯文字。
+  const [imageMode, setImageMode] = useState<'auto' | 'local'>((ip as any).imageMode === 'local' ? 'local' : 'auto');
+  const [localImages, setLocalImages] = useState<string[]>(Array.isArray((ip as any).localImages) ? (ip as any).localImages.filter((p: unknown) => typeof p === 'string').slice(0, 6) : []);
   const [autoPublish, setAutoPublish] = useState<boolean>(ip.autoPublish !== false);
   // 各号各自的参考文案(键=accountId,可留空)。
   const [references, setReferences] = useState<Record<string, string>>(() => {
@@ -124,6 +130,8 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
         concurrency: selectedIds.length,
         frequency: runInterval,
         withImage: true, language, autoPublish,
+        imageMode,
+        localImages: imageMode === 'local' ? localImages.slice(0, 6) : [],
         contentSource,
         references: refsOut,
         sources: contentSource === 'sources' ? selSources : [],
@@ -275,8 +283,22 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
               </select>
             </div>
 
-            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-pink-500/20 bg-pink-500/5 text-pink-700 dark:text-pink-300">
-              🖼 {T('Instagram 网页帖必须带图 → 恒配图(源资讯原图优先,无则 AI 生图)。若一张图都拿不到,本次跳过不发。', 'Instagram web posts require an image → always with image (source thumb first, else AI-gen). If no image can be obtained, the run is skipped.')}
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼 {T('配图', 'Image')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setImageMode('auto')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageMode === 'auto' ? 'border-pink-500 bg-pink-500/10 text-pink-600 dark:text-pink-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-pink-500/50'}`}>
+                  🎨 {T('自动配图', 'Auto image')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{T('源资讯原图优先,无则 AI 生图', 'Source thumb first, else AI-gen')}</div>
+                </button>
+                <button type="button" onClick={() => setImageMode('local')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageMode === 'local' ? 'border-pink-500 bg-pink-500/10 text-pink-600 dark:text-pink-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-pink-500/50'}`}>
+                  📁 {i18nService.t('wzImgModeLocalTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzPostModeLocalDesc')}</div>
+                </button>
+              </div>
+              {imageMode === 'local' && (
+                <MatrixLocalImagePicker value={localImages} onChange={setLocalImages} disabled={saving} max={6} accent="rose" />
+              )}
+              <div className="mt-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-pink-500/20 bg-pink-500/5 text-pink-700 dark:text-pink-300">
+                🖼 {T('Instagram 网页帖必须带图。若一张图都拿不到,本次跳过不发。', 'Instagram web posts require an image. If no image can be obtained, the run is skipped.')}
+              </div>
             </div>
 
             <div>

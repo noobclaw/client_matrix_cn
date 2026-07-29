@@ -17,6 +17,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import Web3NewsSourcesPreview from './Web3NewsSourcesPreview';
 import { POST_LANGS, postLangLabel } from './postLangs';
+import MatrixLocalImagePicker from './MatrixLocalImagePicker';
 
 type WizardStep = 1 | 2 | 3 | 4;
 const TOTAL_STEPS = 4;
@@ -31,6 +32,8 @@ export interface BinancePostWizardSave {
   concurrency: number;
   frequency: string;
   withImage: boolean;
+  imageMode: 'auto' | 'local';
+  localImages: string[];
   language: string;
   autoPublish: boolean;
 }
@@ -66,6 +69,9 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
   // ── 发帖配置(全局) ──
   const bp = initialTask?.binancePost || {};
   const [withImage, setWithImage] = useState<boolean>(bp.withImage !== false); // 默认配图开
+  // 图源:'auto'(缺省,源图/AI 生图)/ 'local'(用户本地图 ≤6,runner 读盘转 base64)。
+  const [imageMode, setImageMode] = useState<'auto' | 'local'>((bp as any).imageMode === 'local' ? 'local' : 'auto');
+  const [localImages, setLocalImages] = useState<string[]>(Array.isArray((bp as any).localImages) ? (bp as any).localImages.filter((p: unknown) => typeof p === 'string').slice(0, 6) : []);
   const [language, setLanguage] = useState<string>(bp.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(bp.autoPublish !== false); // 默认群发
 
@@ -96,6 +102,8 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
         concurrency: selectedIds.length,
         frequency: runInterval,
         withImage,
+        imageMode,
+        localImages: imageMode === 'local' ? localImages.slice(0, 6) : [],
         language,
         autoPublish,
       });
@@ -191,14 +199,20 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
 
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzBnPostImageLabel')}</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setWithImage(false)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${!withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" onClick={() => { setImageMode('auto'); setWithImage(false); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageMode === 'auto' && !withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
                   {i18nService.t('wzBnPostImageTextOnly')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnPostImageTextOnlyDesc')}</div>
                 </button>
-                <button type="button" onClick={() => setWithImage(true)} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
+                <button type="button" onClick={() => { setImageMode('auto'); setWithImage(true); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageMode === 'auto' && withImage ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
                   {i18nService.t('wzBnPostImageWith')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnPostImageWithDesc')}</div>
                 </button>
+                <button type="button" onClick={() => { setImageMode('local'); setWithImage(true); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageMode === 'local' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
+                  📁 {i18nService.t('wzImgModeLocalTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzPostModeLocalDesc')}</div>
+                </button>
               </div>
+              {imageMode === 'local' && (
+                <MatrixLocalImagePicker value={localImages} onChange={setLocalImages} disabled={saving} max={6} accent="amber" />
+              )}
             </div>
 
             <div>

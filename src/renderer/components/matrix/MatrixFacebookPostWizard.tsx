@@ -19,6 +19,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
 import { POST_SOURCE_OPTIONS, PostSourceSel, defaultSourceIdsFor, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
+import MatrixLocalImagePicker from './MatrixLocalImagePicker';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -30,6 +31,8 @@ export interface FacebookPostWizardSave {
   concurrency: number;
   frequency: string;
   withImage: boolean;
+  imageMode: 'auto' | 'local';
+  localImages: string[];
   language: string;
   autoPublish: boolean;
   // 内容来源二选一:'reference'=参考文案(按身份+可选参考文案自由创作);'sources'=数据源选题。
@@ -82,6 +85,9 @@ const MatrixFacebookPostWizard: React.FC<Props> = ({ platformLabel, platform, ac
   const toggleSource = (id: string) => setSourceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [sourceTrackMatch, setSourceTrackMatch] = useState<boolean>(fp.sourceTrackMatch !== false); // 默认开:仅账号赛道相关
   const [withImage, setWithImage] = useState<boolean>(fp.withImage !== false);
+  // 图源:'auto'(缺省,源图/AI 生图)/ 'local'(用户本地图 ≤6,runner 读盘转 base64)。
+  const [imageMode, setImageMode] = useState<'auto' | 'local'>((fp as any).imageMode === 'local' ? 'local' : 'auto');
+  const [localImages, setLocalImages] = useState<string[]>(Array.isArray((fp as any).localImages) ? (fp as any).localImages.filter((p: unknown) => typeof p === 'string').slice(0, 6) : []);
   const [language, setLanguage] = useState<string>(fp.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(fp.autoPublish !== false);
   // 各号各自的参考文案(键=accountId,可留空)。
@@ -128,6 +134,8 @@ const MatrixFacebookPostWizard: React.FC<Props> = ({ platformLabel, platform, ac
         concurrency: selectedIds.length,
         frequency: runInterval,
         withImage, language, autoPublish,
+        imageMode,
+        localImages: imageMode === 'local' ? localImages.slice(0, 6) : [],
         contentSource,
         references: refsOut,
         sources: contentSource === 'sources' ? selSources : [],
@@ -281,10 +289,14 @@ const MatrixFacebookPostWizard: React.FC<Props> = ({ platformLabel, platform, ac
 
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{T('配图', 'Image')}</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setWithImage(false)} className={bigBtn(!withImage)}>{T('纯文字', 'Text only')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{T('不配图,发得快', 'No image, faster')}</div></button>
-                <button type="button" onClick={() => setWithImage(true)} className={bigBtn(withImage)}>{T('配图', 'With image')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{T('源图优先,无则 AI 生图', 'Source thumb first, else AI-gen')}</div></button>
+              <div className="grid grid-cols-3 gap-2">
+                <button type="button" onClick={() => { setImageMode('auto'); setWithImage(false); }} className={bigBtn(imageMode === 'auto' && !withImage)}>{T('纯文字', 'Text only')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{T('不配图,发得快', 'No image, faster')}</div></button>
+                <button type="button" onClick={() => { setImageMode('auto'); setWithImage(true); }} className={bigBtn(imageMode === 'auto' && withImage)}>{T('配图', 'With image')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{T('源图优先,无则 AI 生图', 'Source thumb first, else AI-gen')}</div></button>
+                <button type="button" onClick={() => { setImageMode('local'); setWithImage(true); }} className={bigBtn(imageMode === 'local')}>📁 {i18nService.t('wzImgModeLocalTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzPostModeLocalDesc')}</div></button>
               </div>
+              {imageMode === 'local' && (
+                <MatrixLocalImagePicker value={localImages} onChange={setLocalImages} disabled={saving} max={6} accent="blue" />
+              )}
             </div>
 
             <div>

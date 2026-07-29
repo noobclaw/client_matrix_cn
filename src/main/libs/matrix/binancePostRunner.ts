@@ -180,9 +180,29 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
     // 本号 task —— withImage/language/autoPublish 走全局 config;persona/track/keywords 用账号已配身份。
     // 仅 web3 资讯模式(orchestrator 强制),无 mode / is_blue_v / reference。
     const accKeywords = Array.isArray(acc.keywords) ? acc.keywords.filter((k) => String(k || '').trim()) : [];
+    // 本地图模式:读盘转 base64 传给 orchestrator 直接附到帖子(跳过 源图/AI 生图)。
+    const localImagePayload: Array<{ base64: string; mimeType: string; name: string }> = [];
+    if ((cfg as any).imageMode === 'local') {
+      const paths: string[] = Array.isArray((cfg as any).localImages) ? (cfg as any).localImages : [];
+      for (const p of paths.slice(0, 6)) {
+        try {
+          const st = fs.statSync(p);
+          if (!st.isFile() || st.size > 10 * 1024 * 1024) { log(`⚠️ 本地图跳过(不存在或超10MB):${path.basename(p)}`); continue; }
+          const ext = path.extname(p).toLowerCase().replace('.', '');
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          localImagePayload.push({ base64: fs.readFileSync(p).toString('base64'), mimeType: mime, name: path.basename(p) });
+        } catch { log(`⚠️ 本地图读取失败,跳过:${path.basename(p)}`); }
+      }
+      if (localImagePayload.length === 0) {
+        log('❌ 跳过:本地图模式但一张图都读不到(文件被移动/删除?重新编辑任务选图)');
+        return { accountId, state: 'skipped', reason: 'no_local_images' };
+      }
+      log(`📁 本地图就绪:${localImagePayload.length} 张`);
+    }
     const task: any = {
       id: accountId,
-      with_image: !!cfg.withImage,
+      with_image: !!cfg.withImage || localImagePayload.length > 0,
+      local_images: localImagePayload.length > 0 ? localImagePayload : undefined,
       language: cfg.language || 'mixed',
       auto_upload: !!cfg.autoPublish,
       persona: acc.persona || '',

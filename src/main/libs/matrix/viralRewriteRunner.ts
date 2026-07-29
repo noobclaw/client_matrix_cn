@@ -206,6 +206,25 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
     }
     markAccountAlive(accountId);
 
+    // 本地图模式:读盘转 base64,orchestrator 直接当每篇配图(跳过 AI 生图)。
+    const localImagePayload: Array<{ type: string; base64: string; mimeType: string; url: string }> = [];
+    if ((cfg as any).imageMode === 'local') {
+      const paths: string[] = Array.isArray((cfg as any).localImages) ? (cfg as any).localImages : [];
+      for (const p of paths.slice(0, 6)) {
+        try {
+          const st = fs.statSync(p);
+          if (!st.isFile() || st.size > 10 * 1024 * 1024) { log(`⚠️ 本地图跳过(不存在或超10MB):${path.basename(p)}`); continue; }
+          const ext = path.extname(p).toLowerCase().replace('.', '');
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          localImagePayload.push({ type: 'content', base64: fs.readFileSync(p).toString('base64'), mimeType: mime, url: 'file://' + p });
+        } catch { log(`⚠️ 本地图读取失败,跳过:${path.basename(p)}`); }
+      }
+      if (localImagePayload.length === 0) {
+        log('❌ 跳过:本地图模式但一张图都读不到(文件被移动/删除?重新编辑任务选图)');
+        return { accountId, state: 'skipped', reason: 'no_local_images' };
+      }
+      log(`📁 本地图就绪:${localImagePayload.length} 张`);
+    }
     // 本号 task:沿用账号身份(赛道/关键词/人设);来源=关键词搜(不传 urls)。
     const task: any = {
       id: accountId,
@@ -215,6 +234,7 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
       daily_count: Math.max(1, Math.min(50, Number(cfg.dailyCount) || 1)),
       variants_per_post: 1,
       ai_image_style: cfg.aiImageStyle || 'ai_auto',
+      local_images: localImagePayload.length > 0 ? localImagePayload : undefined,
       auto_upload: !!cfg.autoPublish,   // 仅本地时不上传
       auto_publish: !!cfg.autoPublish,  // 直接发布(坐标)
     };

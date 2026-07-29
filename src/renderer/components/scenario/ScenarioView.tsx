@@ -631,6 +631,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       sources: input.sources,   // 数据源模式的多选源(每轮随机挑 1 个取题)
       sourceTrackMatch: input.sourceTrackMatch,   // 仅账号赛道相关(默认开)
       withImage: input.withImage,
+      imageMode: input.imageMode,
+      localImages: input.localImages,
       language: input.language,
       isBlueV: input.isBlueV,
       autoPublish: input.autoPublish,
@@ -691,6 +693,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const m = (window as any).electron?.matrix;
     const binancePost = {
       withImage: input.withImage,
+      imageMode: input.imageMode,
+      localImages: input.localImages,
       language: input.language,
       autoPublish: input.autoPublish,
     };
@@ -748,6 +752,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const m = (window as any).electron?.matrix;
     const facebookPost = {
       withImage: input.withImage,
+      imageMode: input.imageMode,
+      localImages: input.localImages,
       language: input.language,
       autoPublish: input.autoPublish,
       contentSource: input.contentSource,   // 内容来源二选一:reference=参考文案 / sources=数据源
@@ -876,6 +882,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const m = (window as any).electron?.matrix;
     const instagramPost = {
       withImage: true,
+      imageMode: input.imageMode,
+      localImages: input.localImages,
       language: input.language,
       autoPublish: input.autoPublish,
       contentSource: input.contentSource,   // 内容来源二选一:reference=参考文案 / sources=数据源
@@ -985,7 +993,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const saveMatrixViralTask = async (input: ViralRewriteWizardSave) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
-    const viralRewrite = { dailyCount: input.dailyCount, aiImageStyle: input.aiImageStyle, autoPublish: input.autoPublish };
+    const viralRewrite = { dailyCount: input.dailyCount, aiImageStyle: input.aiImageStyle, autoPublish: input.autoPublish, imageMode: input.imageMode, localImages: input.localImages };
     const r = await m?.saveTask?.({ id: matrixViralTask?.id, platform: matrixViralPlatform, type: 'viral_rewrite', name: input.name, accountIds: input.accountIds, viralRewrite, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixViralPlatform; setMatrixViralPlatform(null); setMatrixViralTask(null); setDupNotice({ platform: dp as string, label: '爆款仿写' }); return; }

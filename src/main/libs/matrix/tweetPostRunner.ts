@@ -172,6 +172,25 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
     // reference 取本号参考文案(仅 free 模式有意义,可空)。
     const ref = cfg.references?.[accountId];
     const accKeywords = Array.isArray(acc.keywords) ? acc.keywords.filter((k) => String(k || '').trim()) : [];
+    // 本地图模式:读盘转 base64 传给 orchestrator 直接附到推文(跳过 AI 生图)。推特单帖最多 4 张。
+    const localImagePayload: Array<{ base64: string; mimeType: string; name: string }> = [];
+    if (cfg.imageMode === 'local') {
+      const paths = Array.isArray(cfg.localImages) ? cfg.localImages : [];
+      for (const p of paths.slice(0, 4)) {
+        try {
+          const st = fs.statSync(p);
+          if (!st.isFile() || st.size > 10 * 1024 * 1024) { log(`⚠️ 本地图跳过(不存在或超10MB):${path.basename(p)}`); continue; }
+          const ext = path.extname(p).toLowerCase().replace('.', '');
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+          localImagePayload.push({ base64: fs.readFileSync(p).toString('base64'), mimeType: mime, name: path.basename(p) });
+        } catch { log(`⚠️ 本地图读取失败,跳过:${path.basename(p)}`); }
+      }
+      if (localImagePayload.length === 0) {
+        log('❌ 跳过:本地图模式但一张图都读不到(文件被移动/删除?重新编辑任务选图)');
+        return { accountId, state: 'skipped', reason: 'no_local_images' };
+      }
+      log(`📁 本地图就绪:${localImagePayload.length} 张`);
+    }
     const useDataSources = cfg.mode !== 'free';
     // 「仅账号赛道相关」(默认开):数据源模式下把本号赛道 id 传 orchestrator,取材按 track 过滤;空/关则不过滤。
     const trackId = (useDataSources && cfg.sourceTrackMatch !== false) ? trackIdFromGroup(acc.group) : '';
@@ -181,7 +200,9 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string):
       // 数据源模式的多选源(orchestrator 每轮随机挑 1 个取题;老任务无 sources=仅 web3 资讯,行为不变)。
       sources: Array.isArray(cfg.sources) ? cfg.sources : [],
       track_id: trackId,
-      with_image: !!cfg.withImage,
+      with_image: !!cfg.withImage || localImagePayload.length > 0,
+      // 本地图模式:orchestrator 优先用它(跳过 AI 生图),附到推文。
+      local_images: localImagePayload.length > 0 ? localImagePayload : undefined,
       language: cfg.language || 'mixed',
       is_blue_v: !!cfg.isBlueV,
       auto_upload: !!cfg.autoPublish,

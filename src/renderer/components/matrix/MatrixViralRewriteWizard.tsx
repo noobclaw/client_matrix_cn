@@ -13,6 +13,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
+import MatrixLocalImagePicker from './MatrixLocalImagePicker';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -30,6 +31,8 @@ export interface ViralRewriteWizardSave {
   frequency: string;
   dailyCount: number;
   aiImageStyle: string;
+  imageMode: 'auto' | 'local';
+  localImages: string[];
   autoPublish: boolean;
 }
 
@@ -62,6 +65,9 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
   const vr = initialTask?.viralRewrite || {};
   const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(20, Number(vr.dailyCount) || 1)));
   const [aiImageStyle, setAiImageStyle] = useState<string>(vr.aiImageStyle || 'ai_auto');
+  // 图源:'auto'(缺省,AI 生图)/ 'local'(用户本地图 ≤6,每篇直接用这组,计费同图文网络图)。
+  const [imageMode, setImageMode] = useState<'auto' | 'local'>((vr as any).imageMode === 'local' ? 'local' : 'auto');
+  const [localImages, setLocalImages] = useState<string[]>(Array.isArray((vr as any).localImages) ? (vr as any).localImages.filter((p: unknown) => typeof p === 'string').slice(0, 6) : []);
   // 全量风格目录(server-side 单源;拉不到回退兜底列表)。
   const [stylesList, setStylesList] = useState<ImageStyle[]>(FALLBACK_IMAGE_STYLES);
   useEffect(() => { let alive = true; fetchImageStyles().then((r) => { if (alive) setStylesList(r.styles); }); return () => { alive = false; }; }, []);
@@ -105,6 +111,8 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
         frequency: runInterval,
         dailyCount,
         aiImageStyle,
+        imageMode,
+        localImages: imageMode === 'local' ? localImages.slice(0, 6) : [],
         autoPublish,
       });
     } catch (err) {
@@ -185,11 +193,27 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
               <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>20</span></div>
             </div>
             <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ {i18nService.t('wzImgImageModeLabel')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setImageMode('auto')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageMode === 'auto' ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-rose-500/50'}`}>
+                  🎨 {i18nService.t('wzImgModeAiTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzViralAiStyleHint')}</div>
+                </button>
+                <button type="button" onClick={() => setImageMode('local')} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${imageMode === 'local' ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-rose-500/50'}`}>
+                  📁 {i18nService.t('wzImgModeLocalTitle')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzPostModeLocalDesc')}</div>
+                </button>
+              </div>
+              {imageMode === 'local' && (
+                <MatrixLocalImagePicker value={localImages} onChange={setLocalImages} disabled={saving} max={6} accent="rose" />
+              )}
+            </div>
+            {imageMode === 'auto' && (
+            <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🎨 {i18nService.t('wzViralAiStyleLabel')}<span className="text-xs text-gray-400 font-normal ml-1">· {i18nService.t('wzViralAiStyleHint')}</span></label>
               <select value={aiImageStyle} onChange={(e) => setAiImageStyle(e.target.value)} disabled={saving} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/40">
                 {stylesList.map((opt) => <option key={opt.id} value={opt.id}>{opt.icon} {isZhStyle ? opt.zh : opt.en} — {isZhStyle ? opt.desc_zh : opt.desc_en}</option>)}
               </select>
             </div>
+            )}
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 {i18nService.t('wzViralAfterGen')}</label>
               <div className="grid grid-cols-2 gap-2">
