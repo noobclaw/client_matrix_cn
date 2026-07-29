@@ -299,18 +299,25 @@ async function translateSegments(
     '2. 若某条源文本本身是不完整短语/半句/续句,译文也保持同样边界,不要擅自补成完整句。',
     '3. 等价翻译,不解释、不扩写。数字、代码、URL、@handle、无公认译法的专有名词可保留原文。',
     '4. 删除口播里的导流/社媒/订阅引导(如 like and subscribe / 关注我)——这类整条译成空字符串 "".',
-    '5. 【口播时长约束】每项的 sec 是该句在视频里的口播秒数,译文必须能在 sec 秒内自然读完:',
-    '   中文/日文/韩文按每秒约 4.5 字、英文等按每秒约 2.4 个单词估算。译文超预算时必须精简表达',
-    '   (删冗余修饰、换短说法),宁可略有取舍也不要超长 —— 超长会导致配音拖过画面。',
+    '5. 【口播长度硬上限】每项的 max 是该条译文的长度上限(目标语言为中/日/韩时=字符数,其它语言=单词数)。',
+    '   译文绝不允许超过 max —— 超长会导致配音拖过画面。空间不够就精简表达:删冗余修饰、换短说法、保核心信息。',
     '# 只返回 JSON:{ "translations": ["译文1", "译文2", ...] },数组长度必须等于输入长度。',
   ].join('\n');
+  // 每句长度预算直接算成【具体数字】给模型(比让它自己按语速换算服从得多):
+  // CJK ≈ 5 字/秒,其它 ≈ 2.6 词/秒(边界略宽松 —— 超出的部分配音端先自动提速、
+  // 再 atempo,轻度压缩只做最后手段,避免译文被砍得太干)。
+  const cjkTarget = /中文|日本|日語|한국|Chinese|Japanese|Korean/i.test(targetLangLabel);
+  const budgetOf = (s: Seg) => {
+    const sec = Math.max(0.6, s.end - s.start);
+    return Math.max(3, Math.floor(sec * (cjkTarget ? 5 : 2.6)));
+  };
 
   const out: Seg[] = [];
   for (let i = 0; i < segs.length; i += BATCH) {
     throwIfAborted(signal);
     const batch = segs.slice(i, i + BATCH);
     const user = '翻译下面 ' + batch.length + ' 条:\n' + JSON.stringify({
-      items: batch.map((s) => ({ text: s.text, sec: Math.round(Math.max(0.6, s.end - s.start) * 10) / 10 })),
+      items: batch.map((s) => ({ text: s.text, max: budgetOf(s) })),
     });
     let translations: string[] | null = null;
     try {
@@ -366,28 +373,41 @@ async function synthAndAlign(
     if (!ttsPath) { onLog(`⚠️ 第 ${i + 1} 句配音失败,跳过:${getLastTtsError().slice(0, 60)}`); continue; }
 
     const targetDur = Math.max(0.6, seg.end - seg.start);
-    // 译文过长(即使 1.3x 加速也塞不回原时间窗)→ 让 AI 把这句压短再配一次
-    // (真机反馈:中→英/英→中膨胀导致「画面播完了配音还在响」;在源头治,不靠加速硬压)。
-    if (ttsDur > targetDur * 1.4 && seg.text.trim().length > 6 && !signal?.aborted) {
-      const budget = Math.max(4, Math.floor(seg.text.trim().length * ((targetDur * 1.25) / ttsDur)));
+    // 超长治理【先提语速、后动文字】(真机反馈:直接 AI 压缩砍得太狠、译文太干):
+    //   ① 溢出 >60% → 同文本按 edge-tts 语速 +25% 重配一次(声库原生提速,比 atempo 自然,零改文字);
+    //   ② 提速后仍溢出 >90% → 才轻度 AI 压缩(只压到 1.6×窗口,后面还有 atempo+顺延消化);
+    //   ③ 最后 atempo ≤1.3x + 顺延靠句间空隙还债。
+    if (ttsDur > targetDur * 1.6 && !signal?.aborted) {
+      const outF = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_f.mp3`);
+      for (const v of chain) {
+        const rf = await synthesize(seg.text, outF, v, Math.min(50, rate + 25));
+        if (rf.synthesized && rf.durationSec > 0 && rf.durationSec < ttsDur) {
+          onLog(`⏩ 第 ${i + 1} 句偏长,自动提速重配(${ttsDur.toFixed(1)}s→${rf.durationSec.toFixed(1)}s)`);
+          ttsPath = rf.audioPath; ttsDur = rf.durationSec;
+          break;
+        }
+      }
+    }
+    if (ttsDur > targetDur * 1.9 && seg.text.trim().length > 6 && !signal?.aborted) {
+      const budget = Math.max(6, Math.floor(seg.text.trim().length * ((targetDur * 1.6) / ttsDur)));
       try {
         const r = await callDeepSeek(
-          '你是口播压缩器。把给定句子用【同一种语言】压缩改写:保留核心信息、删冗余修饰,输出不超过 ' + budget + ' 个字符。只返回改写后的句子,不要引号、不要解释。',
+          '你是口播精简器。把给定句子用【同一种语言】略微精简:删冗余修饰和口头语,核心信息一个都不能丢,输出不超过 ' + budget + ' 个字符。只返回精简后的句子,不要引号、不要解释。',
           seg.text, false, 30_000, 'noobclawai-chat', 0.3);
         onCost?.(r.tokens || 0, r.costUsd || 0);
         const short = (r.content || '').trim().replace(/^["'「『]|["'」』]$/g, '').trim();
         if (short && short.length < seg.text.trim().length) {
           const out2 = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_c.mp3`);
           for (const v of chain) {
-            const r2 = await synthesize(short, out2, v, rate);
+            const r2 = await synthesize(short, out2, v, Math.min(50, rate + 25));
             if (r2.synthesized && r2.durationSec > 0 && r2.durationSec < ttsDur) {
-              onLog(`✂️ 第 ${i + 1} 句译文过长,AI 压缩重配(${ttsDur.toFixed(1)}s→${r2.durationSec.toFixed(1)}s)`);
+              onLog(`✂️ 第 ${i + 1} 句仍超长,轻度精简重配(${ttsDur.toFixed(1)}s→${r2.durationSec.toFixed(1)}s)`);
               ttsPath = r2.audioPath; ttsDur = r2.durationSec; seg.text = short;
               break;
             }
           }
         }
-      } catch { /* 压缩失败走 atempo+顺延兜底 */ }
+      } catch { /* 精简失败走 atempo+顺延兜底 */ }
     }
     // 溢出压到原时长,真实压缩封顶 1.3x(听感仍自然;再多就只压 1.3、剩余顺延)。
     const tempo = ttsDur > targetDur ? Math.min(1.3, ttsDur / targetDur) : 1;
