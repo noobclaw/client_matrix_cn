@@ -6124,11 +6124,14 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
             <>
               <Field label={t('rpstSourceLabel')} hint={t('rpstSourceHint')}>
                 {/* 来源方式:下拉二选一(用户拍板的交互)。 */}
-                <select value={sourceMode} onChange={(e) => { setSourceMode(e.target.value as 'link' | 'file'); setErr(null); }}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white mb-2">
-                  <option value="link">🔗 {t('rpstSourceLink')}</option>
-                  <option value="file">🎞️ {t('rpstSourceFile')}</option>
-                </select>
+                <div className="relative mb-2">
+                  <select value={sourceMode} onChange={(e) => { setSourceMode(e.target.value as 'link' | 'file'); setErr(null); }}
+                    className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 pr-8 text-sm dark:text-white">
+                    <option value="link">🔗 {t('rpstSourceLink')}</option>
+                    <option value="file">🎞️ {t('rpstSourceFile')}</option>
+                  </select>
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">▾</span>
+                </div>
                 {sourceMode === 'link' ? (
                   <>
                     {/* 先选平台(只列确定能下的),再给该平台专属输入框 + 域名校验。 */}
