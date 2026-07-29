@@ -6616,12 +6616,6 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       placeholder={uaIntroMode === 'strict' ? t('uaIntroStrictPh') : t('uaIntroAiPh')}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 resize-y" />
                   </Field>
-                  <Field label={t('uaLangLabel')} hint={t('uaLangHint')}>
-                    <select value={scriptLang} onChange={(e) => setScriptLang(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                      {SCRIPT_LANGS.map((l) => (<option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>))}
-                    </select>
-                  </Field>
                 </>
               ) : (
                 <>
