@@ -352,7 +352,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               {imageSource === 'local' && (
                 <div className="mt-3 space-y-1.5">
                   <button type="button" onClick={pickLocalImages} disabled={saving || localImages.length >= 6}
-                    className="w-full px-3 py-2 rounded-lg text-sm border border-dashed border-emerald-400 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 disabled:opacity-50 transition-colors">
+                    className="w-full px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors">
                     ➕ {i18nService.t('wzImgLocalPick').replace('{n}', String(localImages.length))}
                   </button>
                   {localImages.length > 0 && (

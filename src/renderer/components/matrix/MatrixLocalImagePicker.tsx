@@ -7,12 +7,12 @@ import { i18nService } from '../../services/i18n';
 
 // ⚠️ Tailwind JIT 扫不到模板拼出来的类名 → 每个主色一整串字面量。
 const ACCENT_BTN: Record<string, string> = {
-  emerald: 'border-emerald-400 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10',
-  sky: 'border-sky-400 text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10',
-  amber: 'border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10',
-  fuchsia: 'border-fuchsia-400 text-fuchsia-600 dark:text-fuchsia-400 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-500/10',
-  rose: 'border-rose-400 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10',
-  blue: 'border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10',
+  emerald: 'bg-emerald-500 text-white hover:bg-emerald-600',
+  sky: 'bg-sky-500 text-white hover:bg-sky-600',
+  amber: 'bg-amber-500 text-white hover:bg-amber-600',
+  fuchsia: 'bg-fuchsia-500 text-white hover:bg-fuchsia-600',
+  rose: 'bg-rose-500 text-white hover:bg-rose-600',
+  blue: 'bg-blue-500 text-white hover:bg-blue-600',
 };
 
 const MatrixLocalImagePicker: React.FC<{
@@ -37,7 +37,7 @@ const MatrixLocalImagePicker: React.FC<{
   return (
     <div className="mt-3 space-y-1.5">
       <button type="button" onClick={pick} disabled={disabled || value.length >= max}
-        className={`w-full px-3 py-2 rounded-lg text-sm border border-dashed disabled:opacity-50 transition-colors ${ACCENT_BTN[accent] || ACCENT_BTN.emerald}`}>
+        className={`w-full px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 transition-colors ${ACCENT_BTN[accent] || ACCENT_BTN.emerald}`}>
         ➕ {i18nService.t('wzImgLocalPick').replace('{n}', String(value.length)).replace('/6', `/${max}`)}
       </button>
       {value.length > 0 && (
