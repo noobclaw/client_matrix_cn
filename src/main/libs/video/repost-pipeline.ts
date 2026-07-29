@@ -398,7 +398,7 @@ async function synthAndAlign(
     if (ttsDur > targetDur * 1.6 && !signal?.aborted) {
       const outF = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_f.mp3`);
       for (const v of chain) {
-        const rf = await synthesize(seg.text, outF, v, Math.min(50, rate + 25));
+        const rf = await synthesize(seg.text, outF, v, Math.min(50, rate + 20));
         if (rf.synthesized && rf.durationSec > 0 && rf.durationSec < ttsDur) {
           onLog(`⏩ 第 ${i + 1} 句偏长,自动提速重配(${ttsDur.toFixed(1)}s→${rf.durationSec.toFixed(1)}s)`);
           ttsPath = rf.audioPath; ttsDur = rf.durationSec;
@@ -417,7 +417,7 @@ async function synthAndAlign(
         if (short && short.length < seg.text.trim().length) {
           const out2 = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_c.mp3`);
           for (const v of chain) {
-            const r2 = await synthesize(short, out2, v, Math.min(50, rate + 25));
+            const r2 = await synthesize(short, out2, v, Math.min(50, rate + 20));
             if (r2.synthesized && r2.durationSec > 0 && r2.durationSec < ttsDur) {
               onLog(`✂️ 第 ${i + 1} 句仍超长,轻度精简重配(${ttsDur.toFixed(1)}s→${r2.durationSec.toFixed(1)}s)`);
               ttsPath = r2.audioPath; ttsDur = r2.durationSec; seg.text = short;
@@ -428,7 +428,7 @@ async function synthAndAlign(
       } catch { /* 精简失败走 atempo+顺延兜底 */ }
     }
     // 溢出压到原时长,真实压缩封顶 1.3x(听感仍自然;再多就只压 1.3、剩余顺延)。
-    const tempo = ttsDur > targetDur ? Math.min(1.3, ttsDur / targetDur) : 1;
+    const tempo = ttsDur > targetDur ? Math.min(1.25, ttsDur / targetDur) : 1;
     // ⚠️ 必须把每句【归一化成 aac 48k 立体声】:TTS 出的是 mp3、静音片段是 aac,格式不统一
     //    concat demuxer -c copy 会失败。这一步同时做 atempo(需要时),一趟 ffmpeg 搞定。
     const norm = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_n.m4a`);

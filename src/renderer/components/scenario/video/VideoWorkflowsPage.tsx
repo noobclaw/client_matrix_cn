@@ -4604,6 +4604,16 @@ export const HotspotVideoModal: React.FC<{
   const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(ei.subtitleStrokeColor ?? '#000000');
   // BGM 默认选中第 1 首内置曲目(新建任务,跟在线素材/模板速生一致);编辑老任务沿用其已存值(空也保留)。
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
+  // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
+  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
+  const previewBgm = async () => {
+    if (!bgmPath || bgmPreviewLoading) return;
+    setBgmPreviewLoading(true);
+    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+  };
+  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
   // 云端曲库(跟模板速生 / 在线素材同源 static.noobclaw.com/bgm/manifest.json)。
   // 没这个时 hotspot 只能选 8 首内置;拉到后追加「云端曲库」optgroup。失败静默。
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
@@ -5125,6 +5135,15 @@ export const HotspotVideoModal: React.FC<{
                     </optgroup>
                   )}
                 </select>
+                {bgmPath && (
+                  <div className="mt-2 space-y-1.5">
+                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
+                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-60">
+                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
+                    </button>
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                  </div>
+                )}
               </Field>
             </>
           )}
@@ -5354,6 +5373,16 @@ export const ThreadVideoModal: React.FC<{
   const [voice, setVoice] = useState<string>(ei.voice || THREAD_LANG_VOICE[isZh ? 'zh' : 'en']);
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
+  // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
+  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
+  const previewBgm = async () => {
+    if (!bgmPath || bgmPreviewLoading) return;
+    setBgmPreviewLoading(true);
+    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+  };
+  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
   useEffect(() => {
     let alive = true;
@@ -5708,6 +5737,15 @@ export const ThreadVideoModal: React.FC<{
                     </optgroup>
                   )}
                 </select>
+                {bgmPath && (
+                  <div className="mt-2 space-y-1.5">
+                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
+                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-60">
+                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
+                    </button>
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                  </div>
+                )}
               </Field>
             </>
           )}
@@ -5834,11 +5872,27 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
-  type RpStep = 1 | 2 | 3 | 4;
+  type RpStep = 1 | 2 | 3 | 4 | 5;
   const [step, setStep] = useState<RpStep>(1);
-  const MAX_STEP = 4;
+  const MAX_STEP = 5;
   const [sourceMode, setSourceMode] = useState<'link' | 'file'>((ei as any)?.repostSourceFile ? 'file' : 'link');
   const [sourceUrl, setSourceUrl] = useState<string>((ei as any)?.repostSourceUrl || '');
+  // 链接模式按平台走:只列我们确定能下的平台,每个平台专属输入框 + 域名校验(抖音要登录态,暂不在列)。
+  const RP_PLATFORMS: { id: string; zh: string; en: string; icon: string; domains: RegExp; ph: string }[] = [
+    { id: 'youtube', zh: 'YouTube', en: 'YouTube', icon: '📺', domains: /(youtube\.com|youtu\.be)/i, ph: 'https://www.youtube.com/watch?v=… / https://youtu.be/…' },
+    { id: 'tiktok', zh: 'TikTok', en: 'TikTok', icon: '🎵', domains: /tiktok\.com/i, ph: 'https://www.tiktok.com/@user/video/…' },
+    { id: 'bilibili', zh: 'B站', en: 'Bilibili', icon: '📼', domains: /(bilibili\.com|b23\.tv)/i, ph: 'https://www.bilibili.com/video/BV…' },
+    { id: 'x', zh: '推特(X)', en: 'X (Twitter)', icon: '🐦', domains: /(x\.com|twitter\.com)/i, ph: 'https://x.com/user/status/…' },
+    { id: 'xhs', zh: '小红书', en: 'RedNote', icon: '📕', domains: /(xiaohongshu\.com|xhslink\.com)/i, ph: 'https://www.xiaohongshu.com/explore/…(带 xsec_token 的分享链接)' },
+    { id: 'vimeo', zh: 'Vimeo', en: 'Vimeo', icon: '🎬', domains: /vimeo\.com/i, ph: 'https://vimeo.com/…' },
+    { id: 'facebook', zh: 'Facebook', en: 'Facebook', icon: '👥', domains: /(facebook\.com|fb\.watch)/i, ph: 'https://www.facebook.com/watch?v=… / https://fb.watch/…' },
+  ];
+  const [srcPlatform, setSrcPlatform] = useState<string>(() => {
+    const u = String((ei as any)?.repostSourceUrl || '');
+    const hit = u ? RP_PLATFORMS.find((p) => p.domains.test(u)) : null;
+    return hit ? hit.id : 'youtube';
+  });
+  const curPlat = RP_PLATFORMS.find((p) => p.id === srcPlatform) || RP_PLATFORMS[0];
   const [sourceFile, setSourceFile] = useState<string>((ei as any)?.repostSourceFile || '');
   const [targetLang, setTargetLang] = useState<string>((ei as any)?.repostTargetLang || 'zh');
   const [keepBgm, setKeepBgm] = useState<boolean>(!!(ei as any)?.repostKeepBgm);
@@ -5848,6 +5902,16 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   // 背景音乐(可选):无 / 内置曲库;音量三档。压低垫在配音下(合成端循环铺满)。
   const [bgmPath, setBgmPath] = useState<string>((ei as any)?.bgmPath || '');
   const [bgmVolume, setBgmVolume] = useState<number>(typeof (ei as any)?.bgmVolume === 'number' ? (ei as any).bgmVolume : 0.18);
+  // BGM 内嵌试听(复用 prepareBgmPreview:sidecar 流式 URL / 开发态 data:)。
+  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
+  const previewBgm = async () => {
+    if (!bgmPath || bgmPreviewLoading) return;
+    setBgmPreviewLoading(true);
+    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+  };
+  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(typeof (ei as any)?.subtitleFontSize === 'number' ? (ei as any).subtitleFontSize : 20);
   const pickTargetLang = (code: string) => {
     setTargetLang(code);
@@ -5962,6 +6026,9 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const goNext = () => {
     if (step === 1) {
       if (sourceMode === 'link' && !sourceUrl.trim()) { setErr(t('rpstErrNoUrl')); return; }
+      if (sourceMode === 'link' && sourceUrl.trim() && !curPlat.domains.test(sourceUrl)) {
+        setErr((isZh ? `请粘贴 ${curPlat.zh} 的视频链接` : `Please paste a ${curPlat.en} video link`)); return;
+      }
       if (sourceMode === 'file' && !sourceFile) { setErr(t('rpstErrNoFile')); return; }
     }
     setErr(null);
@@ -5981,11 +6048,13 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <StepDot n={1} active={step === 1} done={step > 1} label={t('rpstStepSource')} />
               <div className={`h-px w-3 ${step > 1 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={t('rpstStepVoice')} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '语言与原声' : 'Language'} />
               <div className={`h-px w-3 ${step > 2 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={t('rpstStepOutput')} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={t('rpstStepVoice')} />
               <div className={`h-px w-3 ${step > 3 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={false} label={t('rpstStepFreq')} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={t('rpstStepOutput')} />
+              <div className={`h-px w-3 ${step > 4 ? 'bg-sky-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={5} active={step === 5} done={false} label={t('rpstStepFreq')} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -5995,15 +6064,28 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
           {step === 1 && (
             <>
               <Field label={t('rpstSourceLabel')} hint={t('rpstSourceHint')}>
-                <div className="flex gap-2 mb-2">
-                  <button type="button" onClick={() => { setSourceMode('link'); setErr(null); }} className={seg(sourceMode === 'link')}>🔗 {t('rpstSourceLink')}</button>
-                  <button type="button" onClick={() => { setSourceMode('file'); setErr(null); }} className={seg(sourceMode === 'file')}>🎞️ {t('rpstSourceFile')}</button>
-                </div>
+                {/* 来源方式:下拉二选一(用户拍板的交互)。 */}
+                <select value={sourceMode} onChange={(e) => { setSourceMode(e.target.value as 'link' | 'file'); setErr(null); }}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white mb-2">
+                  <option value="link">🔗 {t('rpstSourceLink')}</option>
+                  <option value="file">🎞️ {t('rpstSourceFile')}</option>
+                </select>
                 {sourceMode === 'link' ? (
                   <>
-                    <textarea value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value.trim())} placeholder={t('rpstUrlPlaceholder')} rows={2}
+                    {/* 先选平台(只列确定能下的),再给该平台专属输入框 + 域名校验。 */}
+                    <div className="grid grid-cols-4 gap-1.5 mb-2">
+                      {RP_PLATFORMS.map((p) => (
+                        <button key={p.id} type="button" onClick={() => { setSrcPlatform(p.id); setErr(null); }}
+                          className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${srcPlatform === p.id ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-sky-400'}`}>
+                          {p.icon} {isZh ? p.zh : p.en}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value.trim())} placeholder={curPlat.ph} rows={2}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40 resize-none break-all" />
-                    <div className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{t('rpstSourcePlatforms')}</div>
+                    <div className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                      {isZh ? `只支持 ${curPlat.zh} 的公开视频链接;抖音链接暂需下载后用「本地文件」。` : `Public ${curPlat.en} video links only.`}
+                    </div>
                   </>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -6012,6 +6094,11 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                   </div>
                 )}
               </Field>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
               <Field label={t('rpstTargetLangLabel')} hint={t('rpstTargetLangHint')}>
                 <select value={targetLang} onChange={(e) => pickTargetLang(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
@@ -6027,7 +6114,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
             </>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <>
               <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成,免费' : 'edge-tts, free'}>
                 <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
@@ -6061,6 +6148,15 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                   {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
                 </select>
                 {bgmPath && (
+                  <div className="mt-2 space-y-1.5">
+                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
+                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-sky-500 hover:bg-sky-600 disabled:opacity-60">
+                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
+                    </button>
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                  </div>
+                )}
+                {bgmPath && (
                   <div className="flex gap-2 mt-2">
                     {BGM_VOLUME_OPTIONS.map((b) => (
                       <button key={b.v} type="button" onClick={() => setBgmVolume(b.v)}
@@ -6074,7 +6170,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
             </>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <>
               <Field label={t('rpstOutputLabel')}>
                 <div className="flex gap-2">
@@ -6108,7 +6204,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
             </>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <Field label={t('rpstFreqLabel')}>
               <div className="flex gap-2 flex-wrap">
                 {(['once', '3h', '6h', 'daily_random'] as VideoRunInterval[]).map((v) => (
@@ -6214,6 +6310,16 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [voice, setVoice] = useState<string>(ei?.voice || 'zh-CN-YunjianNeural');
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei?.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
+  // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
+  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
+  const previewBgm = async () => {
+    if (!bgmPath || bgmPreviewLoading) return;
+    setBgmPreviewLoading(true);
+    try { const u = await videoCreationService.prepareBgmPreview(bgmPath); setBgmPreviewUrl(u || ''); }
+    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+  };
+  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
   const [bgmVolume, setBgmVolume] = useState<number>(typeof ei?.bgmVolume === 'number' ? ei.bgmVolume : 0.18);
   const pickBgmFile = async () => { const p = await videoCreationService.pickBgm(); if (p) setBgmPath(p); };
   // ── 对齐在线素材的画面/音频/字幕控件(本地混剪 pipeline 已消费这些字段,原来向导没暴露) ──
@@ -6575,6 +6681,16 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                     {BGM_VOLUME_OPTIONS.map((o) => (
                       <button key={o.v} type="button" onClick={() => setBgmVolume(o.v)} className={`px-3 py-1 rounded-md text-xs border ${Math.abs(bgmVolume - o.v) < 0.01 ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'}`}>{isZh ? o.zh : o.en}</button>
                     ))}
+                  </div>
+                )}
+
+                {bgmPath && (
+                  <div className="mt-2 space-y-1.5">
+                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
+                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60">
+                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
+                    </button>
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
                   </div>
                 )}
               </Field>
