@@ -100,7 +100,8 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
     const remaining = 6 - localImages.length;
     if (remaining <= 0) return;
     try {
-      const paths = await (window as any).electron?.pickImages?.(remaining);
+      const api: any = (window as any).electron;
+      const paths = await (api?.video?.pickImages || api?.pickImages)?.(remaining);
       if (Array.isArray(paths) && paths.length) setLocalImages((prev) => [...prev, ...paths.filter((p: unknown) => typeof p === 'string')].slice(0, 6));
     } catch { /* 取消/未挂,忽略 */ }
   };

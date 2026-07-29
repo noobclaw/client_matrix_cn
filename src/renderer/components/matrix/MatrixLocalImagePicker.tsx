@@ -26,7 +26,9 @@ const MatrixLocalImagePicker: React.FC<{
     const remaining = max - value.length;
     if (remaining <= 0) return;
     try {
-      const paths = await (window as any).electron?.pickImages?.(remaining);
+      // Tauri shim 挂在 electron.video.pickImages;Electron preload 挂顶层 —— 两个都试(真机 bug:只调顶层在矩阵版点了没反应)。
+      const api: any = (window as any).electron;
+      const paths = await (api?.video?.pickImages || api?.pickImages)?.(remaining);
       if (Array.isArray(paths) && paths.length) {
         onChange([...value, ...paths.filter((p: unknown) => typeof p === 'string')].slice(0, max));
       }
