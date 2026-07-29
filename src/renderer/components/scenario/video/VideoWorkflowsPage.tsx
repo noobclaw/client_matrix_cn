@@ -2084,12 +2084,11 @@ const VideoCreateFlow: React.FC<{
           btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
         {/* 原片直传:选视频 → 选平台直接上传,零处理(复用本地混剪 uploadOnly 链路,AI 只写标题/简介/标签)。 */}
         <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📤" onOpen={openWithLogin(() => setUploadAsIsOpen(true))} onGoTasks={onGoTasks}
-          tagZh="工具 · 原片直传" tagEn="Tool · Upload As-Is"
-          titleZh="原片直传 · 一键多平台" titleEn="Upload As-Is · One-click Multi-platform"
-          descZh="选好视频,挑好平台,原封不动帮你传上去 —— 不混剪、不配音、不加字幕,AI 只代写标题/简介/标签。适合已剪好的成片快速铺量分发。"
-          descEn="Pick a video, pick the platforms, and it uploads untouched — no remixing, no dubbing, no subtitles. AI only writes the title / description / tags. Perfect for distributing finished videos fast."
-          costZh="仅按发布平台数计费" costEn="Billed per publish platform only"
-          btnZh="📤 开始直传 →" btnEn="📤 Upload →" />
+          tagZh={i18nService.t('uaCardTag')} tagEn={i18nService.t('uaCardTag')}
+          titleZh={i18nService.t('uaCardTitle')} titleEn={i18nService.t('uaCardTitle')}
+          descZh={i18nService.t('uaCardDesc')} descEn={i18nService.t('uaCardDesc')}
+          costZh={i18nService.t('uaCardCost')} costEn={i18nService.t('uaCardCost')}
+          btnZh={i18nService.t('uaCardBtn')} btnEn={i18nService.t('uaCardBtn')} />
         {/* 2026-07-29 用户定的顺序:翻译搬运 → 原片直传 → 本地混剪 → 在线素材 → 热搜 → 模板速生 → 爆帖 → 电影级。 */}
         <VideoScenarioEntryCard isZh={isZh} accent="emerald" icon="📁" onOpen={openWithLogin(() => setLocalMixOpen(true))} onGoTasks={onGoTasks}
           tagZh={i18nService.t('vmixCardTag')} tagEn={i18nService.t('vmixCardTag')}
