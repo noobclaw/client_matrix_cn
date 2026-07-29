@@ -30,6 +30,7 @@ const LINK_RE: Record<string, RegExp> = {
   bilibili: /^https?:\/\/(([\w-]+\.)?bilibili\.com|b23\.tv)\//i,
   tiktok: /^https?:\/\/([\w-]+\.)?tiktok\.com\//i,
   xhs: /^https?:\/\/(([\w-]+\.)?xiaohongshu\.com|xhslink\.com)\//i,
+  youtube: /^https?:\/\/(([\w-]+\.)?youtube\.com|youtu\.be)\//i,
 };
 const linkValidatorFor = (platform?: string) => {
   const re = LINK_RE[platform || 'douyin'] || LINK_RE.douyin;
@@ -61,6 +62,8 @@ interface Props {
 }
 
 const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
+  // YouTube 无水印下载:yt-dlp 直下,不需要账号/内核 → 隐藏账号区、校验放行。
+  const noAccount = platform === 'youtube';
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
 
@@ -87,7 +90,7 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedId, linksText, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: !!selectedId, reason: t('wzDownloadErrSelectAccount') },
+    1: { ok: noAccount || !!selectedId, reason: t('wzDownloadErrSelectAccount') },
     2: validLinks.length === 0
       ? { ok: false, reason: t('wzDownloadErrNoValidLink') }
       : validLinks.length > MAX_LINKS
@@ -99,13 +102,13 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
   const handleSave = async () => {
     if (saving) return;
     if (!canAdvance[3].ok) { setSaveError(canAdvance[3].reason || ''); return; }
-    if (!selectedId) { setSaveError(canAdvance[1].reason || ''); return; }
+    if (!noAccount && !selectedId) { setSaveError(canAdvance[1].reason || ''); return; }
     if (validLinks.length === 0) { setSaveError(canAdvance[2].reason || ''); return; }
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || t('wzDownloadTaskName').replace('{platform}', platformLabel).replace('{n}', String(validLinks.length)),
-        accountIds: [selectedId],
+        name: initialTask?.name || (noAccount ? t('ytdlTaskName') : t('wzDownloadTaskName').replace('{platform}', platformLabel).replace('{n}', String(validLinks.length))),
+        accountIds: noAccount ? [] : [selectedId],
         concurrency: 1,
         frequency: runInterval,
         urls: validLinks.slice(0, MAX_LINKS),
@@ -123,7 +126,7 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">⬇️ {editing ? t('wzDownloadTitleEdit').replace('{platform}', platformLabel) : t('wzDownloadTitleCreate').replace('{platform}', platformLabel)}</div>
+        <div className="text-base font-semibold dark:text-white">⬇️ {noAccount ? (editing ? t('ytdlTitleEdit') : t('ytdlTaskName')) : (editing ? t('wzDownloadTitleEdit').replace('{platform}', platformLabel) : t('wzDownloadTitleCreate').replace('{platform}', platformLabel))}</div>
         <div className="flex items-center gap-3">
           <span className="text-xs px-2.5 py-1 rounded-full border border-sky-500/40 text-sky-500 bg-sky-500/5">{t('wzDownloadStepIndicator').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
@@ -136,6 +139,10 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-300">
               ⬇️ {t('wzDownloadIntro').replace('{platform}', platformLabel)}{platform === 'tiktok' ? <span className="text-amber-600 dark:text-amber-400"> {t('wzDownloadIntroTiktok')}</span> : null}
             </div>
+            {noAccount && (
+              <div className="rounded-lg border px-3 py-2 text-[12px] leading-relaxed border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-300">🚀 {t('ytdlNoAccountHint')}</div>
+            )}
+            {!noAccount && (<>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
                 {t('wzDownloadSelectAccountLabel').replace('{platform}', platformLabel)}<span className="text-xs text-gray-400 font-normal ml-1">{t('wzDownloadSelectAccountHint').replace('{platform}', platformLabel)}{selectedId ? t('wzDownloadSelectedSuffix') : ''}</span>
@@ -180,6 +187,7 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
                 })}
               </div>
             </div>
+            </>)}
           </>
         )}
 

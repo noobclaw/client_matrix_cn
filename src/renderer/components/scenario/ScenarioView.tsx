@@ -1750,6 +1750,25 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* 视频无水印下载(单账号工具)—— 仅抖音:选 1 个号 + 粘贴链接逐个下载。 */}
+          {currentPlatform === 'youtube' && (
+            <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionDownload')}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">⬇️ {i18nService.t('ytdlTaskName')}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">{i18nService.t('ytdlCardDesc')}</div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+                <button type="button" onClick={() => openMatrixDownloadWizard('youtube')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-bold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-colors">
+                  ⬇️ {i18nService.t('svStartDownload')}
+                </button>
+                <button type="button" onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                  className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+                  {i18nService.t('svHasTasks')}
+                </button>
+              </div>
+            </div>
+          )}
           {MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">

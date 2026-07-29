@@ -246,6 +246,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   try {
     const { runEngageTask } = await import('./libs/matrix/engageRunner');
     const { runImageTextTask } = await import('./libs/matrix/imageTextRunner');
+const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRunner');
     const { runViralRewriteTask } = await import('./libs/matrix/viralRewriteRunner');
     const { runTweetPostTask } = await import('./libs/matrix/tweetPostRunner');
     const { runBinancePostTask } = await import('./libs/matrix/binancePostRunner');
@@ -412,6 +413,12 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
+      : (isVideoDownload && task.platform === 'youtube')
+      // YouTube 无水印下载:独立 runner(yt-dlp 直下,复用翻译搬运那条腿),不开内核、不要账号。
+      ? runYoutubeDownloadTask({ taskId: task.id, urls: task.urls || [], signal: abort.signal, onLog: cbOnLog, onItem: cbOnItem })
+      : (isVideoDownload && task.platform === 'youtube')
+      // YouTube 无水印下载:独立 runner(yt-dlp 直下,复用翻译搬运那条腿),不开内核、不要账号。
+      ? runYoutubeDownloadTask({ taskId: task.id, urls: task.urls || [], signal: abort.signal, onLog: cbOnLog, onItem: cbOnItem })
       : isImageText
       ? runImageTextTask({
           platform: task.platform, taskId: task.id, accountIds: runIds, config: task.imageText as any,
