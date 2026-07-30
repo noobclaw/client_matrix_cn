@@ -371,7 +371,7 @@ class VideoCreationService {
    * 豆包(火山)真人音色目录:服务端 admin 下发(GET /api/tts/voices)。
    * 未配置/拉不到 → { enabled:false, voices:[] },UI 只显示 Edge 音色。
    */
-  async fetchDoubaoVoices(): Promise<{ enabled: boolean; voices: Array<{ id: string; zh?: string; en?: string; lang?: string }>; priceCnyPer10k: number }> {
+  async fetchDoubaoVoices(): Promise<{ enabled: boolean; voices: Array<{ id: string; zh?: string; en?: string; lang?: string; scene?: string }>; priceCnyPer10k: number }> {
     try {
       const { noobClawAuth } = await import('./noobclawAuth');
       const headers = noobClawAuth.getAuthHeaders();
