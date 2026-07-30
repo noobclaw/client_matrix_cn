@@ -35,7 +35,7 @@ jobs:
           path: |
             release/*.exe
             !release/*-unpacked/**
-          retention-days: 7
+          retention-days: 1
 
   build-mac-x64:
     name: macOS Intel (x64)
@@ -86,7 +86,7 @@ jobs:
         with:
           name: NoobClaw-mac-x64
           path: release/*.dmg
-          retention-days: 7
+          retention-days: 1
 
   build-mac-arm64:
     name: macOS Apple Silicon (arm64)
@@ -137,4 +137,4 @@ jobs:
         with:
           name: NoobClaw-mac-arm64
           path: release/*.dmg
-          retention-days: 7
+          retention-days: 1

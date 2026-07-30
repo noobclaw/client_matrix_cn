@@ -20,12 +20,12 @@ jobs:
   cleanup-old-artifacts:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete artifacts older than 7 days
+      - name: Delete artifacts older than 1 day
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eo pipefail
-          CUTOFF=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          CUTOFF=$(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%SZ)
           echo "Cutoff: $CUTOFF"
           gh api -X GET repos/${{ github.repository }}/actions/artifacts --paginate \
             --jq ".artifacts[] | select(.created_at < \"$CUTOFF\") | .id" > /tmp/old_ids.txt

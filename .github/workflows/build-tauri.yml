@@ -346,7 +346,7 @@ jobs:
           name: noobclaw-cn-tauri-${{ matrix.target }}
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*
-          retention-days: 7
+          retention-days: 1
   # Artifact 配额清理已拆到独立的定时 workflow(.github/workflows/cleanup-artifacts.yml):
   #   每天 cron 自动删 >7 天前的 artifact + 可手动触发。拆出去的原因:原来作为 build 的
   #   收尾 job(needs: build-tauri),它一旦 cancelled/failed 就把整个 Build Tauri run 标红,
