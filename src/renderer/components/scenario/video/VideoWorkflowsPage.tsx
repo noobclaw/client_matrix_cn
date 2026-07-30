@@ -2730,7 +2730,7 @@ const VideoConfigModal: React.FC<{
   /** 矩阵号 edition:发布平台下多一步「选账号」,发布走指纹内核 CDP。 */
   matrixMode?: boolean;
 }> = ({ isZh, onClose, onCreated, editTask, onSaved, forcedMode, matrixMode }) => {
-  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
+  const { groups: voiceGroups, defaultVoice: doubaoDefault } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const isEdit = !!editTask;
   // forcedMode(从「电影级 / 在线素材」card 进来)锁定模式 → 跳过 step1 模式选择,从 step2(赛道)起。
   // 矩阵号在「出片(7)」后多插一步「账号(8)」。
@@ -2806,6 +2806,13 @@ const VideoConfigModal: React.FC<{
   // 创作语言(仅在线素材/本地素材模式):决定 AI 口播稿语言;'auto' = 按文案/关键词探测(老行为,老任务无此字段也走它)。
   const [scriptLang, setScriptLang] = useState<string>(editTask?.input.scriptLang || 'auto');
   const [voice, setVoice] = useState<string>(editTask?.input.voice || 'zh-CN-YunjianNeural');
+  // 新建任务默认用豆包真人音色(用户拍板);编辑老任务保留原音色。豆包未配置 → 保持 Edge 默认。
+  const _dbApplied1 = useRef(false);
+  useEffect(() => {
+    if (_dbApplied1.current || !doubaoDefault || editTask) return;
+    _dbApplied1.current = true;
+    setVoice(doubaoDefault);
+  }, [doubaoDefault]);
   // 选定语言后,若当前音色语种不匹配 → 自动切到该语言默认音色(仍可手动改回)。
   const pickScriptLang = (code: string) => {
     setScriptLang(code);
@@ -4621,7 +4628,7 @@ export const HotspotVideoModal: React.FC<{
   editTask?: any;
   onSaved?: () => void;
 }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
+  const { groups: voiceGroups, defaultVoice: doubaoDefault } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const isEdit = !!editTask;
   const ei = editTask?.input || {};
   // 任务名不再让用户填:沿用编辑态旧名,新建固定「热搜成片」(见 buildTitle)。
@@ -4662,6 +4669,13 @@ export const HotspotVideoModal: React.FC<{
   const [materialAccountId, setMaterialAccountId] = useState<string>((ei as any).hotspotMaterialAccountId || '');
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
   const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-YunjianNeural');
+  // 新建任务默认用豆包真人音色(用户拍板);编辑老任务保留原音色。豆包未配置 → 保持 Edge 默认。
+  const _dbApplied2 = useRef(false);
+  useEffect(() => {
+    if (_dbApplied2.current || !doubaoDefault || editTask) return;
+    _dbApplied2.current = true;
+    setVoice(doubaoDefault);
+  }, [doubaoDefault]);
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   // 创作语言:决定 AI 口播稿语言('auto' = 按热点标题语言,老行为)。中文热搜 + 英文口播 = 热点出海玩法。
   // 选定语言与音色语种不匹配 → 自动切该语种默认音色(与在线素材/模板速生同一套联动)。
@@ -5421,7 +5435,7 @@ export const ThreadVideoModal: React.FC<{
   editTask?: any;
   onSaved?: () => void;
 }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
+  const { groups: voiceGroups, defaultVoice: doubaoDefault } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const isEdit = !!editTask;
   const ei = editTask?.input || {};
   const [title] = useState<string>(editTask?.title || '');
@@ -5449,6 +5463,13 @@ export const ThreadVideoModal: React.FC<{
   const [captionStyle, setCaptionStyle] = useState<'cards' | 'karaoke' | 'both'>(
     ei.threadCaptionStyle === 'karaoke' ? 'karaoke' : ei.threadCaptionStyle === 'both' ? 'both' : 'cards');
   const [voice, setVoice] = useState<string>(ei.voice || THREAD_LANG_VOICE[isZh ? 'zh' : 'en']);
+  // 新建任务默认用豆包真人音色(用户拍板);编辑老任务保留原音色。豆包未配置 → 保持 Edge 默认。
+  const _dbApplied3 = useRef(false);
+  useEffect(() => {
+    if (_dbApplied3.current || !doubaoDefault || editTask) return;
+    _dbApplied3.current = true;
+    setVoice(doubaoDefault);
+  }, [doubaoDefault]);
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
@@ -5947,7 +5968,7 @@ export const ThreadVideoModal: React.FC<{
 // ── 翻译搬运(engine='repost'):源视频(链接/本地)→ 转写 → 翻译 → 换配音 + 字幕 → 发布 ──
 // 3 步向导:源与语言 / 配音字幕 / 出片发布。文案 i18n 前缀 rpst(9 语)。
 export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
+  const { groups: voiceGroups, defaultVoice: doubaoDefault } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
@@ -5979,6 +6000,13 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   // ── Step 2:配音 + 字幕 ──
   const langDefaultVoice = (code: string) => SCRIPT_LANGS.find((l) => l.code === code)?.defaultVoice || 'zh-CN-YunjianNeural';
   const [voice, setVoice] = useState<string>(ei?.voice || langDefaultVoice((ei as any)?.repostTargetLang || 'zh'));
+  // 新建任务默认用豆包真人音色(用户拍板);编辑老任务保留原音色。豆包未配置 → 保持 Edge 默认。
+  const _dbApplied4 = useRef(false);
+  useEffect(() => {
+    if (_dbApplied4.current || !doubaoDefault || editTask) return;
+    _dbApplied4.current = true;
+    setVoice(doubaoDefault);
+  }, [doubaoDefault]);
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
   // 背景音乐(可选):无 / 内置曲库;音量三档。压低垫在配音下(合成端循环铺满)。
   const [bgmPath, setBgmPath] = useState<string>((ei as any)?.bgmPath || '');
@@ -6326,7 +6354,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
 // ── 本地混剪(engine='localmix'):本地视频/图片文件夹 → 智能混剪/图片合成 + 配音 + 字幕 + BGM → 本地/发布 ──
 // 与其它视频向导同壳(StepDot/Field/发布步),文案走 i18nService(9 语言,key 前缀 vmix)。
 export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void; presetUploadOnly?: boolean }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved, presetUploadOnly }) => {
-  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
+  const { groups: voiceGroups, defaultVoice: doubaoDefault } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
@@ -6396,6 +6424,13 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   // ── Step 3:配音 / 字幕 / BGM ──
   const [narration, setNarration] = useState<boolean>(isEdit ? !!ei?.voice : true);
   const [voice, setVoice] = useState<string>(ei?.voice || 'zh-CN-YunjianNeural');
+  // 新建任务默认用豆包真人音色(用户拍板);编辑老任务保留原音色。豆包未配置 → 保持 Edge 默认。
+  const _dbApplied5 = useRef(false);
+  useEffect(() => {
+    if (_dbApplied5.current || !doubaoDefault || editTask) return;
+    _dbApplied5.current = true;
+    setVoice(doubaoDefault);
+  }, [doubaoDefault]);
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei?.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
@@ -6939,7 +6974,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
 };
 
 export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
+  const { groups: voiceGroups, defaultVoice: doubaoDefault } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   // 编辑态:用任务现有模板配置回填(新建/编辑共用同一向导,只是数据预填)。
   const isEdit = !!editTask;
   const et = editTask?.input?.template;
@@ -7005,6 +7040,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   // 编辑:保留任务现有设置(et?.narration === true 才认为开过)。
   const [narration, setNarration] = useState<boolean>(isEdit ? et?.narration === true : true);
   const [voice, setVoice] = useState<string>(et?.voice || editTask?.input?.voice || 'zh-CN-YunjianNeural');
+  // 新建任务默认用豆包真人音色(用户拍板);编辑老任务保留原音色。豆包未配置 → 保持 Edge 默认。
+  const _dbApplied6 = useRef(false);
+  useEffect(() => {
+    if (_dbApplied6.current || !doubaoDefault || editTask) return;
+    _dbApplied6.current = true;
+    setVoice(doubaoDefault);
+  }, [doubaoDefault]);
   // 生成语言:画面文字 + AI 口播稿都用它('auto' = 按内容探测,老行为)。选定后音色语种不匹配 → 自动切默认音色。
   const [tplLang, setTplLang] = useState<string>(et?.lang || 'auto');
   const pickTplLang = (code: string) => {
