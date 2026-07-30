@@ -1380,7 +1380,18 @@ const server = http.createServer(async (req, res) => {
               const file = await resolveBgmPath(args[0]);
               if (!file || !fs.existsSync(file)) {
                 // 带诊断返回(前端打 console),定位「内置曲在打包资源里没探到」这类真机问题。
-                return writeJSON(res, 200, 'ERR:resolve_failed token=' + String(args[0]).slice(0, 60));
+                // 诊断带上资源根 + bgm 目录是否存在 + 曲目数,真机一眼看出是「没打进包」还是「探测路径不对」。
+                let diag = '';
+                try {
+                  const { getResourcesPath } = await import('./libs/platformAdapter');
+                  const pathMod = await import('path');
+                  const rp = getResourcesPath();
+                  const bgmDir = pathMod.join(rp, 'bgm');
+                  const exists = fs.existsSync(bgmDir);
+                  const files = exists ? fs.readdirSync(bgmDir).length : 0;
+                  diag = ' resources=' + rp + ' bgmDir=' + bgmDir + ' exists=' + exists + ' files=' + files;
+                } catch { /* 诊断本身失败不影响返回 */ }
+                return writeJSON(res, 200, 'ERR:resolve_failed token=' + String(args[0]).slice(0, 60) + diag);
               }
               const token = registerFile(file, { ttlMs: 30 * 60 * 1000 });
               return writeJSON(res, 200, buildUrl(token, PORT));

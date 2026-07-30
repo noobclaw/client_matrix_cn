@@ -2759,13 +2759,43 @@ function scriptLangDisplay(code: string | undefined, isZh: boolean): string | nu
 // value 用 builtin:<id> token 传给主进程,bgm.ts 还原成 resources/bgm/<id>.mp3。
 // id 必须与 client/resources/bgm/<id>.mp3 文件名(去扩展名)一致。
 const BUILTIN_BGM_PREFIX = 'builtin:';
-// BGM 试听统一取流:sidecar http URL 一律 fetch→blob(排除 webview 对 <audio src=http> 的差异),
-// 'ERR:' 前缀 = sidecar 侧解析失败的诊断(打到 console 便于真机定位)。
-async function bgmPlayableUrl(u: string): Promise<string> {
-  if (!u) return '';
-  if (u.startsWith('ERR:')) { try { console.warn('[bgm-preview]', u); } catch { /* ignore */ } return ''; }
-  if (!/^https?:/i.test(u)) return u; // data: 直接播
-  try { const b = await fetch(u).then((r) => r.blob()); return URL.createObjectURL(b); } catch { return u; }
+/**
+ * resolveBgmPreview — 把 bgmPath(builtin:/remote:/绝对路径)变成能播的 URL,
+ * 失败时【一定带回原因】。以前每一步失败都回 '',界面上就是「点了没反应」,
+ * 真机没法定位;现在每一环的错都往上抛给界面 + console。
+ *
+ * 链路:渲染端 → sidecar video:prepareBgmPreview(解析/按需下载 → 注册 localFileServer)
+ *      → 回 http://127.0.0.1:PORT/api/local-file?token=… → 这里 fetch 成 blob 给 <audio>。
+ */
+async function resolveBgmPreview(token: string): Promise<{ url: string; err: string }> {
+  if (!token) return { url: '', err: 'no_bgm_selected' };
+  if (!videoCreationService.available) return { url: '', err: 'video_ipc_unavailable(主进程没挂上)' };
+  let raw = '';
+  try {
+    raw = await videoCreationService.prepareBgmPreview(token);
+  } catch (e) {
+    return { url: '', err: 'ipc_threw: ' + String((e as Error)?.message || e).slice(0, 120) };
+  }
+  try { console.info('[bgm-preview] token=' + token + ' raw=' + String(raw).slice(0, 160)); } catch { /* ignore */ }
+  if (!raw) return { url: '', err: 'sidecar_returned_empty(prepareBgmPreview 没回地址)' };
+  if (raw.startsWith('ERR:')) return { url: '', err: raw.slice(4) };
+  if (!/^https?:/i.test(raw)) return { url: raw, err: '' };        // data: URL 直接播
+  try {
+    const r = await fetch(raw);
+    if (!r.ok) return { url: '', err: 'http_' + r.status + ' from local-file' };
+    const b = await r.blob();
+    if (!b.size) return { url: '', err: 'empty_body(0 字节)' };
+    return { url: URL.createObjectURL(b), err: '' };
+  } catch (e) {
+    // fetch 拿不到就退回直接把 http URL 交给 <audio>(webview 能直连 sidecar 时仍可播)
+    try { console.warn('[bgm-preview] fetch failed, falling back to direct src', e); } catch { /* ignore */ }
+    return { url: raw, err: '' };
+  }
+}
+/** 试听出错时给用户看的一行(带原始原因,方便截图定位)。 */
+function bgmPreviewMsg(err: string, isZh: boolean): string {
+  if (err === 'no_bgm_selected') return isZh ? '先选一首背景音乐再试听' : 'Pick a track first';
+  return (isZh ? '试听失败:' : 'Preview failed: ') + err;
 }
 
 const BUILTIN_BGM: { id: string; zh: string; en: string }[] = [
@@ -3184,7 +3214,6 @@ const VideoConfigModal: React.FC<{
   // 用户自己进去双击试听。后端返回的是目录(不下载、不要求文件已存在),比定位单文件健壮:
   // 内置 → 打开随包 bgm 目录(8 首都在);云端 → 打开缓存目录(已下载的在);上传 → 文件目录。
   const [bgmOpening, setBgmOpening] = useState(false);
-  const [previewError, setPreviewError] = useState('');
   const openBgmFolder = async (token: string) => {
     if (!token || bgmOpening) return;
     setBgmOpening(true);
@@ -3192,35 +3221,36 @@ const VideoConfigModal: React.FC<{
       const dir = await videoCreationService.resolveBgmPath(token); // 现在返回目录
       if (dir) {
         try { (window as any).electron?.shell?.openPath?.(dir); } catch { /* ignore */ }
-        setPreviewError('');
+        setBgmPreviewErr('');
       } else {
-        setPreviewError(isZh ? '打开失败：找不到 BGM 目录' : 'Failed: BGM folder not found');
+        setBgmPreviewErr(isZh ? '打开失败：找不到 BGM 目录' : 'Failed: BGM folder not found');
       }
     } catch {
-      setPreviewError(isZh ? '打开失败：无法打开 BGM 目录' : 'Failed to open the BGM folder');
+      setBgmPreviewErr(isZh ? '打开失败：无法打开 BGM 目录' : 'Failed to open the BGM folder');
     } finally {
       setBgmOpening(false);
     }
   };
   // BGM 内嵌试听:解析成可播 URL(云端按需下载),用 <audio controls autoPlay> 直接播。
   const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
   const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
   const previewBgm = async (token: string) => {
     if (!token || bgmPreviewLoading) return;
     setBgmPreviewLoading(true);
-    setPreviewError('');
+    setBgmPreviewErr('');
     try {
-      const url = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(token));
-      if (url) setBgmPreviewUrl(url);
-      else setPreviewError(isZh ? '试听失败：未取到音频' : 'Preview failed: no audio');
+      const r = await resolveBgmPreview(token);
+      if (r.url) setBgmPreviewUrl(r.url);
+      if (r.err) setBgmPreviewErr(bgmPreviewMsg(r.err, isZh));
     } catch {
-      setPreviewError(isZh ? '试听失败' : 'Preview failed');
+      setBgmPreviewErr(isZh ? '试听失败' : 'Preview failed');
     } finally {
       setBgmPreviewLoading(false);
     }
   };
   // 切换曲目时清掉上一首的「打开失败」红字 + 试听播放器,避免残留误导(选 A → 切 B 仍在)。
-  useEffect(() => { setPreviewError(''); setBgmPreviewUrl(''); }, [bgmPath]);
+  useEffect(() => { setBgmPreviewErr(''); setBgmPreviewUrl(''); }, [bgmPath]);
 
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
 
@@ -4063,11 +4093,10 @@ const VideoConfigModal: React.FC<{
                       </button>
                     </div>
                     {bgmPreviewUrl && (
-                      <audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />
+                      <audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9"
+                        onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />
                     )}
-                    {previewError && (
-                      <div className="text-[11px] text-red-500">{previewError}</div>
-                    )}
+                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
                     {bgmIsRemote && (
                       <div className="text-[11px] text-gray-400">
                         {isZh ? '☁️ 云端曲目首次打开文件夹/合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first open/compose, then cached.'}
@@ -4107,8 +4136,10 @@ const VideoConfigModal: React.FC<{
                       </button>
                     </div>
                     {bgmPreviewUrl && (
-                      <audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />
+                      <audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9"
+                        onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />
                     )}
+                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
                   </div>
                 )}
                 {bgmPath && (
@@ -4903,14 +4934,17 @@ export const HotspotVideoModal: React.FC<{
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
   const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
   const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
   const previewBgm = async () => {
-    if (!bgmPath || bgmPreviewLoading) return;
-    setBgmPreviewLoading(true);
-    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
-    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+    if (bgmPreviewLoading) return;
+    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
+    const r = await resolveBgmPreview(bgmPath);
+    setBgmPreviewUrl(r.url);
+    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
+    setBgmPreviewLoading(false);
   };
-  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
+  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
   // 云端曲库(跟模板速生 / 在线素材同源 static.noobclaw.com/bgm/manifest.json)。
   // 没这个时 hotspot 只能选 8 首内置;拉到后追加「云端曲库」optgroup。失败静默。
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
@@ -5429,7 +5463,8 @@ export const HotspotVideoModal: React.FC<{
                       className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-60">
                       {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
                     </button>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
+                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
                   </div>
                 )}
               </Field>
@@ -5671,14 +5706,17 @@ export const ThreadVideoModal: React.FC<{
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
   const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
   const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
   const previewBgm = async () => {
-    if (!bgmPath || bgmPreviewLoading) return;
-    setBgmPreviewLoading(true);
-    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
-    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+    if (bgmPreviewLoading) return;
+    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
+    const r = await resolveBgmPreview(bgmPath);
+    setBgmPreviewUrl(r.url);
+    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
+    setBgmPreviewLoading(false);
   };
-  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
+  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
   useEffect(() => {
     let alive = true;
@@ -6030,7 +6068,8 @@ export const ThreadVideoModal: React.FC<{
                       className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-60">
                       {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
                     </button>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
+                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
                   </div>
                 )}
               </Field>
@@ -6201,14 +6240,17 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const [bgmVolume, setBgmVolume] = useState<number>(typeof (ei as any)?.bgmVolume === 'number' ? (ei as any).bgmVolume : 0.18);
   // BGM 内嵌试听(复用 prepareBgmPreview:sidecar 流式 URL / 开发态 data:)。
   const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
   const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
   const previewBgm = async () => {
-    if (!bgmPath || bgmPreviewLoading) return;
-    setBgmPreviewLoading(true);
-    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
-    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+    if (bgmPreviewLoading) return;
+    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
+    const r = await resolveBgmPreview(bgmPath);
+    setBgmPreviewUrl(r.url);
+    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
+    setBgmPreviewLoading(false);
   };
-  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
+  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(typeof (ei as any)?.subtitleFontSize === 'number' ? (ei as any).subtitleFontSize : 20);
   const pickTargetLang = (code: string) => {
     setTargetLang(code);
@@ -6448,7 +6490,8 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                       className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-sky-500 hover:bg-sky-600 disabled:opacity-60">
                       {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
                     </button>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
+                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
                   </div>
                 )}
                 {bgmPath && (
@@ -6617,14 +6660,17 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei?.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
   const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
   const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
   const previewBgm = async () => {
-    if (!bgmPath || bgmPreviewLoading) return;
-    setBgmPreviewLoading(true);
-    try { const u = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(bgmPath)); setBgmPreviewUrl(u || ''); }
-    catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+    if (bgmPreviewLoading) return;
+    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
+    const r = await resolveBgmPreview(bgmPath);
+    setBgmPreviewUrl(r.url);
+    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
+    setBgmPreviewLoading(false);
   };
-  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
+  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
   const [bgmVolume, setBgmVolume] = useState<number>(typeof ei?.bgmVolume === 'number' ? ei.bgmVolume : 0.18);
   const pickBgmFile = async () => { const p = await videoCreationService.pickBgm(); if (p) setBgmPath(p); };
   // ── 对齐在线素材的画面/音频/字幕控件(本地混剪 pipeline 已消费这些字段,原来向导没暴露) ──
@@ -6960,7 +7006,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   <button type="button" onClick={() => setBgmPath('')} className={`px-2 py-1.5 rounded-lg text-xs border ${!bgmPath ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '无' : 'None'}</button>
                   <button type="button" onClick={() => { if (!bgmIsLibrary) setBgmPath(BUILTIN_BGM_PREFIX + BUILTIN_BGM[0].id); }} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsLibrary ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '曲库' : 'Library'}</button>
                   <button type="button" onClick={pickBgmFile} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsUpload ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '上传' : 'Upload'}</button>
-                  <button type="button" onClick={previewBgm} disabled={!bgmPath || bgmPreviewLoading} className="px-2 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40">{bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Play')}</button>
+                  <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading} className="px-2 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40">{bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Play')}</button>
                 </div>
                 {bgmIsLibrary && (
                   <select value={bgmPath} onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
@@ -6992,7 +7038,8 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   </div>
                 )}
 
-                {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="mt-2 w-full h-9" />)}
+                {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="mt-2 w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
+                {bgmPreviewErr && (<div className="mt-1 text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
               </Field>
             </>
           )}
@@ -7270,14 +7317,15 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   };
   // BGM 内嵌试听:解析成可播 URL(云端按需下载),<audio autoPlay> 直接播。
   const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
+  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
   const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
   const previewBgm = async (token: string) => {
-    if (!token || bgmPreviewLoading) return;
-    setBgmPreviewLoading(true);
-    try {
-      const url = await bgmPlayableUrl(await videoCreationService.prepareBgmPreview(token));
-      setBgmPreviewUrl(url || '');
-    } catch { setBgmPreviewUrl(''); } finally { setBgmPreviewLoading(false); }
+    if (bgmPreviewLoading) return;
+    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
+    const r = await resolveBgmPreview(token);
+    setBgmPreviewUrl(r.url);
+    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
+    setBgmPreviewLoading(false);
   };
   useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
   const bgmIsBuiltin = bgmPath.startsWith(BUILTIN_BGM_PREFIX);
@@ -7676,7 +7724,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                         {bgmOpening ? '⏳' : '📂'}
                       </button>
                     </div>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
+                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
                   </div>
                 )}
                 {bgmIsUpload && (
@@ -7688,7 +7737,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       <button type="button" onClick={pickBgm} className="text-xs text-fuchsia-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
                       <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
                     </div>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} className="w-full h-9" />)}
+                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
+                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
                   </div>
                 )}
                 {bgmPath && (

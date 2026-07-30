@@ -73,6 +73,13 @@ function resolveBuiltin(id: string): string | undefined {
     const p = path.join(dir, `${safeId}.mp3`);
     if (fs.existsSync(p)) return p;
   }
+  // 固定路径都没命中 → 兜底在安装目录里扫一遍(装包布局跟我们猜的不一样时自愈,
+  // 比如资源被多套了一层、或者 sidecar 不在安装根)。只扫一次,结果缓存。
+  const scanned = scanForBgmDir(safeId);
+  if (scanned) {
+    const p = path.join(scanned, `${safeId}.mp3`);
+    if (fs.existsSync(p)) return p;
+  }
   // 诊断:内置 BGM 找不到(试听失败:未取到音频)时,打出探测过的目录 + 运行时
   // 路径锚点,方便定位 Tauri sidecar 进程里资源的真实落点。
   try {
@@ -80,6 +87,54 @@ function resolveBuiltin(id: string): string | undefined {
       + ' execPath=' + process.execPath + ' resources=' + getResourcesPath()
       + ' probed=' + JSON.stringify(probed.map((d) => d + (fs.existsSync(d) ? ' [dir✓]' : ''))));
   } catch { /* ignore */ }
+  return undefined;
+}
+
+/** 扫到过的 bgm 目录(null = 扫过但没找到,不再重复扫)。 */
+let _scannedBgmDir: string | null | undefined;
+
+/**
+ * scanForBgmDir — 在安装目录附近有界地找 <id>.mp3 所在的目录。
+ *
+ * 为什么要这个:内置曲目能不能试听/合成,完全取决于「资源在装包后落到哪」,
+ * 而这个落点随打包器版本/安装方式(perMachine、便携版、mac 嵌套)变。固定路径列表
+ * 猜错一次,用户看到的就是「试听失败:未取到音频」,而且没法自己修。这里宽度深度都设上限
+ * (只看目录、跳过明显无关的大目录),命中即缓存,代价可以忽略。
+ */
+function scanForBgmDir(id: string): string | undefined {
+  if (_scannedBgmDir !== undefined) return _scannedBgmDir || undefined;
+  _scannedBgmDir = null;
+  const target = `${id}.mp3`;
+  const SKIP = new Set(['node_modules', '.git', 'chrome-extension', 'runtimes', 'python', 'SKILLs', 'Cache', 'logs']);
+  const MAX_DIRS = 1500;                      // 硬上限,别把安装盘扫穿
+  const roots: string[] = [];
+  try {
+    const exeDir = path.dirname(process.execPath);
+    roots.push(exeDir, path.dirname(exeDir), getResourcesPath(), path.dirname(getResourcesPath()));
+  } catch { /* ignore */ }
+  let seen = 0;
+  for (const root of roots) {
+    // 盘根(D:)之类的别扫,只在像安装目录的地方找
+    if (!root || root === path.parse(root).root) continue;
+    // 逐层 BFS,最多 4 层
+    let level = [root];
+    for (let depth = 0; depth < 4 && level.length; depth++) {
+      const next: string[] = [];
+      for (const dir of level) {
+        if (seen++ > MAX_DIRS) { return undefined; }
+        let entries: fs.Dirent[] = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+        for (const e of entries) {
+          if (e.isFile()) {
+            if (e.name === target) { _scannedBgmDir = dir; return dir; }
+          } else if (e.isDirectory() && !SKIP.has(e.name)) {
+            next.push(path.join(dir, e.name));
+          }
+        }
+      }
+      level = next;
+    }
+  }
   return undefined;
 }
 
