@@ -2424,6 +2424,39 @@ const LANG_LABELS: Record<string, { zh: string; en: string }> = {
   ar: { zh: '阿拉伯语', en: 'Arabic' }, it: { zh: '意大利语', en: 'Italian' },
   ms: { zh: '马来语', en: 'Malay' },
 };
+/**
+ * doubaoVoiceForLang — 给定语言码挑该语种的第一个豆包音色。
+ * 用户拍板:小语种也优先选豆包(语言只决定「优先选中谁」,不做过滤)。
+ * 返回 '' = 豆包没开 / 该语种豆包没有 → 调用方回落 Edge。
+ */
+function doubaoVoiceForLang(voices: Array<{ id: string; lang?: string }>, code: string): string {
+  const base = String(code || '').slice(0, 2).toLowerCase();
+  if (!base || base === 'au') return '';                                             // 'auto'/空:交给调用方用全局默认
+  const want = base === 'es' && !voices.some((v) => v.lang === 'es') ? 'mx' : base;  // 西语豆包只有拉美版
+  return voices.find((v) => String(v.lang || 'zh') === want)?.id || '';
+}
+/**
+ * voiceForLangChange — 用户切了创作/目标语言后该用哪个音色:
+ *   ① 当前已是该语种的豆包音色 → 原样保留(别把用户的手选冲掉)
+ *   ② 该语种有豆包音色 → 用它(小语种一样优先豆包)
+ *   ③ 否则当前 Edge 音色语种已匹配 → 保留;都不匹配 → 该语言的 Edge 默认音色
+ */
+function voiceForLangChange(
+  doubaoVoices: Array<{ id: string; lang?: string }>,
+  current: string,
+  code: string,
+  edgeDefault: string,
+  edgePrefixes: string[],
+): string {
+  const db = doubaoVoiceForLang(doubaoVoices, code);
+  if (db) {
+    const curLang = doubaoVoices.find((v) => v.id === current)?.lang;
+    const dbLang = doubaoVoices.find((v) => v.id === db)?.lang;
+    return curLang && curLang === dbLang ? current : db;
+  }
+  if (edgePrefixes.length && edgePrefixes.some((p) => current.startsWith(p))) return current;
+  return edgeDefault || current;
+}
 /** 各向导主色 → 选中态类名(静态字面量,保证 Tailwind 能扫到)。 */
 const VP_ACCENT: Record<string, string> = {
   sky: 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 font-medium',
@@ -2433,6 +2466,33 @@ const VP_ACCENT: Record<string, string> = {
   emerald: 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium',
   fuchsia: 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 font-medium',
   teal: 'border-teal-500 bg-teal-500/10 text-teal-600 dark:text-teal-400 font-medium',
+};
+/** VoiceList — 音色列表的壳:一行触发按钮 + 展开的两列面板(照赛道选择器那套,比原生下拉好点)。 */
+const VoiceList: React.FC<{ open: boolean; setOpen: (v: boolean) => void; label: string; children: React.ReactNode }> = ({ open, setOpen, label, children }) => (
+  <div>
+    <button type="button" onClick={() => setOpen(!open)}
+      className="relative w-full text-left text-sm pl-3 pr-9 py-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none">
+      {label}
+      <svg className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    </button>
+    {open && (
+      <div className="mt-1 grid grid-cols-2 gap-1 p-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 max-h-72 overflow-y-auto">
+        {children}
+      </div>
+    )}
+  </div>
+);
+/** 列表项选中态(同样要静态字面量,Tailwind 才扫得到)。 */
+const VP_ITEM: Record<string, string> = {
+  sky: 'bg-sky-500/15 text-sky-600 dark:text-sky-400 font-medium',
+  rose: 'bg-rose-500/15 text-rose-600 dark:text-rose-400 font-medium',
+  amber: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium',
+  orange: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium',
+  emerald: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium',
+  fuchsia: 'bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-400 font-medium',
+  teal: 'bg-teal-500/15 text-teal-600 dark:text-teal-400 font-medium',
 };
 const VoicePicker: React.FC<{
   isZh: boolean;
@@ -2479,6 +2539,15 @@ const VoicePicker: React.FC<{
 
   const on = VP_ACCENT[accent] || VP_ACCENT.sky;
   const tab = (active: boolean) => `px-3 py-1.5 rounded-lg text-xs border transition-colors ${active ? on : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400'}`;
+  const item = (active: boolean) => `text-left text-sm px-2.5 py-2 rounded-md truncate transition-colors ${active ? (VP_ITEM[accent] || VP_ITEM.sky) : 'hover:bg-black/5 dark:hover:bg-white/10 dark:text-gray-200'}`;
+  const [open, setOpen] = useState(false);
+  // 当前音色的显示名(豆包/Edge 都查一遍;查不到就显示原始 id,老任务的音色不会变空白)
+  const curLabel = (() => {
+    const db = doubaoVoices.find((v) => v.id === value);
+    if (db) return isZh ? (db.zh || db.id) : (db.en || db.zh || db.id);
+    for (const g of VOICE_GROUPS) { const v = g.voices.find((x) => x.id === value); if (v) return isZh ? v.zh : v.en; }
+    return value || (isZh ? '未选择' : 'Not selected');
+  })();
   const langVoices = dbByLang.get(dbLang) || [];
   // 中文音色多 → 再按场景分段展示;其它语种直接列
   const sceneGroups = useMemo(() => {
@@ -2514,14 +2583,18 @@ const VoicePicker: React.FC<{
               </button>
             ))}
           </div>
-          <select value={value} onChange={(e) => onChange(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+          <VoiceList open={open} setOpen={setOpen} label={curLabel}>
             {sceneGroups.map(([sc, vs]) => (
-              <optgroup key={sc} label={sc}>
-                {vs.map((v) => (<option key={v.id} value={v.id}>{isZh ? (v.zh || v.id) : (v.en || v.zh || v.id)}</option>))}
-              </optgroup>
+              <React.Fragment key={sc}>
+                <div className="col-span-2 px-2 pt-2 pb-1 text-[11px] text-gray-400 dark:text-gray-500">{sc}</div>
+                {vs.map((v) => (
+                  <button key={v.id} type="button" onClick={() => { onChange(v.id); setOpen(false); }} className={item(v.id === value)}>
+                    {v.id === value ? '✓ ' : ''}{isZh ? (v.zh || v.id) : (v.en || v.zh || v.id)}
+                  </button>
+                ))}
+              </React.Fragment>
             ))}
-          </select>
+          </VoiceList>
         </>
       ) : (
         <>
@@ -2532,13 +2605,13 @@ const VoicePicker: React.FC<{
               </button>
             ))}
           </div>
-          <select value={value} onChange={(e) => onChange(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-            {!(VOICE_GROUPS[edgeGroupIdx] || VOICE_GROUPS[0]).voices.some((v) => v.id === value) && <option value={value}>{value}</option>}
+          <VoiceList open={open} setOpen={setOpen} label={curLabel}>
             {(VOICE_GROUPS[edgeGroupIdx] || VOICE_GROUPS[0]).voices.map((v) => (
-              <option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>
+              <button key={v.id} type="button" onClick={() => { onChange(v.id); setOpen(false); }} className={item(v.id === value)}>
+                {v.id === value ? '✓ ' : ''}{isZh ? v.zh : v.en}
+              </button>
             ))}
-          </select>
+          </VoiceList>
         </>
       )}
     </div>
@@ -2877,7 +2950,7 @@ const VideoConfigModal: React.FC<{
   /** 矩阵号 edition:发布平台下多一步「选账号」,发布走指纹内核 CDP。 */
   matrixMode?: boolean;
 }> = ({ isZh, onClose, onCreated, editTask, onSaved, forcedMode, matrixMode }) => {
-  const { defaultVoice: doubaoDefault } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
+  const { defaultVoice: doubaoDefault, doubaoVoices } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
   const isEdit = !!editTask;
   // forcedMode(从「电影级 / 在线素材」card 进来)锁定模式 → 跳过 step1 模式选择,从 step2(赛道)起。
   // 矩阵号在「出片(7)」后多插一步「账号(8)」。
@@ -2958,15 +3031,13 @@ const VideoConfigModal: React.FC<{
   useEffect(() => {
     if (_dbApplied1.current || !doubaoDefault || editTask) return;
     _dbApplied1.current = true;
-    setVoice(doubaoDefault);
+    setVoice(doubaoVoiceForLang(doubaoVoices, scriptLang) || doubaoDefault);
   }, [doubaoDefault]);
   // 选定语言后,若当前音色语种不匹配 → 自动切到该语言默认音色(仍可手动改回)。
   const pickScriptLang = (code: string) => {
     setScriptLang(code);
     const opt = SCRIPT_LANGS.find((l) => l.code === code);
-    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) {
-      setVoice(opt.defaultVoice);
-    }
+    if (opt && opt.code !== 'auto') setVoice(voiceForLangChange(doubaoVoices, voice, code, opt.defaultVoice, opt.voicePrefixes));
   };
   const [voiceRate, setVoiceRate] = useState<number>(editTask?.input.voiceRate ?? 0);
   // BGM 默认选中第 1 首内置曲目(新建任务);编辑老任务时沿用其已存值(空也保留空)。
@@ -4763,7 +4834,7 @@ export const HotspotVideoModal: React.FC<{
   editTask?: any;
   onSaved?: () => void;
 }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { defaultVoice: doubaoDefault } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
+  const { defaultVoice: doubaoDefault, doubaoVoices } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
   const isEdit = !!editTask;
   const ei = editTask?.input || {};
   // 任务名不再让用户填:沿用编辑态旧名,新建固定「热搜成片」(见 buildTitle)。
@@ -4809,7 +4880,7 @@ export const HotspotVideoModal: React.FC<{
   useEffect(() => {
     if (_dbApplied2.current || !doubaoDefault || editTask) return;
     _dbApplied2.current = true;
-    setVoice(doubaoDefault);
+    setVoice(doubaoVoiceForLang(doubaoVoices, scriptLang) || doubaoDefault);
   }, [doubaoDefault]);
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   // 创作语言:决定 AI 口播稿语言('auto' = 按热点标题语言,老行为)。中文热搜 + 英文口播 = 热点出海玩法。
@@ -4818,9 +4889,7 @@ export const HotspotVideoModal: React.FC<{
   const pickScriptLang = (code: string) => {
     setScriptLang(code);
     const opt = SCRIPT_LANGS.find((l) => l.code === code);
-    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) {
-      setVoice(opt.defaultVoice);
-    }
+    if (opt && opt.code !== 'auto') setVoice(voiceForLangChange(doubaoVoices, voice, code, opt.defaultVoice, opt.voicePrefixes));
   };
   // 字幕样式 + BGM(用户要可调)。字幕位置默认按界面语言:中文→中下(配合抖音混剪盖原字幕),海外→底部。
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(ei.subtitlePosition || (isZh ? 'lower' : 'bottom'));
@@ -5563,7 +5632,7 @@ export const ThreadVideoModal: React.FC<{
   editTask?: any;
   onSaved?: () => void;
 }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { defaultVoice: doubaoDefault } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
+  const { defaultVoice: doubaoDefault, doubaoVoices } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
   const isEdit = !!editTask;
   const ei = editTask?.input || {};
   const [title] = useState<string>(editTask?.title || '');
@@ -5596,7 +5665,7 @@ export const ThreadVideoModal: React.FC<{
   useEffect(() => {
     if (_dbApplied3.current || !doubaoDefault || editTask) return;
     _dbApplied3.current = true;
-    setVoice(doubaoDefault);
+    setVoice(doubaoVoiceForLang(doubaoVoices, lang) || doubaoDefault);
   }, [doubaoDefault]);
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
@@ -5863,7 +5932,7 @@ export const ThreadVideoModal: React.FC<{
           {step === 2 && (
             <>
               <Field label={isZh ? '创作语言' : 'Language'} hint={isZh ? '卡片文字 + 配音都用它' : 'cards & voice-over'}>
-                <select value={lang} onChange={(e) => { const id = e.target.value as ThreadLang; setLang(id); setVoice(THREAD_LANG_VOICE[id]); }}
+                <select value={lang} onChange={(e) => { const id = e.target.value as ThreadLang; setLang(id); setVoice(doubaoVoiceForLang(doubaoVoices, id) || THREAD_LANG_VOICE[id]); }}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
                   {THREAD_LANGS.map((l) => (
                     <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>
@@ -6087,7 +6156,7 @@ export const ThreadVideoModal: React.FC<{
 // ── 翻译搬运(engine='repost'):源视频(链接/本地)→ 转写 → 翻译 → 换配音 + 字幕 → 发布 ──
 // 3 步向导:源与语言 / 配音字幕 / 出片发布。文案 i18n 前缀 rpst(9 语)。
 export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { defaultVoice: doubaoDefault } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
+  const { defaultVoice: doubaoDefault, doubaoVoices } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
@@ -6124,7 +6193,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   useEffect(() => {
     if (_dbApplied4.current || !doubaoDefault || editTask) return;
     _dbApplied4.current = true;
-    setVoice(doubaoDefault);
+    setVoice(doubaoVoiceForLang(doubaoVoices, targetLang) || doubaoDefault);
   }, [doubaoDefault]);
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
   // 背景音乐(可选):无 / 内置曲库;音量三档。压低垫在配音下(合成端循环铺满)。
@@ -6144,7 +6213,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const pickTargetLang = (code: string) => {
     setTargetLang(code);
     const opt = SCRIPT_LANGS.find((l) => l.code === code);
-    if (opt && opt.defaultVoice && (!opt.voicePrefixes.length || !opt.voicePrefixes.some((p) => voice.startsWith(p)))) setVoice(opt.defaultVoice);
+    if (opt) setVoice(voiceForLangChange(doubaoVoices, voice, code, opt.defaultVoice || langDefaultVoice(code), opt.voicePrefixes));
   };
   const pickSourceFile = async () => {
     const r = await videoCreationService.pickLocalMixFiles();
@@ -6467,7 +6536,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
 // ── 本地混剪(engine='localmix'):本地视频/图片文件夹 → 智能混剪/图片合成 + 配音 + 字幕 + BGM → 本地/发布 ──
 // 与其它视频向导同壳(StepDot/Field/发布步),文案走 i18nService(9 语言,key 前缀 vmix)。
 export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void; presetUploadOnly?: boolean }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved, presetUploadOnly }) => {
-  const { defaultVoice: doubaoDefault } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
+  const { defaultVoice: doubaoDefault, doubaoVoices } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
@@ -6542,7 +6611,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   useEffect(() => {
     if (_dbApplied5.current || !doubaoDefault || editTask) return;
     _dbApplied5.current = true;
-    setVoice(doubaoDefault);
+    setVoice(doubaoVoiceForLang(doubaoVoices, scriptLang) || doubaoDefault);
   }, [doubaoDefault]);
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei?.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
@@ -6566,7 +6635,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const pickScriptLang = (code: string) => {
     setScriptLang(code);
     const opt = SCRIPT_LANGS.find((l) => l.code === code);
-    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) setVoice(opt.defaultVoice);
+    if (opt && opt.code !== 'auto') setVoice(voiceForLangChange(doubaoVoices, voice, code, opt.defaultVoice, opt.voicePrefixes));
   };
   const [voiceRate, setVoiceRate] = useState<number>(typeof ei?.voiceRate === 'number' ? ei.voiceRate : 0);
   // 字幕样式(与 stock 同一套 SUB_* 常量)。
@@ -7081,7 +7150,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
 };
 
 export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
-  const { defaultVoice: doubaoDefault } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
+  const { defaultVoice: doubaoDefault, doubaoVoices } = useVoiceGroups(); // 新建任务默认豆包音色(服务端下发);音色列表在 VoicePicker 里分 tab 选
   // 编辑态:用任务现有模板配置回填(新建/编辑共用同一向导,只是数据预填)。
   const isEdit = !!editTask;
   const et = editTask?.input?.template;
@@ -7152,16 +7221,14 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   useEffect(() => {
     if (_dbApplied6.current || !doubaoDefault || editTask) return;
     _dbApplied6.current = true;
-    setVoice(doubaoDefault);
+    setVoice(doubaoVoiceForLang(doubaoVoices, tplLang) || doubaoDefault);
   }, [doubaoDefault]);
   // 生成语言:画面文字 + AI 口播稿都用它('auto' = 按内容探测,老行为)。选定后音色语种不匹配 → 自动切默认音色。
   const [tplLang, setTplLang] = useState<string>(et?.lang || 'auto');
   const pickTplLang = (code: string) => {
     setTplLang(code);
     const opt = SCRIPT_LANGS.find((l) => l.code === code);
-    if (opt && opt.code !== 'auto' && opt.voicePrefixes.length && !opt.voicePrefixes.some((p) => voice.startsWith(p))) {
-      setVoice(opt.defaultVoice);
-    }
+    if (opt && opt.code !== 'auto') setVoice(voiceForLangChange(doubaoVoices, voice, code, opt.defaultVoice, opt.voicePrefixes));
   };
   const [voiceRate, setVoiceRate] = useState<number>(typeof et?.voiceRate === 'number' ? et.voiceRate : 0);
   const [voiceScript, setVoiceScript] = useState<string>(et?.voiceScript || '');
