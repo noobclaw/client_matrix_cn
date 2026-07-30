@@ -2397,6 +2397,14 @@ const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[
 type VoiceOpt = { id: string; zh: string; en: string };
 // 豆包(火山)真人音色:服务端 admin 下发,进程内缓存一次。配置了就排在最前(默认音色),
 // 合成失败自动回退 Edge(见 main/libs/video/tts.ts)。没配置 → 只有 Edge,行为同以前。
+// 音色说明按【所选音色】动态显示:豆包(真人大模型,按字计费)/ Edge(免费)。
+// 之前写死 'edge-tts 免费',选了豆包也显示它 → 用户以为没生效(真机反馈)。
+function voiceEngineHint(voice: string, isZh: boolean): string {
+  const doubao = /_(male|female)_/i.test(String(voice || '')) && !/Neural$/i.test(String(voice || ''));
+  if (doubao) return isZh ? '豆包真人语音 · 大模型合成(按字数计费,失败自动回退 Edge)' : 'Doubao lifelike (per-character billing, auto-fallback to Edge)';
+  return isZh ? 'Edge 语音 · 在线合成,免费' : 'Edge voice · free';
+}
+
 let _doubaoCache: { enabled: boolean; voices: Array<{ id: string; zh?: string; en?: string; lang?: string }> } | null = null;
 function useVoiceGroups(): { groups: typeof VOICE_GROUPS; doubaoEnabled: boolean; defaultVoice: string } {
   const [db, setDb] = React.useState(_doubaoCache);
@@ -3740,7 +3748,7 @@ const VideoConfigModal: React.FC<{
 
               {/* 配音音色 + 语速 —— 普通模式恒显示;Seedance 仅在开了「AI 配音」时显示 */}
               {(mode !== 'pure_ai' || aiNarration) && (
-              <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成，免费' : 'edge-tts, free'}>
+              <Field label={isZh ? '配音音色' : 'Voice'} hint={voiceEngineHint(voice, isZh)}>
                 <select
                   value={voice}
                   onChange={(e) => setVoice(e.target.value)}
@@ -6229,7 +6237,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
 
           {step === 3 && (
             <>
-              <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成,免费' : 'edge-tts, free'}>
+              <Field label={isZh ? '配音音色' : 'Voice'} hint={voiceEngineHint(voice, isZh)}>
                 <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
                   {voiceGroups.map((g) => (
                     <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
@@ -6760,7 +6768,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       {SCRIPT_LANGS.map((l) => (<option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>))}
                     </select>
                   </Field>
-                  <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成,免费' : 'edge-tts, free'}>
+                  <Field label={isZh ? '配音音色' : 'Voice'} hint={voiceEngineHint(voice, isZh)}>
                     <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
                       {voiceGroups.map((g) => (
                         <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
