@@ -27,6 +27,47 @@ import { EdgeTTS, type WordBoundary } from 'edge-tts-universal';
 import { runFfmpeg, probeDuration } from './ffmpegRuntime';
 import { getTtsVoice } from './config';
 import { type TtsCue } from './ttsAlign';
+import { getNoobClawAuthToken } from '../claudeSettings';
+
+function apiBase(): string { return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com'; }
+
+/** 豆包音色 id 形如 zh_male_xxx_bigtts / zh_female_xxx(edge 是 xx-XX-XxxNeural)。 */
+export function isDoubaoVoice(v: string | undefined): boolean {
+  const id = String(v || '');
+  return /_(male|female)_/i.test(id) && !/Neural$/i.test(id);
+}
+
+/**
+ * 豆包(火山)大模型语音合成:走后端代理 /api/tts/synthesize(key 不下发、按字符×2 计费)。
+ * 成功写 mp3 到 outPath;任何失败返回 null → 调用方回退 edge-tts(用户拍板的兜底策略)。
+ */
+async function synthDoubao(text: string, outPath: string, voice: string, rate?: number, signal?: AbortSignal): Promise<{ ok: boolean; tokens: number; costUsd: number } | null> {
+  const token = getNoobClawAuthToken();
+  if (!token) return null;
+  // edge 的 rate 是百分比偏移(-50..50),豆包是倍率(0.1..2.0)。
+  const speedRatio = Math.max(0.5, Math.min(2, 1 + (Number(rate) || 0) / 100));
+  try {
+    const resp = await fetch(`${apiBase()}/api/tts/synthesize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ text, voice, speedRatio, encoding: 'mp3' }),
+      signal: signal || AbortSignal.timeout(60_000),
+    });
+    if (!resp.ok) {
+      const j: any = await resp.json().catch(() => ({}));
+      _lastTtsError = `豆包配音失败(${resp.status}):${String(j?.message || j?.error || '').slice(0, 120)} → 已回退 Edge 语音`;
+      return null;
+    }
+    const j: any = await resp.json();
+    const b64 = typeof j?.audioBase64 === 'string' ? j.audioBase64 : '';
+    if (!b64) { _lastTtsError = '豆包配音返回空音频 → 已回退 Edge 语音'; return null; }
+    fs.writeFileSync(outPath, Buffer.from(b64, 'base64'));
+    return { ok: true, tokens: Number(j?.chargedTokens) || 0, costUsd: Number(j?.costUsd) || 0 };
+  } catch (e) {
+    _lastTtsError = `豆包配音异常:${String((e as Error)?.message || e).slice(0, 100)} → 已回退 Edge 语音`;
+    return null;
+  }
+}
 
 // TtsCue 定义在 ttsAlign(纯模块,便于测试);这里 re-export 保持既有 import 路径不变。
 export type { TtsCue } from './ttsAlign';
@@ -247,6 +288,18 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
   const clean = (text || '').trim();
   const estDur = estimateDuration(clean || '。');
   const useVoice = voice || getTtsVoice();
+
+  // 豆包音色 → 先走后端代理(更像真人);失败自动回退 edge-tts(同音色语言的默认音色)。
+  if (clean && isDoubaoVoice(useVoice)) {
+    const d = await synthDoubao(clean, outPath, useVoice, rate, opts?.signal);
+    if (d?.ok) {
+      const dur = await probeDuration(outPath);
+      return { ok: true, audioPath: outPath, durationSec: dur > 0 ? dur : estDur, synthesized: true };
+    }
+    // 回退:豆包音色没有 edge 对应体,按语言取 edge 默认音色。
+    const fallbackVoice = /^en[_-]/i.test(useVoice) ? 'en-US-AriaNeural' : 'zh-CN-YunjianNeural';
+    return synthesize(clean, outPath, fallbackVoice, rate, opts);
+  }
 
   if (clean) {
     try {

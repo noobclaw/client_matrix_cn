@@ -15,7 +15,6 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { shortId } from '../../../utils/shortId';
-import { HIDE_WEB3, cnyFromUsd } from '../../../buildFlags';
 import { i18nService } from '../../../services/i18n';
 import { CardActionRow } from '../CardActionRow';
 import { VideoLoginCheckModal } from './VideoLoginCheckModal';
@@ -239,8 +238,7 @@ function formatCreditsCost(credits: number, costUsd: number): string {
   if (!credits || credits <= 0) return '-';
   const c = Math.round(credits);
   const usd = Number(costUsd) || 0;
-  if (usd <= 0) return `💎 ${compactNumber(c)}`;
-  return HIDE_WEB3 ? `💎 ${compactNumber(c)} ≈ ￥${cnyFromUsd(usd)}` : `💎 ${compactNumber(c)} ≈ $${usd.toFixed(4)}`;
+  return usd > 0 ? `💎 ${compactNumber(c)} ≈ $${usd.toFixed(4)}` : `💎 ${compactNumber(c)}`;
 }
 
 /** 相对时间:刚刚 / N 分钟前 / N 小时前 / N 天前,对齐 scenario「上次运行」。 */
@@ -497,10 +495,10 @@ function scriptSummary(input: VideoCreationInput, isZh: boolean): string {
   return s.length > 60 ? s.slice(0, 60) + '…' : s;
 }
 
-// 视频创作卖点标签(空状态 + 新建页都用,改一处即可)。突出:0风险模拟人类、批量日更 100 条低至 ￥0.3 / $0.04 每条、全自动、一键全平台。
+// 视频创作卖点标签(空状态 + 新建页都用,改一处即可)。突出:0风险模拟人类、批量日更 100 条低至 $0.04/条、全自动、一键全平台。
 const VIDEO_FEATURE_PILLS: Array<{ icon: string; zh: string; en: string }> = [
   { icon: '🛡️', zh: '完全模拟人类行为，0风险', en: 'Fully mimics human behavior — zero risk' },
-  { icon: '💰', zh: HIDE_WEB3 ? '批量日更 100 条，低至 ￥0.3/条' : '批量日更 100 条，低至 $0.04/条', en: 'Batch 100 shorts a day · from $0.04 each' },
+  { icon: '💰', zh: '批量日更 100 条，低至 $0.04/条', en: 'Batch 100 shorts a day · from $0.04 each' },
   { icon: '🎙️', zh: 'AI 写稿 + AI 配音 + 自动字幕,全程零剪辑', en: 'AI script + voiceover + subtitles, zero editing' },
   { icon: '🚀', zh: '一键发抖音 / 小红书 / 快手 / 视频号 等全平台', en: 'One-click to Douyin / XHS / Kuaishou / Channels & more' },
 ];
@@ -2118,7 +2116,7 @@ const VideoCreateFlow: React.FC<{
     fetchVideoFeeRange().then(setFee).catch(() => { /* 兜底 */ });
     noobClawApi.seedanceRate('720p').then((r) => { if (r && r.usdPerSec > 0) setAiUsdPerSec(r.usdPerSec); }).catch(() => {});
   }, []);
-  const feeZh = HIDE_WEB3 ? `￥${cnyFromUsd(fee.min)}~￥${cnyFromUsd(fee.max)}` : `$${fee.min}~$${fee.max}`;
+  const feeZh = `$${fee.min}~$${fee.max}`;
   const feeEn = `$${fee.min}–${fee.max}`;
   const aiSec = aiUsdPerSec.toFixed(2);
 
@@ -2181,7 +2179,7 @@ const VideoCreateFlow: React.FC<{
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
           descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成、自动配音+字幕,拍不到的镜头也能生,还能传参考图锁画风。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film; add reference images to lock the style. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh={HIDE_WEB3 ? `按秒计费 · 约 ￥${cnyFromUsd(aiUsdPerSec)}/秒(720p)` : `按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
+          costZh={`按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
       </section>
 
@@ -2353,7 +2351,7 @@ const TRACK_PRESETS: TrackPreset[] = [
 
 type GenMode = 'stock' | 'pure_ai';
 type OutputMode = 'local' | 'upload';
-// 9 个发布平台,跟 src/main/libs/video/publishers/types.VideoPlatform 严格对齐 ——
+// 发布平台,跟 src/main/libs/video/publishers/types.VideoPlatform 严格对齐 ——
 // 改这一行必须同步改 publishers/types.ts,否则 pipeline 运行期收不到对应 platform id。
 // YouTube(2026-07-05 加,driver=backend/matrix/drivers/youtube.js,待真机验);IG/FB 视频待做。
 type Platform = 'douyin' | 'xhs' | 'binance' | 'x' | 'tiktok' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao' | 'youtube' | 'instagram' | 'facebook';
@@ -2372,10 +2370,10 @@ const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: st
   { id: 'instagram', zh: 'Instagram', en: 'Instagram',  emoji: '📷' },
   { id: 'facebook',  zh: 'Facebook', en: 'Facebook',    emoji: '👥' },
 ];
-// 新建任务默认勾选:国际版勾【全部】(用户要求 2026-07-06);【国内版只默认勾国内 6 家】(用户要求 2026-07-06,
-// 同日补充):海外平台(推特/TikTok/YouTube/IG/FB)保留可选但默认不勾,币安被 HIDE_WEB3 隐藏更不能进默认
-// (否则不可见却会真发布)。四个视频任务(ai/stock/hotspot/template)新建都默认「发布到平台」;编辑老任务仍恢复保存值。
-const DEFAULT_PUBLISH_PLATFORMS: Platform[] = ['douyin', 'xhs', 'kuaishou', 'shipinhao', 'toutiao', 'bilibili'];
+// 新建任务默认勾选【所有】发布平台(用户要求 2026-07-06):国内 6 家 + 币安/推特/TikTok/YouTube/IG/FB 全默认勾。
+// 四个视频任务(ai/stock/hotspot/template)新建都默认「发布到平台」+ 勾全部;没登录/没号的平台发布时自动跳过、
+// 不影响其它。编辑老任务仍恢复保存值。用 map 动态取全集 —— 以后 PUBLISH_PLATFORMS 加平台会自动含进默认。
+const DEFAULT_PUBLISH_PLATFORMS: Platform[] = PUBLISH_PLATFORMS.map((p) => p.id);
 
 const SCRIPT_MAX = 800;
 // 严格模式:视频文案逐字朗读,直接决定时长 → 必填且不少于此字数。
@@ -2397,6 +2395,28 @@ const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[
 // ⚠️ 改这里的 id 时,同步检查 src/main/libs/video/tts.ts 的 getVoiceFallbacks 表
 //   (后台失败救场链);否则改名后失败 voice 没救场直接退费。
 type VoiceOpt = { id: string; zh: string; en: string };
+// 豆包(火山)真人音色:服务端 admin 下发,进程内缓存一次。配置了就排在最前(默认音色),
+// 合成失败自动回退 Edge(见 main/libs/video/tts.ts)。没配置 → 只有 Edge,行为同以前。
+let _doubaoCache: { enabled: boolean; voices: Array<{ id: string; zh?: string; en?: string; lang?: string }> } | null = null;
+function useVoiceGroups(): { groups: typeof VOICE_GROUPS; doubaoEnabled: boolean; defaultVoice: string } {
+  const [db, setDb] = React.useState(_doubaoCache);
+  React.useEffect(() => {
+    if (_doubaoCache) return;
+    let alive = true;
+    videoCreationService.fetchDoubaoVoices().then((r) => {
+      _doubaoCache = { enabled: r.enabled, voices: r.voices };
+      if (alive) setDb(_doubaoCache);
+    }).catch(() => { _doubaoCache = { enabled: false, voices: [] }; });
+    return () => { alive = false; };
+  }, []);
+  if (!db?.enabled || db.voices.length === 0) return { groups: VOICE_GROUPS, doubaoEnabled: false, defaultVoice: '' };
+  const grp = {
+    groupZh: '🔥 豆包真人语音(推荐)', groupEn: '🔥 Doubao lifelike (recommended)',
+    voices: db.voices.map((v) => ({ id: v.id, zh: v.zh || v.id, en: v.en || v.zh || v.id })) as VoiceOpt[],
+  };
+  return { groups: [grp, ...VOICE_GROUPS], doubaoEnabled: true, defaultVoice: db.voices[0].id };
+}
+
 const VOICE_GROUPS: { groupZh: string; groupEn: string; voices: VoiceOpt[] }[] = [
   {
     groupZh: '中文 · 普通话', groupEn: 'Chinese · Mandarin',
@@ -2710,6 +2730,7 @@ const VideoConfigModal: React.FC<{
   /** 矩阵号 edition:发布平台下多一步「选账号」,发布走指纹内核 CDP。 */
   matrixMode?: boolean;
 }> = ({ isZh, onClose, onCreated, editTask, onSaved, forcedMode, matrixMode }) => {
+  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const isEdit = !!editTask;
   // forcedMode(从「电影级 / 在线素材」card 进来)锁定模式 → 跳过 step1 模式选择,从 step2(赛道)起。
   // 矩阵号在「出片(7)」后多插一步「账号(8)」。
@@ -3281,7 +3302,7 @@ const VideoConfigModal: React.FC<{
                     }}
                     title={isZh ? 'AI 口播稿 + 素材库/本地' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
-                    cost={isZh ? (HIDE_WEB3 ? '单条约 ￥0.14~￥0.72' : '单条约 $0.02~$0.1') : '~$0.02–0.1 per clip'}
+                    cost={isZh ? '单条约 $0.02~$0.1' : '~$0.02–0.1 per clip'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
@@ -3298,7 +3319,7 @@ const VideoConfigModal: React.FC<{
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '想要的画面,AI 直接造 —— 不用拍摄、不用找素材、不用露脸。给个主题,Seedance 逐镜生成全新画面,自动配 AI 配音 + 字幕,一条成片直接出炉。脑洞 / 概念 / 想象类内容的最强搭子,现实里拍不到的画面也能生出来;还能传参考图锁定画风与人设。' : 'Whatever you picture, AI makes it — no filming, no stock, no face on camera. Give a topic and Seedance generates brand-new footage shot by shot, auto-adds AI voice-over + subtitles, and outputs a finished video. The best fit for creative / concept / imaginative content — even shots you could never film; add reference images to lock the style & character.'}
                     cost={isZh
-                      ? (HIDE_WEB3 ? `按秒计费 · 约 ￥${cnyFromUsd(aiUsdPerSec ?? 0.04)}/秒(${seedanceResolution})` : `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})`)
+                      ? `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})`
                       : `Per-second · ~$${(aiUsdPerSec ?? 0.04).toFixed(2)}/s (${seedanceResolution})`}
                     costTag={isZh ? '最贴近文案 / 画质最佳' : 'Closest to script / Best quality'}
                   />
@@ -3383,8 +3404,7 @@ const VideoConfigModal: React.FC<{
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 >
                   <option value="">{isZh ? '— 请选择赛道 —' : '— Select a track —'}</option>
-                  {/* 国内版隐藏「加密货币 · Web3」赛道(HIDE_WEB3) */}
-                  {TRACK_PRESETS.filter((t) => !(HIDE_WEB3 && t.id === 'crypto')).map((t) => (
+                  {TRACK_PRESETS.map((t) => (
                     <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>
                   ))}
                 </select>
@@ -3501,7 +3521,7 @@ const VideoConfigModal: React.FC<{
                 return (
                   <div className="mt-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 px-3 py-2.5 text-sm">
                     <span className="text-fuchsia-600 dark:text-fuchsia-400 font-semibold">💎 {isZh ? '预估费用' : 'Est. cost'}</span>
-                    <span className="ml-2 dark:text-gray-200">{isZh ? (HIDE_WEB3 ? `约 ${estCredits.toLocaleString()} 积分(≈￥${cnyFromUsd(estUsd)})` : `约 ${estCredits.toLocaleString()} 积分(≈$${estUsd.toFixed(2)})`) : `~${estCredits.toLocaleString()} credits (≈$${estUsd.toFixed(2)})`}</span>
+                    <span className="ml-2 dark:text-gray-200">{isZh ? `约 ${estCredits.toLocaleString()} 积分(≈$${estUsd.toFixed(2)})` : `~${estCredits.toLocaleString()} credits (≈$${estUsd.toFixed(2)})`}</span>
                     <div className="text-[11px] text-gray-400 mt-1">{isZh ? `${seedanceResolution} · 约 ${estSec}s · 实际按真实时长逐镜扣` : `${seedanceResolution} · ~${estSec}s · charged per real shot length`}</div>
                   </div>
                 );
@@ -3719,7 +3739,7 @@ const VideoConfigModal: React.FC<{
                   onChange={(e) => setVoice(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 >
-                  {VOICE_GROUPS.map((g) => (
+                  {voiceGroups.map((g) => (
                     <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
                       {g.voices.map((v) => (
                         <option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>
@@ -4059,10 +4079,10 @@ const VideoConfigModal: React.FC<{
                 </div>
                 <div className="text-[11px] text-gray-400 mt-1">{
                   mode === 'pure_ai'
-                    ? (isZh ? (HIDE_WEB3 ? '1-10 条 / 次 · 纯 AI 按秒计费,约 ￥0.3/秒(720p)' : '1-10 条 / 次 · 纯 AI 按秒计费,约 $0.04/秒(720p)') : '1-10 per run · pure-AI billed per second (~$0.04/s @720p)')
+                    ? (isZh ? '1-10 条 / 次 · 纯 AI 按秒计费,约 $0.04/秒(720p)' : '1-10 per run · pure-AI billed per second (~$0.04/s @720p)')
                     : mode === 'stock'
-                      ? (isZh ? (HIDE_WEB3 ? '1-100 条 / 次 · 单条约 ￥0.14~￥0.72(配音/字幕/合成免费,AI 写稿另计)' : '1-100 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)') : '1-100 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
-                      : (isZh ? (HIDE_WEB3 ? '1-10 条 / 次 · 单条约 ￥0.14~￥0.72(配音/字幕/合成免费,AI 写稿另计)' : '1-10 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)') : '1-10 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
+                      ? (isZh ? '1-100 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)' : '1-100 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
+                      : (isZh ? '1-10 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)' : '1-10 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
                 }</div>
               </Field>
 
@@ -4373,8 +4393,7 @@ const PublishPlatformPicker: React.FC<{
   return (
     <Field label={isZh ? '发布平台（可多选）' : 'Target platforms (multi-select)'}>
       <div className="flex flex-wrap gap-2">
-        {/* 国内版隐藏「币安广场」发布平台(HIDE_WEB3) */}
-        {PUBLISH_PLATFORMS.filter((m) => !(HIDE_WEB3 && m.id === 'binance')).map((m) => (
+        {PUBLISH_PLATFORMS.map((m) => (
           <PlatformCheck key={m.id} checked={!!platforms[m.id]} onClick={() => togglePlatform(m.id)} label={`${m.emoji} ${isZh ? m.zh : m.en}`} />
         ))}
       </div>
@@ -4602,6 +4621,7 @@ export const HotspotVideoModal: React.FC<{
   editTask?: any;
   onSaved?: () => void;
 }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const isEdit = !!editTask;
   const ei = editTask?.input || {};
   // 任务名不再让用户填:沿用编辑态旧名,新建固定「热搜成片」(见 buildTitle)。
@@ -4972,8 +4992,7 @@ export const HotspotVideoModal: React.FC<{
                         className={`col-span-2 text-left text-sm px-2.5 py-2 rounded-md transition-colors ${!hotspotTrack ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium' : 'hover:bg-black/5 dark:hover:bg-white/10 dark:text-gray-200'}`}>
                         {!hotspotTrack ? '✓ ' : ''}{isZh ? '不限(全部热点,不过滤)' : 'Any (no filter)'}
                       </button>
-                      {/* 国内版隐藏「加密货币 · Web3」赛道(HIDE_WEB3,与 VideoConfigModal 赛道列表同口径) */}
-                      {trackList.filter((t) => !(HIDE_WEB3 && t.id === 'crypto')).map((t) => {
+                      {trackList.map((t) => {
                         const active = t.id === hotspotTrack;
                         return (
                           <button key={t.id} type="button" onClick={() => { setHotspotTrack(t.id); setTrackOpen(false); }}
@@ -4995,7 +5014,6 @@ export const HotspotVideoModal: React.FC<{
               )}
               <Field label={isZh ? '热点源(可多选,榜单实时更新)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
                 <div className="grid grid-cols-2 gap-2">
-                  {/* Web3 资讯是【信息源】不是 web3 平台功能:海外平台(TikTok/YouTube/X…)发片用得上,国内版不砍(2026-07-05 拍板)。 */}
                   {HOTSPOT_SOURCES.map((s) => {
                     const on = !!sources[s.id];
                     const items = previews[s.id];
@@ -5162,7 +5180,7 @@ export const HotspotVideoModal: React.FC<{
               <Field label={isZh ? '配音音色' : 'Voice'}>
                 <select value={voice} onChange={(e) => setVoice(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
-                  {VOICE_GROUPS.map((g) => (
+                  {voiceGroups.map((g) => (
                     <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
                       {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
                     </optgroup>
@@ -5244,7 +5262,7 @@ export const HotspotVideoModal: React.FC<{
                   className="w-full accent-amber-500 cursor-pointer" />
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
-                    ? (HIDE_WEB3 ? `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 ￥${cnyFromUsd(fee.min)}~￥${cnyFromUsd(fee.max)})` : `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`)
+                    ? `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
                     : `${count} per run · each its own topic+script · billed per video (~$${fee.min}-${fee.max} each)`}
                 </p>
               </Field>
@@ -5403,6 +5421,7 @@ export const ThreadVideoModal: React.FC<{
   editTask?: any;
   onSaved?: () => void;
 }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const isEdit = !!editTask;
   const ei = editTask?.input || {};
   const [title] = useState<string>(editTask?.title || '');
@@ -5765,7 +5784,7 @@ export const ThreadVideoModal: React.FC<{
                 <select value={voice} onChange={(e) => setVoice(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
                   {!voiceInGroups && <option value={voice}>{voice}</option>}
-                  {VOICE_GROUPS.map((g) => (
+                  {voiceGroups.map((g) => (
                     <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
                       {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
                     </optgroup>
@@ -5928,12 +5947,14 @@ export const ThreadVideoModal: React.FC<{
 // ── 翻译搬运(engine='repost'):源视频(链接/本地)→ 转写 → 翻译 → 换配音 + 字幕 → 发布 ──
 // 3 步向导:源与语言 / 配音字幕 / 出片发布。文案 i18n 前缀 rpst(9 语)。
 export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
   type RpStep = 1 | 2 | 3 | 4 | 5;
   const [step, setStep] = useState<RpStep>(1);
   const MAX_STEP = 5;
+  // ── Step 1:源 + 目标语言 ──
   const [sourceMode, setSourceMode] = useState<'link' | 'file'>((ei as any)?.repostSourceFile ? 'file' : 'link');
   const [sourceUrl, setSourceUrl] = useState<string>((ei as any)?.repostSourceUrl || '');
   // 链接模式按平台走:只列我们确定能下的平台,每个平台专属输入框 + 域名校验(抖音要登录态,暂不在列)。
@@ -5955,6 +5976,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const [sourceFile, setSourceFile] = useState<string>((ei as any)?.repostSourceFile || '');
   const [targetLang, setTargetLang] = useState<string>((ei as any)?.repostTargetLang || 'zh');
   const [keepBgm, setKeepBgm] = useState<boolean>(!!(ei as any)?.repostKeepBgm);
+  // ── Step 2:配音 + 字幕 ──
   const langDefaultVoice = (code: string) => SCRIPT_LANGS.find((l) => l.code === code)?.defaultVoice || 'zh-CN-YunjianNeural';
   const [voice, setVoice] = useState<string>(ei?.voice || langDefaultVoice((ei as any)?.repostTargetLang || 'zh'));
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
@@ -5983,6 +6005,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
     const vid = r.files.find((f) => /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(f)) || r.files[0];
     setSourceFile(vid); setErr(null);
   };
+  // ── Step 3:出片发布(复用标准组件)──
   const [outputMode, setOutputMode] = useState<OutputMode>(() => {
     if (!editTask) return 'upload';
     const list = Array.isArray(ei?.publishPlatforms) ? ei!.publishPlatforms as string[] : [];
@@ -6180,7 +6203,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
             <>
               <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成,免费' : 'edge-tts, free'}>
                 <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                  {VOICE_GROUPS.map((g) => (
+                  {voiceGroups.map((g) => (
                     <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
                       {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
                     </optgroup>
@@ -6303,6 +6326,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
 // ── 本地混剪(engine='localmix'):本地视频/图片文件夹 → 智能混剪/图片合成 + 配音 + 字幕 + BGM → 本地/发布 ──
 // 与其它视频向导同壳(StepDot/Field/发布步),文案走 i18nService(9 语言,key 前缀 vmix)。
 export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void; presetUploadOnly?: boolean }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved, presetUploadOnly }) => {
+  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   const t = (k: string) => i18nService.t(k);
   const isEdit = !!editTask;
   const ei = editTask?.input as VideoCreationInput | undefined;
@@ -6703,7 +6727,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   </Field>
                   <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成,免费' : 'edge-tts, free'}>
                     <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                      {VOICE_GROUPS.map((g) => (
+                      {voiceGroups.map((g) => (
                         <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
                           {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
                         </optgroup>
@@ -6915,6 +6939,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
 };
 
 export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, matrixMode, onClose, onCreated, editTask, onSaved }) => {
+  const { groups: voiceGroups } = useVoiceGroups(); // 豆包音色组(服务端下发)+ Edge;未配置则只有 Edge
   // 编辑态:用任务现有模板配置回填(新建/编辑共用同一向导,只是数据预填)。
   const isEdit = !!editTask;
   const et = editTask?.input?.template;
@@ -7312,7 +7337,6 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       : '📋 Picking a hot list means the video is built straight from that ranking — no manual content. Each render pulls the list live, so scheduled tasks refresh daily.'}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    {/* Web3 热榜是【信息源】:同热搜成片口径,国内版不砍(海外平台发片用得上,2026-07-05 拍板)。 */}
                     {TEMPLATE_HOTLISTS.map((h) => (
                       <button key={h.name} type="button" onClick={() => void loadHotlist(h.name)}
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${hotlistName === h.name ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
@@ -7364,7 +7388,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   <Field label={isZh ? '配音音色' : 'Voice'}>
                     <select value={voice} onChange={(e) => setVoice(e.target.value)}
                       className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                      {VOICE_GROUPS.map((g) => (
+                      {voiceGroups.map((g) => (
                         <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
                           {g.voices.map((v) => (
                             <option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>
@@ -7490,7 +7514,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
               </Field>
               <div className="text-[11px] text-gray-400 space-y-0.5">
                 <div>{isZh
-                  ? (HIDE_WEB3 ? `单条约 ￥0.14~￥0.72(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径` : `单条约 $0.02~$0.1(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`)
+                  ? `单条约 $0.02~$0.1(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`
                   : `~$0.02–0.1 per clip (data / ${narration ? 'script / ' : ''}compose) · same as Stock`}</div>
                 <div>{isZh
                   ? `时长 ${narration ? '由 AI 口播稿决定' : '按数据行数自动估算(每行约 0.9s,clamp 4–14s)'}`
