@@ -912,8 +912,8 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
 
     // Reload images from disk (saved by artifactWriter during original run).
     // Path: <taskOutputDir>/改写/配图-<rewriteTitle>/{cover,content}_N.{jpg,png}
-    const fs = await import('fs');
-    const path = await import('path');
+    const fs = require('fs');
+    const path = require('path');
     const { getTaskOutputDir } = await import('./artifactWriter');
     const batchDir = getTaskOutputDir(task);
     // Search the most recent batch that has this draft's images

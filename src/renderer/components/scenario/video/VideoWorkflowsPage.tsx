@@ -2777,7 +2777,13 @@ async function resolveBgmPreview(token: string): Promise<{ url: string; err: str
     return { url: '', err: 'ipc_threw: ' + String((e as Error)?.message || e).slice(0, 120) };
   }
   try { console.info('[bgm-preview] token=' + token + ' raw=' + String(raw).slice(0, 160)); } catch { /* ignore */ }
-  if (!raw) return { url: '', err: 'sidecar_returned_empty(prepareBgmPreview 没回地址)' };
+  if (!raw) {
+    // 空 = sidecar 要么不认这个 channel(装的包里 sidecar 比界面旧,未知 channel 一律回 null),
+    // 要么解析确实没结果。再问一次【只解析路径】的老 channel 就能区分这两种,省一轮猜。
+    let probe = '';
+    try { probe = await videoCreationService.resolveBgmPath(token); } catch { probe = '(threw)'; }
+    return { url: '', err: 'sidecar_returned_empty; resolveBgmPath=' + (probe || '(empty)') };
+  }
   if (raw.startsWith('ERR:')) return { url: '', err: raw.slice(4) };
   if (!/^https?:/i.test(raw)) return { url: raw, err: '' };        // data: URL 直接播
   try {

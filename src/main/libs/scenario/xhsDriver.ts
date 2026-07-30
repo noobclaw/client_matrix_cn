@@ -70,7 +70,7 @@ export async function uploadXhsDraft(input: DraftUploadInput): Promise<
 
     for (const imagePath of images) {
       try {
-        const fs = await import('fs');
+        const fs = require('fs');
         const buf = fs.readFileSync(imagePath);
         const base64 = buf.toString('base64');
         const fileName = imagePath.split(/[\\/]/).pop() || 'image.jpg';

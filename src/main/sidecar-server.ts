@@ -1310,7 +1310,7 @@ const server = http.createServer(async (req, res) => {
                 const { installedKernelPath } = await import('./libs/matrix/kernelInstaller');
                 const bin = installedKernelPath();
                 if (bin) {
-                  const { spawn } = await import('child_process');
+                  const { spawn } = require('child_process');
                   const prof = require('path').join(getUserDataPath(), 'kernel_link_profile');
                   const child = spawn(bin, ['--no-first-run', '--no-default-browser-check', `--user-data-dir=${prof}`, url], { detached: true, stdio: 'ignore' });
                   child.unref();
@@ -1329,8 +1329,8 @@ const server = http.createServer(async (req, res) => {
           //   打开成片、在文件管理器里定位。出片进度通过 SSE 'video:progress' 推回。
           case 'video:readImageDataUrl': {
             try {
-              const fs = await import('fs');
-              const path = await import('path');
+              const fs = require('fs');
+              const path = require('path');
               const buf = fs.readFileSync(args[0]);
               // 缩略图不需要超大文件,挡掉异常大的图。
               if (buf.length > 12 * 1024 * 1024) return writeJSON(res, 200, '');
@@ -1361,7 +1361,7 @@ const server = http.createServer(async (req, res) => {
             // 返回该 BGM 所在【目录】(不下载、不要求文件已存在),供「打开文件夹」直接打开,
             // 让用户自己进去双击试听。builtin→内置目录;remote→缓存目录;上传→文件目录。
             try {
-              const fs = await import('fs');
+              const fs = require('fs');
               const { resolveBgmFolder } = await import('./libs/video/bgm');
               const dir = resolveBgmFolder(args[0]);
               return writeJSON(res, 200, dir && fs.existsSync(dir) ? dir : '');
@@ -1374,7 +1374,7 @@ const server = http.createServer(async (req, res) => {
             // 注册到 localFileServer,回一个 http://127.0.0.1:PORT/api/local-file?token= 的
             // 可播 URL(渲染端 <audio> 直接播)。比 data: URL 稳、不占内存。失败回 ''。
             try {
-              const fs = await import('fs');
+              const fs = require('fs');
               const { resolveBgmPath } = await import('./libs/video/bgm');
               const { registerFile, buildUrl } = await import('./libs/localFileServer');
               const file = await resolveBgmPath(args[0]);
@@ -1384,7 +1384,7 @@ const server = http.createServer(async (req, res) => {
                 let diag = '';
                 try {
                   const { getResourcesPath } = await import('./libs/platformAdapter');
-                  const pathMod = await import('path');
+                  const pathMod = require('path');
                   const rp = getResourcesPath();
                   const bgmDir = pathMod.join(rp, 'bgm');
                   const exists = fs.existsSync(bgmDir);
@@ -2052,8 +2052,8 @@ const server = http.createServer(async (req, res) => {
           // ── Thinking budget (settings.json top-level key) ──
           case 'thinkingBudget:get': {
             try {
-              const fs = await import('fs');
-              const path = await import('path');
+              const fs = require('fs');
+              const path = require('path');
               const { getUserDataPath } = await import('./libs/platformAdapter');
               const file = path.join(getUserDataPath(), 'settings.json');
               let budget = 10000;
@@ -2069,8 +2069,8 @@ const server = http.createServer(async (req, res) => {
           }
           case 'thinkingBudget:set': {
             try {
-              const fs = await import('fs');
-              const path = await import('path');
+              const fs = require('fs');
+              const path = require('path');
               const { getUserDataPath } = await import('./libs/platformAdapter');
               const file = path.join(getUserDataPath(), 'settings.json');
               let current: Record<string, unknown> = {};
@@ -2103,8 +2103,8 @@ const server = http.createServer(async (req, res) => {
             // config survives untouched. Refuses if the file is malformed
             // rather than silently clobbering it.
             try {
-              const fs = await import('fs');
-              const path = await import('path');
+              const fs = require('fs');
+              const path = require('path');
               const { getUserDataPath } = await import('./libs/platformAdapter');
               const file = path.join(getUserDataPath(), 'settings.json');
               let current: Record<string, unknown> = {};

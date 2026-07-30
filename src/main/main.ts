@@ -1391,7 +1391,7 @@ if (!gotTheLock) {
       ? 'https://api-overmind.noobclaw.com/openapi/get/luna/hardware/noobclaw/prod/mcp-marketplace'
       : 'https://api-overmind.noobclaw.com/openapi/get/luna/hardware/noobclaw/test/mcp-marketplace';
     try {
-      const https = await import('https');
+      const https = require('https');
       const data = await new Promise<string>((resolve, reject) => {
         const req = https.get(url, { timeout: 10000 }, (res) => {
           if (res.statusCode !== 200) {
@@ -2302,7 +2302,7 @@ if (!gotTheLock) {
     try {
       const cacheDir = path.join(app.getPath('userData'), 'cache');
       if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
-      const res = await (await import('node:https')).default;
+      const res = await (require('node:https')).default;
       const filePath = path.join(cacheDir, 'user-avatar.png');
       // Download image
       const fetchMod = await import('node:http' + (url.startsWith('https') ? 's' : ''));
