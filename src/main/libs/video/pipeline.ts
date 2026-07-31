@@ -417,9 +417,14 @@ export class ProgressTracker {
     }
     this.send('error', undefined, { error });
   }
-  finish(outputPath: string, videoCount = 1) {
+  /**
+   * 发「完成」终态。
+   * @param aborted 用户点了停止但成片已落地(「成了,只是没发布」)。渲染端据此显示
+   *   「已停止」而不是「生成完成」—— 不带这个标记的话用户点了停止却看到完成 + 计数 +1。
+   */
+  finish(outputPath: string, videoCount = 1, aborted = false) {
     this.steps.forEach((s) => { if (s.status !== 'done') s.status = 'done'; });
-    this.send('done', undefined, { outputPath, videoCount });
+    this.send('done', undefined, { outputPath, videoCount, ...(aborted ? { aborted: true } : {}) });
   }
 }
 
@@ -680,15 +685,21 @@ export async function generateVideoBatch(
       failed++; cumTokens += curTokens; cumCost += curCost; continue; // 单条异常 → 跳过(已扣的钱仍计入累计)
     }
     cumTokens += curTokens; cumCost += curCost; // 把本条成本沉淀进累计,下一条在此基础上继续加
-    if ((r as any)?.stopped) { stopped = true; break; }
+    // ⚠️ 顺序要紧:先统计再 break。被停止的那一条可能是 `ok:true + aborted:true`
+    //    (「成片已保存,只是没发布」),先 break 会把它的 outputPath 丢掉 →
+    //    汇总变成「成功 0/N · 已停止」、终态 error、videoCount=0,而 mp4 明明在磁盘上
+    //    却在 UI 里完全找不到(单条路径却是 done + 有路径,同语义两种结果)。
     if (r?.ok) {
       success++;
       if (r.outputPath && !outputPaths.includes(r.outputPath)) outputPaths.push(r.outputPath);
       const rp = (r as any).outputPaths;
       if (Array.isArray(rp)) for (const p of rp) if (p && !outputPaths.includes(p)) outputPaths.push(p);
-    } else {
-      failed++;
+    } else if (!r?.aborted) {
+      failed++; // 被停止不算「失败」,不进 failed 计数
     }
+    // 单条被用户停止 → 整批收手。字段是 `aborted`(VideoCreationResult 的定义),
+    // 早先这里写的是不存在的 `stopped`,判断恒 false,只靠下一轮循环头的 signal 检查兜住。
+    if (r?.aborted) { stopped = true; break; }
   }
   const summary = `批量完成:成功 ${success}/${batch} 条`
     + (failed ? ` · 跳过 ${failed} 条` : '')
@@ -835,6 +846,12 @@ async function runVideoPipeline(
       fs.copyFileSync(pick, outPath);
       tracker.done('compose', `📦 原片就绪(未做任何处理)· 📂 输出目录:${destDir}`);
 
+      // ⚠️ 进 publish 前查 abort(同其它引擎):原片已拷到输出目录,当成「成了,只是没发」。
+      if (signal?.aborted) {
+        tracker.progress('⏹ 已停止 · 原片已保存,跳过发布');
+        tracker.finish(outPath, 1, true); // aborted=true → UI 显示「已停止」而非「生成完成」
+        return { ok: true, outputPath: outPath, outputPaths: [outPath], aborted: true } as VideoCreationResult;
+      }
       tracker.start('publish');
       const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
       try {
@@ -1161,7 +1178,9 @@ async function runVideoPipeline(
           // ⚠️ 这段原来全程无日志:synthesizeWhole 内部 60s×5 重试 × 多个备用音色 → 连不上微软 TTS 时
           //   会静默 grind 十几分钟,UI 看着像「卡死无报错」。这里每个音色尝试前后都打日志 + 抛出 TTS 错因。
           tracker.progress(`配音合成中(音色 ${v}${voiceChain.length > 1 ? ` · ${vi + 1}/${voiceChain.length}` : ''})… 连微软 TTS,网络慢会重试,请稍候`);
-          const w = await synthesizeWhole(sentences.join('\n'), masterMp3, v, input.voiceRate);
+          // ⚠️ signal 必须传:synthesizeWhole 内部 60s × 5 次重试,不传的话点停止要在
+          //    这一个音色上磨到 5 分钟,只有换音色时才会碰到上面那句 throwIfAborted。
+          const w = await synthesizeWhole(sentences.join('\n'), masterMp3, v, input.voiceRate, { signal });
           if (w.ok) { whole = w; usedWholeVoice = v; break; }
           const reason = getLastTtsError();
           tracker.progress(`音色 ${v} 整段合成未成功${reason ? `(${reason.slice(0, 110)})` : ''}${vi < voiceChain.length - 1 ? ',换下一个音色…' : ''}`);
@@ -1216,7 +1235,9 @@ async function runVideoPipeline(
         let got: Awaited<ReturnType<typeof synthesize>> | null = null;
         let usedVoice = stickyVoice;
         for (const v of tryOrder) {
-          const r = await synthesize(sentences[i], outMp3, v, input.voiceRate);
+          // ⚠️ signal 必须传:synthesize 内部有 voiceChain × 最多 5 次重试 × 单次最长 60s,
+          //    不传的话点了停止要磨数分钟才走到下一句的 throwIfAborted。
+          const r = await synthesize(sentences[i], outMp3, v, input.voiceRate, { signal });
           if (r.synthesized) { got = r; usedVoice = v; break; }
           lastReason = getLastTtsError() || lastReason;
         }
@@ -1239,6 +1260,10 @@ async function runVideoPipeline(
       }
 
       if (failIdx >= 0) {
+        // ⚠️ 先分辨「用户停止」:abort 时 synthesize 的重试循环 break → 落静音兜底 →
+        //    synthesized:false → 走到这里会被报成「配音失败…请检查网络/代理」,用户点了停止
+        //    却看到一条网络报错,还以为出 bug 了。交给 throwIfAborted 统一成「已停止」。
+        throwIfAborted(signal);
         // 硬约束:必须有真人配音。某句把所有 voice 都试败 → 终止出片,平台基础费由 finally 退回。
         const triedMsg = voiceChain.length > 1
           ? ` · 已对该句尝试全部 ${voiceChain.length} 个备用音色,均合成失败`
@@ -2424,6 +2449,16 @@ async function runVideoPipeline(
     // 本地 mp4 已经在 outputPaths[0],可以放心调 publish step。哪怕全平台都失败,
     // 用户还有本地文件,任务终态仍是 done(本地任务核心交付物是 mp4)。
     // videoCount>1 时只取首条发(避免重复发同样内容触发平台限流);后续条用户自己挑发。
+    // ⚠️ 进 publish 前必须查 abort:合成是最长的一步,用户往往就是在合成期间点的停止。
+    //    少了这道检查,abort 会被"合成已完成"吃掉 → 浏览器接着把片子传完并发出去。
+    //    这里【不能 throwIfAborted】:mp4 已落地、平台费也已在上面 refundOnExit=false 收下,
+    //    抛出去会被外层 catch 归成 tracker.fail('compose') → 成片被记成失败、outputPath 丢失
+    //    (用户找不到片子)、compose 误标红、钱还不退。当成「成了,只是没发」才对。
+    if (signal?.aborted) {
+      tracker.progress('⏹ 已停止 · 成片已保存,跳过发布');
+      tracker.finish(outputPaths[0], outputPaths.length, true); // aborted → UI 显示「已停止」
+      return { ok: true, outputPath: outputPaths[0], outputPaths, aborted: true } as VideoCreationResult;
+    }
     tracker.start('publish');
     const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
     try {
@@ -2502,8 +2537,13 @@ async function runVideoPipeline(
     return { ok: true, outputPath: outputPaths[0], outputPaths };
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);
-    tracker.fail('compose', err.slice(0, 300));
-    return { ok: false, error: err.slice(0, 300) };
+    // 用户停止:归一成「已停止」+ aborted 标记。否则 UI 上会直接显示内部错误串
+    // 「VIDEO_ABORTED:已停止」(渲染端没有这个前缀的文案映射),而且外层 batch 循环
+    // 靠 r.aborted 判断要不要整批收手 —— 不带这个字段它就永远看不到「这条是被停的」。
+    const aborted = err.startsWith('VIDEO_ABORTED');
+    const msg = aborted ? '已停止' : err.slice(0, 300);
+    tracker.fail(aborted ? null : 'compose', msg);
+    return { ok: false, error: msg, ...(aborted ? { aborted: true } : {}) } as VideoCreationResult;
   } finally {
     // 成片失败 → 退回开跑前预扣的平台基础费(幂等,按 chargeId;退不掉只记日志不影响清理)。
     if (refundOnExit && chargeId) {

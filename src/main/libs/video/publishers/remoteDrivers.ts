@@ -20,7 +20,11 @@
  *   ctx.insertEditorText(selector, text) 富文本插入(execCommand 路径);返回 { ok, reason? }
  *   ctx.setInputValue(selector, value)   普通 input 赋值;返回 boolean
  *   ctx.mainWorldClick(selector)         主世界 click(穿透 React 合成事件);返回 boolean
- *   ctx.sleep(ms)                        等待
+ *   ctx.sleep(ms)                        等待。**用户点停止时会抛错**(不是提前返回)——
+ *                                        故意的:脚本常写「sleep 等平台处理完 → 点发布」,
+ *                                        提前返回会把没传完的视频真发出去。抛错会让本平台
+ *                                        算失败并跳过后续平台。**不要 catch 它。**
+ *   ctx.aborted                          用户是否已点停止(长轮询/重试循环里可自查提前 return)
  *   ctx.log(msg)                         进度日志(直通 UI)
  *
  * 所有 ctx.* 浏览器操作都预绑定了 (platform, tabId, videoPath) —— 单 tab 复用模式下
@@ -36,7 +40,7 @@ import { coworkLog } from '../../coworkLogger';
 import type { VideoPlatform, PublishInput, PublishResult, PublishCtx } from './types';
 import {
   pubCmd, uploadFileToInput, uploadVideoToInputDeep, waitForSelector, clickWithText,
-  insertEditorText, setInputValue, mainWorldClick, sleep,
+  insertEditorText, setInputValue, mainWorldClick, sleep, publishAborted,
 } from './publisherUtils';
 
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
@@ -127,6 +131,10 @@ function buildDriverCtx(
     setInputValue: (selector: string, value: string) =>
       setInputValue(platform, selector, value, tabId),
     mainWorldClick: (selector: string) => mainWorldClick(platform, selector, tabId),
+    // sleep / waitForSelector / clickWithText 都来自 publisherUtils,已统一响应
+    // 模块级停止信号(runPublishStep 设的)→ 停止时立刻返回、不等满。
+    // 这里再给脚本一个显式开关:自己的轮询/重试循环里查它就能提前 return。
+    get aborted(): boolean { return publishAborted(); },
     sleep,
     log: (msg: string) => { try { onLog(msg); } catch { /* ignore */ } },
   };

@@ -1073,6 +1073,13 @@ export async function runThreadPipeline(
     tracker.progress(`📂 输出目录:${destDir}`);
 
     // ── STEP 5:发布(未选平台 = 仅存本地)──────────────────────────────
+    // ⚠️ 进 publish 前查 abort,且【不抛】:成片已落地、平台费已收下,抛出去会被外层 catch
+    //    归成失败(成片被记成 error、outputPath 丢失)。当成「成了,只是没发」。
+    if (signal?.aborted) {
+      tracker.progress('⏹ 已停止 · 成片已保存,跳过发布');
+      tracker.finish(outPath, 1, true); // aborted → UI 显示「已停止」而非「生成完成」
+      return { ok: true, outputPath: outPath, outputPaths: [outPath], aborted: true } as VideoCreationResult;
+    }
     tracker.start('publish');
     const platforms = Array.isArray(input.publishPlatforms) ? input.publishPlatforms.filter(Boolean) : [];
     let publishedCount = 0;
@@ -1132,6 +1139,10 @@ export async function runThreadPipeline(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.startsWith('VIDEO_ABORTED') || msg === 'aborted') {
+      // ⚠️ 被停止也必须发终态事件:tracker.fail 是唯一会 send('error') 的地方,
+      //    跳过它 = 一条终态都不发 → 渲染端 promise 永不 resolve → 卡片永远「生成中」
+      //    (停止无效 + 删除被拒,只能重启)、videoQueue 槽永不释放。
+      tracker.fail(null, '已停止');
       return { ok: false, error: '已停止', aborted: true };
     }
     tracker.fail(null, msg);

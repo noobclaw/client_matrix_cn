@@ -22,6 +22,21 @@ import {
 } from '../../scenario/platformLoginDriver';
 import type { VideoPlatform } from './types';
 
+/**
+ * 模块级「本次发布的中断信号」—— runPublishStep 开跑时设,收尾时清。
+ *
+ * 为什么用模块级而不是逐个参数传:9 个 driver 的长等待(waitForSelector 最长 5 分钟、
+ * 上传 TTL 最长 10 分钟、clickWithText 的重试)全都走本文件这几个 helper,而 driver 的
+ * 函数签名里没有 signal(改 9 个 driver + 云端下发脚本都要改)。在这里拦一道,所有
+ * 平台的等待立刻整体可打断 —— 抄 ffmpegRuntime._videoAbortSignal 的同款做法。
+ *
+ * 单任务足够:视频发布一次只跑一个平台、一条流水线(pipeline 有 _videoBatchBusy 单飞闸)。
+ */
+let _publishAbortSignal: AbortSignal | undefined;
+export function setPublishAbortSignal(s: AbortSignal | undefined): void { _publishAbortSignal = s; }
+/** 当前发布是否已被用户停止(driver / helper 里查这个提前收手)。 */
+export function publishAborted(): boolean { return _publishAbortSignal?.aborted === true; }
+
 /** video platform id → scenario LoginPlatform(命名完全一致,直接转型即可)。 */
 function asLoginPlatform(p: VideoPlatform): LoginPlatform {
   return p as unknown as LoginPlatform;
@@ -129,6 +144,9 @@ export async function uploadFileToInput(opts: {
   tabId?: number;
 }): Promise<{ ok: boolean; reason?: string }> {
   if (!fs.existsSync(opts.filePath)) return { ok: false, reason: 'file_not_found' };
+  // 已停止就别开始传了。⚠️ 一旦发出去就打不断:upload_file_from_url 是【单条】浏览器命令,
+  //   sendBrowserCommand 只有 timeoutMs、没有中断通道 → 传到一半停止只能等它传完/超时。
+  if (publishAborted()) return { ok: false, reason: 'aborted' };
   const { registerFile, buildUrl, unregister } = require('../../localFileServer');
   const fileName = path.basename(opts.filePath);
   const ttl = opts.ttlMs || 5 * 60 * 1000;
@@ -184,6 +202,9 @@ export async function uploadVideoToInputDeep(opts: {
   tabId?: number;
 }): Promise<{ ok: boolean; reason?: string }> {
   if (!fs.existsSync(opts.filePath)) return { ok: false, reason: 'file_not_found' };
+  // 已停止就别开始传了。⚠️ 一旦发出去就打不断:upload_file_from_url 是【单条】浏览器命令,
+  //   sendBrowserCommand 只有 timeoutMs、没有中断通道 → 传到一半停止只能等它传完/超时。
+  if (publishAborted()) return { ok: false, reason: 'aborted' };
   const { registerFile, buildUrl, unregister } = require('../../localFileServer');
   const fileName = path.basename(opts.filePath);
   const mime = opts.mimeType || 'video/mp4';
@@ -237,7 +258,10 @@ export async function waitForSelector(
 ): Promise<boolean> {
   const deadline = Date.now() + (opts?.timeoutMs || 15000);
   const interval = opts?.intervalMs || 500;
-  while (Date.now() < deadline) {
+  // 用户点停止 → 立刻不等(这里的 timeoutMs 最长 5 分钟,不查的话停止要等满才生效)。
+  // 关键副作用(正是我们要的):返回 false 会让 driver 直接 return ok:false,于是
+  // 后面的填表和「点发布」都不会执行 → 停止之后帖子不会被发出去。
+  while (Date.now() < deadline && !publishAborted()) {
     try {
       const r: any = await pubCmd(platform, 'query_selector', {
         selector, limit: 1,
@@ -245,7 +269,9 @@ export async function waitForSelector(
       const els = (r && r.elements) || (r && r.data && r.data.elements) || [];
       if (els.length > 0) return true;
     } catch { /* keep polling */ }
-    await sleep(interval);
+    // sleep 在 abort 时会抛(见 sleep 注释)。这里兜住 → 保持"返回 boolean"的契约:
+    // 9 个 driver 都写 `if (!ready) return {ok:false}`,拿到 false 就会干净退出。
+    try { await sleep(interval); } catch { return false; }
   }
   return false;
 }
@@ -264,7 +290,9 @@ export async function clickWithText(
 ): Promise<{ ok: boolean; reason?: string }> {
   const retries = opts.retries || 6;
   for (let i = 0; i < retries; i++) {
-    if (i > 0) await sleep(1500);
+    if (publishAborted()) return { ok: false, reason: 'aborted' }; // 用户停止 → 不再重试点击
+    // 同 waitForSelector:sleep abort 时会抛,这里兜住以保持 { ok, reason } 契约。
+    if (i > 0) { try { await sleep(1500); } catch { return { ok: false, reason: 'aborted' }; } }
     try {
       const r: any = await pubCmd(platform, 'click_with_text', {
         containerSel: opts.containerSel,
@@ -326,6 +354,25 @@ export async function setInputValue(
   } catch { return false; }
 }
 
+/** 停止时 sleep 抛的错。driver / 下发脚本都不该 catch 它。 */
+export const PUBLISH_ABORTED = 'PUBLISH_ABORTED';
+
 export function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((resolve, reject) => {
+    // 可被用户「停止」打断。所有 driver / 下发脚本的等待都走这里,所以这一处就让
+    // 9 个平台整体可打断(不用逐个改 driver)。
+    //
+    // ⚠️ 为什么是 reject 而不是 resolve:下发脚本的典型写法是
+    //     await ctx.sleep(120000);            // 等平台把视频处理完
+    //     await ctx.cmd('main_world_click', … Post 按钮 …);
+    //   如果 abort 时"提前返回",脚本会当成"等够了"继续去点发布 →
+    //   **把一条没传完的视频真发出去**,比"停不掉"更糟。
+    //   抛错则会冒泡出 driver → runRemoteDriver / runPublish 归一成该平台失败 →
+    //   平台循环 break,绝不会再点发布。
+    const sig = _publishAbortSignal;
+    if (sig?.aborted) { reject(new Error(PUBLISH_ABORTED)); return; }
+    const timer = setTimeout(() => { sig?.removeEventListener('abort', onAbort); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(timer); reject(new Error(PUBLISH_ABORTED)); };
+    sig?.addEventListener('abort', onAbort, { once: true });
+  });
 }

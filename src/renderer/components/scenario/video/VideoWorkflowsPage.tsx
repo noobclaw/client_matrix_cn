@@ -768,12 +768,33 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
         <span className="text-gray-500 dark:text-gray-400">
           {isZh ? '已生成' : 'Made'}：🎬 <strong className="dark:text-white">{made}</strong> {isZh ? '个视频' : made === 1 ? 'video' : 'videos'}
         </span>
-        {intervalLabel(task, isZh) && (
-          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-            ⏰ {intervalLabel(task, isZh)}
-            {task.nextPlannedRunAt ? ` · ${fmtNextRun(task.nextPlannedRunAt, isZh)}` : ''}
-          </span>
-        )}
+        <span className="flex items-center gap-2 shrink-0">
+          {intervalLabel(task, isZh) && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+              ⏰ {intervalLabel(task, isZh)}
+              {task.nextPlannedRunAt ? ` · ${fmtNextRun(task.nextPlannedRunAt, isZh)}` : ''}
+            </span>
+          )}
+          {/* 运行中直接给「停止」——以前只有详情页有,用户得先点进去才停得了;而卡在 running 时
+              删除也会被拒(「请先停止再删除」),两下一凑就成了只能重启的死锁。
+              卡片外层是 <button>,里面不能再嵌 button(非法嵌套)→ 用 span + role,
+              并 stopPropagation 免得连带触发「打开详情」。 */}
+          {isRunning && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); try { videoTaskStore.stopTask(task.id); } catch { /* ignore */ } }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.stopPropagation(); e.preventDefault();
+                try { videoTaskStore.stopTask(task.id); } catch { /* ignore */ }
+              }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-red-500 hover:text-red-500 cursor-pointer"
+            >
+              ⏹ {isZh ? '停止' : 'Stop'}
+            </span>
+          )}
+        </span>
       </div>
     </button>
   );

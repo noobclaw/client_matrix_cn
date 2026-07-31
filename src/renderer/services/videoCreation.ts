@@ -246,6 +246,12 @@ export interface VideoCreationResult {
   error?: string;
   /** 本次实际产出的成片条数(批量出片时>1);缺省按 1 计。 */
   videoCount?: number;
+  /**
+   * 用户点了停止。注意 **可能和 ok:true 同时出现** ——「成片已保存,只是没发布」
+   * 也算成功交付。UI 要据此显示「已停止」而不是「生成完成」,否则用户点了停止
+   * 却看到完成 + 计数 +1,会以为没停掉。
+   */
+  aborted?: boolean;
 }
 
 type ProgressHandler = (p: VideoCreationProgress) => void;
@@ -421,8 +427,11 @@ class VideoCreationService {
       if (this.api.onProgress) {
         unsub = this.api.onProgress((p: VideoCreationProgress) => {
           onProgress?.(p);
-          if (p.status === 'done') finish({ ok: true, outputPath: p.outputPath, videoCount: p.videoCount });
-          else if (p.status === 'error') finish({ ok: false, error: p.error || '生成失败' });
+          // aborted 一路透传:主进程「停止但成片已保存」发的是 status:'done' + aborted,
+          // 不透传的话 store 会记成「✅ 生成完成」并把它计入「已生成 N 个视频」。
+          const ab = (p as any).aborted === true;
+          if (p.status === 'done') finish({ ok: true, outputPath: p.outputPath, videoCount: p.videoCount, aborted: ab });
+          else if (p.status === 'error') finish({ ok: false, error: p.error || '生成失败', aborted: ab || p.error === '已停止' });
         });
       }
 

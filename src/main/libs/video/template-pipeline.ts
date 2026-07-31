@@ -77,11 +77,13 @@ function cleanForTts(s: string): string {
 
 /** 跑一次 TTS(带 voice fallback 链),返回 audio + 时长 + cues 或 null。 */
 async function ttsWithFallback(
-  text: string, primary: string, outPath: string, rate?: number,
+  text: string, primary: string, outPath: string, rate?: number, signal?: AbortSignal,
 ): Promise<{ audioPath: string; durationSec: number; cues?: CaptionCue[]; voice: string } | null> {
   const chain = getVoiceFallbacks(primary);
   for (const v of chain) {
-    const r = await synthesize(text, outPath, v, rate);
+    if (signal?.aborted) return null; // 用户停止 → 不再试下一个音色
+    // ⚠️ signal 必须传:synthesize 内部 voiceChain × 最多 5 次重试 × 单次最长 60s。
+    const r = await synthesize(text, outPath, v, rate, { signal });
     if (r.ok && r.synthesized) {
       return {
         audioPath: r.audioPath,
@@ -390,8 +392,10 @@ export async function runTemplatePipeline(
       const voice = tpl.voice || input.voice || getTtsVoice();
       const rate = typeof tpl.voiceRate === 'number' ? tpl.voiceRate
         : typeof input.voiceRate === 'number' ? input.voiceRate : 0;
-      const r = await ttsWithFallback(script, voice, narrationPath, rate);
+      const r = await ttsWithFallback(script, voice, narrationPath, rate, signal);
       if (!r) {
+        // 用户停止时 ttsWithFallback 也返回 null —— 先归一成「已停止」,别报成配音失败。
+        throwIfAborted(signal);
         const why = getLastTtsError() || '请稍后再试';
         tracker.fail('voice', `配音失败:${why}`);
         return { ok: false, error: `配音失败:${why}` };
@@ -468,7 +472,7 @@ export async function runTemplatePipeline(
               // edge-tts 连发限频:段间隔 ~900ms 降请求密度(与爆帖逐段兜底同口径)
               if (i > 0) await new Promise((res) => setTimeout(res, 900));
               const segPath = path.join(tmpAudioDir, `narr_page_${i}.mp3`);
-              const sr = await ttsWithFallback(cleanForTts(segs[i]), r.voice, segPath, rate);
+              const sr = await ttsWithFallback(cleanForTts(segs[i]), r.voice, segPath, rate, signal);
               if (!sr || !(sr.durationSec > 0)) { segOk = false; break; }
               segAudios.push({ p: sr.audioPath, d: sr.durationSec, cues: sr.cues });
             }
@@ -630,6 +634,14 @@ export async function runTemplatePipeline(
 
     // ── Step 4: 发布到各大平台(同 stock/ai pipeline 口径) ──────────────────
     // 视觉/口播稿 都已经稳了,放心调 publisher。未登录的平台自动跳过,日志会说明。
+    // ⚠️ 同 pipeline.ts:进 publish 前查 abort,且【不抛】(成片已落地、平台费已收下)。
+    //    这里不查的话,即便 runPublish 会挡住"真发出去",resolvePublishCaption 仍会先烧
+    //    一笔 AI token 写发布文案 —— 用户停了还扣钱。
+    if (signal?.aborted) {
+      tracker.progress('⏹ 已停止 · 成片已保存,跳过发布');
+      tracker.finish(outPath, 1, true); // aborted → UI 显示「已停止」而非「生成完成」
+      return { ok: true, outputPath: outPath, outputPaths: [outPath], aborted: true };
+    }
     tracker.start('publish');
     const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
     try {
@@ -683,6 +695,11 @@ export async function runTemplatePipeline(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.startsWith('VIDEO_ABORTED') || msg === 'aborted') {
+      // ⚠️ 被停止也必须发终态事件:tracker.fail 是唯一会 send('error') 的地方,
+      //    早先这里直接 return 就跳过了它 —— 一条终态都不发 → 渲染端 generate() 的
+      //    promise 永不 resolve → running 永远 true、卡片永远「生成中」(此时停止无效、
+      //    删除被拒,只能重启)、videoQueue 槽永不释放 → 之后所有视频任务全起不来。
+      tracker.fail(null, '已停止');
       return { ok: false, error: '已停止', aborted: true };
     }
     tracker.fail(null, msg);

@@ -3088,8 +3088,13 @@ if (!gotTheLock) {
       const taskId = inp?.taskId ? String(inp.taskId) : '';
       const ctrl = new AbortController();
       if (taskId) { activeVideoRuns.get(taskId)?.abort(); activeVideoRuns.set(taskId, ctrl); }
+      // sawFinal:pipeline 自己发过终态就不要再补 —— renderer 的 onProgress 不按 jobId 过滤、
+      // 收到第一条终态就 unsub 并释放本地闸,第二条会被【下一次运行】收下,让新运行秒变终态。
+      let sawFinal = false;
       const emit = (progress: unknown) => {
         try {
+          const st = (progress as { status?: string } | null)?.status;
+          if (st === 'done' || st === 'error') sawFinal = true;
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('video:progress', progress);
           }
@@ -3101,8 +3106,22 @@ if (!gotTheLock) {
       //   漏掉批量(此前 sidecar 没批量,hotspot/stock 走定时只出 1 条)。
       //   fire-and-forget:N 条几分钟~几小时,await 会撞 IPC 超时;进度 + 终态全走 video:progress,
       //   renderer 靠终态事件 resolve generate()。每条完整跑完(本地保存 + 按需发布)才进下一条。
+      //   ⚠️ 终态必须【保证】发出:renderer 的 generate() promise 只靠终态事件 resolve,
+      //   一条都没发 = 任务永久卡「生成中」(此时停止无效、删除被拒,只能重启)+ videoQueue
+      //   槽不释放 → 之后所有视频任务全起不来。注释里"终态已由 generateVideoBatch 发出"
+      //   并不总成立:runVideoPipeline 的 mkdtemp/resolveOutputDirs 在 try 之外,抛了就没有终态。
+      //   所以两头都补一条兜底终态(不带 steps,免得覆盖 renderer 已有的步骤列表),
+      //   与 sidecar-server 的 video:generate 完全对齐 —— 早先只有 sidecar 有,Electron 这条没有。
       void generateVideoBatch(inp as any, emit, ctrl.signal)
-        .catch(() => { /* 后台兜底:不抛(终态已由 generateVideoBatch 发出) */ })
+        .then((result: { ok?: boolean; outputPath?: string; error?: string; videoCount?: number }) => {
+          if (sawFinal) return; // pipeline 已发过终态 → 别再补(见 sawFinal 注释)
+          emit({ jobId: 'final', status: result?.ok ? 'done' : 'error',
+            outputPath: result?.outputPath, error: result?.error, videoCount: result?.videoCount });
+        })
+        .catch((e: any) => {
+          if (sawFinal) return;
+          emit({ jobId: 'final', status: 'error', error: e?.message || String(e) });
+        })
         .finally(() => { if (taskId && activeVideoRuns.get(taskId) === ctrl) activeVideoRuns.delete(taskId); });
       return { ok: true, status: 'started' };
     });

@@ -231,10 +231,11 @@ async function resolveSourceVideo(
 
 // ── 后端 ASR:上传音轨 → 带时间戳字幕 ──
 async function transcribeAudio(
-  audioPath: string, durationSec: number, sourceLang: string,
+  audioPath: string, durationSec: number, sourceLang: string, signal?: AbortSignal,
 ): Promise<{ ok: boolean; segments?: Seg[]; language?: string; tokens?: number; costUsd?: number; error?: string; noSpeech?: boolean }> {
   const token = getNoobClawAuthToken();
   if (!token) return { ok: false, error: '未登录 NoobClaw,无法转写' };
+  if (signal?.aborted) return { ok: false, error: '已停止' };
   try {
     // 5xx(502/504 网关错/后端重启抖动)自动重试 2 次(等 10s):multipart 上传大 wav 期间
     // 撞上 pm2 重启窗口是真机实报的 502 场景,重试大多能过;4xx 业务错不重试。
@@ -244,13 +245,28 @@ async function transcribeAudio(
       form.append('audio', new Blob([fs.readFileSync(audioPath)]), path.basename(audioPath));
       form.append('durationSec', String(Math.max(0, Math.round(durationSec))));
       if (sourceLang && sourceLang !== 'auto') form.append('language', sourceLang);
-      resp = await fetch(`${apiBase()}/api/asr/transcribe`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-        signal: AbortSignal.timeout(200_000),
-      });
+      // ⚠️ 用户停止要能掀桌:原来只有 200s 超时,叠上 2 次 5xx 重试 + 2×10s 退避
+      //    = 最坏 10 分 20 秒完全不响应停止(repost 里最长的死区)。
+      //    这里手搓「超时 + 用户 signal」二合一 controller —— 不用 AbortSignal.any,
+      //    因为 sidecar 是打包成二进制跑的,内嵌 Node 版本不一定有那个 API(Node 20.3+ 才有),
+      //    真缺了会直接抛 TypeError 把整条 repost 流水线打挂,不值得赌。
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 200_000);
+      const onUserAbort = () => ctrl.abort();
+      signal?.addEventListener('abort', onUserAbort, { once: true });
+      try {
+        resp = await fetch(`${apiBase()}/api/asr/transcribe`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(to);
+        signal?.removeEventListener('abort', onUserAbort);
+      }
       if (resp.status < 500 || attempt >= 2) break;
+      if (signal?.aborted) return { ok: false, error: '已停止' }; // 别再退避 10s 了
       await new Promise((r) => setTimeout(r, 10_000));
     }
     if (!resp.ok) {
@@ -271,6 +287,10 @@ async function transcribeAudio(
     // ASR 端点已按真实时长扣了【一份】;返回 costUsd 供 pipeline 累计 →「token 消耗翻倍」时再扣一份。
     return { ok: true, segments: segs, language: String(j?.language || '').trim(), tokens: Number(j?.chargedTokens) || 0, costUsd: Number(j?.costUsd) || 0 };
   } catch (e: any) {
+    // 用户点停止 → fetch 抛 AbortError。别报成「转写请求异常」(用户会以为是 bug/网络问题,
+    // 还会被当成真失败去看退款);归一成「已停止」。超时同样是 AbortError,但那时 signal
+    // 没 aborted,所以用 signal 判别而不是看 err.name。
+    if (signal?.aborted) return { ok: false, error: '已停止' };
     return { ok: false, error: `转写请求异常:${String(e?.message || e).slice(0, 120)}` };
   }
 }
@@ -403,7 +423,8 @@ async function synthAndAlign(
     if (!seg.text.trim()) continue;
     for (const v of chain) {
       const out = path.join(assetDir, `seg_${String(i).padStart(3, '0')}.mp3`);
-      const r0 = await synthesize(seg.text, out, v, rate);
+      // ⚠️ signal 必须传:voiceChain × 最多 5 次重试 × 单次最长 60s,不传则停止要磨数分钟。
+      const r0 = await synthesize(seg.text, out, v, rate, { signal });
       if (r0.synthesized && r0.durationSec > 0) { preTts.set(i, { path: r0.audioPath, dur: r0.durationSec }); break; }
     }
     const got = preTts.get(i);
@@ -442,7 +463,7 @@ async function synthAndAlign(
     else {
       for (const v of chain) {
         const out = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_g.mp3`);
-        const r = await synthesize(seg.text, out, v, globalRate);
+        const r = await synthesize(seg.text, out, v, globalRate, { signal });
         if (r.synthesized && r.durationSec > 0) { ttsPath = r.audioPath; ttsDur = r.durationSec; break; }
       }
       if (!ttsPath && cached) { ttsPath = cached.path; ttsDur = cached.dur; }
@@ -457,7 +478,7 @@ async function synthAndAlign(
     if (ttsDur > targetDur * 1.6 && !signal?.aborted) {
       const outF = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_f.mp3`);
       for (const v of chain) {
-        const rf = await synthesize(seg.text, outF, v, Math.min(50, globalRate + TUNE.lineBoost));
+        const rf = await synthesize(seg.text, outF, v, Math.min(50, globalRate + TUNE.lineBoost), { signal });
         if (rf.synthesized && rf.durationSec > 0 && rf.durationSec < ttsDur) {
           onLog(`⏩ 第 ${i + 1} 句偏长,自动提速重配(${ttsDur.toFixed(1)}s→${rf.durationSec.toFixed(1)}s)`);
           ttsPath = rf.audioPath; ttsDur = rf.durationSec;
@@ -476,7 +497,7 @@ async function synthAndAlign(
         if (short && short.length < seg.text.trim().length) {
           const out2 = path.join(assetDir, `seg_${String(i).padStart(3, '0')}_c.mp3`);
           for (const v of chain) {
-            const r2 = await synthesize(short, out2, v, Math.min(50, globalRate + TUNE.lineBoost));
+            const r2 = await synthesize(short, out2, v, Math.min(50, globalRate + TUNE.lineBoost), { signal });
             if (r2.synthesized && r2.durationSec > 0 && r2.durationSec < ttsDur) {
               onLog(`✂️ 第 ${i + 1} 句仍超长,轻度精简重配(${ttsDur.toFixed(1)}s→${r2.durationSec.toFixed(1)}s)`);
               ttsPath = r2.audioPath; ttsDur = r2.durationSec; seg.text = short;
@@ -678,7 +699,10 @@ export async function runRepostPipeline(
         tracker.fail('transcribe', err); return { ok: false, error: err };
       }
       tracker.progress('☁️ 上传音轨转写(按音频分钟计费)…');
-      asr = await transcribeAudio(audioPath, srcDur, String((input as any).repostSourceLang || 'auto'));
+      asr = await transcribeAudio(audioPath, srcDur, String((input as any).repostSourceLang || 'auto'), signal);
+      // 用户停止:统一走 throwIfAborted 的「已停止」口径(外层 catch 归一 + 终态带 aborted),
+      // 别当成 transcribe 步骤失败标红 —— 这时候片子还没合成,refundOnExit 仍为 true 会正常退款。
+      throwIfAborted(signal);
       if (!asr.ok) { const err = asr.error || '转写失败'; tracker.fail('transcribe', err); return { ok: false, error: err }; }
     }
     const noSpeech = !!asr.noSpeech || !asr.segments || asr.segments.length === 0;
@@ -834,6 +858,13 @@ export async function runRepostPipeline(
     refundOnExit = false; // 成片已产出 → 费用照收(发布失败不退,与其它引擎一致)
 
     // ── STEP 6:发布(复用现有)──
+    // ⚠️ 进 publish 前查 abort,且【不抛】:成片已落地、平台费已收下,抛出去会被外层 catch
+    //    归成失败(成片被记成 error、outputPath 丢失)。当成「成了,只是没发」。
+    if (signal?.aborted) {
+      tracker.progress('⏹ 已停止 · 成片已保存,跳过发布');
+      tracker.finish(outPath, 1, true); // aborted → UI 显示「已停止」而非「生成完成」
+      return { ok: true, outputPath: outPath, outputPaths: [outPath], aborted: true } as VideoCreationResult;
+    }
     tracker.start('publish');
     const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
     try {
@@ -875,8 +906,12 @@ export async function runRepostPipeline(
     return { ok: true, outputPath: outPath, outputPaths: [outPath] };
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);
-    tracker.fail('compose', err.slice(0, 300));
-    return { ok: false, error: err.slice(0, 300) };
+    // 用户停止:归一成「已停止」+ aborted 标记。否则 UI 直接显示内部错误串
+    // 「VIDEO_ABORTED:已停止」(渲染端无此前缀的文案映射),且 compose 会被误标红。
+    const aborted = err.startsWith('VIDEO_ABORTED');
+    const msg = aborted ? '已停止' : err.slice(0, 300);
+    tracker.fail(aborted ? null : 'compose', msg);
+    return { ok: false, error: msg, ...(aborted ? { aborted: true } : {}) } as VideoCreationResult;
   } finally {
     // 成片失败 → 退回合成前预扣的(平台费 + 翻倍那份)。幂等,按 chargeId。
     if (refundOnExit && chargeId) {

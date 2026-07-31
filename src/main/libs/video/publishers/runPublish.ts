@@ -31,12 +31,27 @@ import {
 } from '../../scenario/platformLoginDriver';
 import { sendBrowserCommand, connectionHasCapability } from '../../browserBridge';
 import { getStandardBounds } from '../../scenario/subPlatformRegistry';
-import { PUBLISHER_ANCHOR_URL, bridgeOptsFor } from './publisherUtils';
+import { PUBLISHER_ANCHOR_URL, bridgeOptsFor, setPublishAbortSignal } from './publisherUtils';
 import { videoWindowTitle } from '../videoRunWindow';
 import { checkVideoLoginByCookie } from '../videoLoginCheck';
 import { getVideoConfig } from '../videoConfig';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/**
+ * 可被「停止」打断的等待:用户点停止时立刻返回,不用等满。
+ * 发布阶段的等待动辄 2 分钟(postSubmitWaitMs),纯 sleep 会把 abort 吞掉整段,
+ * 用户点了停止还得眼看着浏览器又等两分钟 —— 这是「视频任务停不下来」的主要观感来源。
+ */
+const sleepAbortable = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise<void>((resolve) => {
+    if (signal?.aborted) { resolve(); return; }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => { clearTimeout(timer); resolve(); };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 // 提交后默认等这么久:平台(尤其抖音)是「点提交后才真正开始上传视频」,过早进入下一动作/刷新会白提交。
 // ⚠️ 默认值;runPublishStep 开头用 /api/video/config 的 postSubmitWaitMs 覆盖 → 改这个时间【只改后端
 //    system_config(admin 后台)、客户端不打包】(用户要求:这种时间不该发版本)。
@@ -282,6 +297,12 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
     return result;
   }
 
+  // 把本次的停止信号挂到 publisherUtils 的模块级槽位 —— 9 个 driver 的长等待
+  // (waitForSelector 最长 5 分钟、clickWithText 重试、sleep 间隔)都走那边的 helper,
+  // 挂上之后整体可打断,不用改 driver 签名。finally 里务必清掉,免得泄漏到下一次发布。
+  setPublishAbortSignal(opts.signal);
+  try {
+
   // 发布时间从服务端配置拉(后端 system_config 可调、改这些不打包客户端)。拉不到用默认。
   //   覆盖模块级 POST_SUBMIT_WAIT_MS / LOGIN_WAIT_MS —— 下面 helper 的默认参数在【调用时】求值,会拿到新值。
   try {
@@ -299,6 +320,13 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
     opts.onLog?.(`☁️ 已拉取云端发布脚本(${Object.keys(remotePack.drivers).length} 个平台)`);
   }
 
+  // 已停止就别开窗了 —— 上面拉配置/拉云端 driver 有网络耗时,用户很可能在这期间点了停止,
+  // 此时再开一个发布窗口纯属打扰(还会让人以为"停不掉")。
+  if (opts.signal?.aborted) {
+    opts.onLog?.('⏹ 已停止 · 跳过发布(不开发布窗口)');
+    return result;
+  }
+
   // 开一个专用发布窗口的固定 tab(9 平台共用)。拿不到 tabId → 回退每平台独立窗口模式。
   const firstUrl = PUBLISHER_ANCHOR_URL[list[0] as VideoPlatform] || 'about:blank';
   const publishTabId = await openPublishTab(firstUrl, (m) => opts.onLog?.(m));
@@ -308,7 +336,9 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
 
   for (const id of list) {
     if (opts.signal?.aborted) {
-      opts.onLog?.('⏹ 已停止 · 后续平台跳过');
+      // 发布窗口不在这里关:客户端没有关 tab 的浏览器命令(要动扩展),所以只保证
+      // 不再对它发任何指令,并明确告诉用户窗口留着、可手动关。
+      opts.onLog?.('⏹ 已停止 · 后续平台跳过(发布窗口保留,可手动关闭)');
       break;
     }
     const label = platformLabel(id);
@@ -339,6 +369,11 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
       result.skippedCount++;
       result.details.push({ platform: id, status: 'skipped', reason: 'not_logged_in' });
       continue;
+    }
+    // 等登录最长 3 分钟,期间用户很容易点停止 —— 别等完了还接着上传。
+    if (opts.signal?.aborted) {
+      opts.onLog?.('⏹ 已停止 · 不再上传');
+      break;
     }
     opts.onLog?.(`✅ ${label} 已登录,准备上传`);
     // 导航到精确上传页(创作中心首页 → 上传页),否则 driver 在首页找不到 file input。
@@ -387,7 +422,8 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
       // 例外【用户要求】:小红书/币安/推特是【点发布前就要求视频传完】→ 提交时视频已在平台,不用久等 → 封顶 20s。
       const postWaitMs = (id === 'xhs' || id === 'binance' || id === 'x') ? Math.min(20_000, POST_SUBMIT_WAIT_MS) : POST_SUBMIT_WAIT_MS;
       opts.onLog?.(`   ⏳ 等 ${Math.round(postWaitMs / 1000)}s 让平台把视频上传完…`);
-      await sleep(postWaitMs);
+      await sleepAbortable(postWaitMs, opts.signal);
+      if (opts.signal?.aborted) opts.onLog?.('   ⏹ 已停止 · 不再等待');
     } else {
       opts.onLog?.(`❌ ${label} 发布失败:${pr.reason || 'unknown'}`);
       result.failedCount++;
@@ -398,6 +434,9 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
   // 汇总日志:具体列出每个平台落在哪一类(已发/跳过/失败),失败和跳过附简短原因。
   const reasonZh = (r?: string): string => {
     if (!r) return '';
+    // 用户停止:driver 的等待被打断会以 PUBLISH_ABORTED 冒泡成 driver_threw,
+    // 别把它显示成「driver 异常」让人以为出 bug 了。
+    if (r.includes('aborted') || r.includes('PUBLISH_ABORTED')) return '已停止';
     if (r.startsWith('not_logged_in')) return '未登录';
     if (r.startsWith('browser_not_connected')) return '浏览器未连接';
     if (r.startsWith('driver_not_implemented')) return '未实装';
@@ -420,4 +459,7 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
   if (!pub.length && !skip.length && !fail.length) opts.onLog?.('   (无平台结果)');
 
   return result;
+  } finally {
+    setPublishAbortSignal(undefined); // 清掉,别把本次的 signal 泄漏给下一次发布
+  }
 }
