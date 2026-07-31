@@ -51,13 +51,22 @@ import MatrixInstagramPostWizard, { type InstagramPostWizardSave } from '../matr
 import MatrixBinanceRepostWizard, { type BinanceRepostWizardSave } from '../matrix/MatrixBinanceRepostWizard';
 import MatrixViralRewriteWizard, { type ViralRewriteWizardSave } from '../matrix/MatrixViralRewriteWizard';
 
-type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'reddit' | 'video';
+type PlatformId = 'xhs' | 'x' | 'binance' | 'gate' | 'bitget' | 'bybit' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'reddit' | 'video';
 
 // 矩阵 tab 顺序:多平台视频创作放最前(用户要求),其后与「我的矩阵账号」平台顺序一致(含视频号/头条)。
-const MATRIX_TAB_ORDER: PlatformId[] = ['video', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'binance', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram'];
+// ⚠️ 这是【平台 tab 的唯一顺序来源】,账号页(MatrixView 的 PLATFORMS)必须与它保持一致
+//    —— 两处曾经漂移过(本文件末尾是 facebook/reddit/instagram,账号页却是 instagram/facebook/reddit,
+//    而旧注释还写着"已与 PLATFORMS 一致"),用户在两个页面之间来回切会觉得错乱。改任一处都要同步另一处。
+// 交易所广场三家紧跟在币安广场后面(同类平台聚在一起,用户按"广场"找得到)。
+// 📌 CN 版特有的顺序:交易所广场四家(币安/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
+//    (三家紧跟币安广场、整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
+const MATRIX_TAB_ORDER: PlatformId[] = ['video', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'bitget', 'bybit', 'gate'];
+// 交易所广场(web3 属性)四家 —— 国内版 HIDE_WEB3 时整组隐藏,口径与「我的矩阵账号」页
+// 的 VISIBLE_PLATFORMS 保持一致(那边同名常量)。
+const WEB3_SQUARE_TABS: PlatformId[] = ['binance', 'bitget', 'bybit', 'gate'];
 // 后端 backend/matrix/scenarios 有 <platform>_auto_engage 互动涨粉剧本的平台(共 8 个)。
 // 视频号/头条暂无 engage 剧本 → tab 仍展示(与账号页一致),但「开始创作」标注「即将上线」不放行,避免跑出错任务。
-const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'x', 'binance', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram']);
+const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'x', 'binance', 'gate', 'bitget', 'bybit', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram']);
 // 后端 backend/matrix/scenarios 有 <platform>_reply_fans_comment「自动回复粉丝」剧本的平台。
 // 小红书(逐篇笔记进详情页回复,主站登录态即覆盖创作者中心)+ 快手(创作者中心评论管理,需
 // loginScope='creator' 账号)+ 哔哩哔哩(member.bilibili.com 创作中心评论管理,登录 cookie 挂
@@ -92,6 +101,10 @@ const MATRIX_REDDIT_POST_PLATFORMS = new Set<PlatformId>(['reddit']);
 const MATRIX_IG_POST_PLATFORMS = new Set<PlatformId>(['instagram']);
 // 「币安广场批量搬运」(binance_repost):1 个源平台采集号搜+下 → N 个币安号各领一条仿写发。发布目标=币安。
 const MATRIX_BINANCE_REPOST_PLATFORMS = new Set<PlatformId>(['binance']);
+// 交易所广场三家的「自动发帖」。⚠️ 故意【不并进 MATRIX_BINANCE_POST_PLATFORMS】——
+//   它们是三个完全独立的平台,卡片文案/剧本/账号体系各自独立,合并会导致 UI 上出现
+//   别家平台的文案(用户明确要求:每个平台的界面不能混入其他平台的字样)。
+const MATRIX_EXCHANGE_POST_PLATFORMS = new Set<PlatformId>(['gate', 'bitget', 'bybit']);
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -150,6 +163,10 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   // 第一行: 视频创作 + 海外/全球平台
   { id: 'video', labelKey: 'scenarioPlatformVideo', icon: '🎬', enabled: true },
   { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '🔶', enabled: true },
+  // 交易所广场三家 —— 各自独立平台,紧跟币安广场。
+  { id: 'bitget', labelKey: 'scenarioPlatformBitget', icon: '🔵', enabled: true },
+  { id: 'bybit', labelKey: 'scenarioPlatformBybit', icon: '🟠', enabled: true },
+  { id: 'gate', labelKey: 'scenarioPlatformGate', icon: '🟦', enabled: true },
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
   { id: 'youtube', labelKey: 'scenarioPlatformYoutube', icon: '📺', enabled: true },
   { id: 'tiktok', labelKey: 'scenarioPlatformTiktok', icon: '🎵', enabled: true },
@@ -164,6 +181,19 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'bilibili', labelKey: 'scenarioPlatformBilibili', icon: '📺', enabled: true },
   { id: 'toutiao', labelKey: 'scenarioPlatformToutiao', icon: '📰', enabled: true },
 ];
+
+/** 平台 id → 用户可见的平台名(走 i18n,随界面语言变)。找不到就回落 id 本身。
+ *  用它替代散落各处写死的「币安广场」字样 —— 交易所广场三家(gate/bitget/bybit)复用同一套
+ *  发帖向导,写死平台名会让 Gate 的弹窗上出现「币安广场」。 */
+const platformDisplayName = (id: string): string => {
+  const tab = PLATFORM_TABS.find((t) => t.id === (id as PlatformId));
+  return tab ? i18nService.t(tab.labelKey) : String(id);
+};
+
+/** 走「自动发帖」向导的平台判定(币安广场 + 交易所广场三家)。它们共用 binancePostRunner:
+ *  后端剧本 id 一律是 `${platform}_post`,所以这里加平台不需要改 runner。 */
+const isSquarePostScenario = (scenarioId: string): boolean =>
+  /^(binance|gate|bitget|bybit)_post$/.test(String(scenarioId || ''));
 
 // v6.x: 原 SECTION_TABS(我的涨粉任务 / 运行记录 两个 L1 段 tab)已移除 —
 // 两段拆成两个独立左侧菜单(manage / runs),头部改为静态段标题,不再内切。
@@ -654,7 +684,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 「币安广场自动发帖」向导(多账号):账号取主站 scope(币安主站登录态即覆盖币安广场)。
   const openMatrixBinanceWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
-    if (await hasDupTask(platform, 'binance_post', '币安广场发帖')) return;
+    // 剧本 id 按平台推:binance_post / gate_post / bitget_post / bybit_post。
+    if (await hasDupTask(platform, `${platform}_post`, `${platformDisplayName(platform)}${i18nService.t('svDupPostSuffix')}`)) return;
     // 先秒开弹窗,内核检查 + 账号加载后台异步(对齐编辑流程,避免 sidecar 忙时卡几秒)。
     setMatrixBinanceAccounts([]);
     setMatrixBinanceAccountsLoading(true);
@@ -698,9 +729,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
     };
-    const r = await m?.saveTask?.({ id: matrixBinanceTask?.id, platform: matrixBinancePlatform, type: 'binance_post', name: input.name, accountIds: input.accountIds, binancePost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await m?.saveTask?.({ id: matrixBinanceTask?.id, platform: matrixBinancePlatform, type: `${matrixBinancePlatform}_post`, name: input.name, accountIds: input.accountIds, binancePost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
-      if (r?.error === 'duplicate_type') { const dp = matrixBinancePlatform; setMatrixBinancePlatform(null); setMatrixBinanceTask(null); setDupNotice({ platform: dp as string, label: '币安广场发帖' }); return; }
+      if (r?.error === 'duplicate_type') { const dp = matrixBinancePlatform; setMatrixBinancePlatform(null); setMatrixBinanceTask(null); setDupNotice({ platform: dp as string, label: `${platformDisplayName(String(dp))}${i18nService.t('svDupPostSuffix')}` }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
     }
     const wasEdit = !!matrixBinanceTask?.id;
@@ -1117,7 +1148,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       const p = (t as any)?.platform || s?.platform;
       // v2.4.61: 漏了 'binance' — 进币安任务详情然后返回会跳回小红书 tab
       // v6.x:  漏了 'video' — 翻译二创(scenario.platform='video')详情返回也会掉小红书 tab
-      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube' || (p as string) === 'facebook' || (p as string) === 'reddit' || (p as string) === 'instagram' || p === 'video') return p as PlatformId;
+      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'gate' || p === 'bitget' || p === 'bybit' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube' || (p as string) === 'facebook' || (p as string) === 'reddit' || (p as string) === 'instagram' || p === 'video') return p as PlatformId;
       return 'xhs';
     }
     return 'xhs';
@@ -1386,7 +1417,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (String(task.scenario_id || '') === 'binance_post') { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (String(task.scenario_id || '') === 'binance_repost') { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (String(task.scenario_id || '') === 'binance_repost') { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -1644,6 +1675,36 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* Facebook 自动发帖(矩阵多账号)—— N 个号各自按人设从所选数据源(web3/科技/各热榜)取材 AI 原创一条帖 + 可选配图 → 发 FB。 */}
+          {/* 交易所广场三家(Gate / Bitget / Bybit)的自动发帖。与币安广场那张卡【分开渲染】:
+              虽然共用同一套向导和 runner,但卡片文案必须只出现当前平台自己的名字
+              (platLabel 动态取,描述文案 svCardExchangePostDesc2 里不含任何平台名)。 */}
+          {MATRIX_EXCHANGE_POST_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> {i18nService.t('svSectionBinancePost')}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">📊 {platLabel} · {i18nService.t('svCardBinancePostTitle')}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                {i18nService.t('svCardBinancePostDesc1')}<strong>{i18nService.t('svUniqueEach')}</strong>{i18nService.t('svCardExchangePostDesc2')}
+              </div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+              <button
+                type="button"
+                onClick={() => openMatrixBinanceWizard(currentPlatform)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500 text-white text-sm font-bold hover:bg-cyan-600 shadow-sm shadow-cyan-500/25 transition-all active:scale-95"
+              >
+                📊 {i18nService.t('svStartBinancePost')}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                {i18nService.t('svHasTasks')}
+              </button>
+              </div>
+            </div>
+          )}
           {MATRIX_FB_POST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 dark:bg-blue-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400 mb-2">
@@ -2193,8 +2254,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。
-              国内版(HIDE_WEB3):隐藏「币安广场」(binance)tab —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录都不露 web3。 */}
-          {(matrixMode ? MATRIX_TAB_ORDER.filter((id) => !(HIDE_WEB3 && id === 'binance')).map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
+              国内版(HIDE_WEB3):隐藏交易所广场四家(币安/Bitget/Bybit/Gate)的 tab —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录都不露 web3。 */}
+          {(matrixMode ? MATRIX_TAB_ORDER.filter((id) => !(HIDE_WEB3 && WEB3_SQUARE_TABS.includes(id))).map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
             const active = currentPlatform === tab.id;
             // 矩阵号:对齐「我的矩阵账号」的简洁 pill 切换(纯文字 + violet 选中,rounded-full),
             // 顺序同账号页(MATRIX_TAB_ORDER 已与 PLATFORMS 一致)。非矩阵(旧视频版)保持原绿卡样式。
@@ -2398,7 +2459,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <MatrixBinancePostWizard
-              platformLabel={(() => { const p = matrixBinancePlatform; return p === 'binance' ? '币安广场' : String(p); })()}
+              platformLabel={platformDisplayName(String(matrixBinancePlatform))}
               platform={matrixBinancePlatform}
               accounts={matrixBinanceAccounts}
               accountsLoading={matrixBinanceAccountsLoading}

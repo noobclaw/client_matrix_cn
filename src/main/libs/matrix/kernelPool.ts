@@ -1080,7 +1080,20 @@ const LOGIN_COOKIES: Record<string, string[]> = {
   facebook: ['c_user', 'xs'],
   // Reddit 登录态:reddit_session(会话)+ token_v2(新版 JWT)。任一在即过快筛;活体/身份用 /api/me.json 确认。
   reddit: ['reddit_session', 'token_v2'],
+  // ── 交易所广场三家(2026-07-31 真机勘察)──
+  // ⚠️ 这三家都是【游客也下发同名 cookie、靠值区分登录态】,所以必须写成 'name=value' 形式
+  //    (needHit 支持带值判据)。只写名字会把未登录的号误判成已登录。
+  gate: ['is_login=1'],     // 真机实测:登录态 is_login=1(明文,非 httpOnly)
+  bybit: ['isLogin=1'],     // 真机实测:登录态 isLogin=1(注意驼峰,与 Gate 的下划线写法不同)
+  // ⚠️ bitget 【故意不登记】—— 它的登录 cookie 还没真机确认。这里绝不能填占位值:快筛的
+  //    语义是"一条都没命中就直接 return false",填个假名字等于把 Bitget 号全部判成未登录、
+  //    功能直接不可用。未确认前 bitget 走下面 COOKIE_FASTPATH_EXEMPT 豁免 + DOM 正向判据。
 };
+
+// 跳过 ① cookie 快筛的平台 —— 只靠下面 ② 的 DOM/localStorage 正向判据。
+//   binance:重 WAF,session cookie 名多变,登录着也常没 logined/p20t,硬卡会误杀好号。
+//   bitget :登录 cookie 尚未真机确认(见上),先豁免,确认后登记进 LOGIN_COOKIES 并从这里移除。
+const COOKIE_FASTPATH_EXEMPT = new Set<string>(['binance', 'bitget']);
 
 /** 该号当前【是否真的登录】对应平台 —— 统一活体校验(发布/涨粉/保活都调它)。分层:
  *  ① cookie 快筛:标志性 cookie 不在 → 必然没登录(不开窗折腾);
@@ -1106,12 +1119,25 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
     try { const r = await send(s, 'Network.getAllCookies', {}); cookies = r?.cookies || []; } catch { /* fallback below */ }
     if (!cookies.length) { try { const r2 = await send(s, 'Network.getCookies', {}); cookies = r2?.cookies || []; } catch { /* keep empty — see guard below */ } }
     const names = new Set<string>(cookies.map((c: any) => String(c.name)));
+    // cookie 名→值,供【带值判据】用(见下面 needHit)。
+    const valueByName = new Map<string, string>(cookies.map((c: any) => [String(c.name), String(c.value ?? '')]));
     const need = LOGIN_COOKIES[platform] || [];
+    // LOGIN_COOKIES 的条目支持两种写法:
+    //   'sessionid'    —— 只要这个 cookie【存在】就算命中(绝大多数平台:登录才下发)
+    //   'is_login=1'   —— 必须存在【且值等于 1】才算命中
+    // 后者是给 Gate / Bybit 这类【游客也下发同名 cookie、靠值区分】的站点用的:它们登录态
+    // is_login=1 / isLogin=1,未登录是 0 —— 只按名字判会把未登录的号当成已登录放行,任务跑起来
+    // 才在发帖那步撞登录墙(用户看到的现象是"号明明没登录却被选中、白跑一轮")。
+    const needHit = (n: string): boolean => {
+      const eq = n.indexOf('=');
+      if (eq < 0) return names.has(n);
+      return valueByName.get(n.slice(0, eq)) === n.slice(eq + 1);
+    };
     // ① cookie 快筛(binance 例外:重 WAF、session cookie 名多变,登录着也常没 logined/p20t → 硬卡会误判过期。
     //    币安改成【不卡 cookie,交给下面 DOM/localStorage 正向判据】,绝不因 cookie 名对不上误杀好号)。
     // ⚠️ cookies 读【空】≠ 没登录:CDP 抖动/页面未附着时 getAllCookies/getCookies 都可能空手而归,
     //    此时跳过快筛、交给 ②/③ 正向判据兜——把「读失败」当「未登录」正是批量误标过期的元凶之一。
-    if (platform !== 'binance' && cookies.length > 0 && !need.some((n) => names.has(n))) return false;
+    if (!COOKIE_FASTPATH_EXEMPT.has(platform) && cookies.length > 0 && !need.some(needHit)) return false;
     // ② 活体判定:对齐成熟开源 social-auto-upload(导航到创作/上传页 → 检测登录墙标记)。
     //   【铁律:只在检到「明确未登录」证据(登录墙文字/元素、或接口明说未登录)时才判未登录;否则一律 "?" 交回 ③/cookie
     //    → 绝不把登录着的好号误判过期】。有官方 isLogin 接口的(小红书/B站)用接口最准;其余用 social-auto-upload 的 DOM 标记。
@@ -1153,6 +1179,29 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
         + 'if(/分享您的洞见|分享你的洞见|Share your|发帖|发布动态/.test(t))return "1";'
         + 'if(/Sign up to earn rewards|Join global crypto users|Discover real insights from verified|Log in to Binance|登录后即可|扫码登录|请先登录/i.test(t))return "0";'
         + 'return "?";}catch(e){return "?";}})()';
+    } else if (platform === 'gate') {
+      // Gate 广场(2026-07-31 真机验):左侧导航「我的主页」登录后 href 才是 /zh/profile/{用户名};
+      //   未登录时拿不到用户名 → 找到「文案是我的主页且 href 带 /profile/」的链接 = 明确已登录。
+      //   ⚠️ 不能拿「发布」按钮/发帖框当正向判据 —— 真机实测【未登录页面照样渲染发帖框和发布按钮】,
+      //   点了才弹登录。负向只认明确的登录墙文字。
+      probe = '(function(){try{'
+        + 'var as=document.querySelectorAll(\'a[href*="/profile/"]\');'
+        + 'for(var i=0;i<as.length;i++){if(/我的主页|My Profile/i.test((as[i].innerText||"").trim()))return "1";}'
+        + 'var t=(document.body&&document.body.innerText)||"";'
+        + 'if(/请先登录|扫码登录|登录后即可|Log ?in to continue/i.test(t))return "0";'
+        + 'return "?";}catch(e){return "?";}})()';
+    } else if (platform === 'bybit') {
+      // Bybit ByX(2026-07-31 真机验):登录态顶栏是 Deposit / Assets / Orders;未登录是 Log In / Sign Up。
+      //   先判负向再判正向 —— 营销位可能出现 Deposit 字样,但登录着的页面【不会】有 Log In/Sign Up 按钮。
+      //   只取首屏 2000 字,避免信息流正文里的普通英文单词误命中。
+      probe = '(function(){try{'
+        + 'var t=((document.body&&document.body.innerText)||"").slice(0,2000);'
+        + 'if(/\\bLog ?In\\b|\\bSign ?Up\\b/i.test(t))return "0";'
+        + 'if(/\\bDeposit\\b|\\bAssets\\b|\\bOrders\\b|充值|资产|订单/i.test(t))return "1";'
+        + 'return "?";}catch(e){return "?";}})()';
+    // ⚠️ bitget 暂无 probe —— 页面尚未真机勘察,凭空写判据只会误杀好号(违反本函数的铁律)。
+    //    现状:走 COOKIE_FASTPATH_EXEMPT 豁免 + ③ 兜底(URL 不是登录页即放行),与币安早期同款。
+    //    真机拿到登录/未登录两态的 DOM 后,在这里补 bitget 分支并把 cookie 登记进 LOGIN_COOKIES。
     } else if (platform === 'instagram') {
       // IG:【语言无关】判据(UI 随 locale 变,不能靠文字)—— 登录墙有 username 输入框 / 或重定向到 /accounts/login。
       //   登录态没有登录表单。只判 0,否则 "?" 交回 cookie。待 VPN 真机确认正向标记(如导航头像)。

@@ -39,14 +39,23 @@ interface ItemResult { accountId: string; state: 'success' | 'failed' | 'skipped
 
 function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).map((x) => x.trim()).filter(Boolean); }
 
-// 对齐支持「互动涨粉」的平台(与新建页一致)。
-const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'binance', 'youtube', 'tiktok', 'instagram', 'facebook', 'reddit'];
-// 国内版(HIDE_WEB3):平台选择器里隐藏「币安广场」(web3),其余平台(含海外 推特/TikTok/YouTube/IG/FB/Reddit)保留。
-const VISIBLE_PLATFORMS = HIDE_WEB3 ? PLATFORMS.filter((p) => p !== 'binance') : PLATFORMS;
+// 平台顺序【必须与任务页 ScenarioView 的 MATRIX_TAB_ORDER 完全一致】(去掉那边的 'video')。
+// ⚠️ 两处曾经漂移:这里末尾是 instagram/facebook/reddit,任务页却是 facebook/reddit/instagram,
+//    而任务页注释还写着"已与 PLATFORMS 一致" —— 用户在两个页面间来回切会觉得错乱。
+//    现已按任务页口径统一,改任一处都要同步另一处。
+// 📌 CN 版特有的顺序:交易所广场四家(币安/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
+//    (三家紧跟币安广场、整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
+const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'bitget', 'bybit', 'gate'];
+// 交易所广场(web3 属性)四家 —— 国内版 HIDE_WEB3 时整组隐藏。
+// ⚠️ 原来只隐藏 'binance';新增 Gate/Bitget/Bybit 同属加密交易所,按同一口径一并纳入,
+//    否则国内版会突然冒出三个交易所平台(与隐藏币安广场的初衷矛盾)。
+//    若产品决定国内版也要露出这四个,把下面这行的 filter 去掉即可,顺序已经排好。
+const WEB3_SQUARE_PLATFORMS = ['binance', 'bitget', 'bybit', 'gate'];
+const VISIBLE_PLATFORMS = HIDE_WEB3 ? PLATFORMS.filter((p) => !WEB3_SQUARE_PLATFORMS.includes(p)) : PLATFORMS;
 // 每个平台最多添加的账号数:客户端兜底 10,服务端 /api/matrix/config 的 maxAccountsPerPlatform 可覆盖(admin 调,不打包)。
 const MAX_ACCOUNTS_PER_PLATFORM_FALLBACK = 10;
 const PLAT_KEY: Record<string, string> = { douyin: 'platDouyin', xhs: 'platXhs', bilibili: 'platBilibili', kuaishou: 'platKuaishou', x: 'platX', binance: 'platBinance', shipinhao: 'platShipinhao', toutiao: 'platToutiao' };
-const platLabel = (p: string): string => PLAT_KEY[p] ? i18nService.t(PLAT_KEY[p]) : (p === 'tiktok' ? 'TikTok' : p === 'youtube' ? 'YouTube' : p === 'instagram' ? 'Instagram' : p === 'facebook' ? 'Facebook' : p === 'reddit' ? 'Reddit' : p);
+const platLabel = (p: string): string => PLAT_KEY[p] ? i18nService.t(PLAT_KEY[p]) : (p === 'tiktok' ? 'TikTok' : p === 'youtube' ? 'YouTube' : p === 'instagram' ? 'Instagram' : p === 'facebook' ? 'Facebook' : p === 'reddit' ? 'Reddit' : p === 'gate' ? i18nService.t('scenarioPlatformGate') : p === 'bitget' ? i18nService.t('scenarioPlatformBitget') : p === 'bybit' ? i18nService.t('scenarioPlatformBybit') : p);
 // 平台号的标签:平台名已以「号」结尾(视频号)就不再加「号」,否则拼「号」(抖音号/快手号…)。
 const platformIdLabel = (p: string): string => platLabel(p) + i18nService.t('mvIdSuffix');
 const LOGIN_URL: Record<string, string> = {
@@ -55,6 +64,11 @@ const LOGIN_URL: Record<string, string> = {
   binance: 'https://www.binance.com/zh-CN/square', youtube: 'https://www.youtube.com/',
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
   instagram: 'https://www.instagram.com/accounts/login/', facebook: 'https://www.facebook.com/login/', reddit: 'https://www.reddit.com/login/',
+  // 交易所广场三家 —— 直接落在各自的广场页(而不是登录页):这三家都是【未登录也能浏览广场】,
+  // 落广场页用户点右上角登录即可,登录完就停在该待的位置,不用再导航一次。
+  gate: 'https://www.gate.com/zh/post',
+  bitget: 'https://www.bitget.com/zh-CN/insights',
+  bybit: 'https://www.bybit.com/en/social/',
 };
 // 平台归属:国内平台该用国内 IP,海外平台该用海外 IP;binance/reddit 等全球平台不校验地区。
 const CN_PLATFORMS = new Set(['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao']);

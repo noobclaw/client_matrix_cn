@@ -74,6 +74,15 @@ export const SUB_PLATFORM_REGISTRY: Record<string, SubPlatformMeta> = {
   instagram_main:   { label: 'IG',      emoji: '📸', domain: 'www.instagram.com' },
   facebook_main:    { label: 'FB',      emoji: '👥', domain: 'www.facebook.com' },
   reddit_main:      { label: 'Reddit',  emoji: '🟠', domain: 'www.reddit.com' },
+  // 交易所广场三家 —— 与币安广场同形态(信息流 + 发帖框 + 点赞/评论/关注),但各自是
+  // 完全独立的平台:独立账号体系、独立剧本、独立 UI,彼此之间和与币安之间都不共用文案。
+  // 三家都只有【一个】域名层级(广场就在主站路径下),故只登记 *_square,不设 creator。
+  gate_square:      { label: 'Gate·广场',   emoji: '🟦', domain: 'www.gate.com/post' },
+  // 官方中文界面把这个板块叫「Bitget 洞察」(英文 Bitget Insights),路径也是 /insights。
+  // 这里 label 用「广场」是对齐产品口径(用户按"广场"找它),URL 一律以 /insights 为准。
+  bitget_square:    { label: 'Bitget·广场', emoji: '🔵', domain: 'www.bitget.com/insights' },
+  // Bybit 的广场叫 ByX(页面 title「ByX creator center」),路径 /social。
+  bybit_square:     { label: 'ByX',         emoji: '🟠', domain: 'www.bybit.com/social' },
   // 视频自动发布【专用复用窗口】—— 跟上面那些「一平台一子域一窗口」不同:video
   // publish 流程刻意把【所有勾选平台】塞进这一个 windowKey 的【同一个 tab】里,靠
   // navigate 串行切换上传页(douyin→xhs→tiktok…),避免 9 平台开 9 窗口爆炸。domain
@@ -134,6 +143,11 @@ const HOST_TO_SUB_PLATFORM: Array<[RegExp, string]> = [
   [/(\.|^)instagram\.com$/i,       'instagram_main'],
   [/(\.|^)facebook\.com$/i,        'facebook_main'],
   [/(\.|^)reddit\.com$/i,          'reddit_main'],
+  // 交易所广场三家。Gate 有 gate.com / gate.io 两个域(现网主用 gate.com,gate.io 会 301
+  // 过去),两个都收,免得用户从旧书签进来时窗口路由认不出、开出第二个窗口。
+  [/(\.|^)gate\.(com|io)$/i,       'gate_square'],
+  [/(\.|^)bitget\.com$/i,          'bitget_square'],
+  [/(\.|^)bybit\.com$/i,           'bybit_square'],
 ];
 
 export function urlToSubPlatform(url: string | undefined | null): string | null {

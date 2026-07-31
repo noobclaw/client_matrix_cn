@@ -51,6 +51,7 @@ const PLATFORM_ZH: Record<string, string> = {
   douyin: '抖音', xhs: '小红书', kuaishou: '快手', bilibili: 'B站', shipinhao: '视频号',
   toutiao: '头条', x: 'X', binance: '币安广场', youtube: 'YouTube', tiktok: 'TikTok',
   instagram: 'Instagram', facebook: 'Facebook', reddit: 'Reddit',
+  gate: 'Gate 广场', bitget: 'Bitget 广场', bybit: 'Bybit ByX',
 };
 export function accountBadgeLabel(acc: Pick<MatrixAccount, 'platform' | 'displayName' | 'nickname'>, taskId?: string): string {
   const parts: string[] = [PLATFORM_ZH[acc.platform] || acc.platform];

@@ -40,6 +40,9 @@ const PLATFORM_TO_MAIN_SUBPLATFORM: Record<LoginPlatform, string> = {
   instagram:  'instagram_main',
   facebook:   'facebook_main',
   reddit:     'reddit_main',
+  gate:       'gate_square',
+  bitget:     'bitget_square',
+  bybit:      'bybit_square',
 };
 
 const PLATFORM_TO_CREATOR_SUBPLATFORM: Partial<Record<LoginPlatform, string>> = {
@@ -66,7 +69,7 @@ export interface PlatformLoginStatus {
 // use PlatformLoginStatus.
 export type XhsLoginStatus = PlatformLoginStatus;
 
-export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit';
+export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit' | 'gate' | 'bitget' | 'bybit';
 
 const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   // (?<!creator\.) 排除 creator.xiaohongshu.com 子域 —— 用户只打开
@@ -112,6 +115,14 @@ const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   instagram: /instagram\.com/i,
   facebook: /facebook\.com/i,
   reddit: /reddit\.com/i,
+  // 交易所广场三家。都是【广场在主站路径下】,所以匹配到路径段而不是只匹配域名 ——
+  // 否则用户开着现货/合约页(同域)也会被当成"广场 tab 已就绪",跑起来才发现没在广场上。
+  //   Gate   : gate.com/zh/post、gate.com/en/post…(locale 前缀可变)
+  //   Bitget : bitget.com/zh-CN/insights…(官方英文名 Insights)
+  //   Bybit  : bybit.com/en/social/…(广场叫 ByX)
+  gate: /gate\.(com|io)\/(?:[a-z-]+\/)?post/i,
+  bitget: /bitget\.com\/(?:[a-z-]+\/)?insights/i,
+  bybit: /bybit\.com\/(?:[a-z-]+\/)?social/i,
 };
 
 const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
@@ -128,6 +139,9 @@ const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
   instagram: 'instagram_tab_not_reachable',
   facebook: 'facebook_tab_not_reachable',
   reddit: 'reddit_tab_not_reachable',
+  gate: 'gate_tab_not_reachable',
+  bitget: 'bitget_tab_not_reachable',
+  bybit: 'bybit_tab_not_reachable',
 };
 
 const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
@@ -144,6 +158,9 @@ const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
   instagram: 'https://www.instagram.com/',
   facebook: 'https://www.facebook.com/',
   reddit: 'https://www.reddit.com/',
+  gate: 'https://www.gate.com/zh/post',
+  bitget: 'https://www.bitget.com/zh-CN/insights',
+  bybit: 'https://www.bybit.com/en/social/',
 };
 
 /** v2.6+: chrome-extension tab-group label/color per platform.
@@ -174,6 +191,9 @@ export const PLATFORM_TAB_GROUPS: Record<LoginPlatform, { title: string; color: 
   instagram:{title: '🤖 Instagram · NoobClaw', color: 'pink' },
   facebook: {title: '🤖 Facebook · NoobClaw',  color: 'blue' },
   reddit:   {title: '🤖 Reddit · NoobClaw',    color: 'orange' },
+  gate:     {title: '🤖 Gate · NoobClaw',      color: 'cyan'   },
+  bitget:   {title: '🤖 Bitget · NoobClaw',    color: 'blue'   },
+  bybit:    {title: '🤖 Bybit · NoobClaw',     color: 'yellow' },
 };
 
 /** Single source of truth for "which platform does this regex string target".
@@ -195,6 +215,13 @@ export function inferPlatformFromPattern(pattern: string | undefined): LoginPlat
   if (/instagram/i.test(pattern)) return 'instagram';
   if (/facebook/i.test(pattern)) return 'facebook';
   if (/reddit/i.test(pattern)) return 'reddit';
+  // 交易所广场三家。这里收到的 pattern 是 manifest 里【转义过的正则串】(形如
+  // ^https?://(www\.)?gate\.(com|io)/),点号带反斜杠,所以不能写 /gate\.com/ 这种"看起来
+  // 像 URL"的正则 —— 那样永远匹配不上。跟上面各平台一样用裸品牌词匹配即可(已核对:
+  // 现有全部 pattern 里没有任何一个含 gate / bitget / bybit 字样,不会误命中)。
+  if (/bitget/i.test(pattern)) return 'bitget';
+  if (/bybit/i.test(pattern)) return 'bybit';
+  if (/gate/i.test(pattern)) return 'gate';
   if (/twitter|x\\?\.com/i.test(pattern)) return 'x';
   return undefined;
 }
