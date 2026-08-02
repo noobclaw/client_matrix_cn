@@ -32,6 +32,16 @@ import { getNoobClawAuthToken } from '../claudeSettings';
 import type { EngageItemResult, EngageReport } from './engageRunner';
 import type { BinanceRepostConfig } from './types';
 
+// 平台显示名 —— 本 runner 服务币安广场 + 四家交易所广场,日志/提示不能写死「币安」。
+const REPOST_PLATFORM_LABEL: Record<string, string> = {
+  binance: '币安广场', gate: 'Gate广场', bitget: 'Bitget Insight', bybit: 'Bybit Byx', okx: 'OKX星球',
+};
+function platLabel(p: string): string { return REPOST_PLATFORM_LABEL[p] || p; }
+// 有视频发布 driver(backend/matrix/drivers/<平台>.js)的平台 —— 只有这些才能做【视频】搬运。
+// 交易所广场四家只做发帖 + 互动,没有视频 driver,视频模式必须提前拦住,
+// 否则会一路跑到 runMatrixDriver 才失败(素材已下完、时间和带宽都白花)。
+const VIDEO_REPOST_PLATFORMS = new Set<string>(['binance']);
+
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
 function baseUrl(): string { return process.env.NOOBCLAW_API_BASE_URL || DEFAULT_BASE_URL; }
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
@@ -397,7 +407,7 @@ async function publishOne(
     try { loggedIn = await checkKernelLogin(accountId, platformKey(acc)); } catch { loggedIn = true; }
     if (!loggedIn) {
       setAccountStatus(accountId, 'login_required');
-      log('⚠️ 币安登录态失效,弹窗扫码重连(其它号照跑)');
+      log(`⚠️ ${platLabel(opts.platform)}登录态失效,弹窗扫码重连(其它号照跑)`);
       if (!opts.signal?.aborted) { try { await promptReloginForExpiredAccount(accountId); } catch { /* ignore */ } }
       return { accountId, state: 'skipped', reason: 'login_expired' };
     }
@@ -512,7 +522,7 @@ async function publishOne(
     // 成功发布 → 按搬运形态扣费(repost_image_text / repost_video)。
     if (posted && cfg.autoPublish) {
       const actionType = (cfg.material === 'video') ? 'repost_video' : 'repost_image_text';
-      const res: any = await chargeAction(authToken, actionType, 'binance', candidate.source_url || candidate.post_id || '');
+      const res: any = await chargeAction(authToken, actionType, opts.platform, candidate.source_url || candidate.post_id || '');
       if (res && res.ok) {
         chargedCredits += Number(res.charged) || 0;
         chargedUsd += Number(res.cost_usd) || 0;
@@ -542,6 +552,7 @@ async function publishOne(
 async function rewriteVideoCaption(
   publishPack: any, srcText: string, srcAuthor: string, persona: string, language: string,
   authToken: string | undefined, onCost: (c: number, u: number) => void, signal?: AbortSignal,
+  platform?: string,
 ): Promise<{ ok: boolean; text?: string; reason?: string }> {
   const tpl = publishPack?.prompts?.rewriter;
   if (!tpl) return { ok: false, reason: 'no_rewriter_prompt' };
@@ -553,7 +564,7 @@ async function rewriteVideoCaption(
   const langName = LANG_NAME[String(language || '').toLowerCase()] || '中文 (Chinese)';
   const min = 30, max = 180, target = 110;
   const prompt = String(tpl)
-    .replace(/\{\{persona\}\}/g, persona || '币安广场用户,语气克制不喊单')
+    .replace(/\{\{persona\}\}/g, persona || `${platLabel(platform || 'binance')}用户,语气克制不喊单`)
     .replace(/\{\{language_name\}\}/g, langName)
     .replace(/\{\{source_text\}\}/g, String(srcText).slice(0, 1200))
     .replace(/\{\{source_author\}\}/g, srcAuthor || '匿名')
@@ -606,7 +617,7 @@ async function publishVideoOne(
     try { loggedIn = await checkKernelLogin(accountId, platformKey(acc)); } catch { loggedIn = true; }
     if (!loggedIn) {
       setAccountStatus(accountId, 'login_required');
-      log('⚠️ 币安登录态失效,弹窗扫码重连(其它号照跑)');
+      log(`⚠️ ${platLabel(opts.platform)}登录态失效,弹窗扫码重连(其它号照跑)`);
       if (!opts.signal?.aborted) { try { await promptReloginForExpiredAccount(accountId); } catch { /* ignore */ } }
       return { accountId, state: 'skipped', reason: 'login_expired' };
     }
@@ -618,7 +629,7 @@ async function publishVideoOne(
       try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
     };
     log('🧠 仿写视频配文…');
-    const cap = await rewriteVideoCaption(publishPack, candidate.text, candidate.author || '匿名', acc.persona || '', cfg.language || 'mixed', authToken, onAiCost, opts.signal);
+    const cap = await rewriteVideoCaption(publishPack, candidate.text, candidate.author || '匿名', acc.persona || '', cfg.language || 'mixed', authToken, onAiCost, opts.signal, opts.platform);
     if (!cap.ok || !cap.text) { setAccountStatus(accountId, 'idle'); log('❌ 配文仿写失败:' + cap.reason); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: cap.reason }; }
     log('✍️ 配文:' + cap.text.slice(0, 60) + '…');
 
@@ -631,14 +642,14 @@ async function publishVideoOne(
     }
 
     // 复用 binance.js 发布 driver:导航币安广场 → 视频 inline modal 上传 + 写正文 + 发文。
-    log('📤 上传视频到币安广场(复用发布 driver)…');
-    const r = await runMatrixDriver(accountId, 'binance' as any, { videoPath: candidate.video_path, description: cap.text } as any, (m) => log(m));
+    log(`📤 上传视频到${platLabel(opts.platform)}(复用发布 driver)…`);
+    const r = await runMatrixDriver(accountId, opts.platform as any, { videoPath: candidate.video_path, description: cap.text } as any, (m) => log(m));
     if (!r || !r.ok) { closeReason = r?.reason; setAccountStatus(accountId, 'idle'); log('❌ 视频发布失败:' + (r?.reason || 'unknown')); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: r?.reason || 'driver_failed' }; }
 
     counts.post += 1;
     log('✅ 视频已发布');
     // 成功 → 扣 repost_video。
-    const chg: any = await chargeAction(authToken, 'repost_video', 'binance', candidate.source_url || candidate.post_id || '');
+    const chg: any = await chargeAction(authToken, 'repost_video', opts.platform, candidate.source_url || candidate.post_id || '');
     if (chg && chg.ok) { chargedCredits += Number(chg.charged) || 0; chargedUsd += Number(chg.cost_usd) || 0; }
     setAccountStatus(accountId, 'idle');
     try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
@@ -663,8 +674,19 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
   }
   const accIds = opts.accountIds || [];
   if (!accIds.length) {
-    opts.onLog?.('', '⚠️ 本任务未选择任何币安账号');
+    opts.onLog?.('', `⚠️ 本任务未选择任何${platLabel(opts.platform)}账号`);
     return { platform: opts.platform, total: 0, success: 0, failed: 0, skipped: 0, items: [] };
+  }
+  // 视频搬运需要该平台的视频发布 driver(backend/matrix/drivers/<平台>.js)。交易所广场四家
+  // 只做发帖 + 互动、没有 driver —— 必须在【采集开始前】拦住:否则会先把 N 条视频下载完
+  // (耗时 + 带宽 + 可能已扣采集费),一路跑到 runMatrixDriver 才失败。
+  if (opts.config?.material === 'video' && !VIDEO_REPOST_PLATFORMS.has(opts.platform)) {
+    const reason = `❌ ${platLabel(opts.platform)}不支持视频搬运(该平台没有视频发布能力),请把素材类型改成图文`;
+    for (const id of accIds) opts.onLog?.(id, reason);
+    return {
+      platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length,
+      items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'video_repost_unsupported' })),
+    };
   }
   const cfg = opts.config;
   if (!cfg?.sourceAccountId) {
@@ -680,7 +702,7 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
   const collectScenarioId = `binance_repost_collect_${cfg.sourcePlatform}`;
   const [collectPack, publishPack] = await Promise.all([
     needCollectPack ? fetchPack(collectScenarioId) : Promise.resolve(null),
-    fetchPack('binance_repost'),
+    fetchPack(`${opts.platform}_repost`),
   ]);
   if (needCollectPack && !collectPack?.orchestrator) {
     const reason = `❌ 采集剧本(${collectScenarioId})拉取失败:可能后端未部署该来源平台的采集器`;
@@ -688,7 +710,7 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
     return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_collect_scenario' })) };
   }
   if (!publishPack?.orchestrator) {
-    const reason = `❌ 币安发布剧本(binance_repost)拉取失败:可能后端未部署`;
+    const reason = `❌ ${platLabel(opts.platform)}发布剧本(${opts.platform}_repost)拉取失败:可能后端未部署`;
     for (const id of accIds) { opts.onLog?.(id, reason); }
     return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_publish_scenario' })) };
   }

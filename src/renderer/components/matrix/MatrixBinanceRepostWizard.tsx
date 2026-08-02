@@ -20,7 +20,12 @@ type WizardStep = 1 | 2 | 3 | 4;
 
 export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
-const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
+const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条',
+  gate: 'Gate广场', bitget: 'Bitget Insight', bybit: 'Bybit Byx', okx: 'OKX星球' };
+// 有视频发布能力的目标平台 —— 只有这些才给「视频」素材选项。
+// 交易所广场四家(gate/bitget/bybit/okx)只做发帖 + 互动,后端 matrix/drivers 下没有它们的
+// 视频发布 driver;给了选项用户选了也只会在跑到发布那步才失败,所以这里直接不展示。
+const VIDEO_REPOST_PLATFORMS = new Set<string>(['binance']);
 
 // 来源平台按【搬运形态】给:图文→小红书 / X;视频→抖音 / TikTok。只列已实现的平台(不展示「敬请期待」)。
 type SrcOpt = { id: 'xhs' | 'douyin' | 'tiktok' | 'x'; label: string; enabled: boolean };
@@ -80,8 +85,14 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
   }, [accounts, accountsLoading]);
 
   const br = initialTask?.binanceRepost || {};
-  const [material, setMaterial] = useState<'image' | 'video'>(br.material || 'video'); // 默认视频
-  const [sourcePlatform, setSourcePlatform] = useState<'xhs' | 'douyin' | 'tiktok' | 'x'>(br.sourcePlatform || firstEnabledSource(br.material || 'video'));
+  const supportsVideo = VIDEO_REPOST_PLATFORMS.has(String(platform || ''));
+  // 默认视频;但目标平台不支持视频搬运时只能是图文(见 VIDEO_REPOST_PLATFORMS)。
+  const [material, setMaterial] = useState<'image' | 'video'>(
+    supportsVideo ? (br.material || 'video') : 'image',
+  );
+  const [sourcePlatform, setSourcePlatform] = useState<'xhs' | 'douyin' | 'tiktok' | 'x'>(
+    br.sourcePlatform || firstEnabledSource(supportsVideo ? (br.material || 'video') : 'image'),
+  );
   const [sourceAccountId, setSourceAccountId] = useState<string>(br.sourceAccountId || '');
   const [withImage, setWithImage] = useState<boolean>(br.withImage !== false);
   const [language, setLanguage] = useState<string>(br.language || 'mixed');
@@ -202,13 +213,15 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🎞️ {i18nService.t('wzBnRepostMaterialLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzBnRepostMaterialHint')}</span></label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className={`grid gap-2 ${supportsVideo ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <button type="button" onClick={() => { setMaterial('image'); setSourcePlatform(firstEnabledSource('image')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'image' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
                   🖼️ {i18nService.t('wzBnRepostMaterialImage')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostMaterialImageDesc')}</div>
                 </button>
+                {supportsVideo && (
                 <button type="button" onClick={() => { setMaterial('video'); setSourcePlatform(firstEnabledSource('video')); setSourceAccountId(''); }} className={`px-3 py-2.5 rounded-lg text-sm border text-left transition-colors ${material === 'video' ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-amber-500/50'}`}>
                   🎬 {i18nService.t('wzBnRepostMaterialVideo')}<div className="text-[11px] text-gray-400 font-normal mt-0.5">{i18nService.t('wzBnRepostMaterialVideoDesc')}</div>
                 </button>
+                )}
               </div>
             </div>
 

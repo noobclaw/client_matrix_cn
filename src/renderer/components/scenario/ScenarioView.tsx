@@ -101,6 +101,10 @@ const MATRIX_REDDIT_POST_PLATFORMS = new Set<PlatformId>(['reddit']);
 const MATRIX_IG_POST_PLATFORMS = new Set<PlatformId>(['instagram']);
 // 「币安广场批量搬运」(binance_repost):1 个源平台采集号搜+下 → N 个币安号各领一条仿写发。发布目标=币安。
 const MATRIX_BINANCE_REPOST_PLATFORMS = new Set<PlatformId>(['binance']);
+// 交易所广场四家的「批量搬运」。⚠️ 与币安那张卡分开渲染:共用 runner 和向导,但卡片文案
+//   必须只出现当前平台自己的名字。另:这四家【没有视频发布 driver】,只支持图文搬运。
+const MATRIX_EXCHANGE_REPOST_PLATFORMS = new Set<PlatformId>(['gate', 'bitget', 'bybit', 'okx']);
+const isSquareRepostScenario = (id: string): boolean => /^(binance|gate|bitget|bybit|okx)_repost$/.test(String(id || ''));
 // 交易所广场三家的「自动发帖」。⚠️ 故意【不并进 MATRIX_BINANCE_POST_PLATFORMS】——
 //   它们是三个完全独立的平台,卡片文案/剧本/账号体系各自独立,合并会导致 UI 上出现
 //   别家平台的文案(用户明确要求:每个平台的界面不能混入其他平台的字样)。
@@ -951,7 +955,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
   const openMatrixRepostWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
-    if (await hasDupTask(platform, 'binance_repost', '币安广场搬运')) return;
+    // 剧本 id 按平台推:binance_repost / gate_repost / bitget_repost / bybit_repost / okx_repost。
+    if (await hasDupTask(platform, `${platform}_repost`, `${platformDisplayName(platform)}${i18nService.t('svDupRepostSuffix')}`)) return;
     setMatrixRepostAccounts([]); setMatrixRepostSourceAccounts([]);
     setMatrixRepostAccountsLoading(true);
     setMatrixRepostTask(null);
@@ -978,7 +983,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
     };
-    const r = await m?.saveTask?.({ id: matrixRepostTask?.id, platform: matrixRepostPlatform, type: 'binance_repost', name: input.name, accountIds: input.accountIds, binanceRepost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await m?.saveTask?.({ id: matrixRepostTask?.id, platform: matrixRepostPlatform, type: `${matrixRepostPlatform}_repost`, name: input.name, accountIds: input.accountIds, binanceRepost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixRepostPlatform; setMatrixRepostPlatform(null); setMatrixRepostTask(null); setDupNotice({ platform: dp as string, label: '币安广场搬运' }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
@@ -1418,7 +1423,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (String(task.scenario_id || '') === 'binance_repost') { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -1796,6 +1801,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* 币安广场批量搬运(矩阵多账号)—— 币安:1 个源平台采集号搜+下素材 → N 个币安号各领一条 AI 仿写 + 配源图 → 发币安广场。 */}
+          {/* 交易所广场四家的批量搬运。与币安那张卡分开:描述文案用 svCardExchangeRepostDesc1
+              (不含平台名),平台名只由 platLabel 动态给出。 */}
+          {MATRIX_EXCHANGE_REPOST_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> {i18nService.t('svSectionRepost')}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">♻️ {platLabel} · {i18nService.t('svCardRepostTitle')}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                {i18nService.t('svCardExchangeRepostDesc1')}<strong>{i18nService.t('svCardRepostDescStrong')}</strong>{i18nService.t('svCardRepostDesc2')}
+              </div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+                <button type="button" onClick={() => openMatrixRepostWizard(currentPlatform)} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500 text-white text-sm font-bold hover:bg-cyan-600 shadow-sm shadow-cyan-500/25 transition-all active:scale-95">♻️ {i18nService.t('svStartRepost')}</button>
+                <button type="button" onClick={() => onSwitchToManage?.(currentPlatform as any)} className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">{i18nService.t('svHasTasks')}</button>
+              </div>
+            </div>
+          )}
           {MATRIX_BINANCE_REPOST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
@@ -2524,7 +2546,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <MatrixBinanceRepostWizard
-              platformLabel={(() => { const p = matrixRepostPlatform; return p === 'binance' ? '币安广场' : String(p); })()}
+              platformLabel={platformDisplayName(String(matrixRepostPlatform))}
               platform={matrixRepostPlatform}
               accounts={matrixRepostAccounts}
               sourceAccounts={matrixRepostSourceAccounts}
