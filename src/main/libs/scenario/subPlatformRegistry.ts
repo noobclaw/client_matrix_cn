@@ -83,6 +83,8 @@ export const SUB_PLATFORM_REGISTRY: Record<string, SubPlatformMeta> = {
   bitget_square:    { label: 'Bitget·广场', emoji: '🔵', domain: 'www.bitget.com/insights' },
   // Bybit 的广场叫 ByX(页面 title「ByX creator center」),路径 /social。
   bybit_square:     { label: 'ByX',         emoji: '🟠', domain: 'www.bybit.com/social' },
+  // OKX 的广场叫「星球」(英文 Orbit),路径 /orbit。
+  okx_square:       { label: 'OKX·星球',    emoji: '⚫', domain: 'www.okx.com/orbit' },
   // 视频自动发布【专用复用窗口】—— 跟上面那些「一平台一子域一窗口」不同:video
   // publish 流程刻意把【所有勾选平台】塞进这一个 windowKey 的【同一个 tab】里,靠
   // navigate 串行切换上传页(douyin→xhs→tiktok…),避免 9 平台开 9 窗口爆炸。domain
@@ -148,6 +150,7 @@ const HOST_TO_SUB_PLATFORM: Array<[RegExp, string]> = [
   [/(\.|^)gate\.(com|io)$/i,       'gate_square'],
   [/(\.|^)bitget\.com$/i,          'bitget_square'],
   [/(\.|^)bybit\.com$/i,           'bybit_square'],
+  [/(\.|^)okx\.com$/i,             'okx_square'],
 ];
 
 export function urlToSubPlatform(url: string | undefined | null): string | null {

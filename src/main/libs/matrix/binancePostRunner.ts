@@ -57,11 +57,12 @@ const BINANCE_LOGIN_HOME: Record<string, string> = {
   gate: 'https://www.gate.com/zh/post',
   bitget: 'https://www.bitget.com/zh-CN/insights',
   bybit: 'https://www.bybit.com/en/social/',
+  okx: 'https://www.okx.com/zh-hans/orbit',
 };
-// 日志用平台名 —— 本 runner 服务 7 个平台,提示语不能写死「币安」(用户实拍:IG 任务弹「币安登录态失效」)。
+// 日志用平台名 —— 本 runner 服务 8 个平台,提示语不能写死「币安」(用户实拍:IG 任务弹「币安登录态失效」)。
 const PLATFORM_LABEL: Record<string, string> = {
   binance: '币安广场', facebook: 'Facebook', reddit: 'Reddit', instagram: 'Instagram',
-  gate: 'Gate 广场', bitget: 'Bitget 广场', bybit: 'Bybit ByX',
+  gate: 'Gate广场', bitget: 'Bitget Insight', bybit: 'Bybit Byx', okx: 'OKX星球',
 };
 
 export interface BinancePostTaskOptions {

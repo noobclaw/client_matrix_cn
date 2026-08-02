@@ -43,6 +43,7 @@ const PLATFORM_TO_MAIN_SUBPLATFORM: Record<LoginPlatform, string> = {
   gate:       'gate_square',
   bitget:     'bitget_square',
   bybit:      'bybit_square',
+  okx:        'okx_square',
 };
 
 const PLATFORM_TO_CREATOR_SUBPLATFORM: Partial<Record<LoginPlatform, string>> = {
@@ -69,7 +70,7 @@ export interface PlatformLoginStatus {
 // use PlatformLoginStatus.
 export type XhsLoginStatus = PlatformLoginStatus;
 
-export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit' | 'gate' | 'bitget' | 'bybit';
+export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit' | 'gate' | 'bitget' | 'bybit' | 'okx';
 
 const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   // (?<!creator\.) 排除 creator.xiaohongshu.com 子域 —— 用户只打开
@@ -123,6 +124,8 @@ const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   gate: /gate\.(com|io)\/(?:[a-z-]+\/)?post/i,
   bitget: /bitget\.com\/(?:[a-z-]+\/)?insights/i,
   bybit: /bybit\.com\/(?:[a-z-]+\/)?social/i,
+  //   OKX    : okx.com/zh-hans/orbit(广场叫「星球」,英文 Orbit)
+  okx: /okx\.com\/(?:[a-z-]+\/)?orbit/i,
 };
 
 const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
@@ -142,6 +145,7 @@ const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
   gate: 'gate_tab_not_reachable',
   bitget: 'bitget_tab_not_reachable',
   bybit: 'bybit_tab_not_reachable',
+  okx: 'okx_tab_not_reachable',
 };
 
 const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
@@ -161,6 +165,7 @@ const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
   gate: 'https://www.gate.com/zh/post',
   bitget: 'https://www.bitget.com/zh-CN/insights',
   bybit: 'https://www.bybit.com/en/social/',
+  okx: 'https://www.okx.com/zh-hans/orbit',
 };
 
 /** v2.6+: chrome-extension tab-group label/color per platform.
@@ -194,6 +199,7 @@ export const PLATFORM_TAB_GROUPS: Record<LoginPlatform, { title: string; color: 
   gate:     {title: '🤖 Gate · NoobClaw',      color: 'cyan'   },
   bitget:   {title: '🤖 Bitget · NoobClaw',    color: 'blue'   },
   bybit:    {title: '🤖 Bybit · NoobClaw',     color: 'yellow' },
+  okx:      {title: '🤖 OKX · NoobClaw',       color: 'grey'   },
 };
 
 /** Single source of truth for "which platform does this regex string target".
@@ -221,6 +227,7 @@ export function inferPlatformFromPattern(pattern: string | undefined): LoginPlat
   // 现有全部 pattern 里没有任何一个含 gate / bitget / bybit 字样,不会误命中)。
   if (/bitget/i.test(pattern)) return 'bitget';
   if (/bybit/i.test(pattern)) return 'bybit';
+  if (/okx/i.test(pattern)) return 'okx';
   if (/gate/i.test(pattern)) return 'gate';
   if (/twitter|x\\?\.com/i.test(pattern)) return 'x';
   return undefined;

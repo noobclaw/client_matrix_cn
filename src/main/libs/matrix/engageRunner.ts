@@ -27,6 +27,7 @@ const PLATFORM_HOME: Record<string, string> = {
   instagram: 'https://www.instagram.com/', facebook: 'https://www.facebook.com/', reddit: 'https://www.reddit.com/',
   // 交易所广场三家:直接落各自广场页(互动的对象就在这个信息流里)。
   gate: 'https://www.gate.com/zh/post', bitget: 'https://www.bitget.com/zh-CN/insights', bybit: 'https://www.bybit.com/en/social/',
+  okx: 'https://www.okx.com/zh-hans/orbit',
 };
 // 视频下载直链的 Referer(各平台 CDN 防盗链要求,给错会 403)。video_download 剧本走 downloadVideoToDisk 时按平台取。
 const DOWNLOAD_REFERER: Record<string, string> = {

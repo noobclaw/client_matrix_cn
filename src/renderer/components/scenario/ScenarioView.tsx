@@ -51,22 +51,22 @@ import MatrixInstagramPostWizard, { type InstagramPostWizardSave } from '../matr
 import MatrixBinanceRepostWizard, { type BinanceRepostWizardSave } from '../matrix/MatrixBinanceRepostWizard';
 import MatrixViralRewriteWizard, { type ViralRewriteWizardSave } from '../matrix/MatrixViralRewriteWizard';
 
-type PlatformId = 'xhs' | 'x' | 'binance' | 'gate' | 'bitget' | 'bybit' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'reddit' | 'video';
+type PlatformId = 'xhs' | 'x' | 'binance' | 'gate' | 'bitget' | 'bybit' | 'okx' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'reddit' | 'video';
 
 // 矩阵 tab 顺序:多平台视频创作放最前(用户要求),其后与「我的矩阵账号」平台顺序一致(含视频号/头条)。
 // ⚠️ 这是【平台 tab 的唯一顺序来源】,账号页(MatrixView 的 PLATFORMS)必须与它保持一致
 //    —— 两处曾经漂移过(本文件末尾是 facebook/reddit/instagram,账号页却是 instagram/facebook/reddit,
 //    而旧注释还写着"已与 PLATFORMS 一致"),用户在两个页面之间来回切会觉得错乱。改任一处都要同步另一处。
 // 交易所广场三家紧跟在币安广场后面(同类平台聚在一起,用户按"广场"找得到)。
-// 📌 CN 版特有的顺序:交易所广场四家(币安/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
-//    (三家紧跟币安广场、整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
-const MATRIX_TAB_ORDER: PlatformId[] = ['video', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'bitget', 'bybit', 'gate'];
-// 交易所广场(web3 属性)四家 —— 国内版 HIDE_WEB3 时整组隐藏,口径与「我的矩阵账号」页
-// 的 VISIBLE_PLATFORMS 保持一致(那边同名常量)。
-const WEB3_SQUARE_TABS: PlatformId[] = ['binance', 'bitget', 'bybit', 'gate'];
+// 📌 CN 版特有的顺序:交易所广场四家(币安/OKX/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
+//    (紧跟币安广场、整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
+const MATRIX_TAB_ORDER: PlatformId[] = ['video', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'okx', 'bitget', 'bybit', 'gate'];
+// 交易所广场(web3 属性)五家 —— 国内版 HIDE_WEB3 时整组隐藏,口径与「我的矩阵账号」页
+// 的 WEB3_SQUARE_PLATFORMS 保持一致(那边同名常量)。
+const WEB3_SQUARE_TABS: PlatformId[] = ['binance', 'okx', 'bitget', 'bybit', 'gate'];
 // 后端 backend/matrix/scenarios 有 <platform>_auto_engage 互动涨粉剧本的平台(共 8 个)。
 // 视频号/头条暂无 engage 剧本 → tab 仍展示(与账号页一致),但「开始创作」标注「即将上线」不放行,避免跑出错任务。
-const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'x', 'binance', 'gate', 'bitget', 'bybit', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram']);
+const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'x', 'binance', 'gate', 'bitget', 'bybit', 'okx', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram']);
 // 后端 backend/matrix/scenarios 有 <platform>_reply_fans_comment「自动回复粉丝」剧本的平台。
 // 小红书(逐篇笔记进详情页回复,主站登录态即覆盖创作者中心)+ 快手(创作者中心评论管理,需
 // loginScope='creator' 账号)+ 哔哩哔哩(member.bilibili.com 创作中心评论管理,登录 cookie 挂
@@ -104,7 +104,7 @@ const MATRIX_BINANCE_REPOST_PLATFORMS = new Set<PlatformId>(['binance']);
 // 交易所广场三家的「自动发帖」。⚠️ 故意【不并进 MATRIX_BINANCE_POST_PLATFORMS】——
 //   它们是三个完全独立的平台,卡片文案/剧本/账号体系各自独立,合并会导致 UI 上出现
 //   别家平台的文案(用户明确要求:每个平台的界面不能混入其他平台的字样)。
-const MATRIX_EXCHANGE_POST_PLATFORMS = new Set<PlatformId>(['gate', 'bitget', 'bybit']);
+const MATRIX_EXCHANGE_POST_PLATFORMS = new Set<PlatformId>(['gate', 'bitget', 'bybit', 'okx']);
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -164,6 +164,7 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'video', labelKey: 'scenarioPlatformVideo', icon: '🎬', enabled: true },
   { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '🔶', enabled: true },
   // 交易所广场三家 —— 各自独立平台,紧跟币安广场。
+  { id: 'okx', labelKey: 'scenarioPlatformOkx', icon: '⚫', enabled: true },
   { id: 'bitget', labelKey: 'scenarioPlatformBitget', icon: '🔵', enabled: true },
   { id: 'bybit', labelKey: 'scenarioPlatformBybit', icon: '🟠', enabled: true },
   { id: 'gate', labelKey: 'scenarioPlatformGate', icon: '🟦', enabled: true },
@@ -193,7 +194,7 @@ const platformDisplayName = (id: string): string => {
 /** 走「自动发帖」向导的平台判定(币安广场 + 交易所广场三家)。它们共用 binancePostRunner:
  *  后端剧本 id 一律是 `${platform}_post`,所以这里加平台不需要改 runner。 */
 const isSquarePostScenario = (scenarioId: string): boolean =>
-  /^(binance|gate|bitget|bybit)_post$/.test(String(scenarioId || ''));
+  /^(binance|gate|bitget|bybit|okx)_post$/.test(String(scenarioId || ''));
 
 // v6.x: 原 SECTION_TABS(我的涨粉任务 / 运行记录 两个 L1 段 tab)已移除 —
 // 两段拆成两个独立左侧菜单(manage / runs),头部改为静态段标题,不再内切。
@@ -1148,7 +1149,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       const p = (t as any)?.platform || s?.platform;
       // v2.4.61: 漏了 'binance' — 进币安任务详情然后返回会跳回小红书 tab
       // v6.x:  漏了 'video' — 翻译二创(scenario.platform='video')详情返回也会掉小红书 tab
-      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'gate' || p === 'bitget' || p === 'bybit' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube' || (p as string) === 'facebook' || (p as string) === 'reddit' || (p as string) === 'instagram' || p === 'video') return p as PlatformId;
+      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'gate' || p === 'bitget' || p === 'bybit' || p === 'okx' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube' || (p as string) === 'facebook' || (p as string) === 'reddit' || (p as string) === 'instagram' || p === 'video') return p as PlatformId;
       return 'xhs';
     }
     return 'xhs';

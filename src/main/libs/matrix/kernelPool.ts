@@ -1093,7 +1093,8 @@ const LOGIN_COOKIES: Record<string, string[]> = {
 // 跳过 ① cookie 快筛的平台 —— 只靠下面 ② 的 DOM/localStorage 正向判据。
 //   binance:重 WAF,session cookie 名多变,登录着也常没 logined/p20t,硬卡会误杀好号。
 //   bitget :登录 cookie 尚未真机确认(见上),先豁免,确认后登记进 LOGIN_COOKIES 并从这里移除。
-const COOKIE_FASTPATH_EXEMPT = new Set<string>(['binance', 'bitget']);
+//   okx    :登录 cookie 尚未真机确认(同 bitget),先豁免。
+const COOKIE_FASTPATH_EXEMPT = new Set<string>(['binance', 'bitget', 'okx']);
 
 /** 该号当前【是否真的登录】对应平台 —— 统一活体校验(发布/涨粉/保活都调它)。分层:
  *  ① cookie 快筛:标志性 cookie 不在 → 必然没登录(不开窗折腾);
