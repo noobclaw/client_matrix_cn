@@ -130,7 +130,10 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || i18nService.t('wzBnRepostTaskName').replace('{platform}', PLATFORM_NAME[sourcePlatform]).replace('{n}', String(selectedIds.length)),
+        name: initialTask?.name || i18nService.t('wzBnRepostTaskName')
+          .replace(/\{target\}/g, PLATFORM_NAME[String(platform || '')] || String(platform || ''))
+          .replace('{platform}', PLATFORM_NAME[sourcePlatform] || sourcePlatform)
+          .replace('{n}', String(selectedIds.length)),
         accountIds: selectedIds,
         concurrency: 1,
         frequency: runInterval,
@@ -153,6 +156,20 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
 
   const langLabel = (l: string) => postLangLabel(l, i18nService.currentLanguage === 'zh');
   const srcAcc = sourceCandidates.find((a) => a.id === sourceAccountId);
+  // 勾选的【发布号】的赛道关键词并集 —— 搬运按这个搜素材(与 runner 口径一致)。
+  // 采集号只是借登录态去源平台搜的工具人,它自己的赛道(如小红书美食号)跟发布平台无关。
+  const publishKeywords = React.useMemo(() => {
+    const out: string[] = [];
+    for (const id of selectedIds) {
+      const a = accounts.find((x) => x.id === id);
+      if (!a || !Array.isArray(a.keywords)) continue;
+      for (const k of a.keywords) {
+        const kk = String(k || '').trim();
+        if (kk && out.indexOf(kk) < 0) out.push(kk);
+      }
+    }
+    return out;
+  }, [selectedIds, accounts]);
 
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
@@ -270,8 +287,8 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">🔍 {i18nService.t('wzBnRepostKeywordLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzBnRepostKeywordHint')}</span></label>
               <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-[12px] text-gray-600 dark:text-gray-300 min-h-[38px] flex items-center">
-                {srcAcc && Array.isArray(srcAcc.keywords) && srcAcc.keywords.length > 0
-                  ? srcAcc.keywords.join('、')
+                {publishKeywords.length > 0
+                  ? publishKeywords.join('、')
                   : <span className="text-amber-500">{i18nService.t('wzBnRepostNoKeywords')}</span>}
               </div>
             </div>
@@ -327,7 +344,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzBnRepostSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzBnRepostSummarySource')} value={`${PLATFORM_NAME[sourcePlatform]} · ${i18nService.t('wzBnRepostSummarySourceCollector').replace('{name}', srcAcc ? (srcAcc.nickname || srcAcc.displayName) : i18nService.t('wzBnRepostSummaryNotSelected'))}`} />
-              <SummaryRow label={i18nService.t('wzBnRepostSummaryKeyword')} value={srcAcc && Array.isArray(srcAcc.keywords) && srcAcc.keywords.length ? i18nService.t('wzBnRepostSummaryKeywordCount').replace('{n}', String(srcAcc.keywords.length)) : i18nService.t('wzBnRepostSummaryKeywordPlain')} />
+              <SummaryRow label={i18nService.t('wzBnRepostSummaryKeyword')} value={publishKeywords.length ? i18nService.t('wzBnRepostSummaryKeywordCount').replace('{n}', String(publishKeywords.length)) : i18nService.t('wzBnRepostSummaryKeywordPlain')} />
               <SummaryRow label={i18nService.t('wzBnRepostSummaryMaterial')} value={material === 'image' ? i18nService.t('wzBnRepostSummaryMaterialImage') : i18nService.t('wzBnRepostSummaryMaterialVideo')} />
               <SummaryRow label={i18nService.t('wzBnRepostSummaryPublisher')} value={i18nService.t('wzBnRepostSummaryPublisherValue').replace('{n}', String(selectedIds.length))} />
               <SummaryRow label={i18nService.t('wzBnRepostSummaryLanguage')} value={langLabel(language)} />
