@@ -1206,10 +1206,24 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
         + 'if(/请先登录|扫码登录|登录后即可|Log ?in to continue/i.test(t))return "0";'
         + 'return "?";}catch(e){return "?";}})()';
     } else if (platform === 'bybit') {
-      // Bybit ByX(2026-07-31 真机验):登录态顶栏是 Deposit / Assets / Orders;未登录是 Log In / Sign Up。
-      //   先判负向再判正向 —— 营销位可能出现 Deposit 字样,但登录着的页面【不会】有 Log In/Sign Up 按钮。
-      //   只取首屏 2000 字,避免信息流正文里的普通英文单词误命中。
-      probe = '(function(){try{'
+      // Bybit ByX(2026-08-03 真机勘察 · 登录态 + 游客态两态实测,取代原来的纯文字判据)。
+      //   判据 = 社区接口 POST /x-api/fht/social/v1/query/user/profile(空 body {} = 查【本人】):
+      //     登录 → ret_code:0 且 result.author_info.byx_uid 有值(实测 ZYE0NM)
+      //     游客 → 同样 HTTP 200:{"retCode":10007,"retMsg":"User authentication failed.","result":{}}
+      //   ⚠️ 两态的错误码字段名【不是同一个】:登录态回下划线 ret_code,游客态回驼峰 retCode
+      //     (两种响应出自不同网关层,实测如此)。所以正向认 author_info、负向认 retCode 10007,
+      //     别写成"没有 author_info 就是未登录" —— 那样限流/网关异常也会被判成未登录、好号被标过期。
+      //   ⚠️ 原来那对文字判据(前 2000 字找 Log In/Sign Up ↔ Deposit/Assets/Orders)【两态都不命中】:
+      //     真机实测登录态首屏是 Buy Crypto/Markets/Trade/ByX/Personal Center,游客态的 Log In 按钮
+      //     文字也不在 innerText 前段 → probe 恒回 "?",Bybit 一直只靠 ① 的 isLogin=1 cookie 单点判。
+      //     文字判据保留在最后做兜底(接口异常时仍有一线判据),但不再是主判据。
+      //   ⚠️ 必须 POST + content-type json + body "{}";GET 同一路径实测 404。
+      probe = '(async function(){try{'
+        + 'if(location.hostname.indexOf("bybit.com")<0)return "?";'
+        + 'var r=await fetch("/x-api/fht/social/v1/query/user/profile",{method:"POST",credentials:"include",headers:{accept:"application/json","content-type":"application/json"},body:"{}"});'
+        + 'if(r.status===200){var j=await r.json();var a=j&&j.result&&j.result.author_info;'
+        + 'if(a&&a.byx_uid)return "1";'
+        + 'if(j&&(String(j.retCode)==="10007"||/authentication failed/i.test(String(j.retMsg||""))))return "0";}'
         + 'var t=((document.body&&document.body.innerText)||"").slice(0,2000);'
         + 'if(/\\bLog ?In\\b|\\bSign ?Up\\b/i.test(t))return "0";'
         + 'if(/\\bDeposit\\b|\\bAssets\\b|\\bOrders\\b|充值|资产|订单/i.test(t))return "1";'
@@ -1416,11 +1430,21 @@ const IDENTITY_EXPR: Record<string, string> = {
   //   ⚠️ uid 必须限定在 navItem 上取:推荐关注/直播列表里全是同格式的别人的 /orbit/user/<数字>。
   okx: '(function(){try{var uid=null;var as=document.querySelectorAll(\'a[class*="navItem"][href*="/orbit/user/"]\');for(var i=0;i<as.length;i++){var seg=((as[i].getAttribute("href")||"").split("?")[0]).replace(/\\/+$/,"").split("/").pop();if(/^\\d{6,}$/.test(seg)){uid=seg;break;}}var nick=null,av=null;var card=document.querySelector(\'[class*="userCard"]\');if(card){var ne=card.querySelector(\'[class*="userName"]\');if(ne)nick=(ne.innerText||"").trim()||null;var im=card.querySelector("img");if(im)av=im.src||null;}return JSON.stringify({uid:uid,displayId:uid,nickname:nick,avatar:av});}catch(e){return "{}";}})()',
   // Bitget Insights:同 checkKernelLogin 用的那个接口(/v1/user/overview/userinfo,同域 cookie 鉴权)。
-  //   ⚠️ 【data 的字段名未经登录态真机确认】—— 2026-08-03 勘察时手上只有未登录态(接口只回 code 00004,
-  //     没有 data)。所以这里把常见写法全列上兜底(uid/userId/id、nickName/nickname/userName/name、
-  //     avatar/headImage/avatarUrl)。字段猜错的后果只是【读不到昵称】(卡片显示"账号信息未读取"),
-  //     不会影响登录判定 —— 拿到真登录号后打开 insights 跑一次这个接口,按真实 body 修字段名即可。
-  bitget: '(async function(){try{if(location.hostname.indexOf("bitget.com")<0)return "{}";var r=await fetch("/v1/user/overview/userinfo",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();if(!j||String(j.code)==="00004")return "{}";var d=j.data||{};var uid=d.uid||d.userId||d.id||null;var nick=d.nickName||d.nickname||d.userName||d.name||null;var av=d.avatar||d.headImage||d.avatarUrl||d.headPortrait||null;if(!uid&&!nick)return "{}";return JSON.stringify({uid:uid?String(uid):null,displayId:uid?String(uid):null,nickname:nick,avatar:av});}catch(e){return "{}";}})()',
+  //   【2026-08-03 登录态真机实测,字段名已确定】(此前是猜的,一个都没猜中):
+  //     data.displayName  = 广场显示名(实测 BGUSER-YSMJ8R75;data.userName 同值)
+  //     data.encryptUserId= 广场 uid(20 位 hex,与广场主页 URL /insights/user/<hex> 同格式)
+  //     data.userAvatar   = 头像(img.bgstatic.com)
+  //   ⚠️⚠️ 【绝不能碰的字段】data.userInfo 里:nickName 实测装的是【掩码邮箱】而不是昵称,
+  //     realName / givenName 装的是【KYC 实名】(实测确有真人姓名)。把这些取来当昵称 = 把用户的
+  //     实名/邮箱显示在账号卡上。只用上面 data 顶层那三个字段,别为了"兜底"去扫 userInfo。
+  bitget: '(async function(){try{if(location.hostname.indexOf("bitget.com")<0)return "{}";var r=await fetch("/v1/user/overview/userinfo",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();if(!j||String(j.code)==="00004")return "{}";var d=j.data||{};var uid=d.encryptUserId||null;var nick=d.displayName||d.userName||null;var av=d.userAvatar||null;if(!uid&&!nick)return "{}";return JSON.stringify({uid:uid,displayId:nick,nickname:nick,avatar:av});}catch(e){return "{}";}})()',
+  // Bybit ByX(2026-08-03 登录态真机实测):同 probe 用的社区接口(POST,空 body = 查本人)。
+  //   result.author_info:byx_uid = ByX 广场号(实测 ZYE0NM,做 displayId + uid);
+  //   username = 广场显示名(没设过 ByX 昵称的号,这里回落成【掩码邮箱】—— 是掩码不是明文,可以显示);
+  //   avatar_url 该号为空串 → 落 null(卡片回退首字母,不留空)。
+  //   ⚠️ author_info.user_id 实测恒为 "0"(空 body 查本人时不填),【不能拿它当 uid】—— 那样所有 Bybit
+  //     号的 uid 都会是 0,去重逻辑 findAccountByUid 会把两个不同的真实账号判成同一个。用 byx_uid。
+  bybit: '(async function(){try{if(location.hostname.indexOf("bybit.com")<0)return "{}";var r=await fetch("/x-api/fht/social/v1/query/user/profile",{method:"POST",credentials:"include",headers:{accept:"application/json","content-type":"application/json"},body:"{}"});var j=await r.json();var a=j&&j.result&&j.result.author_info;if(!a||!a.byx_uid)return "{}";return JSON.stringify({uid:String(a.byx_uid),displayId:String(a.byx_uid),nickname:a.username||null,avatar:a.avatar_url||null});}catch(e){return "{}";}})()',
 };
 // uid 在明文 cookie 里的平台(页面 expr 拿不到 uid 时,从 cookie 补)。
 const UID_COOKIE: Record<string, string> = { kuaishou: 'userId', toutiao: 'sso_uid_tt', bilibili: 'DedeUserID', instagram: 'ds_user_id', facebook: 'c_user' };
