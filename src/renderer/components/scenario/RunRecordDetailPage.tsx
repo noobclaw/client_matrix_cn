@@ -18,7 +18,7 @@ import React, { useEffect, useState } from 'react';
 import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { HIDE_WEB3, cnyFromUsd } from '../../buildFlags';
-import { scenarioService } from '../../services/scenario';
+import { scenarioService, exchangeSquareBadge } from '../../services/scenario';
 import { TRACK_META, trackDisplayName } from '../../services/trackNames';
 
 interface Props {
@@ -165,6 +165,9 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     const taskUrls = (rec.task_snapshot && rec.task_snapshot.urls) || [];
     const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
       || (Array.isArray(taskUrls) && taskUrls.length > 0 && sc.platform === 'xhs');
+    // 交易所广场 —— 第 5 处写死的平台链条,同样缺这 12 个 sid,兜底会落到 rrBadgeXhsEngage。
+    const ex = exchangeSquareBadge(sid);
+    if (ex) return { icon: ex.icon, label: `${i18nService.t(ex.platKey)} · ${i18nService.t(ex.actionKey)}`, color: ex.color };
     if (sid === 'x_auto_engage')                  return { icon: '🐦', label: i18nService.t('rrBadgeXEngage'), color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
     if (sid === 'x_post_creator')                 return { icon: '📝', label: i18nService.t('rrBadgeXPost'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: i18nService.t('rrBadgeXLinkRewrite'), color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };

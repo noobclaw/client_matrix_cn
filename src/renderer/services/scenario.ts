@@ -142,8 +142,13 @@ const MATRIX_TWEET_META: Record<string, { name_zh: string; icon: string }> = {
 };
 
 // 「币安广场自动发帖」剧本(backend/matrix/scenarios/binance_post)。N 号各自抓 web3 资讯 AI 原创一条币安广场图文 + 可选配图 → 发币安广场。目前仅币安。
+// ⚠️ 交易所广场四家共用这套发帖链路(runner 按 platform 推剧本 id `${platform}_post`)。
+//    只登记 binance 的话:① 用 scenario_id 建/编辑 gate_post 任务时匹配不到这张表 → 落到兜底
+//    被改成 engage、binancePost 配置丢失;② 下面的 synthBinance 补不出剧本快照 → 任务归不到
+//    对应平台 tab、卡片名回退。
 const MATRIX_BINANCE_SCENARIO_ID: Record<string, string> = {
   binance: 'binance_post',
+  gate: 'gate_post', bitget: 'bitget_post', bybit: 'bybit_post', okx: 'okx_post',
 };
 const MATRIX_BINANCE_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_BINANCE_SCENARIO_ID).map(([p, id]) => [id, p]));
@@ -164,6 +169,37 @@ const MATRIX_REPOST_META: Record<string, string> = {
   binance: '币安广场 批量搬运', gate: 'Gate广场 批量搬运', bitget: 'Bitget Insight 批量搬运',
   bybit: 'Bybit Byx 批量搬运', okx: 'OKX星球 批量搬运',
 };
+
+// ── 交易所广场(gate / okx / bitget / bybit)的任务徽章 ──
+// 这 4 家各有 engage / post / repost 三个剧本 = 12 个 scenario_id,而 MyTasksPage /
+// RunHistoryPage / TaskDetailPage 里那三条【写死的平台链条】一个都没登记它们 →
+// 一路 fallthrough 到链尾的小红书默认值:OKX 的互动任务卡片显示成「小红书 · 互动涨粉」、
+// 详情页显示「直接发布到 小红书」(2026-08-03 用户实拍)。
+// 标签用【已有的】平台名 key + 动作名 key 拼出来,9 种语言全覆盖,不必为 12 个剧本
+// 各补 9 条文案。以后再加交易所只改这张表,三个页面不用动。
+export const EXCHANGE_SQUARE_META: Record<string, { platKey: string; icon: string; color: string }> = {
+  gate: { platKey: 'scenarioPlatformGate', icon: '🟦', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' },
+  okx: { platKey: 'scenarioPlatformOkx', icon: '⚫', color: 'text-slate-400 bg-slate-500/10 border-slate-500/30' },
+  bitget: { platKey: 'scenarioPlatformBitget', icon: '🔵', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' },
+  bybit: { platKey: 'scenarioPlatformBybit', icon: '🟠', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' },
+};
+// 动作名复用现成的卡片标题 key:互动涨粉 / 自动发帖 / 批量搬运(9 语言都有)。
+const EXCHANGE_ACTION_KEY: Record<string, string> = {
+  auto_engage: 'svCardEngageTitle', post: 'svCardBinancePostTitle', repost: 'svCardRepostTitle',
+};
+/** scenario_id → 徽章信息;不是交易所广场剧本返回 null(调用方继续走自己的链条)。 */
+export function exchangeSquareBadge(scenarioId?: string):
+  { platform: string; platKey: string; actionKey: string; icon: string; color: string } | null {
+  const m = /^(gate|okx|bitget|bybit)_(auto_engage|post|repost)$/.exec(String(scenarioId || ''));
+  if (!m) return null;
+  const meta = EXCHANGE_SQUARE_META[m[1]];
+  return { platform: m[1], platKey: meta.platKey, actionKey: EXCHANGE_ACTION_KEY[m[2]], icon: meta.icon, color: meta.color };
+}
+/** 平台名的 i18n key(给「直接发布到 X」这类文案用);不是交易所返回 null。 */
+export function exchangeSquarePlatformKey(platform?: string, scenarioId?: string): string | null {
+  const p = platform && EXCHANGE_SQUARE_META[platform] ? platform : (exchangeSquareBadge(scenarioId)?.platform || '');
+  return (p && EXCHANGE_SQUARE_META[p]?.platKey) || null;
+}
 
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
  *  配额映射到 daily_*_min/max 这套 douyin_auto_engage 字段)。 */

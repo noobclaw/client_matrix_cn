@@ -21,7 +21,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { TRACK_META, trackDisplayName } from '../../services/trackNames';
-import { scenarioService, type Scenario, type Task } from '../../services/scenario';
+import { scenarioService, exchangeSquareBadge, type Scenario, type Task } from '../../services/scenario';
 
 interface Props {
   /** Tasks already filtered to a single platform by the parent. The parent
@@ -455,6 +455,11 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // Twitter: 推特 · 互动涨粉 / 推特 · 自动发推 / 指定链接仿写
               // XHS:     小红书 · 爆款批量仿写 / 小红书 · 指定链接爆款仿写 / 小红书 · 互动涨粉
               const typeLabel = (() => {
+                // 交易所广场(gate/okx/bitget/bybit × engage/post/repost):这 12 个 sid 以前
+                // 一个都没登记,全都掉到链尾的小红书默认值 → 卡片显示「小红书 · 互动涨粉」。
+                // 放最前面,平台名 + 动作名都走 i18n。
+                const ex = exchangeSquareBadge(sid);
+                if (ex) return { icon: ex.icon, k: ex.actionKey, color: ex.color, prefixKey: ex.platKey };
                 if (sid === 'x_auto_engage')                  return { icon: '🐦', k: 'scnXEngage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
                 if (sid === 'x_post')                         return { icon: '🐦', k: 'scnXPost', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'binance_post')                   return { icon: '📊', k: 'scnBnPost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
@@ -525,6 +530,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if ((plat as any) === 'toutiao')  return { icon: '📰', k: 'scnToutiaoTask', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
                 return { icon: '🔥', k: 'scnXhsViral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
+              // 徽章文案:交易所广场那条带 prefixKey,拼成「平台 · 动作」;其余沿用单 key。
+              const typeLabelText = (typeLabel as any).prefixKey
+                ? `${i18nService.t((typeLabel as any).prefixKey)} · ${i18nService.t(typeLabel.k)}`
+                : i18nService.t(typeLabel.k);
               // Track / display name
               const track = TRACK_META[task.track];
               const subTitle = (() => {
@@ -534,7 +543,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (track) return trackDisplayName(task.track, i18nService.currentLanguage);
                 // scenario 快照常缺发帖类新平台(facebook_post/reddit_post/instagram_post 等)→ 落 scenario_id
                 // 会显示原始英文 id(用户实拍「facebook_post」)。改用已翻译的类型徽章名兜底,任何 UI 语言都可读。
-                return scenario?.name_zh || i18nService.t(typeLabel.k);
+                return scenario?.name_zh || typeLabelText;
               })();
               const subIcon = track?.icon || (isVideoDownload ? '⬇️' : (isXhsLinkMode || isLinkRewriteTwitter ? '🔗' : scenario?.icon || '🔥'));
               const personaSnippet = (task.persona || '').trim().split('\n')[0].slice(0, 80);
@@ -558,7 +567,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         {platMeta.icon} {platMeta.label}
                       </span>
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
-                        {typeLabel.icon} {i18nService.t(typeLabel.k)}
+                        {typeLabel.icon} {typeLabelText}
                       </span>
                       {!isAnyLinkRewrite && !isImageTextTask && (
                         <>

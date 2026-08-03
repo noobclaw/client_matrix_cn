@@ -735,7 +735,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
     };
-    const r = await m?.saveTask?.({ id: matrixBinanceTask?.id, platform: matrixBinancePlatform, type: `${matrixBinancePlatform}_post`, name: input.name, accountIds: input.accountIds, binancePost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    // 🚨 type 是【任务类型枚举】(MatrixTaskType),不是剧本 id —— 不能拼成 `${platform}_post`。
+    //    binance 只是碰巧拼出合法的 'binance_post';gate/okx/bitget/bybit 拼出 'gate_post' 这种
+    //    白名单里没有的值 → sidecar 的 runMatrixTaskById 直接 `unsupported_task_type`,发帖任务
+    //    建得出来但一跑就跳过(2026-08-03 用户实测)。剧本 id 由 runner 按 platform 推(`${platform}_post`)。
+    const r = await m?.saveTask?.({ id: matrixBinanceTask?.id, platform: matrixBinancePlatform, type: 'binance_post', name: input.name, accountIds: input.accountIds, binancePost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixBinancePlatform; setMatrixBinancePlatform(null); setMatrixBinanceTask(null); setDupNotice({ platform: dp as string, label: `${platformDisplayName(String(dp))}${i18nService.t('svDupPostSuffix')}` }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
@@ -984,7 +988,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
     };
-    const r = await m?.saveTask?.({ id: matrixRepostTask?.id, platform: matrixRepostPlatform, type: `${matrixRepostPlatform}_repost`, name: input.name, accountIds: input.accountIds, binanceRepost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    // 同上:type 用枚举 'binance_repost',剧本 id 走 `${platform}_repost` 由 runner 推。
+    const r = await m?.saveTask?.({ id: matrixRepostTask?.id, platform: matrixRepostPlatform, type: 'binance_repost', name: input.name, accountIds: input.accountIds, binanceRepost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixRepostPlatform; setMatrixRepostPlatform(null); setMatrixRepostTask(null); setDupNotice({ platform: dp as string, label: '币安广场搬运' }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');

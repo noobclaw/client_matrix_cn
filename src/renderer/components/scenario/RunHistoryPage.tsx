@@ -17,7 +17,7 @@ import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { HIDE_WEB3, cnyFromUsd } from '../../buildFlags';
 import { friendlyRunError } from '../../services/runErrorMessage';
-import { scenarioService, type Scenario, type Task } from '../../services/scenario';
+import { scenarioService, exchangeSquareBadge, type Scenario, type Task } from '../../services/scenario';
 import { TRACK_META, trackDisplayName } from '../../services/trackNames';
 
 interface RunRecord {
@@ -41,6 +41,10 @@ interface RunRecord {
 function typeLabelForRecord(rec: RunRecord): { icon: string; label: string; color: string } {
   const sid = rec.scenario_snapshot.id;
   const wf = rec.scenario_snapshot.workflow_type;
+  // 交易所广场(gate/okx/bitget/bybit × engage/post/repost)—— 同 MyTasksPage,这 12 个 sid
+  // 以前全掉到链尾的小红书默认值。放最前面。
+  const ex = exchangeSquareBadge(sid);
+  if (ex) return { icon: ex.icon, label: `${i18nService.t(ex.platKey)} · ${i18nService.t(ex.actionKey)}`, color: ex.color };
   const taskUrls = (rec.task_snapshot && rec.task_snapshot.urls) || [];
   const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
     || (Array.isArray(taskUrls) && taskUrls.length > 0 && rec.scenario_snapshot.platform === 'xhs');

@@ -25,7 +25,7 @@ import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { matrixCmd } from './cdpCommands';
 import { runMatrixDriver, runMatrixDouyinSearch } from './driverCtx';
-import { contentUsageStore, defaultContentReuseCap, type ContentUsage } from './contentUsage';
+import { contentUsageStore, type ContentUsage } from './contentUsage';
 import { getAccount, setAccountStatus, effectiveKeywords, appendDerivedKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 import { getNoobClawAuthToken } from '../claudeSettings';
@@ -37,10 +37,15 @@ const REPOST_PLATFORM_LABEL: Record<string, string> = {
   binance: '币安广场', gate: 'Gate广场', bitget: 'Bitget Insight', bybit: 'Bybit Byx', okx: 'OKX星球',
 };
 function platLabel(p: string): string { return REPOST_PLATFORM_LABEL[p] || p; }
-// 有视频发布 driver(backend/matrix/drivers/<平台>.js)的平台 —— 只有这些才能做【视频】搬运。
-// 交易所广场四家只做发帖 + 互动,没有视频 driver,视频模式必须提前拦住,
-// 否则会一路跑到 runMatrixDriver 才失败(素材已下完、时间和带宽都白花)。
-const VIDEO_REPOST_PLATFORMS = new Set<string>(['binance']);
+// 能做【视频搬运】的目标平台 = 有 backend/matrix/drivers/<平台>.js 视频发布 driver 的平台。
+// 不在表里的平台走视频模式会被提前拦住(否则素材都下完了才在发布那步失败,时间和带宽全白花)。
+// 2026-08-03 真机逐个验过各交易所广场的发帖框:
+//   · gate  ✅ 支持视频,input[accept=video/*] 常驻 DOM(drivers/gate.js 已实现)
+//   · okx   ❌ 内联框和完整编辑器都只有 image/png,jpg,jpeg,gif,全页无视频入口 —— 平台就没这功能
+//   · bitget ✅ 展开发帖框后 input[accept=video/mp4] 就在 DOM 里(drivers/bitget.js 已实现)
+//   · bybit ✅ 平台支持(/social/publish 有 Photos|Video tab,≤200MB),但 input 要点「Add video」
+//            才创建,得走 TikTok 那套 chooser 拦截 —— driver 还没写,所以先不开
+const VIDEO_REPOST_PLATFORMS = new Set<string>(['binance', 'gate', 'bitget', 'bybit']);
 
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
 function baseUrl(): string { return process.env.NOOBCLAW_API_BASE_URL || DEFAULT_BASE_URL; }
@@ -173,8 +178,9 @@ function keywordMatch(text: any, kws: any): boolean {
   return kws.some((k: any) => k && t.indexOf(String(k).toLowerCase()) >= 0);
 }
 
-// 采集号内容去重 + 复用计数:同一条源最多用 cap 次(默认 3,见 contentUsage)。.set=已用满的 id;.record(id)=+1。
-const REPOST_CONTENT_CAP = defaultContentReuseCap();
+// 搬运的复用上限固定为 1 =【一个平台一条源内容只搬一次】(用户 2026-08-04 明确要求),
+// 所以这里【不再】读 env MATRIX_CONTENT_REUSE_CAP —— 那个 env 只影响爆款仿写等其它生产型任务。
+const REPOST_CONTENT_CAP = 1;
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
@@ -271,10 +277,33 @@ async function collectFromSource(
   if (!acc) { log('❌ 采集号不存在'); return { candidates: [], reason: 'source_account_not_found' }; }
   if (acc.platform !== cfg.sourcePlatform) { log('❌ 采集号平台与来源平台不符'); return { candidates: [], reason: 'source_platform_mismatch' }; }
 
-  // 关键词:直接用采集号自己的关键词【全列表】(不再让用户在任务里填);cfg.keyword 仅作老任务/可选覆盖兼容。
-  const accKw = effectiveKeywords(acc); // 采集号:原始 + AI 衍生池
-  const keywords = (cfg.keyword && String(cfg.keyword).trim()) ? [String(cfg.keyword).trim()] : accKw;
-  if (!keywords.length) { log('❌ 采集号没有关键词 —— 去「我的矩阵账号」给它加几个赛道关键词'); return { candidates: [], reason: 'no_keywords' }; }
+  // 关键词:【按发布号的赛道取,不是采集号的】。cfg.keyword 仅作老任务/可选覆盖兼容。
+  // 🚨 这里原来用的是采集号(acc)自己的关键词,方向反了:采集号只是"借它的登录态去源平台搜"的
+  //    工具人 —— 一个小红书美食号的赛道词是「美食探店 / 一人食 / 家常菜」,拿这些去搜素材再发到
+  //    币安/Gate/OKX 这类 web3 广场,内容完全不对路(用户实拍反馈)。
+  //    搬运要的是【发布平台那边想要的内容】,所以取【本任务勾选的发布号】的赛道关键词并集
+  //    (采集只跑一次、候选池给所有发布号共用,故取并集而不是某一个号的)。
+  const pubKw: string[] = [];
+  for (const pid of (opts.accountIds || [])) {
+    const pa = getAccount(pid);
+    if (!pa) continue;
+    for (const k of effectiveKeywords(pa)) {
+      const kk = String(k || '').trim();
+      if (kk && pubKw.indexOf(kk) < 0) pubKw.push(kk);
+    }
+  }
+  // 发布号一个关键词都没配 → 退回采集号的词,至少还能跑起来(并明确告知,别让用户以为设置生效了)。
+  const usedSrcKw = pubKw.length === 0;
+  const keywords = (cfg.keyword && String(cfg.keyword).trim())
+    ? [String(cfg.keyword).trim()]
+    : (usedSrcKw ? effectiveKeywords(acc) : pubKw);
+  if (!keywords.length) {
+    log(`❌ ${platLabel(opts.platform)}发布号没有关键词 —— 去「我的矩阵账号」给发布号加几个赛道关键词(搬运搜什么由发布号的赛道决定)`);
+    return { candidates: [], reason: 'no_keywords' };
+  }
+  if (usedSrcKw && !(cfg.keyword && String(cfg.keyword).trim())) {
+    log(`⚠️ ${platLabel(opts.platform)}发布号没配赛道关键词,暂时退回用采集号的词搜 —— 建议给发布号配上自己的赛道词,否则搜到的素材跟发布平台不对路`);
+  }
 
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
   // seen 由 runBinanceRepostTask 创建并传入:采集阶段【只查不记】(seen.set.has 跳过已用满的),
@@ -731,8 +760,15 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
 
   coworkLog('INFO', 'binanceRepostRunner', `repost src=${cfg.sourcePlatform} want=${postCount} → binance x${accIds.length}`);
 
-  // 采集号内容复用计数(默认 cap=1=只用一次)。采集只查(seen.set.has 跳过已用满的),发布成功后才 record。
-  const srcSeen = contentUsageStore(cfg.sourceAccountId, cfg.sourcePlatform, REPOST_CONTENT_CAP);
+  // 搬运去重 —— 口径是【发布平台 × 源内容】:某条源内容在某个平台搬成功过一次,这个平台以后
+  //   就不再搬它;但【别的平台还能搬】。
+  // 🚨 原来按【采集号】记(contentUsageStore(sourceAccountId, sourcePlatform)):同一个小红书采集号
+  //   喂 Gate 和 Bitget 两个任务时,Gate 先发成功就把这条记满了,Bitget 再也拿不到 —— 一条内容
+  //   全网只能用一次,交易所越多越明显(用户 2026-08-04 提出按平台各记各的)。
+  //   现在改成按发布平台建库(账号位写 `_platform_<平台>`),文件落
+  //   content_usage/<源平台>/_platform_<发布平台>.json;cap 固定 1 = 一个平台最多搬一次。
+  //   注:同平台多个发布号共用这一份记录,所以 A 号发过的内容 B 号也不会再发(符合"一个平台一次")。
+  const srcSeen = contentUsageStore(`_platform_${opts.platform}`, cfg.sourcePlatform, REPOST_CONTENT_CAP);
 
   // ── 阶段A:采集 ──
   if (opts.signal?.aborted) return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'aborted' })) };

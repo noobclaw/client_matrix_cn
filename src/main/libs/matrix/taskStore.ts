@@ -23,13 +23,25 @@ function storeFile(): string { return path.join(baseDir(), 'tasks.json'); }
 const MAX_PER_PLATFORM = 5;
 let cache: MatrixTask[] | null = null;
 
+// 老任务类型归一。交易所广场四家(gate/okx/bitget/bybit)的发帖/搬运向导曾把【任务类型】
+// 拼成 `${platform}_post` / `${platform}_repost` 存进 tasks.json —— 这不是合法的 MatrixTaskType,
+// 跑起来直接 unsupported_task_type(用户实测 gate 自动发帖)。新建路径已修,但【已经存盘的老任务】
+// 里还是坏值,不归一就永远跑不起来,而且重复校验按 type 比,还会让用户重复建一条。
+// ⚠️ 只认这 4 个交易所前缀:x_post / facebook_post / reddit_post / instagram_post 本身就是合法类型。
+const LEGACY_EXCHANGE_TYPE = /^(gate|okx|bitget|bybit)_(post|repost)$/;
+function normalizeTaskType(t: any): any {
+  const m = LEGACY_EXCHANGE_TYPE.exec(String(t?.type || ''));
+  if (!m) return t;
+  return { ...t, type: m[2] === 'repost' ? 'binance_repost' : 'binance_post' };
+}
+
 export function loadTasks(): MatrixTask[] {
   if (cache) return cache;
   const f = storeFile();
   if (!fs.existsSync(f)) { cache = []; return cache; }
   try {
     const arr = JSON.parse(fs.readFileSync(f, 'utf8'));
-    cache = Array.isArray(arr) ? arr : [];
+    cache = Array.isArray(arr) ? arr.map(normalizeTaskType) : [];
   } catch (e) {
     // 坏文件备份留证,不静默清空。
     try { fs.copyFileSync(f, `${f}.corrupt.${Date.now()}`); } catch { /* ignore */ }
