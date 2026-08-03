@@ -38,7 +38,7 @@ import { VideoWorkflowsPage } from './video/VideoWorkflowsPage';
 import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
-import { HIDE_WEB3 } from '../../buildFlags';
+import { HIDE_EXCHANGE_SQUARES } from '../../buildFlags';
 import MatrixTaskWizard, { type WizardAccount } from '../matrix/MatrixTaskWizard';
 import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
@@ -61,8 +61,9 @@ type PlatformId = 'xhs' | 'x' | 'binance' | 'gate' | 'bitget' | 'bybit' | 'okx' 
 // 📌 CN 版特有的顺序:交易所广场四家(币安/OKX/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
 //    (紧跟币安广场、整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
 const MATRIX_TAB_ORDER: PlatformId[] = ['video', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'okx', 'bitget', 'bybit', 'gate'];
-// 交易所广场(web3 属性)五家 —— 国内版 HIDE_WEB3 时整组隐藏,口径与「我的矩阵账号」页
-// 的 WEB3_SQUARE_PLATFORMS 保持一致(那边同名常量)。
+// 交易所广场五家 —— 国内版【保留】(HIDE_EXCHANGE_SQUARES=false),只是排在 MATRIX_TAB_ORDER
+// 末尾。口径与「我的矩阵账号」页的 WEB3_SQUARE_PLATFORMS 保持一致(那边同名常量)。
+// ⚠️ 别把这个挂回 HIDE_WEB3:那个开关砍的是钱包/返佣/链上支付,跟"能不能往交易所广场发帖"无关。
 const WEB3_SQUARE_TABS: PlatformId[] = ['binance', 'okx', 'bitget', 'bybit', 'gate'];
 // 后端 backend/matrix/scenarios 有 <platform>_auto_engage 互动涨粉剧本的平台(共 8 个)。
 // 视频号/头条暂无 engage 剧本 → tab 仍展示(与账号页一致),但「开始创作」标注「即将上线」不放行,避免跑出错任务。
@@ -2277,8 +2278,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。
-              国内版(HIDE_WEB3):隐藏交易所广场四家(币安/Bitget/Bybit/Gate)的 tab —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录都不露 web3。 */}
-          {(matrixMode ? MATRIX_TAB_ORDER.filter((id) => !(HIDE_WEB3 && WEB3_SQUARE_TABS.includes(id))).map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
+              国内版:交易所广场五家(币安/OKX/Bitget/Bybit/Gate)【保留】且排在最后 —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录三处都露。 */}
+          {(matrixMode ? MATRIX_TAB_ORDER.filter((id) => !(HIDE_EXCHANGE_SQUARES && WEB3_SQUARE_TABS.includes(id))).map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
             const active = currentPlatform === tab.id;
             // 矩阵号:对齐「我的矩阵账号」的简洁 pill 切换(纯文字 + violet 选中,rounded-full),
             // 顺序同账号页(MATRIX_TAB_ORDER 已与 PLATFORMS 一致)。非矩阵(旧视频版)保持原绿卡样式。

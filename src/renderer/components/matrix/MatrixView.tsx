@@ -8,7 +8,7 @@ import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { getBackendApiUrl } from '../../services/endpoints';
 import { openWallet } from '../../services/walletNav';
-import { HIDE_WEB3 } from '../../buildFlags';
+import { HIDE_EXCHANGE_SQUARES } from '../../buildFlags';
 
 /**
  * 矩阵号主界面 —— 由左侧分组菜单驱动的 4 屏(screen prop):
@@ -44,15 +44,14 @@ function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).m
 // ⚠️ 两处曾经漂移:这里末尾是 instagram/facebook/reddit,任务页却是 facebook/reddit/instagram,
 //    而任务页注释还写着"已与 PLATFORMS 一致" —— 用户在两个页面间来回切会觉得错乱。
 //    现已按任务页口径统一,改任一处都要同步另一处。
-// 📌 CN 版特有的顺序:交易所广场四家(币安/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
-//    (三家紧跟币安广场、整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
+// 📌 CN 版特有的顺序:交易所广场五家(币安/OKX/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
+//    (整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
 const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'okx', 'bitget', 'bybit', 'gate'];
-// 交易所广场(web3 属性)四家 —— 国内版 HIDE_WEB3 时整组隐藏。
-// ⚠️ 原来只隐藏 'binance';新增 Gate/Bitget/Bybit 同属加密交易所,按同一口径一并纳入,
-//    否则国内版会突然冒出三个交易所平台(与隐藏币安广场的初衷矛盾)。
-//    若产品决定国内版也要露出这四个,把下面这行的 filter 去掉即可,顺序已经排好。
+// 交易所广场五家。⚠️ 产品定的口径是【保留】(HIDE_EXCHANGE_SQUARES=false):国内版这五个
+//    平台照常能加号、能建任务,只是菜单排在最后。所以这里不能再看 HIDE_WEB3 ——
+//    那个开关管的是钱包/返佣/链上支付,国内版仍要砍,两者不是一回事。
 const WEB3_SQUARE_PLATFORMS = ['binance', 'okx', 'bitget', 'bybit', 'gate'];
-const VISIBLE_PLATFORMS = HIDE_WEB3 ? PLATFORMS.filter((p) => !WEB3_SQUARE_PLATFORMS.includes(p)) : PLATFORMS;
+const VISIBLE_PLATFORMS = HIDE_EXCHANGE_SQUARES ? PLATFORMS.filter((p) => !WEB3_SQUARE_PLATFORMS.includes(p)) : PLATFORMS;
 // 每个平台最多添加的账号数:客户端兜底 10,服务端 /api/matrix/config 的 maxAccountsPerPlatform 可覆盖(admin 调,不打包)。
 const MAX_ACCOUNTS_PER_PLATFORM_FALLBACK = 10;
 const PLAT_KEY: Record<string, string> = { douyin: 'platDouyin', xhs: 'platXhs', bilibili: 'platBilibili', kuaishou: 'platKuaishou', x: 'platX', binance: 'platBinance', shipinhao: 'platShipinhao', toutiao: 'platToutiao' };
@@ -235,9 +234,8 @@ const trackDisplayName = (p: TrackPreset, cl: ContentLang): string => (cl === 'e
 const DEFAULT_TRACK = '🍲 美食 · 探店做饭'; // 默认选中赛道(存 group 的规范名=中文,与视频默认 food 一致)
 // 交易所广场五家:连接账号时默认带出 Web3 赛道 —— 这些平台的内容生态就是加密货币,
 //   默认给「美食」等于每次新建号都要手动改一次。其它平台仍用 DEFAULT_TRACK。
-// ⚠️ 国内版当前 HIDE_WEB3=true,这五家被 VISIBLE_PLATFORMS 过滤掉、界面上根本进不来,
-//   所以这段在国内版是【暂时走不到的分支】。仍然与国际版保持同款实现:一是哪天放开
-//   HIDE_WEB3 就自动生效,二是两仓同处代码一致,后续 cherry-pick 不会在这里撞冲突。
+// 国内版现在【保留】这五家(HIDE_EXCHANGE_SQUARES=false),所以这段是真会走到的 ——
+//   以前它被 VISIBLE_PLATFORMS 过滤掉、注释写着"暂时走不到的分支",那条已经不成立了。
 const CRYPTO_TRACK_PLATFORMS = new Set(['binance', 'okx', 'bitget', 'bybit', 'gate']);
 // ⚠️ 赛道预设是【服务端下发】的(matrix_track_presets,admin 可改名/增删),所以按【id】认最稳:
 //   id 是稳定契约,name 会随文案调整变。id 找不到再退回按名字关键词找,最后才回落 DEFAULT_TRACK ——
