@@ -29,6 +29,7 @@ import {
   type VideoAspect,
   type SubtitlePosition,
   type VideoTemplateStyle,
+  type StoryShot,
 } from '../../../services/videoCreation';
 import {
   videoTaskStore,
@@ -40,6 +41,8 @@ import {
   type VideoSchedule,
 } from '../../../services/videoTaskStore';
 import { videoQueue, VIDEO_TASK_LIMIT } from '../../../services/videoQueue';
+import StoryboardReviewModal from './StoryboardReviewModal';
+import BgmPreviewBar, { BgmPreviewButtons, BgmPreviewPlayer, useBgmPreview, useVoicePreview } from './BgmPreviewBar';
 
 // 订阅 store 的 React hook:任意视图都能拿到最新任务列表 + 运行记录并自动重渲染。
 function useVideoStore(): { tasks: VideoTask[]; runs: VideoRunRecord[] } {
@@ -739,6 +742,30 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
               )}
             </>
           );
+        })() : task.input.engine === 'ai' ? (() => {
+          // 电影级:向导只问 文案/时长/画质/字幕/发布 —— 卡片就照这些显示。
+          //   老任务里可能还存着默认赛道/人设/关键词,一律不再展示(跟成片无关)。
+          const pubN = Array.isArray(task.input.publishPlatforms) ? task.input.publishPlatforms.length : 0;
+          return (
+            <>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">📝 {isZh ? '文案' : 'Script'}</span>
+                <span className="truncate text-gray-500 dark:text-gray-400">{scriptSummary(task.input, isZh)}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🎬 {isZh ? '画面' : 'Visuals'}</span>
+                <span className="truncate">{cinematicVisualLabel(task.input, isZh)}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🎤 {isZh ? '声音' : 'Audio'}</span>
+                <span className="truncate">{cinematicAudioLabel(task.input, isZh)}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🚀 {isZh ? '发布' : 'Publish'}</span>
+                <span className="truncate">{pubN > 0 ? (isZh ? `${pubN} 个平台` : `${pubN} platforms`) : (isZh ? '仅存本地' : 'Local only')}</span>
+              </div>
+            </>
+          );
         })() : (
           <>
             <div className="flex items-start gap-1.5">
@@ -965,8 +992,7 @@ function templateBgmSummary(input: VideoCreationInput, isZh: boolean): string {
 function templateNarrationSummary(input: VideoCreationInput, isZh: boolean): string {
   const t = input.template;
   if (!t?.narration) return isZh ? '关(纯视觉)' : 'Off (silent)';
-  const voice = VOICE_GROUPS.flatMap((g) => g.voices).find((v) => v.id === (t.voice || input.voice));
-  const voiceName = voice ? (isZh ? voice.zh : voice.en) : (t.voice || input.voice || (isZh ? '默认音色' : 'Default'));
+  const voiceName = voiceDisplayLabel(t.voice || input.voice, isZh);
   const rate = RATE_OPTIONS.find((r) => r.v === (t.voiceRate ?? input.voiceRate ?? 0));
   const rateName = rate ? (isZh ? rate.zh : rate.en) : (isZh ? '正常' : 'Normal');
   const subPart = t.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subs') : (isZh ? ' · 不烧字幕' : ' · no subs');
@@ -1046,10 +1072,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
   if (input.engine === 'hotspot') {
     const srcMap: Record<string, string> = { weibo: isZh ? '微博热搜' : 'Weibo', douyin: isZh ? '抖音热搜' : 'Douyin', zhihu: isZh ? '知乎热榜' : 'Zhihu', baidu: isZh ? '百度热搜' : 'Baidu', bilibili: 'B站热搜', xueqiu: isZh ? '雪球热门股' : 'Xueqiu', hackernews: 'Hacker News', reddit: 'Reddit', googletrends: isZh ? 'Google 趋势' : 'Google Trends', youtube: isZh ? 'YouTube 热门' : 'YouTube', web3: 'Web3 资讯', tech: isZh ? '科技/AI' : 'Tech/AI' };
     const srcs = (((input as any).hotspotSources as string[]) || []).map((s) => srcMap[s] || s).join('、') || '-';
-    const voiceLabel = (() => {
-      const v = VOICE_GROUPS.flatMap((g) => g.voices).find((x) => x.id === input.voice);
-      return v ? (isZh ? v.zh : v.en) : (input.voice || (isZh ? '默认音色' : 'Default'));
-    })();
+    const voiceLabel = voiceDisplayLabel(input.voice, isZh);
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
         <Row label={`🔥 ${isZh ? '热点源' : 'Sources'}`}>{srcs}</Row>
@@ -1135,7 +1158,34 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       </div>
     );
   }
-  // 其它 engine(stock / pure_ai / 本地素材)走老的赛道/人设/关键词/文案布局。
+  // 电影级:文案/时长/画面/声音/字幕/发布 —— 没有「赛道/人设/关键词」这回事。
+  if (input.engine === 'ai') {
+    return (
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+        <Row label={`📝 ${isZh ? '文案' : 'Script'}`}>
+          {(() => {
+            const s = (input.script || '').trim();
+            const tag = (input.scriptMode || (s ? 'strict' : 'ai')) === 'strict'
+              ? (isZh ? '我有脚本' : 'own script')
+              : (isZh ? 'AI 写稿' : 'AI script');
+            return (
+              <div className="space-y-1">
+                <span className="inline-block rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{tag}</span>
+                {s
+                  ? <div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</div>
+                  : <div className="text-gray-400">{isZh ? `AI 按 ${input.targetSeconds ?? 45}s 写稿` : `AI writes for ${input.targetSeconds ?? 45}s`}</div>}
+              </div>
+            );
+          })()}
+        </Row>
+        {scriptLangDisplay(input.scriptLang, isZh) && <Row label={`🌐 ${isZh ? '创作语言' : 'Language'}`}>{scriptLangDisplay(input.scriptLang, isZh)}</Row>}
+        <Row label={`🎬 ${isZh ? '画面' : 'Visuals'}`}>{cinematicVisualLabel(input, isZh)}</Row>
+        <Row label={`🎤 ${isZh ? '声音' : 'Audio'}`}>{cinematicAudioLabel(input, isZh)}</Row>
+        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
+      </div>
+    );
+  }
+  // 其它 engine(stock / 本地素材)走老的赛道/人设/关键词/文案布局。
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
       <Row label={`🎯 ${isZh ? '赛道' : 'Track'}`}>{input.track || '-'}</Row>
@@ -1159,14 +1209,13 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         })()}
       </Row>
       {scriptLangDisplay(input.scriptLang, isZh) && <Row label={`🌐 ${isZh ? '创作语言' : 'Language'}`}>{scriptLangDisplay(input.scriptLang, isZh)}</Row>}
+      {/* 到这里只剩 stock(在线/本地素材)—— 电影级已在上面的 'ai' 分支返回。 */}
       <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
-        {input.engine === 'ai'
-          ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
-          : (input.localVideos && input.localVideos.length > 0)
-            ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
-            : input.useStockVideo !== false
-              ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
-              : (isZh ? '仅图片' : 'images only')}
+        {(input.localVideos && input.localVideos.length > 0)
+          ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
+          : input.useStockVideo !== false
+            ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
+            : (isZh ? '仅图片' : 'images only')}
       </Row>
       <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
     </div>
@@ -1179,6 +1228,27 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
     <span className="flex-1 min-w-0 dark:text-gray-200">{children}</span>
   </div>
 );
+
+// 电影级画面摘要:Seedance + 清晰度 + 画幅。清晰度用户可选(480/720),档位服务端定。
+function cinematicVisualLabel(input: VideoCreationInput, isZh: boolean): string {
+  const res = (input as any).seedanceResolution ? `${(input as any).seedanceResolution}p` : '';
+  const RATIO: Record<string, [string, string]> = {
+    '9:16': ['竖屏 9:16', 'portrait 9:16'],
+    '16:9': ['横屏 16:9', 'landscape 16:9'],
+    '1:1': ['方形 1:1', 'square 1:1'],
+  };
+  const r = RATIO[String(input.aspect || '9:16')] || RATIO['9:16'];
+  const ratio = isZh ? r[0] : r[1];
+  const nRef = Array.isArray(input.referenceImages) ? input.referenceImages.filter(Boolean).length : 0;
+  return [isZh ? 'Seedance 生成' : 'Seedance', res, ratio, nRef > 0 ? (isZh ? `参考图 ${nRef} 张` : `${nRef} ref images`) : '']
+    .filter(Boolean).join(' · ');
+}
+
+// 电影级声音摘要:配音由 Seedance 随画面一起生成(本地不再合成),字幕仍是本地烧录的开关。
+function cinematicAudioLabel(input: VideoCreationInput, isZh: boolean): string {
+  const sub = input.subtitleEnabled !== false ? (isZh ? '烧字幕' : 'subtitles') : (isZh ? '不烧字幕' : 'no subtitles');
+  return `${isZh ? 'Seedance 原生配音' : 'Seedance native audio'} · ${sub}`;
+}
 
 // 发布去向摘要(详情页/记录详情常驻显示):空 publishPlatforms = 仅存本地;否则列出平台中文名。
 // 让用户在详情页一眼看到「存本地」还是「上传到 抖音、小红书…」(之前只在 hotspot 显示个数,
@@ -1199,8 +1269,8 @@ function publishSummary(input: VideoCreationInput, isZh: boolean): string {
 
 /** 把配音音色 id 映射成可读名(查不到就回退原 id / 默认)。详情/记录共用。 */
 function voiceDisplayLabel(voiceId: string | undefined, isZh: boolean): string {
-  const v = VOICE_GROUPS.flatMap((g) => g.voices).find((x) => x.id === voiceId);
-  return v ? (isZh ? v.zh : v.en) : (voiceId || (isZh ? '默认音色' : 'Default'));
+  if (!voiceId) return isZh ? '默认音色' : 'Default';
+  return voiceDisplayName(voiceId, isZh);
 }
 
 /** 爆帖成片:创作语言标签。 */
@@ -1363,18 +1433,36 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       </>
     );
   }
+  // 电影级:同 ConfigCard,不显示赛道/人设/关键词。
+  if (input.engine === 'ai') {
+    const body = (input.script || '').trim();
+    const tag = (input.scriptMode || (body ? 'strict' : 'ai')) === 'strict'
+      ? (isZh ? '我有脚本' : 'own script')
+      : (isZh ? 'AI 写稿' : 'AI script');
+    return (
+      <>
+        <div className="break-words whitespace-pre-wrap">
+          📝 {isZh ? '文案' : 'Script'}：<span className="text-gray-400">[{tag}]</span>{' '}
+          {body || (isZh ? `AI 按 ${input.targetSeconds ?? 45}s 写稿` : `AI writes for ${input.targetSeconds ?? 45}s`)}
+        </div>
+        {scriptLangDisplay(input.scriptLang, isZh) && <div>🌐 {isZh ? '创作语言' : 'Language'}：{scriptLangDisplay(input.scriptLang, isZh)}</div>}
+        <div>🎬 {isZh ? '画面' : 'Visuals'}：{cinematicVisualLabel(input, isZh)}</div>
+        <div>🎤 {isZh ? '声音' : 'Audio'}：{cinematicAudioLabel(input, isZh)}</div>
+        <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
+      </>
+    );
+  }
   const kw = (input.keywords || []).filter(Boolean).join(' · ');
   const s = (input.script || '').trim();
   const mode = input.scriptMode || (s ? 'strict' : 'ai');
   const scriptTag = mode === 'strict' ? (isZh ? '严格逐字' : 'verbatim') : (isZh ? 'AI 写稿' : 'AI script');
   const scriptBody = s || (isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`);
-  const visuals = input.engine === 'ai'
-    ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
-    : (input.localVideos && input.localVideos.length > 0)
-      ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
-      : input.useStockVideo !== false
-        ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
-        : (isZh ? '仅图片' : 'images only');
+  // 到这里只剩 stock(在线/本地素材)—— 电影级已在上面的 'ai' 分支返回。
+  const visuals = (input.localVideos && input.localVideos.length > 0)
+    ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
+    : input.useStockVideo !== false
+      ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
+      : (isZh ? '仅图片' : 'images only');
   return (
     <>
       <div>🎯 {isZh ? '赛道' : 'Track'}：{input.track || '-'}</div>
@@ -1713,6 +1801,8 @@ const VideoTaskDetail: React.FC<{
   onOpenRecord: (id: string) => void;
   onEdit: () => void;
 }> = ({ isZh, task, latestRun, onBack, onOpenRecord, onEdit }) => {
+  // 豆包音色目录:详情页要用它把音色 id 显示成人话(否则印出 zh_female_xxx_bigtts)。
+  useDoubaoVoicesReady();
   const status = statusOf(task);
   const isRunning = status === 'running';
   const [actionError, setActionError] = useState<string | null>(null);
@@ -1803,12 +1893,17 @@ const VideoTaskDetail: React.FC<{
   };
 
   // 停止运行中的任务:abort 主进程 pipeline + kill ffmpeg/seedance/tts。终态由 store 刷新。
+  //
+  // ⚠️ abort 只能在【检查点】生效,链路里天然有不可打断的等待(在飞的网络请求、平台上传
+  //    轮询、下发 driver 的 sleep)。正常几秒到几十秒就过去,但用户看到的只是一个不动的
+  //    「停止中…」,体感就是「点了没用」。所以:停止中把按钮换成【强制停止】并显示已等秒数,
+  //    再点一次就本地收尾、不再干等 5 分钟兜底。
   const handleStop = () => {
     setStopping(true);
     try { videoTaskStore.stopTask(task.id); } catch {}
-    // 给主进程几秒走到步骤边界 / 子进程被 kill;按钮态兜底复位(真正终态由 store 回写)。
-    setTimeout(() => setStopping(false), 4000);
   };
+  // store 已把 run 收尾 → 退出停止态(正常路径下点完立刻就到)。
+  useEffect(() => { if (!isRunning && stopping) setStopping(false); }, [isRunning, stopping]);
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -2165,6 +2260,13 @@ const VideoCreateFlow: React.FC<{
           descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
           costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
           btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
+        <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={openWithLogin(() => setCinemaOpen(true))} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
+          titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
+          descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。画面、人声、口型、环境音由 Seedance 一次生成,音画毫秒同步;镜头之间首尾帧相接,人物和画风不跳。有分镜脚本可直接粘进来,没有就让 AI 写一版。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates the picture, the voice, the lip sync and the ambience together, so audio and video are in step to the millisecond; shots are chained frame to frame so faces and style hold. Paste your own storyboard, or let AI write one. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
+          costZh={`按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
+          btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
@@ -2195,13 +2297,6 @@ const VideoCreateFlow: React.FC<{
           descEn="Auto-picks a top-voted Reddit thread, overlays real post & comment screenshot cards on gameplay footage and reads them aloud — the proven Reddit Stories format, one click (VPN required for Reddit). Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={`单条约 ${feeZh}(选帖/翻译/截图/合成)`} costEn={`~${feeEn} per clip (pick / translate / shots / compose)`}
           btnZh="🧵 开始创作 →" btnEn="🧵 Start →" />
-        <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={openWithLogin(() => setCinemaOpen(true))} onGoTasks={onGoTasks}
-          tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
-          titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
-          descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成、自动配音+字幕,拍不到的镜头也能生,还能传参考图锁画风。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
-          descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film; add reference images to lock the style. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh={`按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
-          btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
       </section>
 
       <section className="mt-6">
@@ -2397,13 +2492,28 @@ const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: st
 const DEFAULT_PUBLISH_PLATFORMS: Platform[] = PUBLISH_PLATFORMS.map((p) => p.id);
 
 const SCRIPT_MAX = 800;
+/**
+ * 电影级(pure_ai)专用的文案上限。
+ *
+ * ⚠️ 800 字对「粘一份完整分镜脚本」来说远远不够 —— 一份 4~5 分钟的分镜脚本(含景别运镜、
+ *   画面内容、花字、音乐音效)动辄 3000~6000 字,老上限直接把这类用户挡在门外,
+ *   而"用户可输入精确脚本"正是电影级的核心卖点。
+ *   pipeline 侧已按段落分块解析(storyboardScript.chunkText),长脚本不会撑爆 LLM 上下文。
+ */
+const SCRIPT_MAX_CINEMA = 20000;
 // 严格模式:视频文案逐字朗读,直接决定时长 → 必填且不少于此字数。
 const SCRIPT_MIN_STRICT = 200;
 // 中文配音约 4.5 字/秒;严格模式据此把字数实时换算成预估时长展示给用户。
 const CHARS_PER_SEC = 4.5;
-const DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240];
-// 纯 AI(Seedance)成片成本随秒数线性涨 → 时长上限 90s(UI 给到 30/45/60/90;>90 不给)。
-const AI_MAX_SECONDS = 90;
+const DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240, 300];
+/**
+ * 纯 AI(Seedance)成片成本随秒数线性涨,老上限 90s。
+ *
+ * ⚠️ 分镜表链路下这个上限已经不合理:条数与「哪几镜真的生成视频」由分镜表决定
+ *   (默认不生成视频 = 图 + 运镜,成本接近零),不该再拿一个写死的秒数把用户
+ *   4 分半的脚本砍掉 6/7。pipeline 侧对应的 45s 硬截同样只在无分镜表时才生效。
+ */
+const AI_MAX_SECONDS = 300;
 
 // ── MPT 风格出片参数选项 ──
 const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[] = [
@@ -2416,17 +2526,279 @@ const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[
 // ⚠️ 改这里的 id 时,同步检查 src/main/libs/video/tts.ts 的 getVoiceFallbacks 表
 //   (后台失败救场链);否则改名后失败 voice 没救场直接退费。
 type VoiceOpt = { id: string; zh: string; en: string };
-// 豆包(火山)真人音色:服务端 admin 下发,进程内缓存一次。配置了就排在最前(默认音色),
-// 合成失败自动回退 Edge(见 main/libs/video/tts.ts)。没配置 → 只有 Edge,行为同以前。
-// 音色说明按【所选音色】动态显示:豆包(真人大模型,按字计费)/ Edge(免费)。
-// 之前写死 'edge-tts 免费',选了豆包也显示它 → 用户以为没生效(真机反馈)。
-function voiceEngineHint(voice: string, isZh: boolean): string {
-  const doubao = /_(male|female)_/i.test(String(voice || '')) && !/Neural$/i.test(String(voice || ''));
-  if (doubao) return isZh ? '豆包真人语音 · 大模型合成(按字数计费,失败自动回退 Edge)' : 'Doubao lifelike (per-character billing, auto-fallback to Edge)';
-  return isZh ? 'Edge 语音 · 在线合成,免费' : 'Edge voice · free';
+// 豆包(火山)真人音色:服务端 admin 下发,进程内缓存一次。配置了就排在最前(默认音色)。
+// 没配置 → 只有微软 Edge,行为同以前。
+// ⚠️ 这里原来有个 voiceEngineHint,在音色框下面写「按字数计费,失败自动回退 Edge」——
+//   已按要求移除。计费细节不在选择器上对用户展示;「免费」只用微软 Edge 上那个红标表达。
+
+type DoubaoVoice = { id: string; zh?: string; en?: string; lang?: string; scene?: string };
+type DoubaoCatalog = { enabled: boolean; voices: DoubaoVoice[]; priceCnyPer10k: number; priceUsdPer10k: number };
+
+/**
+ * 豆包音色目录的【内置种子】。
+ *
+ * ⚠️ 为什么要有它:目录是服务端下发的,冷启动时要等一个网络往返才有内容 —— 在那之前
+ *   连「豆包真人 / 微软 Edge」这两个引擎按钮都不显示(外面套着 `doubaoEnabled &&`),
+ *   用户看到的是一片空白然后突然蹦出来。种子让选择器【立刻】能渲染。
+ *
+ * ⚠️ 内容是【从后端 `tts.ts` 的 DEFAULT_VOICES 原样生成的】,不是手敲 —— 手敲必然编错 ID,
+ *   而编造的 ID 用户一选就合成失败(第一版我就编了 en_female_anna / ja_female_yuka /
+ *   ko_female_mina 三个不存在的)。要更新时重新从后端那份生成,别手改。
+ *
+ * 它只是【首屏兜底】。服务端目录一拿到就整体替换并写进 localStorage,所以 admin 加音色
+ *   不需要重新打包客户端;这份种子过期了也只影响「全新安装 + 首次打开」那一两秒。
+ */
+const DOUBAO_SEED_VOICES: DoubaoVoice[] = [
+  { id: "zh_female_vv_uranus_bigtts", zh: "Vivi", en: "Vivi", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_xiaohe_uranus_bigtts", zh: "小何", en: "小何", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_m191_uranus_bigtts", zh: "云舟", en: "云舟", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_taocheng_uranus_bigtts", zh: "小天", en: "小天", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_liufei_uranus_bigtts", zh: "刘飞", en: "刘飞", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_sophie_uranus_bigtts", zh: "魅力苏菲", en: "魅力苏菲", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_qingxinnvsheng_uranus_bigtts", zh: "清新女声", en: "清新女声", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_cancan_uranus_bigtts", zh: "知性灿灿", en: "知性灿灿", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_sajiaoxuemei_uranus_bigtts", zh: "撒娇学妹", en: "撒娇学妹", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_tianmeixiaoyuan_uranus_bigtts", zh: "甜美小源", en: "甜美小源", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_tianmeitaozi_uranus_bigtts", zh: "甜美桃子", en: "甜美桃子", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_shuangkuaisisi_uranus_bigtts", zh: "爽快思思", en: "爽快思思", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_peiqi_uranus_bigtts", zh: "佩奇猪", en: "佩奇猪", lang: "zh", scene: "视频配音" },
+  { id: "zh_female_linjianvhai_uranus_bigtts", zh: "邻家女孩", en: "邻家女孩", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_shaonianzixin_uranus_bigtts", zh: "少年梓辛", en: "少年梓辛", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_sunwukong_uranus_bigtts", zh: "猴哥", en: "猴哥", lang: "zh", scene: "视频配音" },
+  { id: "zh_female_yingyujiaoxue_uranus_bigtts", zh: "Tina老师", en: "Tina老师", lang: "zh", scene: "教育场景" },
+  { id: "zh_female_kefunvsheng_uranus_bigtts", zh: "暖阳女声", en: "暖阳女声", lang: "zh", scene: "客服场景" },
+  { id: "zh_female_xiaoxue_uranus_bigtts", zh: "儿童绘本", en: "儿童绘本", lang: "zh", scene: "有声阅读" },
+  { id: "zh_male_dayi_uranus_bigtts", zh: "大壹", en: "大壹", lang: "zh", scene: "视频配音" },
+  { id: "zh_female_mizai_uranus_bigtts", zh: "咪仔", en: "咪仔", lang: "zh", scene: "视频配音" },
+  { id: "zh_female_jitangnv_uranus_bigtts", zh: "鸡汤女", en: "鸡汤女", lang: "zh", scene: "视频配音" },
+  { id: "zh_female_meilinvyou_uranus_bigtts", zh: "魅力女友", en: "魅力女友", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_liuchangnv_uranus_bigtts", zh: "流畅女声", en: "流畅女声", lang: "zh", scene: "视频配音" },
+  { id: "zh_male_ruyayichen_uranus_bigtts", zh: "儒雅逸辰", en: "儒雅逸辰", lang: "zh", scene: "视频配音" },
+  { id: "zh_female_wenroumama_uranus_bigtts", zh: "温柔妈妈", en: "温柔妈妈", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_jieshuoxiaoming_uranus_bigtts", zh: "解说小明", en: "解说小明", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_tvbnv_uranus_bigtts", zh: "TVB女声", en: "TVB女声", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_yizhipiannan_uranus_bigtts", zh: "译制片男", en: "译制片男", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_qiaopinv_uranus_bigtts", zh: "俏皮女声", en: "俏皮女声", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_zhishuaiyingzi_uranus_bigtts", zh: "直率英子", en: "直率英子", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_linjiananhai_uranus_bigtts", zh: "邻家男孩", en: "邻家男孩", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_silang_uranus_bigtts", zh: "四郎", en: "四郎", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_ruyaqingnian_uranus_bigtts", zh: "儒雅青年", en: "儒雅青年", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_qingcang_uranus_bigtts", zh: "擎苍", en: "擎苍", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_xionger_uranus_bigtts", zh: "熊二", en: "熊二", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_yingtaowanzi_uranus_bigtts", zh: "樱桃丸子", en: "樱桃丸子", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_wennuanahu_uranus_bigtts", zh: "温暖阿虎", en: "温暖阿虎", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_naiqimengwa_uranus_bigtts", zh: "奶气萌娃", en: "奶气萌娃", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_popo_uranus_bigtts", zh: "婆婆", en: "婆婆", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_gaolengyujie_uranus_bigtts", zh: "高冷御姐", en: "高冷御姐", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_aojiaobazong_uranus_bigtts", zh: "傲娇霸总", en: "傲娇霸总", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_lanyinmianbao_uranus_bigtts", zh: "懒音绵宝", en: "懒音绵宝", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_fanjuanqingnian_uranus_bigtts", zh: "反卷青年", en: "反卷青年", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_wenroushunv_uranus_bigtts", zh: "温柔淑女", en: "温柔淑女", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_gufengshaoyu_uranus_bigtts", zh: "古风少御", en: "古风少御", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_huolixiaoge_uranus_bigtts", zh: "活力小哥", en: "活力小哥", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_baqiqingshu_uranus_bigtts", zh: "霸气青叔", en: "霸气青叔", lang: "zh", scene: "有声阅读" },
+  { id: "zh_male_xuanyijieshuo_uranus_bigtts", zh: "悬疑解说", en: "悬疑解说", lang: "zh", scene: "有声阅读" },
+  { id: "zh_female_mengyatou_uranus_bigtts", zh: "萌丫头", en: "萌丫头", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_tiexinnvsheng_uranus_bigtts", zh: "贴心女声", en: "贴心女声", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_jitangmei_uranus_bigtts", zh: "鸡汤妹妹", en: "鸡汤妹妹", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_cixingjieshuonan_uranus_bigtts", zh: "磁性解说男声", en: "磁性解说男声", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_liangsangmengzai_uranus_bigtts", zh: "亮嗓萌仔", en: "亮嗓萌仔", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_kailangjiejie_uranus_bigtts", zh: "开朗姐姐", en: "开朗姐姐", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_gaolengchenwen_uranus_bigtts", zh: "高冷沉稳", en: "高冷沉稳", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_shenyeboke_uranus_bigtts", zh: "深夜播客", en: "深夜播客", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_lubanqihao_uranus_bigtts", zh: "鲁班七号", en: "鲁班七号", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_linxiao_uranus_bigtts", zh: "林潇", en: "林潇", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_lingling_uranus_bigtts", zh: "玲玲姐姐", en: "玲玲姐姐", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_chunribu_uranus_bigtts", zh: "春日部姐姐", en: "春日部姐姐", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_tangseng_uranus_bigtts", zh: "唐僧", en: "唐僧", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_zhuangzhou_uranus_bigtts", zh: "庄周", en: "庄周", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_kailangdidi_uranus_bigtts", zh: "开朗弟弟", en: "开朗弟弟", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_zhubajie_uranus_bigtts", zh: "猪八戒", en: "猪八戒", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_qinqienv_uranus_bigtts", zh: "亲切女声", en: "亲切女声", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_kuailexiaodong_uranus_bigtts", zh: "快乐小东", en: "快乐小东", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_kailangxuezhang_uranus_bigtts", zh: "开朗学长", en: "开朗学长", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_youyoujunzi_uranus_bigtts", zh: "悠悠君子", en: "悠悠君子", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_wenjingmaomao_uranus_bigtts", zh: "文静毛毛", en: "文静毛毛", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_zhixingnv_uranus_bigtts", zh: "知性女声", en: "知性女声", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_qingshuangnanda_uranus_bigtts", zh: "清爽男大", en: "清爽男大", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_yuanboxiaoshu_uranus_bigtts", zh: "渊博小叔", en: "渊博小叔", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_yangguangqingnian_uranus_bigtts", zh: "阳光青年", en: "阳光青年", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_qingchezizi_uranus_bigtts", zh: "清澈梓梓", en: "清澈梓梓", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_tianmeiyueyue_uranus_bigtts", zh: "甜美悦悦", en: "甜美悦悦", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_xinlingjitang_uranus_bigtts", zh: "心灵鸡汤", en: "心灵鸡汤", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_wenrouxiaoge_uranus_bigtts", zh: "温柔小哥", en: "温柔小哥", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_roumeinvyou_uranus_bigtts", zh: "柔美女友", en: "柔美女友", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_dongfanghaoran_uranus_bigtts", zh: "东方浩然", en: "东方浩然", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_wenrouxiaoya_uranus_bigtts", zh: "温柔小雅", en: "温柔小雅", lang: "zh", scene: "通用场景" },
+  { id: "zh_male_tiancaitongsheng_uranus_bigtts", zh: "天才童声", en: "天才童声", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_wuzetian_uranus_bigtts", zh: "武则天", en: "武则天", lang: "zh", scene: "角色扮演" },
+  { id: "zh_female_gujie_uranus_bigtts", zh: "顾姐", en: "顾姐", lang: "zh", scene: "角色扮演" },
+  { id: "zh_male_guanggaojieshuo_uranus_bigtts", zh: "广告解说", en: "广告解说", lang: "zh", scene: "通用场景" },
+  { id: "zh_female_shaoergushi_uranus_bigtts", zh: "少儿故事", en: "少儿故事", lang: "zh", scene: "有声阅读" },
+  { id: "en_male_tim_uranus_bigtts", zh: "Tim", en: "Tim", lang: "en", scene: "多语种" },
+  { id: "en_female_dacey_uranus_bigtts", zh: "Dacey", en: "Dacey", lang: "en", scene: "多语种" },
+  { id: "en_female_stokie_uranus_bigtts", zh: "Stokie", en: "Stokie", lang: "en", scene: "多语种" },
+  { id: "ICL_uranus_en_female_charlie_tob", zh: "Charlie", en: "Charlie", lang: "en", scene: "多语种" },
+  { id: "ICL_uranus_en_male_ethan_tob", zh: "Ethan", en: "Ethan", lang: "en", scene: "多语种" },
+  { id: "ICL_uranus_en_male_alastor_tob", zh: "Alastor", en: "Alastor", lang: "en", scene: "多语种" },
+  { id: "ICL_uranus_en_male_noah_tob", zh: "Noah", en: "Noah", lang: "en", scene: "多语种" },
+  { id: "ICL_uranus_en_male_xavier_tob", zh: "Xavier", en: "Xavier", lang: "en", scene: "多语种" },
+  { id: "ICL_uranus_en_male_zayne_tob", zh: "Zayne", en: "Zayne", lang: "en", scene: "多语种" },
+  { id: "en_male_adam-imitation_uranus_bigtts", zh: "Rowan", en: "Rowan", lang: "en", scene: "多语种" },
+  { id: "en_male_alex_uranus_bigtts", zh: "Alex", en: "Alex", lang: "en", scene: "多语种" },
+  { id: "en_female_allison_uranus_bigtts", zh: "Allison", en: "Allison", lang: "en", scene: "多语种" },
+  { id: "en_female_authoritative-british_uranus_bigtts", zh: "Charlotte", en: "Charlotte", lang: "en", scene: "多语种" },
+  { id: "en_female_authoritative-informative_uranus_bigtts", zh: "Margaret", en: "Margaret", lang: "en", scene: "多语种" },
+  { id: "en_male_brad_pitt_p1_uranus_bigtts", zh: "Brad Pitt", en: "Brad Pitt", lang: "en", scene: "多语种" },
+  { id: "en_female_brittney_uranus_bigtts", zh: "Brittney", en: "Brittney", lang: "en", scene: "多语种" },
+  { id: "en_male_bruce_uranus_bigtts", zh: "Adrian", en: "Adrian", lang: "en", scene: "多语种" },
+  { id: "en_male_david_uranus_bigtts", zh: "David", en: "David", lang: "en", scene: "多语种" },
+  { id: "en_male_deep-voice_uranus_bigtts", zh: "Orion", en: "Orion", lang: "en", scene: "多语种" },
+  { id: "en_female_hayley_uranus_bigtts", zh: "Hayley", en: "Hayley", lang: "en", scene: "多语种" },
+  { id: "en_male_jamie_uranus_bigtts", zh: "Jamie", en: "Jamie", lang: "en", scene: "多语种" },
+  { id: "en_female_jane_uranus_bigtts", zh: "Jane", en: "Jane", lang: "en", scene: "多语种" },
+  { id: "en_female_jenny_uranus_bigtts", zh: "Jenny", en: "Jenny", lang: "en", scene: "多语种" },
+  { id: "en_male_jimmy_uranus_bigtts", zh: "Jimmy", en: "Jimmy", lang: "en", scene: "多语种" },
+  { id: "en_female_joanne_uranus_bigtts", zh: "Joanne", en: "Joanne", lang: "en", scene: "多语种" },
+  { id: "en_male_josh_uranus_bigtts", zh: "Josh", en: "Josh", lang: "en", scene: "多语种" },
+  { id: "en_male_kevin_uranus_bigtts", zh: "Kevin", en: "Kevin", lang: "en", scene: "多语种" },
+  { id: "en_male_knightley_uranus_bigtts", zh: "Knightley", en: "Knightley", lang: "en", scene: "多语种" },
+  { id: "en_male_marcus_uranus_bigtts", zh: "Marcus", en: "Marcus", lang: "en", scene: "多语种" },
+  { id: "en_female_mel_uranus_bigtts", zh: "Mel", en: "Mel", lang: "en", scene: "多语种" },
+  { id: "en_male_michael_uranus_bigtts", zh: "Hank", en: "Hank", lang: "en", scene: "多语种" },
+  { id: "en_female_myra_uranus_bigtts", zh: "Myra", en: "Myra", lang: "en", scene: "多语种" },
+  { id: "en_female_nadia_uranus_bigtts", zh: "Blair", en: "Blair", lang: "en", scene: "多语种" },
+  { id: "en_female_pleasant-female_uranus_bigtts", zh: "Elaine", en: "Elaine", lang: "en", scene: "多语种" },
+  { id: "en_male_ronald_uranus_bigtts", zh: "Ronald", en: "Ronald", lang: "en", scene: "多语种" },
+  { id: "en_male_russell_uranus_bigtts", zh: "Russell", en: "Russell", lang: "en", scene: "多语种" },
+  { id: "en_female_skye_uranus_bigtts", zh: "Skye", en: "Skye", lang: "en", scene: "多语种" },
+  { id: "en_male_tom_hiddleston_p1_uranus_bigtts", zh: "Tom", en: "Tom", lang: "en", scene: "多语种" },
+  { id: "en_male_valentino_uranus_bigtts", zh: "Valentino", en: "Valentino", lang: "en", scene: "多语种" },
+  { id: "en_male_yangguangjieshuonan_uranus_bigtts", zh: "Dylan", en: "Dylan", lang: "en", scene: "多语种" },
+  { id: "en_female_zendaya_p1_uranus_bigtts", zh: "Zendaya", en: "Zendaya", lang: "en", scene: "多语种" },
+  { id: "ja_female_bv024_uranus_bigtts", zh: "Bonnie", en: "Bonnie", lang: "ja", scene: "多语种" },
+  { id: "ja_female_bv522_uranus_bigtts", zh: "Hana", en: "Hana", lang: "ja", scene: "多语种" },
+  { id: "ja_male_bv524_uranus_bigtts", zh: "Ken", en: "Ken", lang: "ja", scene: "多语种" },
+  { id: "ja_female_bv520_uranus_bigtts", zh: "Poppy", en: "Poppy", lang: "ja", scene: "多语种" },
+  { id: "ko_male_bv545_uranus_bigtts", zh: "Jay", en: "Jay", lang: "ko", scene: "多语种" },
+  { id: "ko_female_bv546_uranus_bigtts", zh: "Momo", en: "Momo", lang: "ko", scene: "多语种" },
+  { id: "ko_male_m03_uranus_bigtts", zh: "Minho", en: "Minho", lang: "ko", scene: "多语种" },
+  { id: "vi_female_hong_uranus_bigtts", zh: "Hong", en: "Hong", lang: "vi", scene: "多语种" },
+  { id: "vi_female_ling_uranus_bigtts", zh: "Ling", en: "Ling", lang: "vi", scene: "多语种" },
+  { id: "vi_male_wumg_uranus_bigtts", zh: "Wumg", en: "Wumg", lang: "vi", scene: "多语种" },
+  { id: "es_female_bv084_uranus_bigtts", zh: "Gracie", en: "Gracie", lang: "es", scene: "多语种" },
+  { id: "es_male_dani_uranus_bigtts", zh: "Dani", en: "Dani", lang: "es", scene: "多语种" },
+  { id: "fr_female_fr_bv078_uranus_bigtts", zh: "Simone", en: "Simone", lang: "fr", scene: "多语种" },
+  { id: "fr_female_fr_f47_uranus_bigtts", zh: "Camille", en: "Camille", lang: "fr", scene: "多语种" },
+  { id: "fr_male_fr_m29_uranus_bigtts", zh: "Maurice", en: "Maurice", lang: "fr", scene: "多语种" },
+  { id: "de_female_bv081_uranus_bigtts", zh: "Stella", en: "Stella", lang: "de", scene: "多语种" },
+  { id: "de_male_sven_uranus_bigtts", zh: "Sven", en: "Sven", lang: "de", scene: "多语种" },
+  { id: "pt_male_bv172_uranus_bigtts", zh: "Sam", en: "Sam", lang: "pt", scene: "多语种" },
+  { id: "pt_female_bv173_uranus_bigtts", zh: "Diana", en: "Diana", lang: "pt", scene: "多语种" },
+  { id: "pt_female_bv530_uranus_bigtts", zh: "Sofia", en: "Sofia", lang: "pt", scene: "多语种" },
+  { id: "ru_female_af07_uranus_bigtts", zh: "Amelia", en: "Amelia", lang: "ru", scene: "多语种" },
+  { id: "ru_male_pavel_uranus_bigtts", zh: "Pavel", en: "Pavel", lang: "ru", scene: "多语种" },
+  { id: "id_male_bv160_uranus_bigtts", zh: "Rocco", en: "Rocco", lang: "id", scene: "多语种" },
+  { id: "id_female_bv161_uranus_bigtts", zh: "Clara", en: "Clara", lang: "id", scene: "多语种" },
+  { id: "th_female_bv568_happy_uranus_bigtts", zh: "Zara", en: "Zara", lang: "th", scene: "多语种" },
+  { id: "tl_female_annika_uranus_bigtts", zh: "Annika", en: "Annika", lang: "tl", scene: "多语种" },
+  { id: "ar_female_dina_uranus_bigtts", zh: "Dina", en: "Dina", lang: "ar", scene: "多语种" },
+  { id: "ar_male_youssef_uranus_bigtts", zh: "Youssef", en: "Youssef", lang: "ar", scene: "多语种" },
+  { id: "it_male_enzo_uranus_bigtts", zh: "Enzo", en: "Enzo", lang: "it", scene: "多语种" },
+  { id: "mx_female_bv065_uranus_bigtts", zh: "Irene", en: "Irene", lang: "mx", scene: "多语种" },
+  { id: "ms_male_ham_uranus_bigtts", zh: "Ham", en: "Ham", lang: "ms", scene: "多语种" },
+];
+
+const DOUBAO_LS_KEY = 'noobclaw.doubaoVoices.v1';
+const DOUBAO_SEED: DoubaoCatalog = {
+  enabled: true, voices: DOUBAO_SEED_VOICES,
+  priceCnyPer10k: 4.5, priceUsdPer10k: 0.625, // 服务端拉到就覆盖
+};
+
+/** 读上次成功拉到的目录(localStorage)。坏数据当没有。 */
+function readDoubaoCache(): DoubaoCatalog | null {
+  try {
+    const raw = localStorage.getItem(DOUBAO_LS_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    const voices = Array.isArray(j?.voices) ? j.voices.filter((v: any) => v && typeof v.id === 'string') : [];
+    if (voices.length === 0) return null;
+    return {
+      enabled: !!j.enabled, voices,
+      priceCnyPer10k: Number(j.priceCnyPer10k) || DOUBAO_SEED.priceCnyPer10k,
+      priceUsdPer10k: Number(j.priceUsdPer10k) || DOUBAO_SEED.priceUsdPer10k,
+    };
+  } catch { return null; }
 }
 
-let _doubaoCache: { enabled: boolean; voices: Array<{ id: string; zh?: string; en?: string; lang?: string; scene?: string }> } | null = null;
+// 冷启动就有内容:上次拉到的 > 内置种子。之后台再刷新成最新的。
+let _doubaoCache: DoubaoCatalog = readDoubaoCache() || DOUBAO_SEED;
+/** 是否已经从服务端拿到过真目录(用来判断要不要再发请求)。 */
+let _doubaoFresh = false;
+
+/**
+ * 音色 id → 人话名字。
+ *
+ * ⚠️ 必须同时查【豆包缓存】和【Edge 静态表】:豆包音色是服务端 tts_volc_voices 下发的,
+ *   不在 VOICE_GROUPS 里,只查静态表就会在任务详情页把 zh_female_sophie_uranus_bigtts
+ *   这种原始 id 直接印给用户看。
+ *   缓存还没拉到时(冷启动首屏)退回 id —— 拉到后组件重渲染就正常了。
+ */
+/**
+ * 后台刷新豆包音色目录。重复调用只发一次请求。
+ * ⚠️ 不再「没缓存才拉」—— 缓存现在恒有值(种子/localStorage),那样写就永远不刷新了。
+ *   改成「本进程还没拉到过就拉」,拉到覆盖缓存并写回 localStorage 供下次冷启动秒开。
+ *   拉失败保留现有缓存(种子或上次的),UI 不会因为一次网络抖动变空。
+ */
+let _doubaoLoading: Promise<void> | null = null;
+function ensureDoubaoVoices(): Promise<void> {
+  if (_doubaoFresh) return Promise.resolve();
+  if (_doubaoLoading) return _doubaoLoading;
+  _doubaoLoading = videoCreationService.fetchDoubaoVoices()
+    .then((r) => {
+      if (r.voices.length > 0) {
+        _doubaoCache = {
+          enabled: r.enabled, voices: r.voices,
+          priceCnyPer10k: r.priceCnyPer10k || _doubaoCache.priceCnyPer10k,
+          priceUsdPer10k: r.priceUsdPer10k || _doubaoCache.priceUsdPer10k,
+        };
+        try { localStorage.setItem(DOUBAO_LS_KEY, JSON.stringify(_doubaoCache)); } catch { /* 配额满/隐私模式 → 只影响下次冷启动 */ }
+      } else if (!r.enabled) {
+        // 服务端明确说没配豆包 → 收起豆包页签,别让用户选了才失败。
+        _doubaoCache = { ..._doubaoCache, enabled: false };
+        try { localStorage.removeItem(DOUBAO_LS_KEY); } catch { /* ignore */ }
+      }
+      _doubaoFresh = true;
+    })
+    .catch(() => { /* 拉不到就继续用现有缓存 */ })
+    .finally(() => { _doubaoLoading = null; });
+  return _doubaoLoading;
+}
+
+/**
+ * 详情/记录页用:确保豆包音色目录已加载,加载完触发一次重渲染。
+ * ⚠️ 缓存原来只在向导(useVoiceGroups)挂载时才填 —— 用户直接进任务详情页时缓存是空的,
+ *    voiceDisplayName 查不到就把 zh_female_sophie_uranus_bigtts 这种原始 id 印给用户看。
+ */
+function useDoubaoVoicesReady(): void {
+  const [, force] = React.useState(0);
+  React.useEffect(() => {
+    if (_doubaoFresh) return;   // 已经拿到过真目录就不用再拉(缓存恒有值,不能拿它当判据)
+    let alive = true;
+    void ensureDoubaoVoices().then(() => { if (alive) force((n) => n + 1); });
+    return () => { alive = false; };
+  }, []);
+}
+
+function voiceDisplayName(voiceId: string, isZh: boolean): string {
+  const id = (voiceId || '').trim();
+  if (!id) return '';
+  const db = _doubaoCache?.voices?.find((v) => v.id === id);
+  if (db) return (isZh ? (db.zh || db.en) : (db.en || db.zh)) || id;
+  const edge = VOICE_GROUPS.flatMap((g) => g.voices).find((v) => v.id === id);
+  if (edge) return isZh ? edge.zh : edge.en;
+  return id;
+}
 /**
  * VoicePicker — 配音音色选择器:两级 tab + 列表,替代 158 项平铺的 <select>。
  *   第 1 级:引擎(🔥 豆包真人 / Edge 免费)—— 用户拍板的顶级维度。
@@ -2489,15 +2861,22 @@ const VP_ACCENT: Record<string, string> = {
   teal: 'border-teal-500 bg-teal-500/10 text-teal-600 dark:text-teal-400 font-medium',
 };
 /** VoiceList — 音色列表的壳:一行触发按钮 + 展开的两列面板(照赛道选择器那套,比原生下拉好点)。 */
-const VoiceList: React.FC<{ open: boolean; setOpen: (v: boolean) => void; label: string; children: React.ReactNode }> = ({ open, setOpen, label, children }) => (
+const VoiceList: React.FC<{
+  open: boolean; setOpen: (v: boolean) => void; label: string; children: React.ReactNode;
+  /** 与下拉触发条【同一行】贴右的东西(试听按钮)。布局对齐背景音乐那一行。 */
+  trailing?: React.ReactNode;
+}> = ({ open, setOpen, label, children, trailing }) => (
   <div>
-    <button type="button" onClick={() => setOpen(!open)}
-      className="relative w-full text-left text-sm pl-3 pr-9 py-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none">
-      {label}
-      <svg className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
-    </button>
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={() => setOpen(!open)}
+        className="relative flex-1 min-w-0 text-left text-sm pl-3 pr-9 py-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-gray-100 focus:outline-none">
+        <span className="block truncate">{label}</span>
+        <svg className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {trailing}
+    </div>
     {open && (
       <div className="mt-1 grid grid-cols-2 gap-1 p-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 max-h-72 overflow-y-auto">
         {children}
@@ -2521,8 +2900,17 @@ const VoicePicker: React.FC<{
   onChange: (id: string) => void;
   accent?: string;
   targetLang?: string;
-}> = ({ isZh, value, onChange, accent = 'sky', targetLang }) => {
-  const { doubaoVoices, doubaoEnabled } = useVoiceGroups();
+  /** 语速(试听时用同一档,听到的就是成片里的效果)。 */
+  rate?: number;
+}> = ({ isZh, value, onChange, accent = 'sky', targetLang, rate }) => {
+  const { doubaoVoices, doubaoEnabled, priceCnyPer10k, priceUsdPer10k } = useVoiceGroups();
+  // 单价标文案:中文界面用人民币,其它语言用美元(后端已按汇率换算好)。拿不到价就不显示标。
+  const priceTag = (() => {
+    if (isZh) return priceCnyPer10k > 0 ? `¥${priceCnyPer10k}/万字` : '';
+    return priceUsdPer10k > 0 ? `$${priceUsdPer10k.toFixed(2)}/10k` : '';
+  })();
+  // 配音试听:跟 BGM 同一套 UI(见 BgmPreviewBar)。放在 VoicePicker 里 = 所有向导一次生效。
+  const voicePreview = useVoicePreview(value, rate, targetLang, isZh);
   const isDoubaoId = (id: string) => /_(male|female)_/i.test(id) && !/Neural$/i.test(id);
   const [engine, setEngine] = useState<'doubao' | 'edge'>(() => (isDoubaoId(value) ? 'doubao' : 'edge'));
   useEffect(() => { setEngine(isDoubaoId(value) ? 'doubao' : 'edge'); /* eslint-disable-next-line */ }, [value]);
@@ -2560,6 +2948,14 @@ const VoicePicker: React.FC<{
 
   const on = VP_ACCENT[accent] || VP_ACCENT.sky;
   const tab = (active: boolean) => `px-3 py-1.5 rounded-lg text-xs border transition-colors ${active ? on : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400'}`;
+  // ⚠️ 引擎选择器【必须和下面的语种 chip 长得不一样】。原来两级用的是同一个 tab() 样式,
+  //   「豆包真人 / 微软 Edge」和「中文 86 / 英语 41」挤在一起看着是同一排东西 ——
+  //   真机反馈:用户以为上面那两个也是语言。所以这里做成更大更厚的卡片:双线边框、
+  //   加粗字号、块级平分宽度,和下面的小 pill 拉开层级。
+  const engineTab = (active: boolean) => [
+    'relative flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 transition-all',
+    active ? `${on} shadow-sm` : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600',
+  ].join(' ');
   const item = (active: boolean) => `text-left text-sm px-2.5 py-2 rounded-md truncate transition-colors ${active ? (VP_ITEM[accent] || VP_ITEM.sky) : 'hover:bg-black/5 dark:hover:bg-white/10 dark:text-gray-200'}`;
   const [open, setOpen] = useState(false);
   // 当前音色的显示名(豆包/Edge 都查一遍;查不到就显示原始 id,老任务的音色不会变空白)
@@ -2583,14 +2979,24 @@ const VoicePicker: React.FC<{
 
   return (
     <div className="space-y-2">
-      {/* 引擎 tab */}
+      {/* 引擎选择(第 1 级)—— 刻意做得比下面的语种 chip 大一号,别让用户看成语言 */}
       {doubaoEnabled && (
-        <div className="flex gap-2">
-          <button type="button" onClick={() => { setEngine('doubao'); const first = (dbByLang.get(dbLang) || doubaoVoices)[0]; if (first && !isDoubaoId(value)) onChange(first.id); }} className={tab(engine === 'doubao')}>
+        <div className="flex gap-2 pt-1.5">
+          <button type="button" onClick={() => { setEngine('doubao'); const first = (dbByLang.get(dbLang) || doubaoVoices)[0]; if (first && !isDoubaoId(value)) onChange(first.id); }} className={engineTab(engine === 'doubao')}>
             🔥 {isZh ? '豆包真人' : 'Doubao lifelike'}
+            {/* 单价标:中文界面显示 ¥/万字,其它显示 $/万字(汇率由服务端换算好回传,客户端不自己配) */}
+            {priceTag && (
+              <span className="absolute -top-2 -right-1.5 px-1.5 py-[1px] rounded-full bg-amber-500 text-white text-[10px] font-bold leading-tight shadow-sm pointer-events-none whitespace-nowrap">
+                {priceTag}
+              </span>
+            )}
           </button>
-          <button type="button" onClick={() => { setEngine('edge'); if (isDoubaoId(value)) onChange(VOICE_GROUPS[0].voices[0].id); }} className={tab(engine === 'edge')}>
-            {isZh ? 'Edge 免费' : 'Edge free'}
+          <button type="button" onClick={() => { setEngine('edge'); if (isDoubaoId(value)) onChange(VOICE_GROUPS[0].voices[0].id); }} className={engineTab(engine === 'edge')}>
+            {isZh ? '微软 Edge' : 'Microsoft Edge'}
+            {/* 右上角红标。父级有 pt-1.5 给它留出溢出空间,否则会被上一行裁掉。 */}
+            <span className="absolute -top-2 -right-1.5 px-1.5 py-[1px] rounded-full bg-red-500 text-white text-[10px] font-bold leading-tight shadow-sm pointer-events-none">
+              {isZh ? '免费' : 'FREE'}
+            </span>
           </button>
         </div>
       )}
@@ -2604,7 +3010,7 @@ const VoicePicker: React.FC<{
               </button>
             ))}
           </div>
-          <VoiceList open={open} setOpen={setOpen} label={curLabel}>
+          <VoiceList open={open} setOpen={setOpen} label={curLabel} trailing={<BgmPreviewButtons isZh={isZh} bgmPath={value} state={voicePreview} tone={(['rose', 'fuchsia', 'amber', 'emerald', 'sky'].includes(accent) ? accent : 'sky') as any} showFolder={false} previewLabel={isZh ? '▶ 试听音色' : '▶ Preview'} />}>
             {sceneGroups.map(([sc, vs]) => (
               <React.Fragment key={sc}>
                 <div className="col-span-2 px-2 pt-2 pb-1 text-[11px] text-gray-400 dark:text-gray-500">{sc}</div>
@@ -2626,7 +3032,7 @@ const VoicePicker: React.FC<{
               </button>
             ))}
           </div>
-          <VoiceList open={open} setOpen={setOpen} label={curLabel}>
+          <VoiceList open={open} setOpen={setOpen} label={curLabel} trailing={<BgmPreviewButtons isZh={isZh} bgmPath={value} state={voicePreview} tone={(['rose', 'fuchsia', 'amber', 'emerald', 'sky'].includes(accent) ? accent : 'sky') as any} showFolder={false} previewLabel={isZh ? '▶ 试听音色' : '▶ Preview'} />}>
             {(VOICE_GROUPS[edgeGroupIdx] || VOICE_GROUPS[0]).voices.map((v) => (
               <button key={v.id} type="button" onClick={() => { onChange(v.id); setOpen(false); }} className={item(v.id === value)}>
                 {v.id === value ? '✓ ' : ''}{isZh ? v.zh : v.en}
@@ -2635,27 +3041,37 @@ const VoicePicker: React.FC<{
           </VoiceList>
         </>
       )}
+      {/* 播放器在下面一行;试听按钮已经和音色下拉并排(见 VoiceList 的 trailing)。 */}
+      <BgmPreviewPlayer
+        isZh={isZh}
+        bgmPath={value}
+        state={voicePreview}
+        tone={(['rose', 'fuchsia', 'amber', 'emerald', 'sky'].includes(accent) ? accent : 'sky') as any}
+      />
     </div>
   );
 };
 
-function useVoiceGroups(): { groups: typeof VOICE_GROUPS; doubaoEnabled: boolean; defaultVoice: string; doubaoVoices: Array<{ id: string; zh?: string; en?: string; lang?: string; scene?: string }> } {
-  const [db, setDb] = React.useState(_doubaoCache);
+function useVoiceGroups(): { groups: typeof VOICE_GROUPS; doubaoEnabled: boolean; defaultVoice: string; doubaoVoices: DoubaoVoice[]; priceCnyPer10k: number; priceUsdPer10k: number } {
+  // 初值就是缓存(种子/localStorage)→ 首屏立刻有内容,不等网络。
+  const [db, setDb] = React.useState<DoubaoCatalog>(_doubaoCache);
   React.useEffect(() => {
-    if (_doubaoCache) return;
+    if (_doubaoFresh) { setDb(_doubaoCache); return; }
     let alive = true;
-    videoCreationService.fetchDoubaoVoices().then((r) => {
-      _doubaoCache = { enabled: r.enabled, voices: r.voices };
-      if (alive) setDb(_doubaoCache);
-    }).catch(() => { _doubaoCache = { enabled: false, voices: [] }; });
+    void ensureDoubaoVoices().then(() => { if (alive) setDb(_doubaoCache); });
     return () => { alive = false; };
   }, []);
-  if (!db?.enabled || db.voices.length === 0) return { groups: VOICE_GROUPS, doubaoEnabled: false, defaultVoice: '', doubaoVoices: [] };
+  if (!db?.enabled || db.voices.length === 0) {
+    return { groups: VOICE_GROUPS, doubaoEnabled: false, defaultVoice: '', doubaoVoices: [], priceCnyPer10k: 0, priceUsdPer10k: 0 };
+  }
   const grp = {
     groupZh: '🔥 豆包真人语音(推荐)', groupEn: '🔥 Doubao lifelike (recommended)',
     voices: db.voices.map((v) => ({ id: v.id, zh: v.zh || v.id, en: v.en || v.zh || v.id })) as VoiceOpt[],
   };
-  return { groups: [grp, ...VOICE_GROUPS], doubaoEnabled: true, defaultVoice: db.voices[0].id, doubaoVoices: db.voices };
+  return {
+    groups: [grp, ...VOICE_GROUPS], doubaoEnabled: true, defaultVoice: db.voices[0].id, doubaoVoices: db.voices,
+    priceCnyPer10k: db.priceCnyPer10k, priceUsdPer10k: db.priceUsdPer10k,
+  };
 }
 
 const VOICE_GROUPS: { groupZh: string; groupEn: string; voices: VoiceOpt[] }[] = [
@@ -2780,50 +3196,6 @@ function scriptLangDisplay(code: string | undefined, isZh: boolean): string | nu
 // value 用 builtin:<id> token 传给主进程,bgm.ts 还原成 resources/bgm/<id>.mp3。
 // id 必须与 client/resources/bgm/<id>.mp3 文件名(去扩展名)一致。
 const BUILTIN_BGM_PREFIX = 'builtin:';
-/**
- * resolveBgmPreview — 把 bgmPath(builtin:/remote:/绝对路径)变成能播的 URL,
- * 失败时【一定带回原因】。以前每一步失败都回 '',界面上就是「点了没反应」,
- * 真机没法定位;现在每一环的错都往上抛给界面 + console。
- *
- * 链路:渲染端 → sidecar video:prepareBgmPreview(解析/按需下载 → 注册 localFileServer)
- *      → 回 http://127.0.0.1:PORT/api/local-file?token=… → 这里 fetch 成 blob 给 <audio>。
- */
-async function resolveBgmPreview(token: string): Promise<{ url: string; err: string }> {
-  if (!token) return { url: '', err: 'no_bgm_selected' };
-  if (!videoCreationService.available) return { url: '', err: 'video_ipc_unavailable(主进程没挂上)' };
-  let raw = '';
-  try {
-    raw = await videoCreationService.prepareBgmPreview(token);
-  } catch (e) {
-    return { url: '', err: 'ipc_threw: ' + String((e as Error)?.message || e).slice(0, 120) };
-  }
-  try { console.info('[bgm-preview] token=' + token + ' raw=' + String(raw).slice(0, 160)); } catch { /* ignore */ }
-  if (!raw) {
-    // 空 = sidecar 要么不认这个 channel(装的包里 sidecar 比界面旧,未知 channel 一律回 null),
-    // 要么解析确实没结果。再问一次【只解析路径】的老 channel 就能区分这两种,省一轮猜。
-    let probe = '';
-    try { probe = await videoCreationService.resolveBgmPath(token); } catch { probe = '(threw)'; }
-    return { url: '', err: 'sidecar_returned_empty; resolveBgmPath=' + (probe || '(empty)') };
-  }
-  if (raw.startsWith('ERR:')) return { url: '', err: raw.slice(4) };
-  if (!/^https?:/i.test(raw)) return { url: raw, err: '' };        // data: URL 直接播
-  try {
-    const r = await fetch(raw);
-    if (!r.ok) return { url: '', err: 'http_' + r.status + ' from local-file' };
-    const b = await r.blob();
-    if (!b.size) return { url: '', err: 'empty_body(0 字节)' };
-    return { url: URL.createObjectURL(b), err: '' };
-  } catch (e) {
-    // fetch 拿不到就退回直接把 http URL 交给 <audio>(webview 能直连 sidecar 时仍可播)
-    try { console.warn('[bgm-preview] fetch failed, falling back to direct src', e); } catch { /* ignore */ }
-    return { url: raw, err: '' };
-  }
-}
-/** 试听出错时给用户看的一行(带原始原因,方便截图定位)。 */
-function bgmPreviewMsg(err: string, isZh: boolean): string {
-  if (err === 'no_bgm_selected') return isZh ? '先选一首背景音乐再试听' : 'Pick a track first';
-  return (isZh ? '试听失败:' : 'Preview failed: ') + err;
-}
 
 const BUILTIN_BGM: { id: string; zh: string; en: string }[] = [
   { id: 'bgm-01', zh: '内置曲目 1', en: 'Track 1' },
@@ -3011,7 +3383,15 @@ const VideoConfigModal: React.FC<{
   const isEdit = !!editTask;
   // forcedMode(从「电影级 / 在线素材」card 进来)锁定模式 → 跳过 step1 模式选择,从 step2(赛道)起。
   // 矩阵号在「出片(7)」后多插一步「账号(8)」。
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(forcedMode ? 2 : 1);
+  // 电影级(pure_ai)连「选号」也跳过 —— 它的输入是分镜脚本或一句话想法,赛道/人设/关键词
+  //   已经不是主要输入;发布账号在最后一步单独选,这一步对它是纯摩擦。
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(
+    forcedMode === 'pure_ai' ? 3 : (forcedMode ? 2 : 1),
+  );
+  /** 本向导是否跳过「选号」步(电影级)。编号显示、前进/后退、取消判定都要按它走。 */
+  const skipIdentityStep = forcedMode === 'pure_ai';
+  /** 圆点上显示的序号:forced 少一步「模式」,电影级再少一步「选号」。 */
+  const dotNo = (forced: number, plain: number) => (skipIdentityStep ? forced - 1 : (forcedMode ? forced : plain));
   // 出片(7)= 本地/上传去向 + 频率 + 条数;发布(8)= 发布平台 + 每平台选号(matrix)。
   // 对齐热搜成片:平台与账号【同一步】,且与「出片去向」分开成独立的「发布」步。
   const PUBLISH_STEP = 8 as const;
@@ -3135,20 +3515,20 @@ const VideoConfigModal: React.FC<{
   //   · 编辑【纯 AI(engine==='ai')】:按任务【实际保存值】回填 —— 建时开了字幕(配音+字幕)
   //     就回填开,不能因为是 AI 引擎就一律强制关(否则用户每次编辑都丢掉字幕设置)。
   //   · 编辑【在线/本地素材】:始终默认开,忽略早期以 pure_ai 建过残留的 subtitleEnabled=false。
+  // ⚠️ 编辑电影级老任务时不能读旧值。旧逻辑是 `aiNarration && subtitleEnabled`,
+  //   没开 AI 配音的任务一律被存成 subtitleEnabled=false —— 照读的话这些任务永远没字幕,
+  //   而现在电影级的字幕是本地烧、和配音无关了。统一默认开,用户想关在向导里关。
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(
-    editTask
-      ? (editTask.input.engine === 'ai' ? editTask.input.subtitleEnabled === true : true)
-      : true,
+    editTask ? editTask.input.subtitleEnabled !== false : true,
   );
   // 纯 AI(Seedance)是否额外加「AI 配音 + 字幕」。电影级 card(forcedMode='pure_ai')默认【开】
   //   —— 补回 step1 纯AI onClick 的 setAiNarration(true)(用户要求纯AI字幕默认打开);用户仍可在
   //   「音频」步关掉走纯画面。编辑态按任务实际保存值回填。
-  const [aiNarration, setAiNarration] = useState<boolean>(
-    // 编辑态:永远按任务实际保存值回填(即便也传了 forcedMode 来跳过 step1,也不能用
-    // forcedMode 的「默认开」覆盖用户原设置)。新建态:电影级(forcedMode='pure_ai')默认开。
-    isEdit
-      ? (editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true)
-      : (forcedMode === 'pure_ai' ? true : false));
+  // ⚠️ 这个 state 现在【只用来控制向导步骤跳转】,不再是"要不要配音"的开关 ——
+  //   电影级的人声由 Seedance 随画面一起生成,恒定存在,「音频」步里那个开关已经撤掉。
+  //   所以 pure_ai 一律 true:不能再读老任务存的 narrationEnabled(旧任务多为 false,
+  //   照读会把「字幕」步整个跳过,而字幕现在是本地烧、和配音无关的)。
+  const [aiNarration] = useState<boolean>(mode === 'pure_ai' ? true : (forcedMode === 'pure_ai'));
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 64);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
   const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
@@ -3240,44 +3620,8 @@ const VideoConfigModal: React.FC<{
   // BGM「打开文件夹」:原内嵌试听在部分环境播放不稳,改为直接打开该 BGM 所在【目录】,
   // 用户自己进去双击试听。后端返回的是目录(不下载、不要求文件已存在),比定位单文件健壮:
   // 内置 → 打开随包 bgm 目录(8 首都在);云端 → 打开缓存目录(已下载的在);上传 → 文件目录。
-  const [bgmOpening, setBgmOpening] = useState(false);
-  const openBgmFolder = async (token: string) => {
-    if (!token || bgmOpening) return;
-    setBgmOpening(true);
-    try {
-      const dir = await videoCreationService.resolveBgmPath(token); // 现在返回目录
-      if (dir) {
-        try { (window as any).electron?.shell?.openPath?.(dir); } catch { /* ignore */ }
-        setBgmPreviewErr('');
-      } else {
-        setBgmPreviewErr(isZh ? '打开失败：找不到 BGM 目录' : 'Failed: BGM folder not found');
-      }
-    } catch {
-      setBgmPreviewErr(isZh ? '打开失败：无法打开 BGM 目录' : 'Failed to open the BGM folder');
-    } finally {
-      setBgmOpening(false);
-    }
-  };
-  // BGM 内嵌试听:解析成可播 URL(云端按需下载),用 <audio controls autoPlay> 直接播。
-  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
-  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
-  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
-  const previewBgm = async (token: string) => {
-    if (!token || bgmPreviewLoading) return;
-    setBgmPreviewLoading(true);
-    setBgmPreviewErr('');
-    try {
-      const r = await resolveBgmPreview(token);
-      if (r.url) setBgmPreviewUrl(r.url);
-      if (r.err) setBgmPreviewErr(bgmPreviewMsg(r.err, isZh));
-    } catch {
-      setBgmPreviewErr(isZh ? '试听失败' : 'Preview failed');
-    } finally {
-      setBgmPreviewLoading(false);
-    }
-  };
-  // 切换曲目时清掉上一首的「打开失败」红字 + 试听播放器,避免残留误导(选 A → 切 B 仍在)。
-  useEffect(() => { setBgmPreviewErr(''); setBgmPreviewUrl(''); }, [bgmPath]);
+  // 试听 + 打开文件夹:全站统一实现,见 BgmPreviewBar.tsx。
+  const bgmPreview = useBgmPreview(bgmPath, isZh);
 
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
 
@@ -3294,14 +3638,22 @@ const VideoConfigModal: React.FC<{
       : true;
 
   const scriptLen = script.trim().length;
+  // 电影级(pure_ai)允许粘完整分镜脚本 → 用更大的上限;其它模式维持 800。
+  const scriptMax = mode === 'pure_ai' ? SCRIPT_MAX_CINEMA : SCRIPT_MAX;
   // 严格模式据字数预估时长(向上取整,中文约 4.5 字/秒)。
+  // ⚠️ 电影级粘的是【完整分镜脚本】,里面大半是制作说明(会被解析器丢弃),按总字数
+  //   估时长会离谱地偏大 —— 这里只作粗略提示,真实时长以解析出的口播为准。
   const strictEstSec = Math.max(1, Math.round(scriptLen / CHARS_PER_SEC));
   // 文案校验:
-  //   strict 严格逐字:必填、≥SCRIPT_MIN_STRICT 字、≤SCRIPT_MAX 字(直接决定时长)。
+  //   strict 严格逐字:必填、≥SCRIPT_MIN_STRICT 字、≤scriptMax 字(直接决定时长)。
   //   ai 参考:选填,填了则不超上限。
+  //   ⚠️ 电影级例外:它不再带赛道/人设/关键词,想法留空就真的没有任何题材输入了
+  //      (老逻辑会拿默认赛道去写稿),所以「我只有个想法」必须填。
   const scriptValid = scriptMode === 'strict'
-    ? (scriptLen >= SCRIPT_MIN_STRICT && scriptLen <= SCRIPT_MAX)
-    : (scriptLen === 0 || scriptLen <= SCRIPT_MAX);
+    ? (scriptLen >= SCRIPT_MIN_STRICT && scriptLen <= scriptMax)
+    : (mode === 'pure_ai'
+        ? (scriptLen > 0 && scriptLen <= scriptMax)
+        : (scriptLen === 0 || scriptLen <= scriptMax));
   // 赛道步:非矩阵只校验赛道必选;矩阵号必须选好账号(编辑老任务可沿用已存身份不强制重选)。
   const trackStepValid = matrixMode ? (!!identityAccountId || isEdit) : (trackId !== '');
   // 文案步:只校验文案本身。
@@ -3317,19 +3669,28 @@ const VideoConfigModal: React.FC<{
     : (TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en'] || editTask?.input.track || '');
 
   const buildTitle = (): string => {
-    const kw = keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean);
-    const head = kw.slice(0, 2).join(' / ');
-    const base = head || trackLabel || (isZh ? '视频创作' : 'Video');
+    // 电影级没有关键词可拼,用脚本/想法的首行 —— 用户粘的分镜脚本首行通常就是标题。
+    const head = mode === 'pure_ai'
+      ? (script.split('\n').map((l) => l.trim()).find((l) => l.length > 0) || '').slice(0, 24)
+      : keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean).slice(0, 2).join(' / ');
+    const base = head
+      || (mode === 'pure_ai' ? (isZh ? '电影级' : 'Cinematic') : (trackLabel || (isZh ? '视频创作' : 'Video')));
     if (scriptMode === 'strict') return `${base}（${isZh ? '严格文案' : 'strict'} · ${scriptLen}${isZh ? '字' : 'ch'}）`;
     return `${base}（AI ${isZh ? '写稿' : 'script'} · ${targetSeconds}s）`;
   };
 
-  const buildInput = (): VideoCreationInput => ({
-    persona: persona.trim(),
-    track: trackLabel,
-    keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
+  const buildInput = (shotsOverride?: StoryShot[]): VideoCreationInput => ({
+    // 电影级的输入是分镜脚本或一句话想法 —— 赛道/人设/关键词既不问也不用。
+    //   写进去只会让卡片和详情页显示一套跟成片毫不相干的默认值
+    //   (实测:一条金融故事被标成「美食探店 / 一人食」)。
+    persona: mode === 'pure_ai' ? '' : persona.trim(),
+    track: mode === 'pure_ai' ? '' : trackLabel,
+    keywords: mode === 'pure_ai' ? [] : keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
     script: script.trim(),
     scriptMode,
+    // 电影级:用户在分镜表上确认/编辑过的分镜。pipeline 见到它就直接用,不再跑一次解析
+    //   —— 既省一次 AI 调用,也保证用户改过的内容(含「要动」的勾选)原样生效。
+    storyboardShots: shotsOverride && shotsOverride.length > 0 ? shotsOverride : undefined,
     // engine / seedance / target 等以 mode 为唯一真相源 — 之前以 materialSource 派生,
     // 但 React state 异步 + closure 边界 case 下,用户切「纯 AI→AI 口播稿」时 mode
     // 已切回 'stock',materialSource 可能还停在 'ai',结果 engine 错派 'ai' 跑了 Seedance
@@ -3374,12 +3735,18 @@ const VideoConfigModal: React.FC<{
     scriptLang: mode === 'stock' && scriptLang !== 'auto' ? scriptLang : undefined,
     voice,
     voiceRate,
-    // Seedance(pure_ai):默认纯画面(关旁白 + 不烧字幕);用户在「音频」步开了「AI 配音」
-    //   → narrationEnabled=true,跟普通模式一样配音 + 按字幕开关烧录。
+    // 电影级(pure_ai):人声/口型/环境音全部由 Seedance 随画面一起生成,本地不再配音,
+    //   所以 narrationEnabled 对它已无意义(主进程恒当作 false)。
     narrationEnabled: mode === 'pure_ai' ? (aiNarration ? true : false) : undefined,
     bgmPath: bgmPath || undefined,
     bgmVolume,
-    subtitleEnabled: mode === 'pure_ai' ? (aiNarration && subtitleEnabled) : subtitleEnabled,
+    // 电影级字幕:**本地烧,默认开**。
+    //   Seedance 不画字幕 —— 它负责音画同步和口型,画面文字我们 prompt 里明确禁掉了
+    //   (生成模型写中文必畸变,社区实测「几乎无法避免」;seedance2.0-prompt-skill 和
+    //   ArcReel 的标准模板也都是禁掉、字幕另做)。
+    //   本地烧的精度反而更高:内容取每镜台词(就是喂给 Seedance 念的那句),
+    //   时间取【实测片段时长】—— 对的是成片里真实播放的那段,不是估算。
+    subtitleEnabled,
     subtitleFontSize,
     subtitlePosition,
     subtitleColor: subtitleColor || undefined,
@@ -3391,8 +3758,51 @@ const VideoConfigModal: React.FC<{
 
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async () => {
-    const input = buildInput();
+  // ── 电影级:分镜表审阅 ────────────────────────────────────────────────────
+  //  提交前先把脚本解析成分镜表给用户过一眼 —— 这是【烧钱之前】唯一能拦住方向错误的地方,
+  //  也是「要动」逐镜勾选的入口(不勾=首帧+运镜几毛,勾了=生成视频几块)。
+  //  只跑 LLM,不出图不生成视频,所以这一步几乎不花钱。
+  const [sbOpen, setSbOpen] = useState(false);
+  const [sbLoading, setSbLoading] = useState(false);
+  const [sbError, setSbError] = useState<string | null>(null);
+  const [sbShots, setSbShots] = useState<StoryShot[]>([]);
+  const [sbWarnings, setSbWarnings] = useState<string[]>([]);
+  const [sbFidelity, setSbFidelity] = useState<number | undefined>(undefined);
+
+  const runParseStoryboard = async () => {
+    setSbLoading(true);
+    setSbError(null);
+    try {
+      // ⚠️ 必须是 window.electron —— Electron 的 preload 用 exposeInMainWorld('electron', …),
+      //    Tauri 的 shim 也装在 window.electron。全仓都走这个,写成 electronAPI 一定拿不到。
+      const api = (window as any).electron?.video;
+      if (!api?.parseStoryboard) { setSbError(isZh ? '当前版本不支持分镜预览' : 'Storyboard preview unavailable'); return; }
+      const r = await api.parseStoryboard({
+        script: script.trim(),
+        // 恒为 strict:只有「我有脚本」才走到这里(见 handleSubmit 的注释)。
+        scriptMode: 'strict',
+        lang: scriptLang !== 'auto' ? scriptLang : undefined,
+        targetSeconds: Math.min(targetSeconds, AI_MAX_SECONDS),
+        // 有脚本时不拿赛道/人设干扰画面调性(用户脚本自己就定了调)。
+        styleHint: undefined,
+      });
+      if (!r?.ok || !Array.isArray(r.shots) || r.shots.length === 0) {
+        setSbError(r?.error || (isZh ? '未解析出分镜' : 'no shots parsed'));
+        return;
+      }
+      setSbShots(r.shots);
+      setSbWarnings(Array.isArray(r.warnings) ? r.warnings : []);
+      setSbFidelity(typeof r.fidelity === 'number' ? r.fidelity : undefined);
+    } catch (e) {
+      setSbError(String((e as Error)?.message || e).slice(0, 200));
+    } finally {
+      setSbLoading(false);
+    }
+  };
+
+  /** 真正落任务(分镜表确认后,或非电影级直接走)。 */
+  const commitTask = async (shotsOverride?: StoryShot[]) => {
+    const input = buildInput(shotsOverride);
     // daily 才带 dailyTime,其余间隔不需要(避免存无意义的时刻)。
     const schedule: VideoSchedule = {
       runInterval,
@@ -3424,6 +3834,28 @@ const VideoConfigModal: React.FC<{
     } finally {
       setSubmitting(false);
     }
+  };
+
+  /**
+   * 提交入口。
+   * 电影级(pure_ai)新建任务 → 先弹分镜表让用户过一眼再落任务;其余模式维持原样直接落。
+   * 编辑老任务不弹(用户是来改配置的,不是来重排分镜的)。
+   */
+  const handleSubmit = async () => {
+    // 只有【我有脚本】(strict)才在提交前弹分镜表。
+    // ⚠️ 「我只有个想法」(ai)模式下用户填的是【方向提示】,口播稿这会儿还不存在(要等
+    //    pipeline 里 generateScript 写);拿提示词去 deriveStoryboard 会把它当口播逐字切开,
+    //    确认后这些分镜作为 storyboardShots 盖掉 AI 写的稿 —— 成片念的就成了那句提示词。
+    //    这条路让 pipeline 在运行时按 AI 写好的稿子派生分镜,才是对的。
+    if (mode === 'pure_ai' && !isEdit && scriptMode === 'strict' && script.trim()) {
+      setSbShots([]);
+      setSbWarnings([]);
+      setSbFidelity(undefined);
+      setSbOpen(true);
+      void runParseStoryboard();
+      return;
+    }
+    await commitTask();
   };
 
   // 用户勾选的发布平台 id 数组 —— 写到 input.publishPlatforms,pipeline 据此 forEach 调 driver。
@@ -3544,25 +3976,30 @@ const VideoConfigModal: React.FC<{
                   <div className={`h-px w-6 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
                 </>
               )}
-              {/* forcedMode(从卡片进来跳过 step1「模式」)时显示编号 -1 → 选号=1…发布=7,不从 2 起 */}
-              <StepDot n={forcedMode ? 1 : 2} active={step === 2} done={step > 2} label={isZh ? (matrixMode ? '选号' : '赛道') : (matrixMode ? 'Account' : 'Track')} />
-              <div className={`h-px w-6 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={forcedMode ? 2 : 3} active={step === 3} done={step > 3} label={isZh ? '文案' : 'Script'} />
+              {/* forcedMode(从卡片进来跳过 step1「模式」)时显示编号 -1 → 选号=1…发布=7,不从 2 起。
+                  电影级再跳过「选号」→ 编号再 -1(文案=1…发布=6),圆点也不画。 */}
+              {!skipIdentityStep && (
+                <>
+                  <StepDot n={forcedMode ? 1 : 2} active={step === 2} done={step > 2} label={isZh ? (matrixMode ? '选号' : '赛道') : (matrixMode ? 'Account' : 'Track')} />
+                  <div className={`h-px w-6 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                </>
+              )}
+              <StepDot n={dotNo(2, 3)} active={step === 3} done={step > 3} label={isZh ? '文案' : 'Script'} />
               <div className={`h-px w-6 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={forcedMode ? 3 : 4} active={step === 4} done={step > 4} label={isZh ? '画面' : 'Visuals'} />
+              <StepDot n={dotNo(3, 4)} active={step === 4} done={step > 4} label={isZh ? '画面' : 'Visuals'} />
               <div className={`h-px w-6 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={forcedMode ? 4 : 5} active={step === 5} done={step > 5} label={(mode === 'pure_ai' && !aiNarration) ? (isZh ? '音乐' : 'Music') : (isZh ? '音频' : 'Audio')} />
+              <StepDot n={dotNo(4, 5)} active={step === 5} done={step > 5} label={(mode === 'pure_ai' && !aiNarration) ? (isZh ? '音乐' : 'Music') : (isZh ? '音频' : 'Audio')} />
               {/* Seedance 纯画面(未开 AI 配音)无字幕步 → 隐藏「字幕」圆点 + 一段连接线 */}
               {!(mode === 'pure_ai' && !aiNarration) && (
                 <>
                   <div className={`h-px w-6 ${step > 5 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-                  <StepDot n={forcedMode ? 5 : 6} active={step === 6} done={step > 6} label={isZh ? '字幕' : 'Subtitles'} />
+                  <StepDot n={dotNo(5, 6)} active={step === 6} done={step > 6} label={isZh ? '字幕' : 'Subtitles'} />
                 </>
               )}
               <div className={`h-px w-6 ${step > 6 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={forcedMode ? 6 : 7} active={step === 7} done={step > 7} label={isZh ? '出片' : 'Output'} />
+              <StepDot n={dotNo(6, 7)} active={step === 7} done={step > 7} label={isZh ? '出片' : 'Output'} />
               <div className={`h-px w-6 ${step > 7 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={forcedMode ? 7 : 8} active={step === 8} done={false} label={isZh ? '发布' : 'Publish'} />
+              <StepDot n={dotNo(7, 8)} active={step === 8} done={false} label={isZh ? '发布' : 'Publish'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -3591,8 +4028,7 @@ const VideoConfigModal: React.FC<{
                     active={mode === 'pure_ai'}
                     onClick={() => {
                       setMode('pure_ai'); setMaterialSource('ai');
-                      // 纯 AI 默认【开 AI 配音 + 烧字幕】(字幕需配音文本)。用户想要纯画面可在「音频」步关掉。
-                      setAiNarration(true);
+                      // 电影级:人声由 Seedance 随画面生成(无开关);字幕本地烧,默认开。
                       setSubtitleEnabled(true);
                       // 纯 AI 成片时长上限 45s:目标时长超了就拉回(否则选择器无高亮 + 会被截)。
                       if (targetSeconds > AI_MAX_SECONDS) setTargetSeconds(30);
@@ -3723,38 +4159,56 @@ const VideoConfigModal: React.FC<{
                   <ModeOption
                     active={scriptMode === 'strict'}
                     onClick={() => setScriptMode('strict')}
-                    title={isZh ? '严格按我的视频文案' : 'Use my script verbatim'}
-                    desc={isZh ? '逐字朗读，文案长度直接决定视频长度' : 'read verbatim; length sets video length'}
+                    title={mode === 'pure_ai'
+                      ? (isZh ? '我有脚本' : 'I have a script')
+                      : (isZh ? '严格按我的视频文案' : 'Use my script verbatim')}
+                    desc={mode === 'pure_ai'
+                      ? (isZh ? '粘完整分镜脚本或口播稿，口播逐字照念、画面按你写的拍' : 'paste a full storyboard or narration; read verbatim, shot-for-shot')
+                      : (isZh ? '逐字朗读，文案长度直接决定视频长度' : 'read verbatim; length sets video length')}
                   />
                   <ModeOption
                     active={scriptMode === 'ai'}
                     onClick={() => setScriptMode('ai')}
-                    title={isZh ? 'AI 参考我的文案' : 'AI writes (reference mine)'}
-                    desc={isZh ? 'AI 写稿，你的文案仅作参考（可不填）' : 'AI writes; your text is just a reference'}
+                    title={mode === 'pure_ai'
+                      ? (isZh ? '我只有个想法' : 'I just have an idea')
+                      : (isZh ? 'AI 参考我的文案' : 'AI writes (reference mine)')}
+                    desc={mode === 'pure_ai'
+                      ? (isZh ? 'AI 按你写的一句话写稿并设计分镜' : 'AI writes the script and designs shots from your one-liner')
+                      : (isZh ? 'AI 写稿，你的文案仅作参考（可不填）' : 'AI writes; your text is just a reference')}
                   />
                 </div>
               </Field>
 
               <Field
-                label={isZh ? '视频文案' : 'Script'}
+                label={mode === 'pure_ai' && scriptMode === 'strict'
+                  ? (isZh ? '分镜脚本 / 口播稿' : 'Storyboard or narration')
+                  : (isZh ? '视频文案' : 'Script')}
                 hint={scriptMode === 'strict'
-                  ? (isZh ? `逐字朗读，不少于 ${SCRIPT_MIN_STRICT} 字；字数越多视频越长` : `read verbatim; at least ${SCRIPT_MIN_STRICT} chars`)
-                  : (isZh ? '选填，留空则由 AI 按目标时长写稿；填了 AI 会参考' : 'optional; AI writes for target length, uses yours as reference')}
+                  ? (mode === 'pure_ai'
+                      ? (isZh ? `不少于 ${SCRIPT_MIN_STRICT} 字。表头、拍摄准备、B-roll 清单这类制作说明会自动剔除，不会被念出来` : `at least ${SCRIPT_MIN_STRICT} chars; production notes are stripped automatically`)
+                      : (isZh ? `逐字朗读，不少于 ${SCRIPT_MIN_STRICT} 字；字数越多视频越长` : `read verbatim; at least ${SCRIPT_MIN_STRICT} chars`))
+                  : (mode === 'pure_ai'
+                      ? (isZh ? '一句话说清要拍什么，AI 据此写稿并设计分镜（必填）' : 'one line on what to shoot; AI writes the script and shots (required)')
+                      : (isZh ? '选填，留空则由 AI 按目标时长写稿；填了 AI 会参考' : 'optional; AI writes for target length, uses yours as reference'))}
               >
                 <textarea
                   value={script}
                   onChange={(e) => setScript(e.target.value)}
-                  rows={5}
+                  rows={mode === 'pure_ai' && scriptMode === 'strict' ? 10 : 5}
                   placeholder={scriptMode === 'strict'
-                    ? (isZh ? `把要逐字朗读的视频文案粘进来…（${SCRIPT_MIN_STRICT}~${SCRIPT_MAX} 字）` : `Paste the exact narration… (${SCRIPT_MIN_STRICT}~${SCRIPT_MAX} chars)`)
-                    : (isZh ? `给 AI 的参考方向，可留空…（≤${SCRIPT_MAX} 字）` : `Reference for AI, can be empty… (≤${SCRIPT_MAX} chars)`)}
+                    ? (mode === 'pure_ai'
+                        ? (isZh ? '把你的分镜脚本整份粘进来（场景/口播/画面/花字/音乐都可以带上），或者只粘一段口播稿…' : 'Paste your full storyboard (scenes, narration, visuals, captions, music) or just the narration…')
+                        : (isZh ? `把要逐字朗读的视频文案粘进来…（${SCRIPT_MIN_STRICT}~${scriptMax} 字）` : `Paste the exact narration… (${SCRIPT_MIN_STRICT}~${scriptMax} chars)`))
+                    : (mode === 'pure_ai'
+                        ? (isZh ? '例：讲一个投行因为一篇研报亏掉 1.3 亿美元的故事，讲故事风格…' : 'e.g. tell the story of a bank losing $130M over one research note…')
+                        : (isZh ? `给 AI 的参考方向，可留空…（≤${scriptMax} 字）` : `Reference for AI, can be empty… (≤${scriptMax} chars)`))}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-y min-h-[100px]"
                 />
                 <div className={`mt-1 text-[11px] text-right ${!scriptValid ? 'text-red-500' : 'text-gray-400'}`}>
-                  {scriptLen}/{SCRIPT_MAX}
+                  {scriptLen}/{scriptMax}
                   {scriptMode === 'strict' && scriptLen > 0 && scriptLen < SCRIPT_MIN_STRICT
                     && (isZh ? `（还需 ${SCRIPT_MIN_STRICT - scriptLen} 字）` : ` (need ${SCRIPT_MIN_STRICT - scriptLen} more)`)}
-                  {scriptLen > SCRIPT_MAX && (isZh ? '（超出上限）' : ' (over limit)')}
+                  {scriptLen > scriptMax && (isZh ? '（超出上限）' : ' (over limit)')}
                 </div>
               </Field>
 
@@ -3762,9 +4216,13 @@ const VideoConfigModal: React.FC<{
                 /* 严格模式:不选目标时长,实时按字数预估时长展示 */
                 <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/20 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
                   {scriptLen >= SCRIPT_MIN_STRICT
-                    ? (isZh
-                        ? `⏱️ 预估视频时长约 ${strictEstSec}s（按中文 ${CHARS_PER_SEC} 字/秒朗读估算，实际以配音为准）`
-                        : `⏱️ Estimated ~${strictEstSec}s (at ${CHARS_PER_SEC} chars/sec; actual depends on TTS)`)
+                    ? (mode === 'pure_ai'
+                        ? (isZh
+                            ? `⏱️ 实际时长以解析出的口播为准（整份脚本 ${scriptLen} 字，其中制作说明会被剔除）`
+                            : `⏱️ Actual length depends on the parsed narration (${scriptLen} chars pasted; production notes are stripped)`)
+                        : (isZh
+                            ? `⏱️ 预估视频时长约 ${strictEstSec}s（按中文 ${CHARS_PER_SEC} 字/秒朗读估算，实际以配音为准）`
+                            : `⏱️ Estimated ~${strictEstSec}s (at ${CHARS_PER_SEC} chars/sec; actual depends on TTS)`))
                     : (isZh
                         ? `⏱️ 填够 ${SCRIPT_MIN_STRICT} 字后这里显示预估时长（按 ${CHARS_PER_SEC} 字/秒）`
                         : `⏱️ Estimate shows after ${SCRIPT_MIN_STRICT} chars`)}
@@ -3795,19 +4253,23 @@ const VideoConfigModal: React.FC<{
                 </Field>
               )}
 
-              {/* 纯AI:按【时长 × 清晰度】预估实收费用(积分 + $,按卖价),让用户开跑前心里有数。 */}
-              {mode === 'pure_ai' && aiCreditsPerSec != null && aiUsdPerSec != null && (() => {
-                const estSec = Math.min(AI_MAX_SECONDS, scriptMode === 'strict' ? Math.max(1, strictEstSec) : targetSeconds);
-                const estCredits = Math.round(aiCreditsPerSec * estSec);
-                const estUsd = aiUsdPerSec * estSec;
-                return (
-                  <div className="mt-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 px-3 py-2.5 text-sm">
-                    <span className="text-fuchsia-600 dark:text-fuchsia-400 font-semibold">💎 {isZh ? '预估费用' : 'Est. cost'}</span>
-                    <span className="ml-2 dark:text-gray-200">{isZh ? `约 ${estCredits.toLocaleString()} 积分(≈$${estUsd.toFixed(2)})` : `~${estCredits.toLocaleString()} credits (≈$${estUsd.toFixed(2)})`}</span>
-                    <div className="text-[11px] text-gray-400 mt-1">{isZh ? `${seedanceResolution} · 约 ${estSec}s · 实际按真实时长逐镜扣` : `${seedanceResolution} · ~${estSec}s · charged per real shot length`}</div>
+              {/* 纯AI 费用。只报【单价】——总价在分镜表那一步按用户勾了几镜实时算,
+                  在这里按整片秒数估既吓人又不准(默认一镜都不生成视频)。 */}
+              {mode === 'pure_ai' && aiCreditsPerSec != null && aiUsdPerSec != null && (
+                <div className="mt-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 px-3 py-2.5 text-sm">
+                  <span className="text-fuchsia-600 dark:text-fuchsia-400 font-semibold">💎 {isZh ? '生成视频' : 'AI video'}</span>
+                  <span className="ml-2 dark:text-gray-200">
+                    {isZh
+                      ? `约 $${aiUsdPerSec.toFixed(2)}/秒（${Math.round(aiCreditsPerSec).toLocaleString()} 积分/秒，${seedanceResolution}）`
+                      : `~$${aiUsdPerSec.toFixed(2)}/s (${Math.round(aiCreditsPerSec).toLocaleString()} credits/s, ${seedanceResolution})`}
+                  </span>
+                  <div className="text-[11px] text-gray-400 mt-1">
+                    {isZh
+                      ? '只有在分镜表里勾了「要动」的镜才按秒收费，其余只收出图费。'
+                      : 'Only shots you mark as Animate are charged per second; the rest only cost an image.'}
                   </div>
-                );
-              })()}
+                </div>
+              )}
             </>
           )}
 
@@ -3963,31 +4425,21 @@ const VideoConfigModal: React.FC<{
           {/* ── 步骤 5:音频 ── */}
           {step === 5 && (
             <>
-              {/* Seedance 模式:让用户选「纯画面」还是「加 AI 配音 + 字幕」 */}
+              {/* 电影级:配音由 Seedance 随画面一起生成,这里没有可选项 —— 只做说明。
+                  ⚠️ 别再放音色/语速控件:主进程对 engine==='ai' 恒走原生音轨,这些值一个都不读,
+                     摆在这里就是让用户选了个不生效的东西(真机反馈:选了音色发现没用)。 */}
               {mode === 'pure_ai' && (
-                <Field label={isZh ? 'AI 配音' : 'AI voice-over'} hint={isZh ? '开启后对分镜稿配音并可烧字幕;关闭则纯画面' : 'narrate the script & allow subtitles; off = visual-only'}>
-                  <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
-                    <span className="text-sm text-gray-700 dark:text-gray-200">
-                      {aiNarration
-                        ? (isZh ? '🔊 加 AI 配音 + 字幕' : '🔊 Add AI voice-over + subtitles')
-                        : (isZh ? '🎬 纯画面片(不配音、不烧字幕)' : '🎬 Visual-only (no narration/subtitles)')}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setAiNarration((v) => {
-                        const next = !v;
-                        // 开配音 → 字幕默认跟开(用户可在字幕步关);关配音 → 字幕一并失效。
-                        if (next) setSubtitleEnabled(true);
-                        return next;
-                      })}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${aiNarration ? 'bg-rose-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${aiNarration ? 'translate-x-5' : ''}`} />
-                    </button>
+                <Field label={isZh ? '配音' : 'Voice-over'}>
+                  <div className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
+                    <div className="text-sm text-gray-700 dark:text-gray-200">
+                      {isZh ? '🔊 由 Seedance 随画面一起生成' : '🔊 Generated by Seedance with the video'}
+                    </div>
+                    <p className="mt-1.5 text-xs text-gray-400">
+                      {isZh
+                        ? '人声、口型、环境音、音乐都和画面同时生成,音画毫秒同步、口型对得上 —— 比后期配音自然得多,也不用另外挑音色。台词取分镜稿里每一镜的口播。'
+                        : 'Speech, lip sync, ambience and music are generated together with the picture, so they line up to the millisecond. Lines come from each shot in the storyboard.'}
+                    </p>
                   </div>
-                  {!aiNarration && (
-                    <p className="mt-1.5 text-xs text-gray-400">{isZh ? '纯画面只需(选填)挑首背景音乐,下一步直接出片。' : 'Visual-only: optionally pick BGM, then output.'}</p>
-                  )}
                 </Field>
               )}
 
@@ -4013,10 +4465,11 @@ const VideoConfigModal: React.FC<{
               </Field>
               )}
 
-              {/* 配音音色 + 语速 —— 普通模式恒显示;Seedance 仅在开了「AI 配音」时显示 */}
-              {(mode !== 'pure_ai' || aiNarration) && (
-              <Field label={isZh ? '配音音色' : 'Voice'} hint={voiceEngineHint(voice, isZh)}>
-                <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="rose" targetLang={scriptLang} />
+              {/* 配音音色 + 语速 —— 只有【本地配音】的模式才显示。
+                  电影级走 Seedance 原生音轨,主进程不读这两个值,所以整块不出现。 */}
+              {mode !== 'pure_ai' && (
+              <Field label={isZh ? '配音音色' : 'Voice'}>
+                <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="rose" targetLang={scriptLang} rate={voiceRate} />
                 <div className="flex gap-2 mt-2">
                   {RATE_OPTIONS.map((r) => (
                     <button
@@ -4102,33 +4555,9 @@ const VideoConfigModal: React.FC<{
                           </optgroup>
                         )}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() => previewBgm(bgmPath)}
-                        disabled={bgmPreviewLoading}
-                        className="shrink-0 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 bg-rose-500 hover:bg-rose-600"
-                      >
-                        {bgmPreviewLoading ? (isZh ? '⏳ 加载中…' : '⏳') : (isZh ? '▶ 试听' : '▶ Preview')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openBgmFolder(bgmPath)}
-                        disabled={bgmOpening}
-                        className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 border border-rose-400 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
-                      >
-                        {bgmOpening ? (isZh ? '⏳' : '⏳') : (isZh ? '📂 文件夹' : '📂 Folder')}
-                      </button>
+                      <BgmPreviewButtons isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="rose" />
                     </div>
-                    {bgmPreviewUrl && (
-                      <audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9"
-                        onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />
-                    )}
-                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
-                    {bgmIsRemote && (
-                      <div className="text-[11px] text-gray-400">
-                        {isZh ? '☁️ 云端曲目首次打开文件夹/合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first open/compose, then cached.'}
-                      </div>
-                    )}
+                    <BgmPreviewPlayer isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="rose" showCloudHint />
                   </div>
                 )}
 
@@ -4143,31 +4572,7 @@ const VideoConfigModal: React.FC<{
                 )}
                 {/* 上传曲目的「试听 + 打开文件夹」。 */}
                 {bgmIsUpload && (
-                  <div className="mt-2 space-y-1.5">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => previewBgm(bgmPath)}
-                        disabled={bgmPreviewLoading}
-                        className="flex-1 px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 bg-rose-500 hover:bg-rose-600"
-                      >
-                        {bgmPreviewLoading ? (isZh ? '⏳ 加载中…' : '⏳') : (isZh ? '▶ 试听' : '▶ Preview')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openBgmFolder(bgmPath)}
-                        disabled={bgmOpening}
-                        className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 border border-rose-400 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
-                      >
-                        {bgmOpening ? '⏳' : (isZh ? '📂 文件夹' : '📂 Folder')}
-                      </button>
-                    </div>
-                    {bgmPreviewUrl && (
-                      <audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9"
-                        onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />
-                    )}
-                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
-                  </div>
+                  <BgmPreviewBar isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="rose" />
                 )}
                 {bgmPath && (
                   <div className="flex gap-2 mt-2">
@@ -4467,13 +4872,13 @@ const VideoConfigModal: React.FC<{
             type="button"
             onClick={() => {
               // forcedMode 锁定模式 → 最低步是 step2(赛道),从 step2 点「上一步」= 取消(没有 step1)。
-              if (step === 1 || (forcedMode && step === 2)) { onClose(); return; }
+              if (step === 1 || (forcedMode && step === 2) || (skipIdentityStep && step === 3)) { onClose(); return; }
               // Seedance 纯画面(未开 AI 配音)无字幕步:7 ← 5(跳过 6)。账号步(8)正常 8→7。
               setStep((s) => ((mode === 'pure_ai' && !aiNarration && s === 7 ? 5 : s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8));
             }}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            {(step === 1 || (forcedMode && step === 2)) ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
+            {(step === 1 || (forcedMode && step === 2) || (skipIdentityStep && step === 3)) ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
           {step < MAX_STEP ? (
             <button
@@ -4484,7 +4889,9 @@ const VideoConfigModal: React.FC<{
                   if (scriptMode === 'strict' && scriptLen < SCRIPT_MIN_STRICT) {
                     setSubmitError(isZh ? `严格模式下视频文案不少于 ${SCRIPT_MIN_STRICT} 字（当前 ${scriptLen} 字）` : `Verbatim mode needs ≥ ${SCRIPT_MIN_STRICT} chars (now ${scriptLen})`);
                   } else {
-                    setSubmitError(isZh ? `文案不能超过 ${SCRIPT_MAX} 字` : `Script must be ≤ ${SCRIPT_MAX} chars`);
+                    // ⚠️ 用 scriptMax(电影级 = SCRIPT_MAX_CINEMA),不是写死的 SCRIPT_MAX ——
+                    //   否则粘完整分镜脚本会在这一步被 800 字上限挡住,前面放宽的输入框形同虚设。
+                    setSubmitError(isZh ? `文案不能超过 ${scriptMax} 字` : `Script must be ≤ ${scriptMax} chars`);
                   }
                   return;
                 }
@@ -4521,6 +4928,22 @@ const VideoConfigModal: React.FC<{
             onConfirmed={() => { setShowLoginCheck(false); void handleSubmit(); }}
           />
         )}
+        {/* 电影级:分镜表审阅 —— 烧钱之前最后一道关口 */}
+        <StoryboardReviewModal
+          open={sbOpen}
+          isZh={isZh}
+          loading={sbLoading}
+          error={sbError}
+          shots={sbShots}
+          warnings={sbWarnings}
+          fidelity={sbFidelity}
+          creditsPerSec={aiCreditsPerSec}
+          usdPerSec={aiUsdPerSec}
+          onChange={setSbShots}
+          onRetry={() => { void runParseStoryboard(); }}
+          onCancel={() => setSbOpen(false)}
+          onConfirm={() => { setSbOpen(false); void commitTask(sbShots); }}
+        />
       </div>
     </div>
   );
@@ -4960,18 +5383,9 @@ export const HotspotVideoModal: React.FC<{
   // BGM 默认选中第 1 首内置曲目(新建任务,跟在线素材/模板速生一致);编辑老任务沿用其已存值(空也保留)。
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
-  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
-  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
-  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
-  const previewBgm = async () => {
-    if (bgmPreviewLoading) return;
-    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
-    const r = await resolveBgmPreview(bgmPath);
-    setBgmPreviewUrl(r.url);
-    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
-    setBgmPreviewLoading(false);
-  };
-  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
+  // 试听 + 打开文件夹:全站统一实现,见 BgmPreviewBar.tsx(以前每个向导各写一套,
+  //   只有主向导带「文件夹」按钮,其余选了曲子没法定位文件)。
+  const bgmPreview = useBgmPreview(bgmPath, isZh);
   // 云端曲库(跟模板速生 / 在线素材同源 static.noobclaw.com/bgm/manifest.json)。
   // 没这个时 hotspot 只能选 8 首内置;拉到后追加「云端曲库」optgroup。失败静默。
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
@@ -5457,7 +5871,7 @@ export const HotspotVideoModal: React.FC<{
                 </select>
               </Field>
               <Field label={isZh ? '配音音色' : 'Voice'}>
-                <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="amber" targetLang={scriptLang} />
+                <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="amber" targetLang={scriptLang} rate={voiceRate} />
                 <div className="flex gap-2 mt-2">
                   {RATE_OPTIONS.map((r) => (
                     <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
@@ -5468,32 +5882,25 @@ export const HotspotVideoModal: React.FC<{
                 </div>
               </Field>
               <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'}>
-                <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
-                  <option value="">{isZh ? '无背景音乐' : 'None'}</option>
-                  {/* 编辑老任务时选中的云端曲目可能不在已拉清单里(清单变了/拉不到)→ 补占位,避免下拉空白。 */}
-                  {bgmPath.startsWith(REMOTE_BGM_PREFIX) && !remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath) && (
-                    <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
-                  )}
-                  <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
-                    {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
-                  </optgroup>
-                  {remoteBgm.length > 0 && (
-                    <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
-                      {remoteBgm.map((b) => (<option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>))}
+                <div className="flex items-center gap-2">
+                  <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
+                    className="flex-1 min-w-0 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                    <option value="">{isZh ? '无背景音乐' : 'None'}</option>
+                    {/* 编辑老任务时选中的云端曲目可能不在已拉清单里(清单变了/拉不到)→ 补占位,避免下拉空白。 */}
+                    {bgmPath.startsWith(REMOTE_BGM_PREFIX) && !remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath) && (
+                      <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
+                    )}
+                    <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                      {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
                     </optgroup>
-                  )}
-                </select>
-                {bgmPath && (
-                  <div className="mt-2 space-y-1.5">
-                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
-                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-60">
-                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
-                    </button>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
-                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
-                  </div>
-                )}
+                    {remoteBgm.length > 0 && (
+                      <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
+                        {remoteBgm.map((b) => (<option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>))}
+                      </optgroup>
+                    )}
+                  </select>                  <BgmPreviewButtons isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="fuchsia" />
+                </div>
+                <BgmPreviewPlayer isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="fuchsia" showCloudHint />
               </Field>
             </>
           )}
@@ -5732,18 +6139,9 @@ export const ThreadVideoModal: React.FC<{
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
-  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
-  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
-  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
-  const previewBgm = async () => {
-    if (bgmPreviewLoading) return;
-    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
-    const r = await resolveBgmPreview(bgmPath);
-    setBgmPreviewUrl(r.url);
-    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
-    setBgmPreviewLoading(false);
-  };
-  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
+  // 试听 + 打开文件夹:全站统一实现,见 BgmPreviewBar.tsx(以前每个向导各写一套,
+  //   只有主向导带「文件夹」按钮,其余选了曲子没法定位文件)。
+  const bgmPreview = useBgmPreview(bgmPath, isZh);
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
   useEffect(() => {
     let alive = true;
@@ -6063,7 +6461,7 @@ export const ThreadVideoModal: React.FC<{
           {step === 3 && (
             <>
               <Field label={isZh ? '配音音色' : 'Voice'}>
-                <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="orange" />
+                <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="orange" rate={voiceRate} />
                 <div className="flex gap-2 mt-2">
                   {RATE_OPTIONS.map((r) => (
                     <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
@@ -6074,31 +6472,24 @@ export const ThreadVideoModal: React.FC<{
                 </div>
               </Field>
               <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'}>
-                <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
-                  <option value="">{isZh ? '无背景音乐' : 'None'}</option>
-                  {bgmPath.startsWith(REMOTE_BGM_PREFIX) && !remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath) && (
-                    <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
-                  )}
-                  <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
-                    {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
-                  </optgroup>
-                  {remoteBgm.length > 0 && (
-                    <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
-                      {remoteBgm.map((b) => (<option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>))}
+                <div className="flex items-center gap-2">
+                  <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
+                    className="flex-1 min-w-0 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50">
+                    <option value="">{isZh ? '无背景音乐' : 'None'}</option>
+                    {bgmPath.startsWith(REMOTE_BGM_PREFIX) && !remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath) && (
+                      <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
+                    )}
+                    <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                      {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
                     </optgroup>
-                  )}
-                </select>
-                {bgmPath && (
-                  <div className="mt-2 space-y-1.5">
-                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
-                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-60">
-                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
-                    </button>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
-                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
-                  </div>
-                )}
+                    {remoteBgm.length > 0 && (
+                      <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
+                        {remoteBgm.map((b) => (<option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>))}
+                      </optgroup>
+                    )}
+                  </select>                  <BgmPreviewButtons isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="sky" />
+                </div>
+                <BgmPreviewPlayer isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="sky" showCloudHint />
               </Field>
             </>
           )}
@@ -6266,18 +6657,9 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
   const [bgmPath, setBgmPath] = useState<string>((ei as any)?.bgmPath || '');
   const [bgmVolume, setBgmVolume] = useState<number>(typeof (ei as any)?.bgmVolume === 'number' ? (ei as any).bgmVolume : 0.18);
   // BGM 内嵌试听(复用 prepareBgmPreview:sidecar 流式 URL / 开发态 data:)。
-  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
-  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
-  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
-  const previewBgm = async () => {
-    if (bgmPreviewLoading) return;
-    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
-    const r = await resolveBgmPreview(bgmPath);
-    setBgmPreviewUrl(r.url);
-    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
-    setBgmPreviewLoading(false);
-  };
-  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
+  // 试听 + 打开文件夹:全站统一实现,见 BgmPreviewBar.tsx(以前每个向导各写一套,
+  //   只有主向导带「文件夹」按钮,其余选了曲子没法定位文件)。
+  const bgmPreview = useBgmPreview(bgmPath, isZh);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(typeof (ei as any)?.subtitleFontSize === 'number' ? (ei as any).subtitleFontSize : 20);
   const pickTargetLang = (code: string) => {
     setTargetLang(code);
@@ -6486,7 +6868,7 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
 
           {step === 3 && (
             <>
-              <Field label={isZh ? '配音音色' : 'Voice'} hint={voiceEngineHint(voice, isZh)}>
+              <Field label={isZh ? '配音音色' : 'Voice'}>
                 <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="sky" targetLang={targetLang} />
                 {/* 语速不给用户选(用户拍板):系统按原片每句时长自动控速(超长句自动提速),手选反而总拖后。 */}
                 <div className="mt-2 text-[11px] text-gray-400">⚡ {isZh ? '语速自动:按原片节奏逐句适配,无需手选' : 'Auto pacing: matched to the source rhythm sentence by sentence'}</div>
@@ -6506,21 +6888,14 @@ export const RepostVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean; o
                 )}
               </Field>
               <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'} hint={isZh ? '压低垫在配音下,循环铺满全片' : 'Ducked under the dub, looped to fit'}>
-                <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
-                  <option value="">{isZh ? '无背景音乐' : 'None'}</option>
-                  {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
-                </select>
-                {bgmPath && (
-                  <div className="mt-2 space-y-1.5">
-                    <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading}
-                      className="w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-sky-500 hover:bg-sky-600 disabled:opacity-60">
-                      {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
-                    </button>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
-                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
+                    className="flex-1 min-w-0 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                    <option value="">{isZh ? '无背景音乐' : 'None'}</option>
+                    {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
+                  </select>                  <BgmPreviewButtons isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="sky" />
+                </div>
+                <BgmPreviewPlayer isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="sky" showCloudHint />
                 {bgmPath && (
                   <div className="flex gap-2 mt-2">
                     {BGM_VOLUME_OPTIONS.map((b) => (
@@ -6686,18 +7061,9 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? (ei as any)?.subtitleEnabled !== false : true);
   const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei?.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // BGM 内嵌试听(与其它向导同款,复用 prepareBgmPreview)。
-  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
-  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
-  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
-  const previewBgm = async () => {
-    if (bgmPreviewLoading) return;
-    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
-    const r = await resolveBgmPreview(bgmPath);
-    setBgmPreviewUrl(r.url);
-    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
-    setBgmPreviewLoading(false);
-  };
-  useEffect(() => { setBgmPreviewUrl(''); setBgmPreviewErr(''); }, [bgmPath]);
+  // 试听 + 打开文件夹:全站统一实现,见 BgmPreviewBar.tsx(以前每个向导各写一套,
+  //   只有主向导带「文件夹」按钮,其余选了曲子没法定位文件)。
+  const bgmPreview = useBgmPreview(bgmPath, isZh);
   const [bgmVolume, setBgmVolume] = useState<number>(typeof ei?.bgmVolume === 'number' ? ei.bgmVolume : 0.18);
   const pickBgmFile = async () => { const p = await videoCreationService.pickBgm(); if (p) setBgmPath(p); };
   // ── 对齐在线素材的画面/音频/字幕控件(本地混剪 pipeline 已消费这些字段,原来向导没暴露) ──
@@ -7015,8 +7381,8 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                       {SCRIPT_LANGS.map((l) => (<option key={l.code} value={l.code}>{isZh ? l.zh : l.en}</option>))}
                     </select>
                   </Field>
-                  <Field label={isZh ? '配音音色' : 'Voice'} hint={voiceEngineHint(voice, isZh)}>
-                    <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="emerald" targetLang={scriptLang} />
+                  <Field label={isZh ? '配音音色' : 'Voice'}>
+                    <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="emerald" targetLang={scriptLang} rate={voiceRate} />
                     <div className="flex gap-2 mt-2">
                       {RATE_OPTIONS.map((r) => (
                         <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
@@ -7033,8 +7399,9 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   <button type="button" onClick={() => setBgmPath('')} className={`px-2 py-1.5 rounded-lg text-xs border ${!bgmPath ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '无' : 'None'}</button>
                   <button type="button" onClick={() => { if (!bgmIsLibrary) setBgmPath(BUILTIN_BGM_PREFIX + BUILTIN_BGM[0].id); }} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsLibrary ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '曲库' : 'Library'}</button>
                   <button type="button" onClick={pickBgmFile} className={`px-2 py-1.5 rounded-lg text-xs border ${bgmIsUpload ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-400'}`}>{isZh ? '上传' : 'Upload'}</button>
-                  <button type="button" onClick={previewBgm} disabled={bgmPreviewLoading} className="px-2 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40">{bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Play')}</button>
                 </div>
+                {/* 试听 + 文件夹:与其它向导同款(BgmPreviewBar)。原来这里只有一个「试听」小按钮挤在四宫格里。 */}
+                <BgmPreviewBar isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="emerald" showCloudHint />
                 {bgmIsLibrary && (
                   <select value={bgmPath} onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
@@ -7064,9 +7431,6 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                     ))}
                   </div>
                 )}
-
-                {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="mt-2 w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
-                {bgmPreviewErr && (<div className="mt-1 text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
               </Field>
             </>
           )}
@@ -7333,28 +7697,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
     const p = await videoCreationService.pickBgm();
     if (p) setBgmPath(p);
   };
-  const [bgmOpening, setBgmOpening] = useState(false);
-  const openBgmFolder = async (token: string) => {
-    if (!token || bgmOpening) return;
-    setBgmOpening(true);
-    try {
-      const dir = await videoCreationService.resolveBgmPath(token);
-      if (dir) { try { (window as any).electron?.shell?.openPath?.(dir); } catch { /* ignore */ } }
-    } finally { setBgmOpening(false); }
-  };
-  // BGM 内嵌试听:解析成可播 URL(云端按需下载),<audio autoPlay> 直接播。
-  const [bgmPreviewUrl, setBgmPreviewUrl] = useState('');
-  const [bgmPreviewErr, setBgmPreviewErr] = useState('');
-  const [bgmPreviewLoading, setBgmPreviewLoading] = useState(false);
-  const previewBgm = async (token: string) => {
-    if (bgmPreviewLoading) return;
-    setBgmPreviewLoading(true); setBgmPreviewErr(''); setBgmPreviewUrl('');
-    const r = await resolveBgmPreview(token);
-    setBgmPreviewUrl(r.url);
-    setBgmPreviewErr(r.err ? bgmPreviewMsg(r.err, isZh) : '');
-    setBgmPreviewLoading(false);
-  };
-  useEffect(() => { setBgmPreviewUrl(''); }, [bgmPath]);
+  // 试听 + 打开文件夹:全站统一实现,见 BgmPreviewBar.tsx。
+  const bgmPreview = useBgmPreview(bgmPath, isZh);
   const bgmIsBuiltin = bgmPath.startsWith(BUILTIN_BGM_PREFIX);
   const bgmIsRemote = bgmPath.startsWith(REMOTE_BGM_PREFIX);
   const bgmIsLibrary = bgmIsBuiltin || bgmIsRemote;
@@ -7677,7 +8021,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
               {narration && (
                 <>
                   <Field label={isZh ? '配音音色' : 'Voice'}>
-                    <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="fuchsia" targetLang={tplLang} />
+                    <VoicePicker isZh={isZh} value={voice} onChange={setVoice} accent="fuchsia" targetLang={tplLang} rate={voiceRate} />
                   </Field>
                   <Field label={isZh ? '语速' : 'Rate'}>
                     <div className="flex gap-2">
@@ -7742,17 +8086,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                           </optgroup>
                         )}
                       </select>
-                      <button type="button" onClick={() => previewBgm(bgmPath)} disabled={bgmPreviewLoading}
-                        className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium text-white bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-60">
-                        {bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}
-                      </button>
-                      <button type="button" onClick={() => openBgmFolder(bgmPath)} disabled={bgmOpening}
-                        className="shrink-0 px-2.5 py-2 rounded-lg text-xs font-medium border border-fuchsia-400 text-fuchsia-500 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-500/10 disabled:opacity-60">
-                        {bgmOpening ? '⏳' : '📂'}
-                      </button>
+                      <BgmPreviewButtons isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="fuchsia" />
                     </div>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
-                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
+                    <BgmPreviewPlayer isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="fuchsia" showCloudHint />
                   </div>
                 )}
                 {bgmIsUpload && (
@@ -7760,12 +8096,10 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                     <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2">
                       <span className="text-sm">🎵</span>
                       <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{bgmPath.split(/[\\/]/).pop()}</span>
-                      <button type="button" onClick={() => previewBgm(bgmPath)} disabled={bgmPreviewLoading} className="text-xs text-fuchsia-500 hover:underline shrink-0">{bgmPreviewLoading ? '⏳' : (isZh ? '▶ 试听' : '▶ Preview')}</button>
                       <button type="button" onClick={pickBgm} className="text-xs text-fuchsia-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
                       <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
                     </div>
-                    {bgmPreviewUrl && (<audio controls autoPlay src={bgmPreviewUrl} onCanPlay={(e) => { const el = e.currentTarget; el.play().catch(() => setBgmPreviewErr(bgmPreviewMsg('autoplay_blocked(点播放器上的 ▶ 手动播)', isZh))); }} className="w-full h-9" onError={() => setBgmPreviewErr(bgmPreviewMsg('audio_decode_failed(格式不支持/文件坏)', isZh))} />)}
-                    {bgmPreviewErr && (<div className="text-[11px] text-red-500 break-all">{bgmPreviewErr}</div>)}
+                    <BgmPreviewBar isZh={isZh} bgmPath={bgmPath} state={bgmPreview} tone="fuchsia" />
                   </div>
                 )}
                 {bgmPath && (

@@ -7,6 +7,33 @@ interface ApiResponse {
   error?: string;
 }
 
+/**
+ * 电影级分镜表的一镜(渲染端镜像)。
+ * ⚠️ 字段必须与主进程 `src/main/libs/video/storyboardScript.ts` 的 StoryShot 保持一致 ——
+ *    它经 IPC 原样往返:parseStoryboard 出 → 用户在分镜表上改 → 作为 input.storyboardShots 回传给 pipeline。
+ */
+interface StoryShotDTO {
+  seconds: number;
+  /** 口播原文(逐字)。 */
+  narration: string;
+  /** 首帧画面描述(喂图像模型)。 */
+  visualFirst: string;
+  visualLast?: string;
+  /** 运动描述(喂视频模型)。 */
+  motion?: string;
+  /** 花字。 */
+  onScreenText?: string;
+  /** 配乐情绪(对齐 BGM 曲库中文分类)。 */
+  bgmMood?: string;
+  sfx?: string;
+  /** 素材类型 → 决定引擎与价格。 */
+  type: 'chart' | 'textcard' | 'scene' | 'person' | 'logo' | 'transition';
+  /** 是否生成视频(true = 烧 Seedance;false = 首帧 + 运镜,近乎免费)。 */
+  animate: boolean;
+  /** 用户脚本里明确写了的字段名,AI 不许覆盖。 */
+  locked: string[];
+}
+
 interface ApiStreamResponse {
   ok: boolean;
   status: number;
@@ -523,6 +550,22 @@ interface IElectronAPI {
   video: {
     generate: (input: unknown) => Promise<{ ok: boolean; outputPath?: string; error?: string }>;
     stop: (taskId: string) => Promise<{ ok: boolean; error?: string }>;
+    /** 电影级:把脚本解析成分镜表供用户审阅。只跑 LLM,不出图不生成视频。 */
+    parseStoryboard: (args: {
+      script: string; scriptMode?: 'strict' | 'ai'; lang?: string; targetSeconds?: number; styleHint?: string;
+    }) => Promise<{
+      ok: boolean;
+      error?: string;
+      shots?: StoryShotDTO[];
+      tokens?: number;
+      costUsd?: number;
+      fidelity?: number;
+      warnings?: string[];
+    }>;
+    /** 配音试听:用选中音色合成一句短样例,回 data URL 直接播。 */
+    previewVoice: (args: { voice: string; rate?: number; lang?: string }) => Promise<{
+      ok: boolean; error?: string; dataUrl?: string; text?: string;
+    }>;
     pickImages: (max: number) => Promise<string[]>;
     pickVideos: (max: number) => Promise<string[]>;
     pickLocalFolder: () => Promise<{ dir: string; videoCount: number; imageCount: number } | null>;

@@ -33,7 +33,7 @@ import { generateFreeformScene, deterministicFallbackScene, type FreeformResult 
 import { wrapTemplateHtml } from './templateAnim';
 import { loadFontFaceCss } from './fontAsset';
 import { loadGsapSource } from './gsapAsset';
-import { synthesize, getLastTtsError, getVoiceFallbacks, alignSentencesToCues } from './tts';
+import { synthesize, getLastTtsError, getVoiceFallbacks, alignSentencesToCues, voiceProviderLabel } from './tts';
 import { getTtsVoice } from './config';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import type { CaptionCue } from './templateAnim';
@@ -78,7 +78,7 @@ function cleanForTts(s: string): string {
 /** 跑一次 TTS(带 voice fallback 链),返回 audio + 时长 + cues 或 null。 */
 async function ttsWithFallback(
   text: string, primary: string, outPath: string, rate?: number, signal?: AbortSignal,
-): Promise<{ audioPath: string; durationSec: number; cues?: CaptionCue[]; voice: string } | null> {
+): Promise<{ audioPath: string; durationSec: number; cues?: CaptionCue[]; voice: string; chargedTokens?: number; costUsd?: number } | null> {
   const chain = getVoiceFallbacks(primary);
   for (const v of chain) {
     if (signal?.aborted) return null; // 用户停止 → 不再试下一个音色
@@ -90,6 +90,9 @@ async function ttsWithFallback(
         durationSec: r.durationSec,
         cues: ttsCuesToCaption(r.cues),
         voice: v,
+        // 豆包按字符实扣;不带出去的话账单里有钱、任务页是 0。Edge 免费为空。
+        chargedTokens: r.chargedTokens,
+        costUsd: r.costUsd,
       };
     }
   }
@@ -390,9 +393,12 @@ export async function runTemplatePipeline(
       // 的 文案.txt 就能看到生成结果;显式选了生成语言时一并标出。
       tracker.progress(`📝 口播稿(约 ${script.length} 字${forceLangName ? ` · ${forceLangName}` : ''}${tpl.voiceScript ? '' : ' · AI 生成'}):${script}`);
       const voice = tpl.voice || input.voice || getTtsVoice();
+      // 说清是哪家配音:豆包按字数计费、Edge 免费,用户有权在日志里一眼看到。
+      tracker.progress(`🎤 配音:${voiceProviderLabel(voice)} · 音色 ${voice}`);
       const rate = typeof tpl.voiceRate === 'number' ? tpl.voiceRate
         : typeof input.voiceRate === 'number' ? input.voiceRate : 0;
       const r = await ttsWithFallback(script, voice, narrationPath, rate, signal);
+      if (r?.chargedTokens) tracker.addTokens(r.chargedTokens, r.costUsd || 0);
       if (!r) {
         // 用户停止时 ttsWithFallback 也返回 null —— 先归一成「已停止」,别报成配音失败。
         throwIfAborted(signal);
@@ -473,6 +479,7 @@ export async function runTemplatePipeline(
               if (i > 0) await new Promise((res) => setTimeout(res, 900));
               const segPath = path.join(tmpAudioDir, `narr_page_${i}.mp3`);
               const sr = await ttsWithFallback(cleanForTts(segs[i]), r.voice, segPath, rate, signal);
+              if (sr?.chargedTokens) tracker.addTokens(sr.chargedTokens, sr.costUsd || 0);
               if (!sr || !(sr.durationSec > 0)) { segOk = false; break; }
               segAudios.push({ p: sr.audioPath, d: sr.durationSec, cues: sr.cues });
             }

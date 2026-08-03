@@ -20,7 +20,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { runFfmpeg, probeDuration } from './ffmpegRuntime';
+import { runFfmpeg, probeDuration, probeImageSize } from './ffmpegRuntime';
 import { isPackaged, getResourcesPath, getUserDataPath } from '../platformAdapter';
 
 const FPS = 30;
@@ -155,28 +155,50 @@ function resolveScriptFont(sample: string): string | null {
   return null;
 }
 
-/** 把一句话按【可视宽度】折行:中文=1 字宽(行为不变)、拉丁/数字/空格≈0.5 字宽,英文优先在
- *  空格处断词(真机反馈:英文每个字母被当全宽算 → 行只用一半宽还从单词中间劈开)。 */
-function wrapSubtitle(text: string, maxPerLine = 14): string {
+const isWideChar = (ch: string) => /[\u1100-\u11ff\u2e80-\u9fff\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\uff00-\uffef]/.test(ch);
+const charUnit = (ch: string) => (isWideChar(ch) ? 1 : 0.5);
+/** 文本的【可视宽度】:中文/全角=1,拉丁/数字/空格=0.5。字符数不能直接当宽度用。 */
+function widthUnits(s: string): number {
+  let u = 0;
+  for (const ch of Array.from(s)) u += charUnit(ch);
+  return u;
+}
+
+/**
+ * 按【可视宽度】把文本切成若干段,**优先在空格处断词**。
+ *
+ * ⚠️【真机 bug】:原来 splitPhrases 里是 `for (i += PHRASE_MAX) r.slice(i, i+PHRASE_MAX)` ——
+ *   纯按字符数硬切、完全不看空格。"Far from being nothing" 共 22 字符 > 20,被切成
+ *   "Far from being nothi" + "ng",烧进画面就是半个单词(用户实测截图)。
+ *   翻译搬运没这毛病,是因为它走 ASS 的 wrapAssLine,那条认空格。
+ *
+ * 只有【整段没有空格】(中文,或一个超长英文单词)时才硬切 —— 那时也没别的办法。
+ */
+function cutByWidth(text: string, maxUnits: number): string[] {
   const clean = text.replace(/\s+/g, ' ').trim();
-  if (!clean) return '';
-  const isWide = (ch: string) => /[ᄀ-ᇿ⺀-鿿ꥠ-꥿가-퟿豈-﫿＀-￯]/.test(ch);
-  const unit = (ch: string) => (isWide(ch) ? 1 : 0.5);
-  const lines: string[] = [];
+  if (!clean) return [];
+  const out: string[] = [];
   let cur = ''; let units = 0; let lastSpace = -1;
   for (const ch of Array.from(clean)) {
-    cur += ch; units += unit(ch);
+    cur += ch; units += charUnit(ch);
     if (ch === ' ') lastSpace = cur.length;
-    if (units >= maxPerLine) {
+    if (units >= maxUnits) {
       const cut = (lastSpace > 0 && lastSpace < cur.length) ? lastSpace : cur.length;
-      lines.push(cur.slice(0, cut).trimEnd());
+      const piece = cur.slice(0, cut).trim();
+      if (piece) out.push(piece);
       cur = cur.slice(cut);
-      units = 0; for (const c of Array.from(cur)) units += unit(c);
+      units = widthUnits(cur);
       lastSpace = cur.lastIndexOf(' ') >= 0 ? cur.lastIndexOf(' ') + 1 : -1;
     }
   }
-  if (cur.trim()) lines.push(cur.trim());
-  return lines.slice(0, 3).join('\n'); // 最多 3 行,别糊满屏
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** 把一句话按【可视宽度】折行:中文=1 字宽、拉丁/数字/空格≈0.5 字宽,英文优先在空格处断词
+ *  (真机反馈:英文每个字母被当全宽算 → 行只用一半宽还从单词中间劈开)。 */
+function wrapSubtitle(text: string, maxPerLine = 14): string {
+  return cutByWidth(text, maxPerLine).slice(0, 3).join('\n'); // 最多 3 行,别糊满屏
 }
 
 /**
@@ -192,15 +214,21 @@ function splitPhrases(text: string): string[] {
   const rough = clean.split(/[,，、;；:：]+/).map((s) => s.trim()).filter(Boolean);
   const phrases: string[] = [];
   let buf = '';
+  // ⚠️ 三处长度判断【必须按可视宽度算,不能按字符数】。PHRASE_MAX=20 的本意是「20 个中文字
+  //    那么宽」,而 20 个英文字符只有 3~4 个单词、连半屏都不到 —— 英文因此几乎每段都触发
+  //    下面那条超长分支,再被硬切断词。widthUnits 把拉丁按 0.5 计,20 单位 ≈ 40 个英文字符。
   for (const r of rough) {
-    if (r.length > PHRASE_MAX) {
-      // 单段本身超长:先收掉缓冲,再按 PHRASE_MAX 硬切
+    if (widthUnits(r) > PHRASE_MAX) {
+      // 单段本身超长:先收掉缓冲,再按可视宽度切(cutByWidth 会优先在空格处断词)
       if (buf) { phrases.push(buf); buf = ''; }
-      for (let i = 0; i < r.length; i += PHRASE_MAX) phrases.push(r.slice(i, i + PHRASE_MAX));
+      for (const piece of cutByWidth(r, PHRASE_MAX)) phrases.push(piece);
     } else if (!buf) {
       buf = r;
-    } else if (buf.length + r.length <= PHRASE_MAX) {
-      buf += r;  // 合并相邻短句到同一屏(中文紧凑,不加分隔)
+    } else if (widthUnits(buf) + widthUnits(r) <= PHRASE_MAX) {
+      // 合并相邻短句到同一屏。中文紧凑不加分隔;拉丁必须补空格 ——
+      //   rough 是按逗号切的,逗号已被丢掉,直接 += 会把 "nothing" + "it" 粘成 "nothingit"。
+      const needSpace = !isWideChar(buf.slice(-1)) && !isWideChar(r[0] || '');
+      buf += (needSpace ? ' ' : '') + r;
     } else {
       phrases.push(buf);
       buf = r;
@@ -557,9 +585,62 @@ function buildDrawtextChain(
   return filters;
 }
 
+/**
+ * 花字(打在画面上的大字)。与底部字幕是【两层】:
+ *   · 字幕 = 把口播念的每句话滚出来,小字、贴底、全程有
+ *   · 花字 = 关键数字 / 金句 / 身份条,大字、偏上、只在指定时间段出现
+ * 电影级的分镜表里 on_screen_text 就落到这里。没有花字时这一层完全不生成滤镜,零开销。
+ */
+export interface KeyTextCue {
+  text: string;
+  start: number;
+  end: number;
+}
+
+/** 由花字 cue 生成一遍 drawtext(大号粗体 + 强描边 + 偏上,避开底部字幕区)。 */
+function buildKeyTextChain(
+  workDir: string,
+  cues: KeyTextCue[],
+  fontRel: string | null,
+  H: number,
+  W: number,
+): string[] {
+  if (!cues.length) return [];
+  // 花字要显眼:字号取画宽的 ~7.5%(1080 宽 → 81px),明显大于常规字幕(默认 ~48)。
+  const fontSize = Math.max(32, Math.round(W * 0.075));
+  const borderW = Math.max(4, Math.round(fontSize * 0.08));
+  const safeX = Math.round(W * 0.08);
+  const maxPerLine = Math.max(4, Math.floor((W - 2 * safeX) / Math.max(16, fontSize)));
+  // 放在画面上部 28% 处 —— 底部留给常规字幕,中间留给画面主体。
+  const yExpr = `${Math.round(H * 0.28)}-text_h/2`;
+  const filters: string[] = [];
+  cues.forEach((cue, j) => {
+    const wrapped = wrapSubtitle(cue.text, maxPerLine);
+    if (!wrapped) return;
+    const txtName = `key_${String(j).padStart(4, '0')}.txt`;
+    fs.writeFileSync(path.join(workDir, txtName), wrapped, 'utf8');
+    const parts = [
+      fontRel ? `fontfile=${fontRel}` : '',
+      `textfile=${txtName}`,
+      'fontcolor=white',
+      `fontsize=${fontSize}`,
+      'line_spacing=10',
+      'bordercolor=black@0.85',
+      `borderw=${borderW}`,
+      'x=(w-text_w)/2',
+      `y=${yExpr}`,
+      `enable='between(t,${cue.start.toFixed(2)},${cue.end.toFixed(2)})'`,
+    ].filter(Boolean);
+    filters.push(`drawtext=${parts.join(':')}`);
+  });
+  return filters;
+}
+
 export interface ComposeOptions {
   scenes: SceneSpec[];
   outputPath: string;
+  /** 花字层(可选)。空/不传 = 不生成这一层。 */
+  keyTexts?: KeyTextCue[];
   /** 成片宽高(上层按 aspect 算)。默认 1080×1920。 */
   width?: number;
   height?: number;
@@ -739,6 +820,11 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
         : rawCues;
       drawtext = buildDrawtextChain(workDir, refineCues(cues), style, fontRel, H, W);
     }
+    // 花字层:与字幕开关无关(用户可能关字幕但仍要关键数字弹出),同样要吃 leadSec 偏移。
+    const keyTextCues = (opts.keyTexts || [])
+      .filter((k) => k && k.text && k.end > k.start)
+      .map((k) => (leadSec > 0 ? { ...k, start: k.start + leadSec, end: k.end + leadSec } : k));
+    const keyDraw = buildKeyTextChain(workDir, keyTextCues, fontRel, H, W);
 
     // 4. 烧字幕 / 加留白(或直接 mux)→ merged
     const wantBgm = !!(opts.bgmPath && fs.existsSync(opts.bgmPath));
@@ -748,8 +834,9 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
     const vPad = hasPad
       ? `tpad=start_duration=${leadSec.toFixed(2)}:start_mode=clone:stop_duration=${tailSec.toFixed(2)}:stop_mode=clone`
       : '';
-    const vParts = [vPad, ...drawtext, 'format=yuv420p'].filter(Boolean);
-    const needVideoFilter = vPad !== '' || drawtext.length > 0;
+    // 花字画在字幕之后 → 叠在字幕之上(两层位置本就错开:花字偏上、字幕贴底)。
+    const vParts = [vPad, ...drawtext, ...keyDraw, 'format=yuv420p'].filter(Boolean);
+    const needVideoFilter = vPad !== '' || drawtext.length > 0 || keyDraw.length > 0;
     // 音频:adelay 把旁白整体后移 leadSec,apad 无限补尾;配合 -shortest 由画面总时长(已含
     // 首尾留白)裁齐 → 实际尾部留白 = 全片时长 - 旁白结束点。
     const aFilter = hasPad ? `[1:a]adelay=${Math.round(leadSec * 1000)}:all=1,apad[a]` : '';
@@ -801,4 +888,173 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
   } finally {
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
   }
+}
+
+
+/**
+ * 电影级专用:把 Seedance 片段【直接拼起来】,不重编码、不丢音轨。
+ *
+ * ⚠️ 为什么不能走 composeVideo:那条路每一步都带 `-an`,片段音轨全被丢掉。
+ *   而 Seedance 1.5-pro 开了 generate_audio 之后,人声、口型、环境音、BGM 是【和画面
+ *   一起生成的】—— 音画同源、毫秒同步,正是我们要的东西,丢了就白花钱了。
+ *   所以电影级本地只剩这一件事:拼。不配音、不烧字幕、不加蒙层、不做时间轴对齐。
+ *
+ * 片段来自同一次生成,分辨率/帧率/编码一致 → concat demuxer + `-c copy` 零转码。
+ *   万一某段参数不一致导致 copy 失败,回退重编码一次(慢但一定成)。
+ */
+export async function concatNativeClips(opts: {
+  clipPaths: string[];
+  outputPath: string;
+  /** 可选:额外 BGM 垫在原声之下(Seedance 自带音乐时一般不用)。 */
+  bgmPath?: string;
+  bgmVolume?: number;
+  /**
+   * 可选:烧字幕。
+   *
+   * 内容直接来自分镜表的每镜台词(就是喂给 Seedance 念的那句),时间轴来自【实测的片段
+   * 时长】—— 比以前靠 TTS 词边界估算更准:那时字幕对的是我们自己合成的音频,现在对的
+   * 是成片里真实播放的那段。
+   * ⚠️ 一旦要烧字幕就【必须重编码】,零转码拼接用不了 —— 这是烧字幕的固有代价。
+   */
+  subtitles?: { text: string; start: number; end: number }[];
+  /** 字幕字号档(同 compose 的口径,默认 20)。 */
+  subtitleFontSize?: number;
+  /** 画面宽高(烧字幕时用于换算字号/边距);不传则从首个片段探测。 */
+  width?: number;
+  height?: number;
+  onProgress?: (msg: string) => void;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const clips = opts.clipPaths.filter((c) => c && fs.existsSync(c));
+  if (clips.length === 0) throw new Error('没有可拼接的片段');
+
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-ainative-'));
+  try {
+    const listPath = path.join(workDir, 'concat.txt');
+    // ⚠️ 复用 concatLine,别自己再写一遍转义:第一版写成 `"'\''"`,而在 JS 里那是三个引号
+    //    —— 反斜杠在解析期就没了,路径里带撇号(用户名 O'Brien 之类)直接拼接失败。
+    //    concatLine 还顺带把反斜杠转成正斜杠,Windows 路径也才对。
+    fs.writeFileSync(listPath, clips.map(concatLine).join('\n') + '\n', 'utf8');
+
+    let merged = path.join(workDir, 'merged.mp4');
+    opts.onProgress?.(`拼接 ${clips.length} 个片段(保留原声,零转码)`);
+    let r = await runFfmpeg(
+      ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-c', 'copy', '-movflags', '+faststart', merged],
+      { timeoutMs: 300_000, signal: opts.signal },
+    );
+    if (!r.ok || !fs.existsSync(merged)) {
+      // 片段参数不一致 → 重编码兜底(音频统一 aac,视频统一 h264)。
+      opts.onProgress?.('零转码拼接失败,改用重编码拼接');
+      merged = path.join(workDir, 'merged_re.mp4');
+      r = await runFfmpeg(
+        ['-y', '-f', 'concat', '-safe', '0', '-i', listPath,
+          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', merged],
+        { timeoutMs: 900_000, signal: opts.signal },
+      );
+      if (!r.ok || !fs.existsSync(merged)) throw new Error('片段拼接失败');
+    }
+
+    // 可选 BGM:垫在原声之下。原声必须保持主导 —— 它才是台词所在。
+    const bgm = opts.bgmPath;
+    if (bgm && fs.existsSync(bgm)) {
+      const vol = typeof opts.bgmVolume === 'number' && opts.bgmVolume >= 0 ? opts.bgmVolume : 0.12;
+      const withBgm = path.join(workDir, 'with_bgm.mp4');
+      const rb = await runFfmpeg(
+        ['-y', '-i', merged, '-stream_loop', '-1', '-i', bgm,
+          '-filter_complex', `[1:a]volume=${vol}[bg];[0:a][bg]amix=inputs=2:duration=first:normalize=0[a]`,
+          '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
+          '-movflags', '+faststart', withBgm],
+        { timeoutMs: 300_000, signal: opts.signal },
+      );
+      if (rb.ok && fs.existsSync(withBgm)) merged = withBgm;
+      else opts.onProgress?.('BGM 混音失败,保留纯原声');
+    }
+
+    // 烧字幕(可选)。放在最后一步,和 BGM 分开做 —— BGM 那步是 `-c:v copy`,
+    //   这一步必须重编码,合在一起会让没开字幕的用户也白白转码一遍。
+    const cues = (opts.subtitles || []).filter((c) => c.text && c.end > c.start);
+    if (cues.length > 0) {
+      const dim = (opts.width && opts.height)
+        ? { width: opts.width, height: opts.height }
+        : await probeImageSize(merged).catch(() => ({ width: 1080, height: 1920 }));
+      const W = dim.width > 0 ? dim.width : 1080;
+      const H = dim.height > 0 ? dim.height : 1920;
+      const assPath = path.join(workDir, 'sub.ass');
+      fs.writeFileSync(assPath, buildNativeAss(cues, W, H, opts.subtitleFontSize || 20), 'utf8');
+      const burned = path.join(workDir, 'burned.mp4');
+      opts.onProgress?.('烧录字幕(需重编码)');
+      const rs = await runFfmpeg(
+        ['-y', '-i', merged, '-vf', `subtitles='${escAssPath(assPath)}'`,
+          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+          '-c:a', 'copy', '-movflags', '+faststart', burned],
+        { timeoutMs: 900_000, signal: opts.signal },
+      );
+      // 烧失败不该让整条片子作废 —— 保留无字幕版本交付。
+      if (rs.ok && fs.existsSync(burned)) merged = burned;
+      else opts.onProgress?.('⚠️ 字幕烧录失败,输出无字幕版本');
+    }
+
+    fs.mkdirSync(path.dirname(opts.outputPath), { recursive: true });
+    fs.copyFileSync(merged, opts.outputPath);
+    return opts.outputPath;
+  } finally {
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+
+/** subtitles 滤镜的路径转义(Windows 盘符冒号 + 反斜杠)。 */
+function escAssPath(p: string): string {
+  // 三样都要:反斜杠→正斜杠、盘符冒号转义、撇号转义。和 repost-pipeline.escSubPath 同口径 ——
+  //   少了撇号那条,路径里带撇号时 subtitles='...' 会被提前闭合,滤镜串直接语法错。
+  return p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
+}
+
+function assTime(sec: number): string {
+  const t = Math.max(0, sec);
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const ss = Math.floor(t % 60);
+  const cs = Math.round((t - Math.floor(t)) * 100);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${h}:${p2(m)}:${p2(ss)}.${p2(cs)}`;
+}
+
+/**
+ * 电影级原生路径的 ASS 字幕。
+ *
+ * 用 ASS 而不是 SRT + force_style:后者的 FontSize 是按 libass 内部 288 高的虚拟画布算的,
+ *   竖屏 1920 高会被放大约 6.7 倍 → 20 号变成 130+px 的巨字糊满屏(老 bug)。
+ *   ASS 里 PlayRes 直接写真实分辨率,字号所见即所得。
+ * 折行复用 cutByWidth —— 按可视宽度断,英文不会从单词中间劈开。
+ */
+function buildNativeAss(
+  cues: { text: string; start: number; end: number }[],
+  W: number, H: number, fontSetting: number,
+): string {
+  const fontPx = Math.max(18, Math.round(H * (fontSetting / 700)));
+  const marginV = Math.round(H * 0.06);
+  const outline = Math.max(1, Math.round(fontPx / 18));
+  // 每行最多几个字宽:留 8% 安全边,拉丁按 0.5 字宽算(cutByWidth 内部处理)。
+  const maxPerLine = Math.max(6, Math.floor((W * 0.92) / fontPx));
+  const esc = (t: string) => cutByWidth(t.replace(/[{}]/g, '').replace(/\r?\n/g, ' ').trim(), maxPerLine)
+    .slice(0, 2)               // 电影级画面为主,字幕最多两行
+    .join('\\N');
+  return [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    `PlayResX: ${W}`,
+    `PlayResY: ${H}`,
+    'ScaledBorderAndShadow: yes',
+    'WrapStyle: 0',
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    `Style: Default,Arial,${fontPx},&H00FFFFFF,&H00FFFFFF,&H00000000,&H7F000000,0,0,0,0,100,100,0,0,1,${outline},0,2,${Math.round(W * 0.04)},${Math.round(W * 0.04)},${marginV},1`,
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Text',
+    ...cues.map((c) => `Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Default,,0,0,0,${esc(c.text)}`),
+  ].join('\n');
 }

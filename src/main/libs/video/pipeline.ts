@@ -19,7 +19,7 @@ import { randomUUID } from 'crypto';
 import { getHomePath } from '../platformAdapter';
 import { isFfmpegAvailable, setVideoAbortSignal, runFfmpeg, probeDuration } from './ffmpegRuntime';
 import {
-  synthesize, synthesizeWhole, getLastTtsError, getVoiceFallbacks,
+  synthesize, synthesizeWhole, getLastTtsError, getVoiceFallbacks, isDoubaoVoice, voiceProviderLabel,
   alignSentencesToCues, groupWordCues,
 } from './tts';
 import { getTtsVoice } from './config';
@@ -28,17 +28,22 @@ import { pickHotspotTopic, fetchHotspotMaterial, type HotspotTopic } from './hot
 import { getUsedHotspots, markHotspotUsed } from './usedHotspotStore';
 import { fetchDouyinClips } from './hotspotDouyinSource';
 import { fetchTiktokClips } from './hotspotTiktokSource';
-import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
+import { composeVideo, concatNativeClips, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, detectLang, type ContentLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, chargeHotspotImages, refundMode1Video } from './billing';
-import { resolveBgmPath } from './bgm';
+import { resolveBgmPath, buildMoodBgmTrack } from './bgm';
 import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, type SeedanceSceneSpec } from './seedanceProvider';
 import type { TemplateOptions } from './templateHtmlWriter';
 import { runTemplatePipeline } from './template-pipeline';
 import { runThreadPipeline } from './thread-pipeline';
 import { runRepostPipeline } from './repost-pipeline';
 import { generateStoryboardAnchor } from './storyboardAnchor';
+// 电影级(engine='ai')分镜表:把用户脚本 / 口播稿解析成结构化分镜,口播与画面彻底分家。
+import {
+  parseStoryboardScript, deriveStoryboard, storyboardToText, shotAllowsText, type StoryShot,
+} from './storyboardScript';
+import { buildFramePrompt, buildMotionPrompt, buildLegacyPrompt, DEFAULT_STYLE_LOCK } from './shotPrompts';
 import { resolvePublishCaption } from './publishCaptionWriter';
 import { setCurrentVideoTask, clearCurrentVideoTask, videoTypeLabel } from './videoRunWindow';
 
@@ -74,38 +79,20 @@ function aspectToSeedanceRatio(aspect: VideoAspect): '9:16' | '16:9' | '1:1' {
 }
 
 /**
- * 给一句口播稿构造 Seedance 画面 prompt —— 套 Seedance 官方 6 步公式(主体/动作 → 环境/光
- * → 单一运镜 → 风格 → 本地化 → 负向约束),提质不加钱。要点(来自官方/社区最佳实践):
- *   · 只给一个运镜(多运镜会抖);逐镜轮换不同运镜避免全片雷同。
- *   · 物理光源 + 写实风格;ROI 最高。
- *   · 负向约束:无文字/水印 + 避免抖动/肢体扭曲/闪烁。
- *   · 图生视频(有参考图)时不复述图里已有内容,只描述运动/运镜(否则主体漂移)。
- *   · 本地化:中文/日韩内容,人物按亚洲/对应国家、实景按当代城市风格;通用物体保持中性。
+ * 【已降级为兜底路径】给一句口播稿构造单个 Seedance prompt。
+ *
+ * ⚠️ 这个函数的输出原本【同时】喂给图像模型(故事板首帧)和视频模型(片段生成)——
+ *   图像模型收到 "运镜:缓慢推近…避免时间闪烁" 这类视频专属指令,根本不知道要画什么,
+ *   这是首帧画错、进而整片跑偏的根因。
+ *
+ * 正常链路现在走分镜表:buildFramePrompt(给图) + buildMotionPrompt(给视频),见 shotPrompts.ts。
+ * 本函数仅在【分镜表构建失败】时作降级使用,保持老行为不变(绝不阻塞出片)。
  */
 function buildSeedancePrompt(
   sentence: string,
   opts: { track?: string; persona?: string; lang?: string; isI2V?: boolean; shotIndex?: number },
 ): string {
-  const REGION: Record<string, string> = { zh: '中国', ja: '日本', ko: '韩国' };
-  const region = REGION[(opts.lang || '').slice(0, 2).toLowerCase()];
-  const styleBits = [opts.track, opts.persona].filter(Boolean).join('、');
-  const CAMS = ['镜头缓慢推近', '镜头缓慢左移跟随', '镜头缓慢上摇', '固定机位、主体自然轻微动作', '镜头缓慢环绕'];
-  const cam = CAMS[(opts.shotIndex ?? 0) % CAMS.length];
-
-  const parts: string[] = [];
-  if (opts.isI2V) {
-    parts.push(`保持参考图的主体、构图与配色不变,只为画面添加自然、轻微的运动。`);
-  } else {
-    parts.push(`电影感竖屏空镜,画面贴合这句旁白(具体、可拍,有明确主体与单一动作):「${sentence}」。`);
-  }
-  parts.push(`环境真实、自然光、有空间层次与景深。`);
-  parts.push(`运镜:${cam}(全程只用这一种,平稳不抖)。`);
-  parts.push(`风格:电影感、纪实写实、画质清晰${styleBits ? `,贴合「${styleBits}」` : ''}。`);
-  if (region) {
-    parts.push(`本地化:若出现人物,为亚洲/${region}人面孔与气质;若为街景/室内/餐厅/商店/交通等实景,呈现当代${region}城市的环境与风格;通用物体、纯自然风景保持中性。`);
-  }
-  parts.push(`不要任何文字、字幕、水印、logo;避免画面抖动、肢体扭曲、时间闪烁。`);
-  return parts.join('');
+  return buildLegacyPrompt(sentence, opts);
 }
 
 /**
@@ -177,6 +164,18 @@ export interface VideoCreationInput {
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
   seedanceModel?: 'lite' | 'pro' | 'pro15' | 'v2';
+  /**
+   * engine==='ai'(电影级)是否启用【分镜表】链路(默认启用)。
+   * 分镜表把口播 / 画面 / 运动彻底分家:narration 只进 TTS、visualFirst 只进图像模型、
+   * motion 只进视频模型;同时解除 45s 硬上限。
+   * 显式传 false = 回到老链路(整篇 splitScript + 大分镜合并 + 45s 截断),用于出问题时兜底。
+   */
+  useStoryboardTable?: boolean;
+  /**
+   * engine==='ai':用户在分镜表界面确认/编辑过的分镜。传了就【直接用】,不再跑解析/派生
+   * (省一次 AI 调用,也保证用户改过的内容原样生效)。
+   */
+  storyboardShots?: StoryShot[];
   /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
   template?: TemplateOptions;
   /** engine==='hotspot'(热搜成片)专属:用户勾选的热点源('hotsearch'|'web3'|'tech')。
@@ -614,6 +613,20 @@ export function classifyLocalMediaFiles(paths: string[]): { videos: string[]; im
  *    每条都【完整跑完】(本地保存 + 按需发布)才进下一条,中途不提前结束。
  */
 let _videoBatchBusy = false; // ③ 进程级单飞闸:同一进程同时只跑一条视频流水线
+/**
+ * 谁持有闸门、什么时候拿的、它的中断信号。
+ *
+ * ⚠️【真机 bug】闸门只在 finally 里释放。一旦流水线卡在某个不响应停止的等待上
+ *   (合成超时上限现在按片长算、最长 3 小时),finally 就永远不执行 —— 用户点了停止、
+ *   界面也显示停了,可**之后每个视频任务都被这道闸挡掉**,只能重启 app。
+ *   所以要记住持有者是谁:① 报错时说清被谁占着、占了多久;② 持有者已经被 abort
+ *   且僵住超过 ZOMBIE_TAKEOVER_MS 就允许接管 —— 那时它已经是僵尸,继续挡着只会更糟。
+ */
+let _videoBatchHolder: { taskId: string; startedAt: number; signal?: AbortSignal } | null = null;
+/** 闸门持有令牌:接管后老的持有者 finally 不能再把【别人的】闸门放掉。 */
+let _videoBatchToken = 0;
+/** 被停止的持有者僵住多久算僵尸。正常 abort 几秒内就该收尾,给到 60s 已很宽。 */
+const ZOMBIE_TAKEOVER_MS = 60_000;
 
 export async function generateVideoBatch(
   input: VideoCreationInput,
@@ -624,14 +637,34 @@ export async function generateVideoBatch(
   //    抢同一个 video_publish 窗口 / 抖音 tab 串台(用户实测:要 2 条却出 3 条 + 画面串台)。
   //    无论从哪条入口(main IPC / sidecar / createAndRun / 调度)进来,都在此唯一汇合点拦住。
   if (_videoBatchBusy) {
-    emit?.({
-      jobId: (input as any).taskId, status: 'error', steps: [],
-      message: '已有视频任务在运行,本次跳过(同时只跑一条,避免抢占视频窗口)',
-      error: 'video_pipeline_busy',
-    } as any);
-    return { ok: false, error: '已有视频任务在运行,本次跳过' } as VideoCreationResult;
+    const h = _videoBatchHolder;
+    const heldMs = h ? Date.now() - h.startedAt : 0;
+    const heldSec = Math.round(heldMs / 1000);
+    const holderAborted = !!h?.signal?.aborted;
+    // 持有者已被停止、却还僵着不放 → 它已经是僵尸,接管。继续挡下去只会让用户以为
+    //   整个视频功能坏了(真机:停了一个任务后,所有视频任务点了就失败)。
+    // ⚠️ 只在【已 abort】时才接管。没 abort 说明人家真在跑,强行接管会变成两条流水线
+    //    并发抢同一个发布窗口 —— 那正是这道闸当初要防的事(也确实出过两个下载器同时跑)。
+    if (holderAborted && heldMs >= ZOMBIE_TAKEOVER_MS) {
+      console.warn(`[video] 接管僵死闸门:持有者 task=${h?.taskId} 已停止但仍占用 ${heldSec}s`);
+      emit?.({
+        jobId: (input as any).taskId, status: 'running', steps: [],
+        message: `⚠️ 上一个任务已停止但未完全收尾(占用 ${heldSec}s),已强制接管继续`,
+      } as any);
+    } else {
+      const who = h?.taskId ? `任务 ${String(h.taskId).slice(0, 8)}` : '另一个任务';
+      const state = holderAborted ? '已停止,正在收尾' : '运行中';
+      emit?.({
+        jobId: (input as any).taskId, status: 'error', steps: [],
+        message: `已有视频任务在运行,本次跳过(${who} · ${state} · 已 ${heldSec}s;同时只跑一条,避免抢占视频窗口)`,
+        error: 'video_pipeline_busy',
+      } as any);
+      return { ok: false, error: `已有视频任务在运行,本次跳过(${state} · 已 ${heldSec}s)` } as VideoCreationResult;
+    }
   }
   _videoBatchBusy = true;
+  const myBatchToken = ++_videoBatchToken;
+  _videoBatchHolder = { taskId: String((input as any).taskId || ''), startedAt: Date.now(), signal };
   // 运行窗 title 标【当前任务 id + 类型】(req 2);收尾在 finally 清。
   setCurrentVideoTask((input as any).taskId, videoTypeLabel((input as any).engine));
   try {
@@ -711,7 +744,15 @@ export async function generateVideoBatch(
     ...(success > 0 ? {} : { error: stopped ? '已停止' : '全部失败' }),
   } as any);
   return { ok: success > 0, outputPath: outputPaths[0], outputPaths, stopped } as unknown as VideoCreationResult;
-  } finally { _videoBatchBusy = false; clearCurrentVideoTask(); }
+  } finally {
+    // ⚠️ 只能放【自己拿的】那道闸。被接管之后老持有者才姗姗来迟地走到这里,
+    //    若无条件置 false,就会把接管者正在用的闸门放掉 → 两条流水线并发。
+    if (_videoBatchToken === myBatchToken) {
+      _videoBatchBusy = false;
+      _videoBatchHolder = null;
+      clearCurrentVideoTask();
+    }
+  }
 }
 
 export async function generateVideo(
@@ -953,7 +994,7 @@ async function runVideoPipeline(
       //   ⚠️ 不在这里 markHotspotUsed —— 改到【发布后、≥1 平台成功(或仅存本地已出片)】才记一笔
       //   (用户要求:只有上传成功才算用过;发布全失败的选题下次还能重试)。见下方 publish 段。
       const usedIds = getUsedHotspots(input.taskId || '');
-      hotspotTopic = await pickHotspotTopic(sources, usedIds, 20, input.hotspotTrack || '');
+      hotspotTopic = await pickHotspotTopic(sources, usedIds, 20, input.hotspotTrack || '', signal);
       if (!hotspotTopic) {
         const err = '热搜成片:所选热点源暂无可用条目(稍后热榜刷新再试)';
         tracker.fail('script', err);
@@ -1039,6 +1080,9 @@ async function runVideoPipeline(
     let script = userText;
     if (scriptMode === 'ai') {
       const isHotspot = input.engine === 'hotspot';
+      // 电影级(ai)不带赛道/关键词,但也不需要 topic:它的想法是必填的 → userText 非空 →
+      //   下面 referenceScript 有值 → generateScript 走「参考文案就是内容主题」那条 user
+      //   message,整条不引用 topic。只有【没有任何文案】时 topic 才会被用到。
       const topic = isHotspot && hotspotTopic
         ? hotspotTopic.title
         : ((input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式');
@@ -1080,17 +1124,87 @@ async function runVideoPipeline(
       tracker.progress(`📝 视频文案(约 ${script.length} 字 ≈ ${Math.round(script.length / 4.5)}s):${script}`);
     }
 
-    // 拆句(并入「脚本」步:本地纯文本切分,无 AI、瞬时完成)。
-    let sentences = splitScript(script);
+    // ── 电影级(engine='ai')分镜表 ──────────────────────────────────────────
+    //  老链路把整篇文档 splitScript 按标点切句,于是脚本里的表头/景别运镜/B-roll 清单/
+    //  拍摄准备全被当台词念出来,而用户写好的【画面内容】那一栏反被丢弃 —— 成片必然驴唇
+    //  不对马嘴。新链路先把脚本解析成结构化分镜:narration 只进 TTS、visual 只进图像模型、
+    //  motion 只进视频模型。构建失败 → aiShots 留 null,整段降级回老链路(绝不阻塞出片)。
+    let aiShots: StoryShot[] | null = null;
+    if (input.engine === 'ai' && input.useStoryboardTable !== false
+        && Array.isArray(input.storyboardShots) && input.storyboardShots.length > 0) {
+      // 用户已在分镜表界面确认过 → 直接用,不再跑解析/派生(省一次 AI 调用,且用户改过的内容原样生效)。
+      aiShots = input.storyboardShots;
+      tracker.progress(`🎬 使用你确认过的分镜表(${aiShots.length} 镜)`);
+    } else if (input.engine === 'ai' && input.useStoryboardTable !== false) {
+      // strict = 用户粘了脚本(可能是完整分镜脚本)→ 解析;ai = 稿子是 AI 写的口播 → 派生分镜。
+      const isUserScript = scriptMode === 'strict';
+      tracker.progress(isUserScript ? '🎬 正在解析你的分镜脚本…' : '🎬 正在为口播稿设计分镜…');
+      try {
+        const sbInput = {
+          lang: contentLang,
+          targetSeconds: input.targetSeconds,
+          // 赛道/人设只作画面调性参考,不决定题材(有脚本时更不该干扰)。
+          styleHint: isUserScript ? undefined : [input.track, input.persona].filter(Boolean).join('、') || undefined,
+          signal,
+        };
+        const sb = isUserScript
+          ? await parseStoryboardScript(script, sbInput)
+          : await deriveStoryboard(script, sbInput);
+        if (sb && sb.shots.length > 0) {
+          tracker.addTokens(sb.tokens, sb.costUsd);
+          aiCostUsd += sb.costUsd;
+          for (const w of sb.warnings) tracker.progress(`⚠️ ${w}`);
+          // 逐字保真复核:口播必须忠于原文(营销文案/热点事实不能被 AI 改写)。低于阈值
+          //   说明 LLM 擅自润色了 → 宁可降级回老链路,也不出一条被改写过的片子。
+          if (sb.fidelity < 0.85) {
+            tracker.progress(`⚠️ 口播逐字复核仅 ${(sb.fidelity * 100).toFixed(0)}%,放弃分镜表、回退原文案链路`);
+          } else {
+            aiShots = sb.shots;
+          }
+        } else {
+          tracker.progress('⚠️ 分镜解析未成功,回退到按句拆分');
+        }
+      } catch (e) {
+        tracker.progress(`⚠️ 分镜解析异常(${String((e as any)?.message || e).slice(0, 120)}),回退到按句拆分`);
+      }
+    }
+
+    // 拆句。有分镜表 → 直接用每镜的 narration(口播与画面已分家);否则走老的本地标点切分。
+    let sentences: string[];
+    if (aiShots) {
+      // 有旁白模式下丢掉无口播的镜:sentences / audios / sceneDurations / clipResults 全靠
+      //   【下标对齐】,留着空 narration 会让 TTS 那步产出空音频并错位。纯画面模式(关旁白)
+      //   不受影响 —— 那条路不按 sentences 走。
+      const narrated = !(input.engine === 'ai' && input.narrationEnabled === false);
+      if (narrated) {
+        const before = aiShots.length;
+        aiShots = aiShots.filter((s) => s.narration.trim());
+        if (aiShots.length < before) {
+          tracker.progress(`分镜表:跳过 ${before - aiShots.length} 个无口播镜(有旁白模式下画面需跟着口播走)`);
+        }
+      }
+      if (aiShots.length === 0) {
+        aiShots = null;
+        sentences = splitScript(script);
+      } else {
+        sentences = aiShots.map((s) => s.narration);
+        const totalSec = Math.round(aiShots.reduce((a, s) => a + s.seconds, 0));
+        tracker.progress(`🎬 分镜表就绪:${aiShots.length} 镜 · 预计 ${totalSec} 秒`);
+      }
+    } else {
+      sentences = splitScript(script);
+    }
     if (sentences.length === 0) {
       const err = '文案为空或无法拆出有效分镜';
       tracker.fail('script', err);
       return { ok: false, error: err };
     }
-    // AI 自动成片(Seedance):把碎句合并成更长的「大分镜」(每段 ~8–12s 旁白)再 TTS,
-    // 这样每段配一个 8–12s 的连续片段 → 切刀少、更流畅,且少踩 Seedance 单镜最短时长的浪费。
-    // 在 TTS 之前合并,音频/字幕(词边界 cue)自然按合并后的段走,不破坏。
-    if (input.engine === 'ai') {
+    // 老链路的「大分镜合并 + 45s 硬截」只在【没有分镜表】时才跑:
+    //   · 合并成 8–12s 长镜是为了省 Seedance 的钱,但观感就是「一张图慢慢动十秒」,
+    //     跟分镜表按叙事切镜是相反的。
+    //   · 45s 硬截是成本兜底,而分镜表模式下条数与是否生成视频由用户在分镜表上定,
+    //     不该再拿一个写死的秒数把用户 4 分钟的脚本砍掉 6/7。
+    if (input.engine === 'ai' && !aiShots) {
       sentences = mergeSentencesForAi(sentences);
       // 硬上限 45s:targetSeconds 只是给 AI 的提示,AI 可能写超 → 这里按字数估时长(CJK ~4.5
       // 字/秒、拉丁 ~2.2)累加截断,保证纯 AI 成片【实际】不超 45s,杜绝写超长稿烧钱。
@@ -1133,6 +1247,14 @@ async function runVideoPipeline(
         ...sentences.map((s, i) => `${i + 1}. ${s}`),
       ].join('\n');
       fs.writeFileSync(path.join(destDir, '文案.txt'), txt, 'utf8');
+      // 分镜表另存一份(电影级):画面/运动/花字/配乐逐镜留档,方便用户核对与二改。
+      if (aiShots) {
+        fs.writeFileSync(
+          path.join(destDir, '分镜表.txt'),
+          storyboardToText(aiShots, input.taskTitle || '分镜表'),
+          'utf8',
+        );
+      }
     } catch { /* 写文案 txt 失败不影响出片 */ }
     tracker.done('script', `脚本约 ${script.length} 字,拆出 ${sentences.length} 个分镜`);
 
@@ -1140,12 +1262,24 @@ async function runVideoPipeline(
     //    偏移后合并成全局 cue(离线、精确,抄 MoneyPrinterTurbo);拿不到就让 compose 估算。
     // v6.x: 纯画面模式(仅 Seedance 可开)— 跳过 TTS、不烧字幕,镜头时长按分镜稿
     //   字数估算(5~10s,对 Seedance 片段硬限 [4,12] 友好)。其它模式恒为有旁白。
-    const wantNarration = !(input.engine === 'ai' && input.narrationEnabled === false);
+    // ⚠️【电影级不再本地配音】Seedance 1.5-pro 开 generate_audio 后,人声、口型、环境音、
+    //   BGM 是和画面一起生成的 —— 毫秒级音画同步、口型对得上,这是本地 TTS 后期贴上去
+    //   永远做不到的。所以电影级一律跳过本地 TTS(顺带省掉一整笔配音费)。
+    //   台词不再走 TTS,而是写进每镜的 prompt 交给 Seedance 念(见 buildMotionPrompt)。
+    const aiNativeAudio = input.engine === 'ai';
+    const wantNarration = !aiNativeAudio && !(input.engine === 'ai' && input.narrationEnabled === false);
+    // 哪些镜用的是【自己生成的】片段(不是借邻镜的)。
+    // ⚠️ 原生音频下这个区分是必须的:片段自带音轨,借来的片段会把邻镜的台词【再念一遍】,
+    //    而本镜那句彻底消失 —— 画面上还看不出异常,只有听才发现。以前音频是我们自己配的,
+    //    借片段只影响画面贴题度,所以无所谓;现在不行了。
+    // ⚠️ 必须声明在【函数体这一层】,不能放进 engine==='ai' 那个分支块里:填它的是那个分支,
+    //    但读它的是后面 compose 阶段的原生音轨判断(在分支外)—— 放块里 = 读的地方根本看不见它。
+    const aiOwnClip: boolean[] = [];
     // 每镜时长来源:有旁白 → 各句真实配音时长;纯画面 → 分镜稿字数估算。下游(Seedance
     //   生成 / 本地拼接 / compose)统一读 sceneDurations,不再直接摸 audios[i].durationSec。
     const sceneDurations: number[] = [];
     throwIfAborted(signal);
-    tracker.start('tts');
+    tracker.start('tts', wantNarration ? `🎤 配音:${voiceProviderLabel(input.voice || getTtsVoice())} · 音色 ${input.voice || getTtsVoice()}` : undefined);
     const audios: { audioPath: string; durationSec: number }[] = [];
     const subtitleCues: SubtitleCue[] = [];
     if (wantNarration) {
@@ -1160,6 +1294,8 @@ async function runVideoPipeline(
       //   必然触发整片重来 → 三个 voice 轮完耗尽彻底失败。句级 fallback 把失败隔离到单句,救场率高。
       const primary = input.voice || getTtsVoice();
       const voiceChain = getVoiceFallbacks(primary);
+      // 本步配音累计实扣(豆包);收尾时报个总数,方便和账单逐条对账。
+      let ttsTokens = 0;
 
       // ── 「一口气」优先路径:整段只发 1 次 edge-tts 请求,再按 cue 时间戳切回每句 ──
       //   请求数 N→1,从根上躲过 edge-tts「按 voice 间歇拒发」(N 句里中任一即失败 vs 单次)。
@@ -1168,7 +1304,19 @@ async function runVideoPipeline(
       //   字幕直接用整段 cue(全局时间轴,比逐句拼接更准)。下游 audios/sceneDurations/subtitleCues
       //   形状与逐句路径完全一致 —— 分镜/compose 无感知。
       let wholeDone = false;
+      // 豆包也走整段:synthesizeWhole 对豆包音色走火山【异步长文本】接口(开 enable_timestamp)
+      //   → 回逐字时间戳,精度不输 edge 词边界。于是「一次合成 + 按真实时间戳切句」对两家都成立:
+      //   韵律没有句间接缝,字幕落点是真时间而不是按字数估。
+      // ⚠️【别再按长度分流】以前只有 >1024 字节才走异步接口,而在线同步接口**不支持时间戳**。
+      //    45 秒视频的口播才 200 来字 ≈ 600 字节,永远够不到那条线 → 永远拿不到时间戳 →
+      //    整段必失败、每次回退逐句。更糟的是同步那一发**已经合成并按字符扣过钱了**,
+      //    回退逐句等于同一段口播付两遍。现在 synthesizeWhole 传 needTimestamps,
+      //    后端无视长度直接走异步,整段这条路才真的通。
+      if (isDoubaoVoice(primary)) {
+        tracker.progress('🎙️ 豆包真人音色:整段一次合成(长文本接口带时间戳,切句和字幕用真实时间)');
+      }
       try {
+        {
         const masterMp3 = path.join(assetDir, 'narr_master.mp3');
         let whole: Awaited<ReturnType<typeof synthesizeWhole>> | null = null;
         let usedWholeVoice = voiceChain[0];
@@ -1177,10 +1325,10 @@ async function runVideoPipeline(
           throwIfAborted(signal);
           // ⚠️ 这段原来全程无日志:synthesizeWhole 内部 60s×5 重试 × 多个备用音色 → 连不上微软 TTS 时
           //   会静默 grind 十几分钟,UI 看着像「卡死无报错」。这里每个音色尝试前后都打日志 + 抛出 TTS 错因。
-          tracker.progress(`配音合成中(音色 ${v}${voiceChain.length > 1 ? ` · ${vi + 1}/${voiceChain.length}` : ''})… 连微软 TTS,网络慢会重试,请稍候`);
+          tracker.progress(`配音合成中(${voiceProviderLabel(v)} · 音色 ${v}${voiceChain.length > 1 ? ` · ${vi + 1}/${voiceChain.length}` : ''})… 网络慢会重试,请稍候`);
           // ⚠️ signal 必须传:synthesizeWhole 内部 60s × 5 次重试,不传的话点停止要在
           //    这一个音色上磨到 5 分钟,只有换音色时才会碰到上面那句 throwIfAborted。
-          const w = await synthesizeWhole(sentences.join('\n'), masterMp3, v, input.voiceRate, { signal });
+          const w = await synthesizeWhole(sentences.join('\n'), masterMp3, v, input.voiceRate, { signal, onProgress: (m) => tracker.progress(m) });
           if (w.ok) { whole = w; usedWholeVoice = v; break; }
           const reason = getLastTtsError();
           tracker.progress(`音色 ${v} 整段合成未成功${reason ? `(${reason.slice(0, 110)})` : ''}${vi < voiceChain.length - 1 ? ',换下一个音色…' : ''}`);
@@ -1208,12 +1356,22 @@ async function runVideoPipeline(
                 subtitleCues.push({ text: c.text, start: c.start, end: c.end });
               }
               wholeDone = true;
+              // 豆包整段是按字符实扣的 —— 不计进来,账单里有扣费、任务页却是 0。
+              //   Edge 免费,chargedTokens 为空,这段自然跳过。
+              if (whole.chargedTokens && whole.chargedTokens > 0) {
+                tracker.addTokens(whole.chargedTokens, whole.costUsd || whole.chargedTokens / 1_000_000);
+                ttsTokens += whole.chargedTokens;
+              }
               const vTag = usedWholeVoice !== voiceChain[0] ? `,备用音色 ${usedWholeVoice}` : '';
-              tracker.done('tts', `配音完成(整段 1 次合成 + 切 ${sentences.length} 段,省 ${sentences.length - 1} 次请求${vTag})`);
+              const costTag = whole.chargedTokens && whole.chargedTokens > 0
+                ? ` · ${sentences.reduce((a, x) => a + x.length, 0)} 字,扣 ${whole.chargedTokens.toLocaleString()} 积分`
+                : ' · Edge 免费音色,不计费';
+              tracker.done('tts', `配音完成(整段 1 次合成 + 按时间戳切 ${sentences.length} 段${vTag})${costTag}`);
             }
           }
         }
         if (!wholeDone) tracker.progress('整段配音不可用(合成失败/切句对不齐),回退逐句合成…');
+        }
       } catch (e) {
         if (signal?.aborted) throw e;
         tracker.progress('整段配音异常,回退逐句合成…');
@@ -1238,7 +1396,17 @@ async function runVideoPipeline(
           // ⚠️ signal 必须传:synthesize 内部有 voiceChain × 最多 5 次重试 × 单次最长 60s,
           //    不传的话点了停止要磨数分钟才走到下一句的 throwIfAborted。
           const r = await synthesize(sentences[i], outMp3, v, input.voiceRate, { signal });
-          if (r.synthesized) { got = r; usedVoice = v; break; }
+          if (r.synthesized) {
+            got = r; usedVoice = v;
+            // 豆包按字符实扣 —— 计进「本次消耗」并逐句报出来,否则用户在账单里看到
+            //   一串扣费、任务页却一分不含,只能怀疑是不是重复扣了。Edge 免费恒为 0。
+            if (r.chargedTokens && r.chargedTokens > 0) {
+              tracker.addTokens(r.chargedTokens, r.costUsd || r.chargedTokens / 1_000_000);
+              ttsTokens += r.chargedTokens;
+              tracker.progress(`   第 ${i + 1} 句配音 ${sentences[i].length} 字 · 扣 ${r.chargedTokens.toLocaleString()} 积分`);
+            }
+            break;
+          }
           lastReason = getLastTtsError() || lastReason;
         }
         if (!got) { failIdx = i; break; }
@@ -1268,19 +1436,30 @@ async function runVideoPipeline(
         const triedMsg = voiceChain.length > 1
           ? ` · 已对该句尝试全部 ${voiceChain.length} 个备用音色,均合成失败`
           : '';
+        // 报错要分供应商:豆包失败说微软限流是误导,用户会照着错方向排查半天。
+        //   豆包失败【不会】悄悄换成 Edge 出片 —— 换掉的是用户选的声音,那条片子他不会要。
+        const isDb = isDoubaoVoice(stickyVoice || voiceChain[0]);
         const err = `配音失败:第 ${failIdx + 1}/${sentences.length} 句无法合成语音${triedMsg}`
           + (lastReason ? `(${lastReason.slice(0, 160)})` : '')
-          + '。已终止出片,不会生成无配音的视频;平台基础费将自动退回。'
-          + '常见原因:网络无法访问微软在线 TTS 接口,或当前为微软上游限流期(2026-04 起已知问题),请检查网络/代理后重试。';
+          + '。已终止出片,不会生成无配音、或换了音色的视频;平台基础费将自动退回。'
+          + (isDb
+            ? '当前用的是豆包真人音色。常见原因:豆包语音服务未配置/额度不足,或上游临时不可用。'
+              + '需要立刻出片的话,可在向导里改用 Edge 免费音色重试。'
+            : '常见原因:网络无法访问微软在线 TTS 接口,或当前为微软上游限流期(2026-04 起已知问题),请检查网络/代理后重试。');
         tracker.fail('tts', err);
         return { ok: false, error: err };
       }
-      tracker.done('tts', `配音完成(${synthCount} 句全部真人语音${stickyVoice !== voiceChain[0] ? `,含备用音色 ${stickyVoice}` : ''})`);
+      tracker.done('tts', `配音完成(${synthCount} 句全部真人语音${stickyVoice !== voiceChain[0] ? `,含备用音色 ${stickyVoice}` : ''})`
+        + (ttsTokens > 0 ? ` · 共 ${sentences.reduce((a, x) => a + x.length, 0)} 字,合计扣 ${ttsTokens.toLocaleString()} 积分` : ' · Edge 免费音色,不计费'));
       } // end if (!wholeDone) — 逐句 fallback
     } else {
-      // 纯画面:每镜时长 = clamp(字数 / 4.5, 5, 10) 秒,跟着分镜稿内容走。
+      // 纯画面:分镜表标了时长就用它(用户/解析器定的镜头节奏);没有才退回按字数估。
+      //   ⚠️ 无旁白时字数恒为 0,纯按字数估会让每一镜都卡在下限 5s、节奏全平。
       for (let i = 0; i < sentences.length; i++) {
-        sceneDurations.push(Math.max(5, Math.min(10, Math.ceil((sentences[i] || '').length / 4.5))));
+        const fromTable = aiShots?.[i]?.seconds;
+        sceneDurations.push(fromTable && fromTable > 0
+          ? Math.max(4, Math.min(12, Math.round(fromTable)))
+          : Math.max(5, Math.min(10, Math.ceil((sentences[i] || '').length / 4.5))));
       }
       tracker.done('tts', `纯画面模式 · 跳过配音,按分镜稿定时长(${sentences.length} 镜)`);
     }
@@ -1330,22 +1509,63 @@ async function runVideoPipeline(
       // 服务端逐片段计费(时长×分辨率)+ 失败自动退款。失败镜降级:就近复用成功片段,
       // 再不行用参考图静帧;一条都没成则整任务失败(钱已被服务端退回)。
       const refImagesAi = (input.referenceImages || []).filter((p) => p && fs.existsSync(p)).slice(0, 2);
+      // 首尾帧串接开关。true = 分镜脚本【直接喂 Seedance】,全程不出任何图:
+      //   第 1 镜文生视频(画面描述写进 prompt),第 2..N 镜首帧 = 上一镜末帧。
+      // ⚠️ 出图与否、Seedance 怎么调,【必须由这一个判据决定】。两处各自判断正是上一版的
+      //   bug 成因:出图那边不知道下游会串接,结果出满 6 张只用 1 张,白烧钱还白等一两分钟。
+      //   用户传了参考图时才不串接(火山那边首尾帧与参考图互斥,参考图是更强的人设锚),
+      //   那条路仍走「逐镜出首帧 → 图生视频」的老行为。
+      const chainFrames = refImagesAi.length === 0;
       // 档位/分辨率不在客户端定:透传(可能 undefined)→ 服务端 seedance create 端点决定。
       const resolution = input.seedanceResolution;
-      const aiScenes = sentences.map((s, i) => ({
-        prompt: buildSeedancePrompt(s, {
-          // 有参考文案时不把赛道当画面风格(避免给跨领域参考文案的画面带原赛道倾向);
-          // 画面内容本就贴合口播句子(=参考文案内容),这里只去掉"风格贴合美食"的干扰。
-          track: userText ? undefined : input.track, persona: input.persona,
-          lang: contentLang, isI2V: refImagesAi.length > 0, shotIndex: i,
-        }),
-        // Seedance 单镜上限 12s(1.x/lite),大分镜合并后某段可能超过 → clamp 到 [4,12]。
-        durationSec: Math.max(4, Math.min(12, Math.ceil(sceneDurations[i]))),
-      }));
+      // 每镜时长:Seedance 单镜上限 12s(1.x/lite)→ clamp 到 [4,12]。
+      const clampDur = (i: number) => Math.max(4, Math.min(12, Math.ceil(sceneDurations[i])));
+      // 有分镜表 → 图和视频各用各的 prompt(buildFramePrompt / buildMotionPrompt);
+      //   没有 → 降级回老的单 prompt(buildSeedancePrompt),行为与改造前一致。
+      const aiScenes = aiShots
+        ? aiShots.map((shot, i) => ({
+            prompt: buildMotionPrompt(shot, {
+              shotIndex: i,
+              durationSec: clampDur(i),
+              // 有没有首帧,决定 prompt 要不要带画面描述:
+              //   · 串接模式:第 1 镜是【文生视频】(没有任何图)→ 必须把画面写进 prompt,
+              //     否则模型不知道要画什么;第 2 镜起首帧 = 上一镜末帧 → 只写运动
+              //     (i2v 复述画面会导致主体漂移,这是 Seedance 社区共识)。
+              //   · 非串接(用户传了参考图 / 老链路):每镜都有故事板首帧 → 一律只写运动。
+              hasKeyframe: chainFrames ? i > 0 : true,
+              // ⚠️ 尾帧图目前【没有生成】(故事板只出首帧),所以这里必须是 false。
+              //   置 true 会让 prompt 写成「从首帧自然过渡到尾帧画面」,而模型根本收不到尾帧 →
+              //   等于给它一个不存在的目标。首尾帧(flf2v)要等故事板支持出两张图再打开。
+              hasLastFrame: false,
+              styleLock: DEFAULT_STYLE_LOCK,
+              lang: contentLang,
+              // 原生音频:台词交给 Seedance 念(本地已不再配音)。
+              nativeAudio: true,
+              dialogue: shot.narration,
+            }),
+            durationSec: clampDur(i),
+          }))
+        : sentences.map((s, i) => ({
+            prompt: buildSeedancePrompt(s, {
+              // 有参考文案时不把赛道当画面风格(避免给跨领域参考文案的画面带原赛道倾向);
+              // 画面内容本就贴合口播句子(=参考文案内容),这里只去掉"风格贴合美食"的干扰。
+              track: userText ? undefined : input.track, persona: input.persona,
+              lang: contentLang, isI2V: refImagesAi.length > 0, shotIndex: i,
+            }),
+            durationSec: clampDur(i),
+          }));
+      // 每镜首帧的落盘路径(按 shot 索引对齐,没出图为 '')。没勾「要动」的镜直接用它当
+      //   静帧走 Ken Burns —— 这是成本的关键杠杆:一张图几毛,一个 4.5s 的 Seedance 镜要几块。
+      const keyframePaths: string[] = new Array(aiScenes.length).fill('');
       // ── 故事板模式:先用 Seedream 组图出每镜【首帧】(同角色/画风),再图生视频(i2v,更稳)──
       //   首帧也存一份到本次输出目录的「故事板」文件夹(用户要的本地存档)。
       //   故事板失败/未配置 → 退化为纯文生视频(不挂首帧),不阻塞。
-      try {
+      //
+      // ⚠️【串接模式一张图都不出】第 1 镜走文生视频(画面描述直接进 prompt —— buildMotionPrompt
+      //    在无首帧时本来就会带上 visualFirst),第 2..N 镜用上一镜的末帧。整条链路不需要任何
+      //    故事板图,连「视觉锚」那次 LLM 调用也一起省掉 —— 它的产出只喂给图像模型,不出图就是白烧。
+      //    真机实测过反例:出了 6 张只用 1 张,白花钱还白等一两分钟。
+      if (!chainFrames) try {
         // 视觉锚生成(纯 AI 模式专用,有参考图时跳过 —— 用户参考图本身就是最强锚)。
         //   把 character 字段从「persona · track」两词拼接(导致 Seedream 出套路图,如「亚洲女性看
         //   手机」)升级为【LLM 5 字段结构化视觉描述】(shot_type / subject / environment /
@@ -1368,22 +1588,45 @@ async function runVideoPipeline(
           }
         }
 
-        tracker.progress(`🎨 生成故事板首帧(逐张出 ${aiScenes.length} 张,保持角色一致)…`);
+        // 走到这里必然是【非串接】(整块被 `if (!chainFrames)` 包着):用户传了参考图,
+        //   或是老链路。这种情况才逐镜出首帧图。串接模式一张都不出,见上面的说明。
+        const wantKeyframes = aiScenes.length;
+        tracker.progress(`🎨 生成故事板首帧(逐张出 ${wantKeyframes} 张,保持角色一致)…`);
+        // ⚠️ 喂给【图像模型】的必须是画面描述,不是 aiScenes[].prompt(那是给视频模型的运动
+        //   描述:"运动:镜头缓慢推近…不要剪切、不要画面闪烁")。老代码两处共用一个 prompt,
+        //   图像模型完全不知道要画什么 —— 这是首帧画错、整片跑偏的根因。
+        //   有分镜表 → buildFramePrompt(只写画面);没有 → 只能退回老行为(单 prompt 共用)。
+        const framePrompts = aiShots
+          ? aiShots.map((shot) => buildFramePrompt(shot, {
+              lang: contentLang,
+              styleLock: DEFAULT_STYLE_LOCK,
+              aspect: input.aspect,
+            }))
+          : aiScenes.map((sc) => sc.prompt);
         // 逐张生成:每张独立短请求(绕开 Cloudflare 100s/HTTP524),并逐张回进度。
         const storyboard = await generateStoryboard(
           {
-            shots: aiScenes.map((sc) => sc.prompt),
+            shots: framePrompts.slice(0, wantKeyframes),
             character: anchorCharacter,
-            count: aiScenes.length,
+            count: wantKeyframes,
+            aspect: input.aspect,
+            // 图表/文字卡/Logo 这类镜必须允许画面内出现文字,否则出来是空白板。
+            allowText: aiShots ? aiShots.slice(0, wantKeyframes).map((s) => shotAllowsText(s.type)) : undefined,
+            // 出图是分钟级的一步,不接 signal 的话点停止要干等它跑完。
+            signal,
+            // 组图一次出一整批,中途没有逐张进度 —— 批次级的话由它来说,否则计数器
+            //   会在整批生成的一两分钟里停着不动,看着像卡死。
+            onNote: (m) => tracker.progress(m),
           },
-          (done, total) => { if (done < total) tracker.progress(`🎨 故事板生成中… ${done + 1}/${total} 张`); },
+          (done, total) => { if (done < total && done > 0) tracker.progress(`🎨 故事板已出 ${done}/${total} 张`); },
         );
         const keyframes = storyboard.images; // 按 shot 索引对齐,失败位为 ''
         const okFrames = keyframes.filter((s) => s).length;
         // 故事板首帧也是真金白银(Seedream 按张扣)—— 计入「本次消耗」,
         // 否则进度里图扣了费、总额却只剩 DeepSeek 写稿那几百,严重对不上。
         if (storyboard.chargedTokens > 0) {
-          tracker.addTokens(storyboard.chargedTokens, storyboard.chargedTokens / 1_000_000);
+          // 用服务端回的权威 costUsd;老后端没回才退回 tokens/1e6(那是 $1/M 的假设,会少算 1/3)。
+          tracker.addTokens(storyboard.chargedTokens, storyboard.costUsd || storyboard.chargedTokens / 1_000_000);
         }
         if (okFrames > 0) {
           const sbDir = path.join(destDir, '故事板');
@@ -1395,20 +1638,67 @@ async function runVideoPipeline(
               const m = /^data:(image\/\w+);base64,(.+)$/.exec(dataUrl);
               if (m) {
                 const ext = m[1] === 'image/png' ? 'png' : m[1] === 'image/webp' ? 'webp' : 'jpg';
-                fs.writeFileSync(path.join(sbDir, `镜${i + 1}.${ext}`), Buffer.from(m[2], 'base64'));
+                const p = path.join(sbDir, `镜${i + 1}.${ext}`);
+                fs.writeFileSync(p, Buffer.from(m[2], 'base64'));
+                // 落盘路径留着:没勾「要动」的镜直接拿它当静帧走 Ken Burns,不烧 Seedance 的钱。
+                keyframePaths[i] = p;
               }
             } catch { /* 单张存盘失败不影响 */ }
           });
-          tracker.progress(`🎨 故事板已生成 ${okFrames}/${aiScenes.length} 张首帧(已存「故事板」文件夹),转图生视频…`);
+          tracker.progress(`🎨 故事板已生成 ${okFrames}/${wantKeyframes} 张首帧(已存「故事板」文件夹),转图生视频…`);
+          // 失败的镜显式报出来 —— 老实现是静默降级成文生视频,用户只看到「7/12 张」,
+          //   却不知道剩下 5 镜的画风会完全跑到另一个世界去(钱还照花)。
+          if (storyboard.failedIndices.length > 0) {
+            const list = storyboard.failedIndices.slice(0, 12).map((i) => i + 1).join('、');
+            tracker.progress(`⚠️ 第 ${list} 镜首帧未出图,这些镜将退化为文生视频,画面可能与其它镜不统一`);
+          }
         } else {
           // 把服务端真实失败原因显示出来(否则只剩通用「未生成」,没法排查 Seedream 端报错)。
           tracker.progress(`🎨 故事板未生成${storyboard.error ? `(${storyboard.error})` : ''},退化为文生视频…`);
         }
       } catch (e) { tracker.progress(`🎨 故事板异常(${String((e as any)?.message || e).slice(0, 120)}),退化为文生视频…`); }
-      tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段${resolution ? `(${resolution})` : ''}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''}…`);
-      const clipResults = await generateSeedanceClips({
-        scenes: aiScenes,
+      // ── 只给【勾了「要动」的镜】生成视频 ──────────────────────────────────────
+      //  Seedance 一个 4.5s 的镜要几块钱,而一张首帧图几毛 —— 差两个数量级。默认 animate=false,
+      //  没勾的镜直接拿首帧走 Ken Burns(compose 的 zoompan),观感上是「图在动」而不是死图。
+      //  没有分镜表时(降级路径)维持老行为:所有镜都生成视频。
+      //  ⚠️ animate 只认【用户意图】,不因为「这镜没出首帧」就自动改成生成视频 ——
+      //     那样一旦故事板整体失败,40 镜的长片会静默变成 40 次 Seedance 调用(几百块)。
+      //     老链路有 45s 硬截兜着,现在上限解除了,这个口子必须堵死。
+      //     没出首帧的镜改为【借邻镜首帧】(免费),见下面 assignVisuals。
+      // ⚠️ `!== false` 不是 `=== true`:电影级默认每一镜都生成视频。
+      //   老任务里存的 storyboardShots 可能带着 animate:false(那一版把默认改反了),
+      //   用 === true 会让它们重跑时整片退化成静图幻灯片 —— 那不是电影级。
+      //   只有【显式】标 false 的镜(纯静态展示)才不生成。
+      const animateFlags: boolean[] = aiShots
+        ? aiShots.map((s) => s.animate !== false)
+        : aiScenes.map(() => true);
+      const animateIdx: number[] = [];
+      animateFlags.forEach((on, i) => { if (on) animateIdx.push(i); });
+      const stillCount = aiScenes.length - animateIdx.length;
+      if (stillCount > 0) {
+        tracker.progress(`🖼️ ${stillCount} 镜为静态展示镜,用首帧 + 运镜(不生成视频)`);
+      }
+      // 既没有任何首帧、又一镜都没勾生成视频 → 后面无论如何拼不出画面。在【花钱之前】直接失败,
+      //   而不是硬着头皮跑完再交一条黑屏片。
+      if (keyframePaths.filter(Boolean).length === 0 && animateIdx.length === 0) {
+        const err = '故事板首帧一张都没生成,且没有任何镜勾选「生成视频」,无法出片。请稍后重试或在分镜里勾选要生成视频的镜。';
+        tracker.fail('visuals', err);
+        return { ok: false, error: err };
+      }
+      // 一镜都不用生成 → 跳过 Seedance,直接进静帧分配(避免空数组调用把服务端打出 400)。
+      const clipResults: SeedanceClipResult[] = Array.from(
+        { length: aiScenes.length },
+        (): SeedanceClipResult => ({ path: null }),
+      );
+      if (animateIdx.length > 0) {
+      tracker.progress(`🎬 AI 自动成片:逐镜生成 ${animateIdx.length} 个片段${resolution ? `(${resolution})` : ''}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''}…`);
+      const generated = await generateSeedanceClips({
+        scenes: animateIdx.map((i) => aiScenes[i]),
         referenceImages: refImagesAi,
+        // 首尾帧串接:上一镜末帧当下一镜首帧,跨镜人物/光影/画风物理连续。
+        // ⚠️ 用户自带参考图时【不串接】—— 火山那边首尾帧和参考图互斥,用户的参考图
+        //    是更强的人设锚,优先保它。
+        chainFrames,
         resolution,
         tier: input.seedanceModel,
         ratio: aspectToSeedanceRatio(input.aspect),
@@ -1418,14 +1708,20 @@ async function runVideoPipeline(
         //   「只计成功镜」(原 generateSeedanceClips 返回后再 reduce 累加的做法跟用户
         //   逐镜「已扣 X 积分」日志严重对不上 —— 任务跑完前顶部一直是 0)。
         //   costUsd 按 1 USDT=1M tokens 折算(= 积分/1e6)供 $ 展示。
-        onProgress: (m, charged) => {
-          if (charged && charged > 0) tracker.addTokens(charged, charged / 1_000_000);
+        onProgress: (m, charged, usd) => {
+          // 用服务端回的权威 costUsd;老后端没回才退回 tokens/1e6($1/M 的假设,会少算 1/3)。
+          if (charged && charged > 0) tracker.addTokens(charged, usd || charged / 1_000_000);
           tracker.progress(m);
         },
         signal,
       });
+      // 结果按【子集下标】回来 → 映射回全量下标,否则后面 sceneClips/sceneDurations 全错位。
+      generated.forEach((r, k) => { clipResults[animateIdx[k]] = r; });
+      }
       const okCount = clipResults.filter((r) => r.path).length;
-      if (okCount === 0) {
+      // 全片没有任何可用画面(视频没出 + 首帧也没出)才算失败;只要有首帧就还能出片。
+      const stillOk = keyframePaths.filter(Boolean).length;
+      if (okCount === 0 && stillOk === 0) {
         // 原始 sample(如 "fetch failed")只打到 console 供排查,不展示给用户;
         // 用户面只给通用文案(退费由服务端按计费政策处理:有 token 输出不退、0 输出才退,不在文案里承诺)。
         const sample = clipResults.find((r) => r.error)?.error || '';
@@ -1434,19 +1730,30 @@ async function runVideoPipeline(
         tracker.fail('visuals', err);
         return { ok: false, error: err };
       }
-      assignVisuals = () => {
-        const sceneClips = clipResults.map((r, i) => {
-          if (r.path) return [r.path];
-          const near = findNearestClip(clipResults, i);
-          return near ? [near] : [];
-        });
-        // 既无本镜片段又借不到邻镜的(极端)→ 用参考图静帧兜底。
-        const imageByScene = new Map<number, string>();
-        if (refImagesAi.length > 0) {
-          clipResults.forEach((r, i) => {
-            if (!r.path && !findNearestClip(clipResults, i)) imageByScene.set(i, refImagesAi[i % refImagesAi.length]);
-          });
+      /** 就近借一张已出图的首帧(左右由近及远);都没有返回 ''。 */
+      const nearestKeyframe = (i: number): string => {
+        for (let d = 1; d < keyframePaths.length; d++) {
+          if (keyframePaths[i - d]) return keyframePaths[i - d];
+          if (keyframePaths[i + d]) return keyframePaths[i + d];
         }
+        return '';
+      };
+      assignVisuals = () => {
+        const imageByScene = new Map<number, string>();
+        const sceneClips = clipResults.map((r, i) => {
+          if (r.path) { aiOwnClip[i] = true; return [r.path]; }
+          // 没生成视频的镜(以及生成失败的镜):优先用【本镜自己的首帧】走 Ken Burns ——
+          //   比借邻镜的片段贴题得多(邻镜画的是别的内容)。
+          if (keyframePaths[i]) { imageByScene.set(i, keyframePaths[i]); return []; }
+          // 本镜没出图 → 先借邻镜首帧(免费),再考虑借邻镜片段。
+          const nk = nearestKeyframe(i);
+          if (nk) { imageByScene.set(i, nk); return []; }
+          const near = findNearestClip(clipResults, i);
+          if (near) return [near];
+          // 全都没有(极端)→ 用参考图静帧兜底。
+          if (refImagesAi.length > 0) imageByScene.set(i, refImagesAi[i % refImagesAi.length]);
+          return [];
+        });
         return { sceneClips, imagePool: refImagesAi, imageByScene };
       };
       // AI 生成的片段本地留一份:assetDir 是临时目录(结尾会清掉),拷到成片输出目录的
@@ -2301,7 +2608,10 @@ async function runVideoPipeline(
 
     const { width, height } = aspectToSize(input.aspect);
     // 纯画面模式(无旁白)→ 无旁白文本时间轴,强制关字幕。
-    const subtitleEnabled = wantNarration && input.subtitleEnabled !== false;
+    // ⚠️ 电影级(aiNativeAudio)也没有 TTS 时间轴,但它的字幕【不靠】TTS:文本是每镜台词、
+    //    时间是实测片段时长(见下面原生拼接那段)。原来只认 wantNarration,而电影级恒为
+    //    false → 用户在向导里打开的字幕开关永远点不亮,一条都烧不出来。
+    const subtitleEnabled = (wantNarration || aiNativeAudio) && input.subtitleEnabled !== false;
     const subtitle: SubtitleStyle = {
       enabled: subtitleEnabled,
       fontSize: input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 52,
@@ -2315,7 +2625,20 @@ async function runVideoPipeline(
     // 并缓存(命中缓存不重下);用户上传的绝对路径原样返回。再统一过 existsSync 兜底
     // (取不到 = 不加 BGM,不挡出片)。
     const resolvedBgm = await resolveBgmPath(input.bgmPath, (m) => tracker.progress(m));
-    const bgmPath = resolvedBgm && fs.existsSync(resolvedBgm) ? resolvedBgm : undefined;
+    let bgmPath = resolvedBgm && fs.existsSync(resolvedBgm) ? resolvedBgm : undefined;
+    // 分段配乐(电影级分镜表):相邻同情绪的镜合成一段,每段按情绪从云端曲库挑一首,
+    //   段间交叉淡入淡出拼成一条完整 BGM 轨 —— 叙事推进时音乐跟着变(悬疑开场 → 紧张冲突
+    //   → 轻快反转 → 钢琴收尾),而不是整片循环同一首。
+    //   条件不足(只有一段 / 曲库拉不到 / 切片失败)→ 内部返回 undefined,原样回落单曲。
+    // ⚠️ 必须先有 bgmPath:用户在向导里选了「无背景音乐」时,不能因为分镜表带了情绪
+    //    就擅自给他配上音乐。分段配乐只是把【他选的那一首】换成按情绪走的一条轨。
+    if (bgmPath && aiShots && aiShots.some((s) => (s.bgmMood || '').trim())) {
+      const segs = aiShots.map((s, i) => ({ mood: s.bgmMood || '', seconds: sceneDurations[i] || s.seconds || 0 }));
+      const moodTrack = await buildMoodBgmTrack(
+        segs, assetDir, runFfmpeg, bgmPath, (m) => tracker.progress(m), signal,
+      );
+      if (moodTrack) bgmPath = moodTrack;
+    }
     if (input.bgmPath && !bgmPath) tracker.progress('⚠️ 背景音乐获取失败，本条将不加 BGM');
     if (subtitleEnabled) {
       tracker.progress(subtitleCues.length > 0
@@ -2370,6 +2693,77 @@ async function runVideoPipeline(
         };
       });
       const outPath = path.join(destDir, outputFileName(v));
+
+      // ── 电影级 · 原生音频:本地只拼接,绝不重编码、绝不丢音轨 ────────────────
+      // Seedance 出的片段自带人声/口型/环境音,音画同源。composeVideo 全程 `-an`,
+      //   走那条就把这些全丢了。所以只要每一镜都真出了视频,就直接 concat。
+      //   有任何一镜没出视频(降级成静帧/图片)→ 老老实实回 composeVideo,
+      //   否则会拼出一条缺镜头的片子。
+      // ⚠️ 只能拼「自己生成的」片段,不能拼借来的:借来的片段带着邻镜的音轨,那句台词会被
+      //    念两遍、本镜那句消失。
+      // ⚠️⚠️ 但「有镜没出片」也【不能】整条退回 composeVideo —— 那条路每一步都是 `-an`
+      //    (见 compose.ts 文件头),会把所有片段的原生音轨丢光,而电影级又没有本地配音,
+      //    结果是交付一条【完全没声音】的片子,而且已出片那几镜的钱照付。以前这里写的
+      //    「画面照出、只是没有原生音」说轻了。
+      //    正确做法:把没出片的镜【从时间轴上去掉】,其余照常原生拼接。台词是跟着片段走的
+      //    (每段的人声就是喂给它的那句),少一镜只是少一句,绝不会串音;片子短一点,
+      //    远好过一条哑片。
+      const ownIdx = scenes.map((_, i) => i).filter((i) => scenes[i].clips && scenes[i].clips!.length > 0 && aiOwnClip[i]);
+      const canNativeJoin = aiNativeAudio && ownIdx.length > 0;
+      if (aiNativeAudio && ownIdx.length < scenes.length && ownIdx.length > 0) {
+        tracker.progress(`⚠️ 有 ${scenes.length - ownIdx.length} 镜没生成出自己的片段,已从成片中跳过(保住其余镜的原生人声,避免台词错位)`);
+      }
+      if (canNativeJoin) {
+        // clipPaths[k] 与 clipShot[k] 严格平行:后者是这一段来自【原分镜的第几镜】,
+        //   字幕取台词/时长全靠它。不用 flatMap 是因为那样一镜多段就会让下标错位。
+        const clipPaths: string[] = [];
+        const clipShot: number[] = [];
+        for (const i of ownIdx) {
+          for (const c of scenes[i].clips as string[]) { clipPaths.push(c); clipShot.push(i); }
+        }
+        tracker.progress(`${label ? label + ' · ' : ''}🎬 拼接 ${clipPaths.length} 个原生片段(保留 Seedance 人声/音效)`);
+
+        // 字幕(可选)。⚠️ Seedance **不生成字幕** —— 它做的是音画同步和口型对齐,
+        //   画面上的文字我们的 prompt 还明确禁掉了(生成模型写中文常缺笔画/串字)。
+        //   所以要字幕只能本地烧。好在内容和时间轴都是现成的:
+        //     内容 = 每镜台词(就是喂给 Seedance 念的那句)
+        //     时间 = 【实测片段时长】,比以前靠 TTS 词边界估算更准 ——
+        //            那时对的是我们自己合成的音频,现在对的是成片里真实播放的那段。
+        //   走向导的「字幕」开关(默认开 —— 用户拍板:配音交给 Seedance,字幕我们本地烧)。
+        let nativeCues: { text: string; start: number; end: number }[] | undefined;
+        if (subtitleEnabled && aiShots) {
+          const cues: { text: string; start: number; end: number }[] = [];
+          let t = 0;
+          for (let k = 0; k < clipPaths.length; k++) {
+            // ⚠️ k 是【成片里的第几段】,i 是【原分镜的第几镜】。跳过没出片的镜之后这两个
+            //    不再相等 —— 直接拿 k 去索引 aiShots 会让字幕整体串行(第 3 段配第 3 镜的
+            //    台词,而第 3 段其实是第 4 镜)。台词/时长一律按 clipShot 映射回原镜。
+            const i = clipShot[k];
+            const real = await probeDuration(clipPaths[k]).catch(() => 0);
+            const d = real > 0 ? real : (sceneDurations[i] || aiShots[i]?.seconds || 5);
+            const line = (aiShots[i]?.narration || '').trim();
+            // 首尾各留 0.1s,别和镜头切换撞在一帧上。
+            if (line && d > 0.4) cues.push({ text: line, start: t + 0.1, end: t + d - 0.1 });
+            t += d;
+          }
+          if (cues.length > 0) nativeCues = cues;
+        }
+
+        await concatNativeClips({
+          clipPaths,
+          outputPath: outPath,
+          bgmPath,
+          bgmVolume: input.bgmVolume !== undefined && input.bgmVolume >= 0 ? input.bgmVolume : undefined,
+          subtitles: nativeCues,
+          subtitleFontSize: input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : undefined,
+          width, height,
+          onProgress: (m) => tracker.progress(`${label ? label + ' · ' : ''}${m}`),
+          signal,
+        });
+        if (videoCount > 1) tracker.progress(`✅ ${label} 合成完成`);
+        return outPath;
+      }
+
       await composeVideo({
         scenes,
         outputPath: outPath,
@@ -2382,6 +2776,21 @@ async function runVideoPipeline(
         bgmVolume: input.bgmVolume !== undefined && input.bgmVolume >= 0 ? input.bgmVolume : undefined,
         // edge-tts 词边界出的精确 cue;为空时 compose 内部退回按各镜时长估算。
         cues: subtitleEnabled && subtitleCues.length > 0 ? subtitleCues : undefined,
+        // 花字(电影级分镜表的 on_screen_text):按各镜在总时间轴上的累计起点定位。
+        //   与字幕是两层 —— 花字大字偏上、只在本镜出现;字幕小字贴底、全程滚。
+        //   跟字幕开关无关(用户可能关字幕但仍要关键数字弹出)。
+        keyTexts: aiShots ? (() => {
+          const out: { text: string; start: number; end: number }[] = [];
+          let t = 0;
+          aiShots.forEach((s, i) => {
+            const d = sceneDurations[i] || s.seconds || 0;
+            const txt = (s.onScreenText || '').trim();
+            // 太短的镜不弹花字(闪一下反而干扰);首尾各留 0.15s 让它跟画面切换错开。
+            if (txt && d >= 1.2) out.push({ text: txt, start: t + 0.15, end: t + d - 0.15 });
+            t += d;
+          });
+          return out.length > 0 ? out : undefined;
+        })() : undefined,
         onScene: (done, total) => tracker.progress(`${label ? label + ' · ' : ''}合成分镜 ${done}/${total}`),
       });
       if (videoCount > 1) tracker.progress(`✅ ${label} 合成完成`);

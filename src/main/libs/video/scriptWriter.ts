@@ -52,6 +52,13 @@ export async function callDeepSeek(
    * 创作类(写口播稿)显式传 1.0+ 提升输出多样性;搜索词那种确定性映射不传 = 用默认低温。
    */
   temperature?: number,
+  /**
+   * 输出上限。默认 4000 —— 这个数是当初只用来写几百字口播稿时随手定的,从没回头调过。
+   * 结构化抽取(分镜表解析)动辄要吐几千 token 的 JSON,4000 会把 JSON 截在半截,
+   * 解析直接失败;思考模型更糟,思考过程先把额度吃掉,正文一个字都吐不出来。
+   * DeepSeek V4 Pro 单次最多 384k 输出、上下文 1M,4000 完全没有必要。
+   */
+  maxTokens = 4000,
 ): Promise<ChatResult> {
   const token = getNoobClawAuthToken();
   if (!token) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
@@ -63,7 +70,7 @@ export async function callDeepSeek(
       { role: 'user', content: userMessage },
     ],
     stream: false,
-    max_tokens: 4000,
+    max_tokens: maxTokens,
   };
   if (typeof temperature === 'number' && Number.isFinite(temperature)) {
     body.temperature = temperature;

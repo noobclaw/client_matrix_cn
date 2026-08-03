@@ -300,6 +300,24 @@ export async function probeImageSize(filePath: string): Promise<{ width: number;
   return { width: 0, height: 0 };
 }
 
+/**
+ * 取视频流的编码名(h264 / vp9 / av1 / hevc …),小写。取不到返回 ''。
+ *
+ * 用途:决定能不能 `-c:v copy` 直出。YouTube 的「最佳画质」通常是 VP9/AV1,
+ *   封进 mp4 容器**在规范上合法、但 Windows Media Player / QuickTime / 多数平台播不了**。
+ *   直接 copy 出去,用户拿到的成片就是打不开的。
+ */
+export async function probeVideoCodec(filePath: string): Promise<string> {
+  const err = await runProbe(filePath);
+  for (const line of err.split(/\r?\n/)) {
+    if (!line.includes('Video:')) continue;
+    // 形如 `Stream #0:0(und): Video: h264 (High) (avc1 / 0x31637661), yuv420p, …`
+    const m = line.match(/Video:\s*([a-zA-Z0-9_]+)/);
+    if (m) return m[1].toLowerCase();
+  }
+  return '';
+}
+
 /** 出媒体时长(秒)(解析 ffmpeg -i stderr 的 `Duration:`)。失败返回 0。 */
 export async function probeDuration(filePath: string): Promise<number> {
   const err = await runProbe(filePath);

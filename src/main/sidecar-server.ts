@@ -1411,6 +1411,56 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { valid: [], rejected: [] });
             }
           }
+          case 'video:previewVoice': {
+            // 配音试听:用选中音色合成一句短样例,回 data URL。
+            // ⚠️ 豆包音色按字符计费 → 样例句必须短(见 voiceSample.ts)。main.ts 同名 handler 须保持一致。
+            const osMod = require('os'); const fsMod = require('fs'); const pathMod = require('path');
+            let tmpFile = '';
+            try {
+              const { synthesize } = await import('./libs/video/tts');
+              const { voiceSampleText } = await import('./libs/video/voiceSample');
+              const a = (args[0] || {}) as { voice?: string; rate?: number; lang?: string };
+              const voice = String(a.voice || '').trim();
+              if (!voice) return writeJSON(res, 200, { ok: false, error: 'no_voice' });
+              const text = voiceSampleText(a.lang, voice);
+              tmpFile = pathMod.join(osMod.tmpdir(), `voice_preview_${Date.now()}.mp3`);
+              const r = await synthesize(text, tmpFile, voice, a.rate);
+              if (!r?.ok || !fsMod.existsSync(tmpFile)) return writeJSON(res, 200, { ok: false, error: 'synth_failed' });
+              const b64 = fsMod.readFileSync(tmpFile).toString('base64');
+              if (!b64) return writeJSON(res, 200, { ok: false, error: 'empty_audio' });
+              return writeJSON(res, 200, { ok: true, dataUrl: `data:audio/mpeg;base64,${b64}`, text });
+            } catch (e) {
+              return writeJSON(res, 200, { ok: false, error: String((e as Error)?.message || e).slice(0, 200) });
+            } finally {
+              try { if (tmpFile && fsMod.existsSync(tmpFile)) fsMod.unlinkSync(tmpFile); } catch { /* ignore */ }
+            }
+          }
+          case 'video:parseStoryboard': {
+            // 电影级分镜表预览:只跑解析(LLM,几分钱),不出图、不生成视频。
+            // ⚠️ Tauri 是主发布路径 —— main.ts 的 ipcMain 同名 handler 必须与这里保持一致。
+            try {
+              const { parseStoryboardScript, deriveStoryboard } = await import('./libs/video/storyboardScript');
+              const { detectLang } = await import('./libs/video/scriptWriter');
+              const a = (args[0] || {}) as {
+                script?: string; scriptMode?: string; lang?: string; targetSeconds?: number; styleHint?: string;
+              };
+              const text = String(a.script || '').trim();
+              if (!text) return writeJSON(res, 200, { ok: false, error: 'empty_script' });
+              const lang = a.lang && a.lang !== 'auto' ? a.lang : detectLang(text);
+              const opts = { lang: lang as any, targetSeconds: a.targetSeconds, styleHint: a.styleHint };
+              const r = a.scriptMode === 'ai'
+                ? await deriveStoryboard(text, opts)
+                : await parseStoryboardScript(text, opts);
+              if (!r) return writeJSON(res, 200, { ok: false, error: 'parse_failed' });
+              // 解析器现在会在「一条都没出来」时带回 warnings 说明原因 —— 别再让 UI 只剩 parse_failed。
+              if (!r.shots || r.shots.length === 0) {
+                return writeJSON(res, 200, { ok: false, error: (r.warnings || []).join('；') || 'parse_failed', warnings: r.warnings });
+              }
+              return writeJSON(res, 200, { ok: true, ...r });
+            } catch (e) {
+              return writeJSON(res, 200, { ok: false, error: String((e as Error)?.message || e).slice(0, 300) });
+            }
+          }
           case 'video:generate': {
             // Fire-and-forget (same pattern as scenario:runTaskNow above).
             // The pipeline runs for minutes (TTS + stock downloads + ffmpeg).
@@ -1545,7 +1595,7 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, {
                 ok: true, reachable: probe.ok, error: probe.error, suggestProtocol: probe.suggestProtocol,
                 geo: probe.geo, hostGeo: probe.hostGeo || cloud?.geo || undefined,
-                cloudReachable: cloud ? cloud.reachable : undefined,
+                cloudReachable: cloud ? cloud.reachable : undefined,   // undefined = 云端测本身没跑成(不参与判定)
                 duplicateName: dup ? (dup.displayName || dup.nickname || dup.id) : undefined,
               });
             } catch (e: any) {
@@ -1663,9 +1713,11 @@ const server = http.createServer(async (req, res) => {
                 let parsed: any;
                 try { parsed = JSON.parse(String(a?.cookiesRaw || '[]')); }
                 catch { return writeJSON(res, 200, { ok: false, error: 'cookie 解析失败:请粘贴 Cookie-Editor 导出的 JSON 数组' }); }
+                // 兼容几种导出形态:① 纯数组;② {cookies:[...]} 包裹;③ 加密导出块要拦截并明确指引。
                 if (Array.isArray(parsed)) cookies = parsed;
                 else if (parsed && Array.isArray(parsed.cookies)) cookies = parsed.cookies;
                 else if (parsed && typeof parsed === 'object' && parsed.data && (parsed.version || parsed.url)) {
+                  // hotcleaner 版 Cookie-Editor 的「Export」是加密块 {url,version,data:"..."},无法解密。
                   return writeJSON(res, 200, { ok: false, error: '这是【加密导出】(Cookie-Editor 的 Encrypt 导出),导不进。请改用官方 Cookie-Editor,点 Export 选【JSON】(得到的是 [ {name,value,...} ] 明文数组),再粘进来。' });
                 }
               }

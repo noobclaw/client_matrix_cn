@@ -27,12 +27,12 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as
   (new (arg: string, body: string) => (ctx: any) => Promise<any>);
 
 const LOGIN_WAIT_MS = 3 * 60 * 1000;
+const TIKTOK_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 /** 可中断等待:每 0.5s 查一次 signal —— 重试间隔里点「停止」立即结束,不再干等整段(停止卡顿源之一)。 */
 async function abortableWait(ms: number, signal?: AbortSignal): Promise<void> {
   for (let waited = 0; waited < ms && !signal?.aborted; waited += 500) await sleep(Math.min(500, ms - waited));
 }
-const TIKTOK_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export interface TiktokClipsDiag {
   reached: boolean;       // 脚本是否跑起来并返回

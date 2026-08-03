@@ -55,6 +55,40 @@ export interface VideoTemplateOptions {
   lang?: string;
 }
 
+/**
+ * 电影级「分镜表」的一镜。
+ *
+ * ⚠️ 字段必须与主进程 `src/main/libs/video/storyboardScript.ts` 的 StoryShot 保持一致 ——
+ *    它经 IPC 原样往返:video:parseStoryboard 解析出 → 用户在分镜表上编辑 →
+ *    作为 input.storyboardShots 回传给 pipeline 直接使用(不再二次解析)。
+ */
+export interface StoryShot {
+  /** 这一镜的标题 = 它在叙事里干什么(如「黄金3秒钩子 · 砸出悬念」)。 */
+  title?: string;
+  /** 时长(秒)。有旁白时最终以真实配音时长为准。 */
+  seconds: number;
+  /** 口播原文。【逐字】,拼起来 = 全片文案。空 = 无旁白镜。 */
+  narration: string;
+  /** 首帧画面描述 —— 喂图像模型,只写画面。 */
+  visualFirst: string;
+  /** 尾帧画面描述。空 = 静态镜。 */
+  visualLast?: string;
+  /** 运动描述 —— 喂视频模型,只写运镜 + 动作。 */
+  motion?: string;
+  /** 花字(打在屏幕上的大字)。 */
+  onScreenText?: string;
+  /** 配乐情绪(对齐 BGM 曲库的中文分类词)。 */
+  bgmMood?: string;
+  /** 音效提示。 */
+  sfx?: string;
+  /** 素材类型 → 决定引擎与价格。 */
+  type: 'chart' | 'textcard' | 'scene' | 'person' | 'logo' | 'transition';
+  /** 是否生成视频(true = 烧 Seedance 按秒计费;false = 首帧 + 运镜,近乎免费)。 */
+  animate: boolean;
+  /** 用户脚本里【明确写了】的字段名,AI 不许覆盖。 */
+  locked: string[];
+}
+
 export interface VideoCreationInput {
   /** 人设 —— 影响 AI 文案口吻(一期文案靠粘贴,这里先收着备用)。 */
   persona: string;
@@ -131,6 +165,10 @@ export interface VideoCreationInput {
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
   seedanceModel?: 'lite' | 'pro' | 'pro15' | 'v2';
+  /** engine==='ai'(电影级):是否启用分镜表链路(默认启用;false = 回退老的整篇切句 + 45s 截断)。 */
+  useStoryboardTable?: boolean;
+  /** engine==='ai':用户在分镜表界面确认/编辑过的分镜。传了 pipeline 就直接用,不再解析。 */
+  storyboardShots?: StoryShot[];
   /** 用户上传的参考图本地绝对路径(AI 引擎用作风格/人设统一,≤2 张)。 */
   referenceImages: string[];
   /**
@@ -377,18 +415,24 @@ class VideoCreationService {
    * 豆包(火山)真人音色目录:服务端 admin 下发(GET /api/tts/voices)。
    * 未配置/拉不到 → { enabled:false, voices:[] },UI 只显示 Edge 音色。
    */
-  async fetchDoubaoVoices(): Promise<{ enabled: boolean; voices: Array<{ id: string; zh?: string; en?: string; lang?: string; scene?: string }>; priceCnyPer10k: number }> {
+  async fetchDoubaoVoices(): Promise<{ enabled: boolean; voices: Array<{ id: string; zh?: string; en?: string; lang?: string; scene?: string }>; priceCnyPer10k: number; priceUsdPer10k: number }> {
+    const empty = { enabled: false, voices: [], priceCnyPer10k: 0, priceUsdPer10k: 0 };
     try {
       const { noobClawAuth } = await import('./noobclawAuth');
       const headers = noobClawAuth.getAuthHeaders();
-      if (!headers.Authorization) return { enabled: false, voices: [], priceCnyPer10k: 0 };
+      if (!headers.Authorization) return empty;
       const base = (window as any).__NOOBCLAW_API_BASE__ || 'https://api.noobclaw.com';
       const resp = await fetch(`${base}/api/tts/voices`, { headers });
-      if (!resp.ok) return { enabled: false, voices: [], priceCnyPer10k: 0 };
+      if (!resp.ok) return empty;
       const j: any = await resp.json();
       const voices = Array.isArray(j?.voices) ? j.voices.filter((v: any) => v && typeof v.id === 'string') : [];
-      return { enabled: !!j?.enabled && voices.length > 0, voices, priceCnyPer10k: Number(j?.priceCnyPer10k) || 0 };
-    } catch { return { enabled: false, voices: [], priceCnyPer10k: 0 }; }
+      return {
+        enabled: !!j?.enabled && voices.length > 0,
+        voices,
+        priceCnyPer10k: Number(j?.priceCnyPer10k) || 0,
+        priceUsdPer10k: Number(j?.priceUsdPer10k) || 0,
+      };
+    } catch { return empty; }
   }
 
   /** 用系统默认播放器打开成片。 */

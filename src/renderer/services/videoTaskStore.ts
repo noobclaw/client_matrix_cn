@@ -36,11 +36,6 @@ const RUNS_KEY = 'noobclaw_video_runs';
 const MAX_TASKS = 50;       // 任务列表上限,超了丢最旧的
 const MAX_RUNS = 120;       // 运行记录上限,超了丢最旧的
 const MAX_LOGS = 600;       // 每条运行记录的日志条数上限
-// 点停止后等主进程回终态的上限,超时就本地强制收尾(见 stopTask / forceFinalizeStopped)。
-// ⚠️ 必须给足:发布阶段真实的 abort 延迟本来就长(矩阵内核 waitUploadSettled 一轮最多 120s、
-//    单平台内几分钟),给 90s 会让【正常收尾】也被兜底抢先 —— 本地标已停止、放开队列槽,
-//    而主进程还在往平台发帖。这个兜底只该在真漏发终态时兜住,不该跑在正常路径前面。
-const STOP_FALLBACK_MS = 5 * 60_000;
 
 export type VideoRunStatus = 'running' | 'done' | 'error';
 
@@ -209,8 +204,6 @@ class VideoTaskStore {
   private listeners = new Set<Listener>();
   private running = false;
   private schedulerTimer: ReturnType<typeof setInterval> | null = null;
-  /** 点了停止后的兜底收尾定时器(taskId → timer);见 stopTask / forceFinalizeStopped。 */
-  private stopWatchdogs = new Map<string, ReturnType<typeof setTimeout>>();
   /** 定时到点时的派发钩子。videoQueue 注入后,定时任务改【入队】而非直接 runTask
    *  (避免和统一队列抢锁,破坏「视频类同时只 1 个」)。未注入则回落到直接 runTask。 */
   public onScheduleDue: ((taskId: string) => void) | null = null;
@@ -534,8 +527,6 @@ class VideoTaskStore {
 
     // 新一次运行起跑前,清掉上一次点停止留下的兜底定时器 —— 否则它会在这次运行途中
     // 才触发,把正在跑的这一次假收尾。
-    const staleWd = this.stopWatchdogs.get(taskId);
-    if (staleWd) { clearTimeout(staleWd); this.stopWatchdogs.delete(taskId); }
 
     const runId = genId();
     const run: VideoRunRecord = {
@@ -586,7 +577,7 @@ class VideoTaskStore {
       .generate({ ...task.input, taskId: task.id, taskTitle: task.title }, onProgress)
       .then((res) => {
         this.patchRun(runId, (r) => {
-          // ⚠️ 这条 run 可能已经被停止兜底(forceFinalizeStopped)收尾过了。那种情况下
+          // ⚠️ 这条 run 可能已经被停止(finalizeStopped)收尾过了。那种情况下
           //    generate() 的 promise 仍挂在 video:progress 上没退订,会被【下一次运行】的
           //    终态点着 → 用别人的结果把这条已收尾的记录改写成 done + 别人的 outputPath,
           //    「已生成 N 个视频」凭空 +1。已终态的记录一律不再改写。
@@ -639,8 +630,6 @@ class VideoTaskStore {
         if (!isCurrentRun) return;
         this.running = false;
         // 终态正常回来了 → 撤掉停止兜底定时器,免得它在下一次运行期间才触发、误把新的一次跑标成已停止。
-        const wd = this.stopWatchdogs.get(taskId);
-        if (wd) { clearTimeout(wd); this.stopWatchdogs.delete(taskId); }
         // 运行结束:把运行记录的终态回写到任务聚合统计。
         const run2 = this.runs.find((r) => r.id === runId);
         this.patchTask(taskId, (t) => {
@@ -665,50 +654,48 @@ class VideoTaskStore {
    * 运行记录的终态(error='已停止')由 generate() 的 SSE 终态回写;这里只触发 abort
    * 并打一条「正在停止」日志。abort 后主进程在步骤边界/子进程退出处优雅收尾。
    */
+  /**
+   * 点停止 —— 一下就停。
+   *
+   * 发 abort 给主进程,然后【立刻】本地收尾:run 标已停止、running=false、放开 videoQueue 槽、
+   * 定时任务重排下一次。用户点一次就看到停了,不用再点第二次、也不用干等兜底。
+   *
+   * 为什么敢立刻收尾:
+   *   · abort 只在【检查点】生效,链路里天然有不可打断的等待(在飞的请求、上传轮询、
+   *     driver 里的 sleep)。等主进程回终态就意味着用户要盯着一个不动的「停止中…」,
+   *     而这正是「停不掉」这个反馈的真正来源 —— 卡的不是停止,是反馈。
+   *   · 主进程侧有进程级单飞闸 _videoBatchBusy,提前放开本地槽不会让两条流水线打架;
+   *     下一次任务顶多被它拒掉并立刻回一条终态。
+   *   · 发布链路已经全程可打断(publisherUtils 的 sleep 在 abort 时 reject、driver 拿到
+   *     waitForSelector===false 会直接 return 不点发布),所以「说停了却把帖子发出去」
+   *     的窗口很小。真落在这个窗口里时,主进程会把当前这一步收完 —— 日志里如实写了。
+   *   · 主进程晚到的终态不会污染:patchRun / 兜底里都有 `status !== 'running' → return`
+   *     和 lastRunId 校验,已收尾的记录不会被改写。
+   */
   stopTask(taskId: string): boolean {
     const task = this.tasks.find((t) => t.id === taskId);
     if (!task) return false;
     const runId = task.lastRunId;
-    if (runId) {
-      this.patchRun(runId, (r) => { if (r.status === 'running') this.appendLog(r, '⏹ 正在停止…'); });
-    }
+    const wasRunning = task.lastStatus === 'running';
+
     // ⚠️ 不管本地 lastStatus 是什么都把 abort 发出去:store 状态和主进程实际状态可能不同步
     //    (比如提前收到过一条兜底终态),此时旧代码直接 return false → 主进程还在跑却再也停不掉。
     //    主进程没有对应 run 时 video:stop 只回 {ok:false},发了也无害。
     void videoCreationService.stop(taskId);
-    this.armStopWatchdog(taskId, runId);
-    return task.lastStatus === 'running';
+
+    // 立刻本地收尾,不等主进程终态。
+    try { this.finalizeStopped(taskId, runId); } catch { /* 收尾不该再抛 */ }
+    return wasRunning;
   }
 
-  /**
-   * 停止兜底:abort 之后若迟迟收不到主进程终态,本地自行收尾。
-   *
-   * 为什么必须有:整个收尾(running=false / run 终态 / 释放 videoQueue 槽)原来 100% 依赖
-   * 主进程回一条终态事件。任何一处漏发(发布 driver 卡住、进程崩、SSE 掉线)都会让任务
-   * 永久停在「生成中」—— 而卡在 running 时【停止无效 + 删除被拒】,只能重启客户端。
-   * 这就是用户反馈「视频任务总是停止不了」最难受的那一面。
-   *
-   * 提前收尾是否会和还在跑的主进程打架?不会:主进程侧 generateVideoBatch 有进程级单飞闸
-   * (_videoBatchBusy),真还在跑时下一个任务只会立刻「已有视频任务在运行,本次跳过」并
-   * 发终态,不会两条流水线抢同一个发布窗口。
-   */
-  private armStopWatchdog(taskId: string, runId?: string): void {
-    const prev = this.stopWatchdogs.get(taskId);
-    if (prev) clearTimeout(prev);
-    const timer = setTimeout(() => {
-      this.stopWatchdogs.delete(taskId);
-      try { this.forceFinalizeStopped(taskId, runId); } catch { /* 兜底不该再抛 */ }
-    }, STOP_FALLBACK_MS);
-    this.stopWatchdogs.set(taskId, timer);
-  }
 
-  /** 本地强制收尾(仅在任务仍卡在 running 时生效;主进程终态已回来则什么都不做)。 */
-  private forceFinalizeStopped(taskId: string, runId?: string): void {
+  /** 本地收尾(仅在任务仍在 running 时生效;主进程终态已回来则什么都不做)。 */
+  private finalizeStopped(taskId: string, runId?: string): void {
     const task = this.tasks.find((t) => t.id === taskId);
-    if (!task || task.lastStatus !== 'running') return; // 终态已正常回写 → 无需兜底
-    // ⚠️ 必须确认「还是当初点停止的那一次运行」:任务在这 90s 内可能已经跑完又起了新的一次
-    //    (手动或定时),此时任务照样是 running,但那是【新的一次】—— 拿旧 watchdog 去收尾
-    //    会把正在跑的新运行假收尾、提前放开队列槽。
+    if (!task || task.lastStatus !== 'running') return; // 终态已回写 → 不用再收
+    // ⚠️ 必须确认「还是当初点停止的那一次运行」:任务可能已经跑完又起了新的一次(手动或定时),
+    //    此时任务照样是 running,但那是【新的一次】—— 拿旧 runId 去收尾会把正在跑的新运行
+    //    假收尾、提前放开队列槽。
     if (runId && task.lastRunId !== runId) return;
     if (runId) {
       this.patchRun(runId, (r) => {
@@ -716,7 +703,7 @@ class VideoTaskStore {
         r.status = 'error';
         r.error = '已停止';
         r.finishedAt = Date.now();
-        this.appendLog(r, `⏹ 已停止(等 ${Math.round(STOP_FALLBACK_MS / 1000)}s 未收到主进程终态,已本地收尾)`);
+        this.appendLog(r, '⏹ 已停止（主进程会把当前这一步收完，不会再往下走）');
       });
     }
     this.running = false; // 释放本地闸,videoQueue.waitLocalDone 随之放开槽

@@ -29,9 +29,22 @@ function authHeaders(): Record<string, string> {
 
 const REQ_TIMEOUT_MS = 20_000;
 
-async function postJson(apiPath: string, body: unknown): Promise<any | null> {
+/**
+ * @param signal 用户点「停止」的中断信号。
+ *
+ * ⚠️ 不接 signal 会造成【看得见的死区】:这两个调用都发生在 tracker.start('script') 之前,
+ *   所以详情页停在「0/5 步骤」,用户点了停止只能干等到 REQ_TIMEOUT_MS(20s)超时、
+ *   下一句 throwIfAborted 才生效 —— 两个调用叠起来最坏 40 秒毫无反应,看着就是「停不掉」。
+ */
+async function postJson(apiPath: string, body: unknown, signal?: AbortSignal): Promise<any | null> {
+  // 已经停了就别发这一枪(省一次网络往返,也让上游立刻拿到 null 走降级)。
+  if (signal?.aborted) return null;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
+  // 用户点停止 → 立刻掐掉在飞的请求。AbortSignal.any 在 sidecar 打包的 Node 版本上不保证有,
+  //   所以手写转发 + 记得摘监听,别在长跑进程里堆监听器。
+  const onAbort = () => { try { ctrl.abort(); } catch { /* ignore */ } };
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
     const res = await fetch(`${apiBase()}${apiPath}`, {
       method: 'POST',
@@ -45,6 +58,7 @@ async function postJson(apiPath: string, body: unknown): Promise<any | null> {
     return null;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -65,8 +79,8 @@ export interface HotspotTopic {
  *  跨次运行也不重复同一热点。
  *  track = 赛道筛选(可选,track-presets id):只从该赛道相关热点里选;该赛道无相关时 backend
  *  回退全量并回 trackMiss=true。 */
-export async function pickHotspotTopic(sources: string[], exclude: string[] = [], pool = 20, track = ''): Promise<HotspotTopic | null> {
-  const json = await postJson('/api/video/hotspot/pick', { sources, pool, exclude, track: track || undefined });
+export async function pickHotspotTopic(sources: string[], exclude: string[] = [], pool = 20, track = '', signal?: AbortSignal): Promise<HotspotTopic | null> {
+  const json = await postJson('/api/video/hotspot/pick', { sources, pool, exclude, track: track || undefined }, signal);
   const t = json?.topic;
   if (!t || !t.title) return null;
   return {
@@ -82,7 +96,7 @@ export async function pickHotspotTopic(sources: string[], exclude: string[] = []
 }
 
 /** 取材:Serper /news 查该热点的最新报道,返回资料块(喂 scriptWriter 的 material)。失败返空串。 */
-export async function fetchHotspotMaterial(title: string, lang = 'zh'): Promise<string> {
-  const json = await postJson('/api/video/hotspot/material', { title, lang });
+export async function fetchHotspotMaterial(title: string, lang = 'zh', signal?: AbortSignal): Promise<string> {
+  const json = await postJson('/api/video/hotspot/material', { title, lang }, signal);
   return typeof json?.material === 'string' ? json.material : '';
 }

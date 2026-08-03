@@ -177,7 +177,7 @@ async function translateThread(
  * 可用音色);停止信号直通 synthesize,点停止立刻中断当次 WebSocket。
  */
 const TTS_SEG_BUDGET_MS = 360_000;
-async function ttsSeg(text: string, primary: string, outPath: string, rate?: number, signal?: AbortSignal, onLog?: (m: string) => void): Promise<{ audioPath: string; durationSec: number; cues?: TtsCue[] } | null> {
+async function ttsSeg(text: string, primary: string, outPath: string, rate?: number, signal?: AbortSignal, onLog?: (m: string) => void): Promise<{ audioPath: string; durationSec: number; cues?: TtsCue[]; chargedTokens?: number; costUsd?: number } | null> {
   const started = Date.now();
   let sawTimeout = false;
   for (const v of getVoiceFallbacksWide(primary)) {
@@ -187,7 +187,10 @@ async function ttsSeg(text: string, primary: string, outPath: string, rate?: num
       break;
     }
     const r = await synthesize(text, outPath, v, rate, { signal, maxAttempts: sawTimeout ? 2 : 3 });
-    if (r.ok && r.synthesized && r.durationSec > 0.2) return { audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues };
+    // 豆包按字符实扣 → 把钱带出去,否则账单有扣费、任务页显示 0。Edge 免费为空。
+    if (r.ok && r.synthesized && r.durationSec > 0.2) {
+      return { audioPath: r.audioPath, durationSec: r.durationSec, cues: r.cues, chargedTokens: r.chargedTokens, costUsd: r.costUsd };
+    }
     const why = getLastTtsError() || '';
     if (why.includes('超时')) sawTimeout = true;
     if (!signal?.aborted) onLog?.(`🔁 音色 ${v} 合成未成${why ? `(${why.slice(0, 70)})` : ''},换下一个音色…`);
@@ -736,7 +739,7 @@ export async function runThreadPipeline(
       for (const v of getVoiceFallbacksWide(primary)) {
         if (deadVoices.has(v)) continue;
         throwIfAborted(signal);
-        const w = await synthesizeWhole(text, outPath, v, rate, { signal, maxAttempts: sawTtsTimeout ? 2 : 3 });
+        const w = await synthesizeWhole(text, outPath, v, rate, { signal, maxAttempts: sawTtsTimeout ? 2 : 3, onProgress: (m) => tracker.progress(m) });
         if (w.ok) {
           if (v !== primary) tracker.progress(`🎤 已改用备选音色 ${v}(原音色被上游拒发)`);
           return w;
@@ -773,6 +776,7 @@ export async function runThreadPipeline(
       let groupDone = false;
       if (gsegs.length === 1) {
         const w = await oneShot(gsegs[0].text, gv, gsegs[0].outPath);
+        if (w?.chargedTokens) tracker.addTokens(w.chargedTokens, w.costUsd || 0);
         if (w) {
           made.set(gsegs[0].key, { audioPath: w.audioPath, durationSec: w.durationSec, cues: w.rawCues.length ? groupWordCues(w.rawCues) : undefined });
           groupDone = true;
@@ -838,6 +842,7 @@ export async function runThreadPipeline(
           fbFirst = false;
           tracker.progress(`🎙 逐段配音:${s.key === 'title' ? '标题+开场' : `评论 ${s.key}`}(${s.text.length} 字)…`);
           const r = await ttsSeg(s.text, s.voice, s.outPath, rate, signal, onTtsLog);
+          if (r?.chargedTokens) tracker.addTokens(r.chargedTokens, r.costUsd || 0);
           if (r) made.set(s.key, r);
           else { throwIfAborted(signal); if (s.key !== 'title') tracker.progress(`⚠️ 评论 ${s.key} 配音失败,跳过`); }
         }

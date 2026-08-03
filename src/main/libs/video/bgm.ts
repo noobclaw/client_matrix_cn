@@ -231,3 +231,175 @@ export function resolveBgmFolder(bgmPath?: string): string | undefined {
   }
   return path.dirname(bgmPath);
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// 分段 BGM(电影级分镜表用)
+//
+// 老行为:整片循环【一首】BGM。而分镜表里每一镜带 bgmMood(轻快/紧张/悬疑/大气…),
+// 叙事推进时音乐该跟着变 —— 悬疑开场 → 冲突转紧张 → 反转转轻快 → 结尾钢琴收。
+//
+// 做法:把相邻同情绪的镜合成一个「段」,每段按情绪从云端曲库挑一首,截到该段时长,
+// 段间 1.2s 交叉淡入淡出,拼成一条完整 BGM 轨,再交给 compose 当普通 bgmPath 混音。
+// 曲库靠【中文曲名前缀】识别情绪(命名规范:`<emoji> <分类> · <细分>`,见 project_video_bgm_library)。
+// 任何一步失败 → 返回 undefined,调用方回落到单曲 BGM(绝不阻塞出片)。
+// ────────────────────────────────────────────────────────────────────────────
+
+const REMOTE_BGM_MANIFEST_URL = 'https://static.noobclaw.com/bgm/manifest.json';
+
+interface RemoteBgmEntry { id: string; zh: string; en: string; url: string }
+
+let _manifestCache: RemoteBgmEntry[] | null = null;
+
+/** 拉云端曲库清单(进程内缓存一次)。失败返回 []。 */
+async function fetchBgmManifest(): Promise<RemoteBgmEntry[]> {
+  if (_manifestCache) return _manifestCache;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const resp = await fetch(`${REMOTE_BGM_MANIFEST_URL}?t=${Date.now()}`, { signal: ctrl.signal });
+    if (!resp.ok) return [];
+    const json: unknown = await resp.json();
+    const arr = Array.isArray(json) ? json : (json as { items?: unknown })?.items;
+    if (!Array.isArray(arr)) return [];
+    _manifestCache = arr
+      .filter((x): x is RemoteBgmEntry => !!x && typeof (x as RemoteBgmEntry).url === 'string')
+      .map((x) => ({ id: String(x.id || ''), zh: String(x.zh || ''), en: String(x.en || ''), url: String(x.url) }));
+    return _manifestCache;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 曲名 → 情绪分类。命名规范是 `<emoji> <分类> · <细分>`,取中文标签里的分类词。 */
+function moodOfTrack(zh: string): string {
+  const m = (zh || '').replace(/^[^\u4e00-\u9fa5A-Za-z]+/, '').split('·')[0].trim();
+  return m;
+}
+
+/** 分镜给的情绪词 → 曲库分类词(容错同义)。 */
+function normalizeMood(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  const MAP: Array<[RegExp, string]> = [
+    [/轻快|明快|愉快/, '轻快'],
+    [/节拍|鼓点|律动/, '节拍'],
+    [/大气|史诗|恢弘|磅礴/, '大气'],
+    [/舒缓|平静|温柔|安静|钢琴/, '舒缓'],
+    [/轻柔|柔和/, '轻柔'],
+    [/悠闲|闲适/, '悠闲'],
+    [/紧张|急促|压迫/, '紧张'],
+    [/悬疑|神秘|诡异/, '悬疑'],
+    [/欢快|欢乐|喜悦/, '欢快'],
+    [/开场|片头/, '开场'],
+    [/动感|激烈|燃/, '动感'],
+    [/新闻|资讯/, '新闻'],
+  ];
+  for (const [re, tag] of MAP) if (re.test(s)) return tag;
+  return s;
+}
+
+export interface BgmSegmentSpec {
+  /** 情绪词(来自分镜表 bgmMood)。空 = 沿用上一段。 */
+  mood: string;
+  /** 该段时长(秒)。 */
+  seconds: number;
+}
+
+/**
+ * 按情绪段拼一条完整 BGM 轨。
+ *
+ * @param segments  分镜的 (情绪, 时长) 序列 —— 内部会把相邻同情绪的合并
+ * @param workDir   临时目录(放中间片段与成品)
+ * @param fallback  没匹配到曲子时用的单曲本地路径(通常是用户选的那首)
+ * @returns 拼好的音频绝对路径;条件不足/失败返回 undefined(调用方回落单曲)
+ */
+export async function buildMoodBgmTrack(
+  segments: BgmSegmentSpec[],
+  workDir: string,
+  runFfmpegFn: (args: string[], opts?: { timeoutMs?: number; signal?: AbortSignal }) => Promise<{ ok: boolean }>,
+  fallback?: string,
+  onLog?: (m: string) => void,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  try {
+    // 1. 合并相邻同情绪 → 段
+    const merged: BgmSegmentSpec[] = [];
+    let lastMood = '';
+    for (const s of segments) {
+      const mood = normalizeMood(s.mood) || lastMood;
+      const dur = Math.max(0, Number(s.seconds) || 0);
+      if (dur <= 0) continue;
+      if (merged.length > 0 && merged[merged.length - 1].mood === mood) {
+        merged[merged.length - 1].seconds += dur;
+      } else {
+        merged.push({ mood, seconds: dur });
+      }
+      lastMood = mood;
+    }
+    // 只有一段(或没情绪信息)→ 没必要分段,让调用方走原来的单曲循环。
+    if (merged.length < 2) return undefined;
+
+    const manifest = await fetchBgmManifest();
+    if (manifest.length === 0) { onLog?.('⚠️ 云端曲库清单拉取失败,分段配乐回退单曲'); return undefined; }
+
+    // 2. 每段选曲:同情绪的曲子里按段序轮换(相邻段不撞曲)
+    const byMood = new Map<string, RemoteBgmEntry[]>();
+    for (const t of manifest) {
+      const m = moodOfTrack(t.zh);
+      if (!m) continue;
+      if (!byMood.has(m)) byMood.set(m, []);
+      byMood.get(m)!.push(t);
+    }
+
+    const parts: string[] = [];
+    const XFADE = 1.2; // 段间交叉淡入淡出秒数
+    for (let i = 0; i < merged.length; i++) {
+      if (signal?.aborted) return undefined;
+      const seg = merged[i];
+      const pool = byMood.get(seg.mood) || [];
+      let srcLocal: string | undefined;
+      if (pool.length > 0) {
+        const pick = pool[i % pool.length];
+        srcLocal = await resolveBgmPath(`${REMOTE_BGM_PREFIX}${pick.url}`, onLog);
+      }
+      if (!srcLocal || !fs.existsSync(srcLocal)) srcLocal = fallback;
+      if (!srcLocal || !fs.existsSync(srcLocal)) {
+        onLog?.(`⚠️ 情绪「${seg.mood}」没匹配到曲子,分段配乐回退单曲`);
+        return undefined;
+      }
+      // 截到该段时长(+ 交叉淡出余量),循环补足短曲,首尾各加淡入淡出。
+      const need = seg.seconds + (i < merged.length - 1 ? XFADE : 0);
+      const out = path.join(workDir, `bgmseg_${String(i).padStart(3, '0')}.mp3`);
+      const fadeOutAt = Math.max(0, need - XFADE);
+      const r = await runFfmpegFn([
+        '-y', '-stream_loop', '-1', '-i', srcLocal,
+        '-t', need.toFixed(2),
+        '-af', `afade=t=in:st=0:d=${XFADE.toFixed(2)},afade=t=out:st=${fadeOutAt.toFixed(2)}:d=${XFADE.toFixed(2)}`,
+        '-ar', '48000', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '112k', out,
+      ], { timeoutMs: 120_000, signal });
+      if (!r.ok || !fs.existsSync(out)) { onLog?.('⚠️ 分段配乐切片失败,回退单曲'); return undefined; }
+      parts.push(out);
+    }
+
+    // 3. concat 成一条
+    const listPath = path.join(workDir, 'bgm_segments.txt');
+    fs.writeFileSync(
+      listPath,
+      parts.map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`).join('\n'),
+      'utf8',
+    );
+    const finalPath = path.join(workDir, 'bgm_mood.mp3');
+    const cat = await runFfmpegFn([
+      '-y', '-f', 'concat', '-safe', '0', '-i', listPath,
+      '-c:a', 'libmp3lame', '-b:a', '112k', '-ar', '48000', '-ac', '2', finalPath,
+    ], { timeoutMs: 180_000, signal });
+    if (!cat.ok || !fs.existsSync(finalPath)) { onLog?.('⚠️ 分段配乐拼接失败,回退单曲'); return undefined; }
+
+    onLog?.(`🎵 分段配乐已生成:${merged.length} 段(${merged.map((m) => m.mood || '默认').join(' → ')})`);
+    return finalPath;
+  } catch {
+    return undefined;
+  }
+}

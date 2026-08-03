@@ -38,33 +38,157 @@ export function isDoubaoVoice(v: string | undefined): boolean {
 }
 
 /**
+ * 配音供应商的人话标签。进度日志一律带上它 —— 用户看到「正在合成配音…」根本不知道
+ * 这一步花不花钱:豆包按字符计费(成本×2),Edge 完全免费,差别是实打实的钱。
+ */
+export function voiceProviderLabel(voice: string | undefined): string {
+  return isDoubaoVoice(voice) ? '豆包真人(按字数计费)' : 'Edge 微软(免费)';
+}
+
+/**
  * 豆包(火山)大模型语音合成:走后端代理 /api/tts/synthesize(key 不下发、按字符×2 计费)。
  * 成功写 mp3 到 outPath;任何失败返回 null → 调用方回退 edge-tts(用户拍板的兜底策略)。
  */
-async function synthDoubao(text: string, outPath: string, voice: string, rate?: number, signal?: AbortSignal): Promise<{ ok: boolean; tokens: number; costUsd: number } | null> {
+/**
+ * 豆包(火山)大模型语音合成:走后端代理 /api/tts/synthesize(key 不下发、按字符×2 计费)。
+ *
+ * 长度不用管:后端按字节自动分流 —— ≤1024 字节走在线合成 HTTP,超了自动改走火山的
+ * 异步长文本接口(单次 10 万字符),返回体形状一致。客户端这边不再做任何切分。
+ *
+ * ⚠️【长文本必须走 job 轮询,不能干等】火山长文本要 1~3 分钟,而 **Cloudflare 100 秒就掐连接**
+ *    → 客户端收到 524。整段合成上线以来一次都没成功过,全卡在这。现在:超 1024 字节时发
+ *    `async:true`,后端立刻回 202 + job_id,客户端轮询 `/api/tts/job/:id` 取结果。
+ */
+const LONG_TEXT_BYTES = 1024;          // 与后端 SYNC_MAX_BYTES 对齐
+
+/**
+ * 本进程内异步长文本接口是否已被判定不可用。
+ *
+ * ⚠️ 整段合成会按 voiceChain 逐个音色重试。长文本接口若真的挂了(真机:143 字的口播
+ *   轮询 300 秒仍未完成),每个音色都要重等一遍 —— 一条视频白白磨掉十几分钟才回退逐句。
+ *   一次失败就置位,本次进程后续直接跳过整段路径、立刻走逐句,别拿用户的时间试错。
+ */
+let _longTextBroken = false;
+export function isLongTextTtsBroken(): boolean { return _longTextBroken; }
+const JOB_POLL_INTERVAL_MS = 3_000;
+const JOB_POLL_MAX_MS = 420_000;       // 7 分钟(后端上游上限 5 分钟 + 下载余量)
+
+async function pollTtsJob(jobId: string, token: string, signal?: AbortSignal, onProgress?: (m: string) => void): Promise<any | null> {
+  const deadline = Date.now() + JOB_POLL_MAX_MS;
+  const t0 = Date.now();
+  let lastTick = 0;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) { _lastTtsError = '已停止'; return null; }
+    await new Promise((r) => setTimeout(r, JOB_POLL_INTERVAL_MS));
+    if (signal?.aborted) { _lastTtsError = '已停止'; return null; }
+    // 每 10 秒报一次等待时长 —— 长文本接口要 30~90 秒,不报的话界面就是「请稍候」然后死寂。
+    const waited = Math.round((Date.now() - t0) / 1000);
+    if (onProgress && waited - lastTick >= 10) {
+      lastTick = waited;
+      onProgress(`🎤 整段合成中… 已等 ${waited}s(长文本接口,通常 30~90s)`);
+    }
+    try {
+      const r = await fetch(`${apiBase()}/api/tts/job/${encodeURIComponent(jobId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(30_000),
+      });
+      const j: any = await r.json().catch(() => ({}));
+      if (j?.status === 'done') return j;
+      if (j?.status === 'failed') { _lastTtsError = `豆包长文本合成失败:${String(j?.error || '').slice(0, 140)}`; return null; }
+      // 4xx 是确定性错误(job 过期 404 / 登录失效 401 / 不是本人 403),再轮也不会变 —— 立刻退出,
+      //   否则要空转到 7 分钟超时才报错,用户干等。5xx/429 是瞬时的,继续轮询。
+      if (r.status >= 400 && r.status < 500) {
+        _lastTtsError = r.status === 404 ? '豆包长文本任务已过期' : `豆包长文本查询失败(${r.status})`;
+        return null;
+      }
+      // queued / processing → 继续轮询
+    } catch {
+      // 单次查询抖动不算失败,下一轮再试
+    }
+  }
+  _lastTtsError = `豆包长文本合成超时(${Math.round(JOB_POLL_MAX_MS / 1000)}s 未完成)`;
+  return null;
+}
+
+async function synthDoubao(
+  text: string, outPath: string, voice: string, rate?: number, signal?: AbortSignal,
+  opts?: { needTimestamps?: boolean; onProgress?: (m: string) => void },
+): Promise<{ ok: boolean; tokens: number; costUsd: number; sentences?: TtsCue[] } | null> {
   const token = getNoobClawAuthToken();
   if (!token) return null;
   // edge 的 rate 是百分比偏移(-50..50),豆包是倍率(0.1..2.0)。
   const speedRatio = Math.max(0.5, Math.min(2, 1 + (Number(rate) || 0) / 100));
+  const clean = (text || '').trim();
+  if (!clean) return null;
+  // ⚠️【整段合成为什么一直失败】火山有两个合成接口:
+  //    · 在线同步 HTTP —— 快(几秒),但**不支持 enable_timestamp**,不回 sentences/words
+  //    · 异步长文本   —— 慢(提交+轮询),但支持时间戳,且没有长度下限
+  //    旧逻辑只按「>1024 字节」分流,而 45 秒视频的口播才 200 来字 ≈ 600 字节 → 永远走同步 →
+  //    永远拿不到时间戳 → synthesizeWhole 永远 fail → 每次都回退逐句。在线素材/热搜/模板
+  //    的整段合成因此**从来没成功过**。所以:【要时间戳就强制走异步,不看长度】。
+  //    计费不变(都按字符实扣),只是多等一会儿。
+  const isLong = Buffer.byteLength(clean, 'utf8') > LONG_TEXT_BYTES;
+  const useAsync = isLong || !!opts?.needTimestamps;
   try {
     const resp = await fetch(`${apiBase()}/api/tts/synthesize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ text, voice, speedRatio, encoding: 'mp3' }),
-      signal: signal || AbortSignal.timeout(60_000),
+      body: JSON.stringify({
+        text: clean, voice, speedRatio, encoding: 'mp3',
+        ...(useAsync ? { async: true, wantTimestamps: true } : {}),
+      }),
+      // 短文本在线合成:120s 足够。长文本这一发只是「提交」,后端立刻回 202。
+      // ⚠️ 必须 any([signal, timeout]):旧代码是 `signal || timeout`,一旦上层传了 signal
+      //    这个 fetch 就【彻底没有超时】—— 上游挂住时整条任务无限期卡在这里。
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
     });
-    if (!resp.ok) {
+    if (!resp.ok && resp.status !== 202) {
       const j: any = await resp.json().catch(() => ({}));
-      _lastTtsError = `豆包配音失败(${resp.status}):${String(j?.message || j?.error || '').slice(0, 120)} → 已回退 Edge 语音`;
+      _lastTtsError = `豆包配音失败(${resp.status}):${String(j?.message || j?.error || '').slice(0, 120)}`;
       return null;
     }
-    const j: any = await resp.json();
+    let j: any = await resp.json();
+    // 202 = 长文本 job 已入队 → 轮询取结果(绕开 Cloudflare 100s)。
+    if (j?.job_id) {
+      const done = await pollTtsJob(String(j.job_id), token, signal, opts?.onProgress);
+      if (!done) {
+        // 超时/上游失败 → 本进程别再走长文本了(见 _longTextBroken)。用户主动停止不算。
+        if (!signal?.aborted) _longTextBroken = true;
+        return null;
+      }
+      j = done;
+    }
     const b64 = typeof j?.audioBase64 === 'string' ? j.audioBase64 : '';
-    if (!b64) { _lastTtsError = '豆包配音返回空音频 → 已回退 Edge 语音'; return null; }
+    if (!b64) { _lastTtsError = '豆包配音返回空音频'; return null; }
     fs.writeFileSync(outPath, Buffer.from(b64, 'base64'));
-    return { ok: true, tokens: Number(j?.chargedTokens) || 0, costUsd: Number(j?.costUsd) || 0 };
+    // 长文本接口开了 enable_timestamp → 回 sentences[]{text,start,end,words[]}(秒)。
+    //   有它就能把整段音频按【真实时间戳】切回每一句 —— 电影级每镜时长、字幕落点都不再靠估算。
+    //   ⚠️ 优先摊平逐字 words:alignSentencesToCues 是按【字符流】对齐的,粒度越细误差越小;
+    //      句级只有 N 个锚点,句内字符只能均分,长句里字幕仍会飘。没有 words 才退回句级。
+    const rawSents: any[] = Array.isArray(j?.sentences) ? j.sentences : [];
+    const flatWords: TtsCue[] = [];
+    for (const x of rawSents) {
+      if (!Array.isArray(x?.words)) continue;
+      for (const w of x.words) {
+        const t = String(w?.text || '');
+        const st = Number(w?.start) || 0;
+        const en = Number(w?.end) || 0;
+        if (t && en > st) flatWords.push({ text: t, start: st, end: en });
+      }
+    }
+    const sentences: TtsCue[] | undefined = flatWords.length
+      ? flatWords
+      : (rawSents
+          .map((x: any) => ({ text: String(x?.text || ''), start: Number(x?.start) || 0, end: Number(x?.end) || 0 }))
+          .filter((x: TtsCue) => x.text && x.end > x.start) || undefined);
+    return {
+      ok: true,
+      tokens: Number(j?.chargedTokens) || 0,
+      costUsd: Number(j?.costUsd) || 0,
+      sentences: sentences && sentences.length ? sentences : undefined,
+    };
   } catch (e) {
-    _lastTtsError = `豆包配音异常:${String((e as Error)?.message || e).slice(0, 100)} → 已回退 Edge 语音`;
+    _lastTtsError = `豆包配音异常:${String((e as Error)?.message || e).slice(0, 100)}`;
     return null;
   }
 }
@@ -75,11 +199,21 @@ export { alignSentencesToCues } from './ttsAlign';
 
 export interface TtsResult {
   ok: boolean;
+  /** 失败原因(供上层直接展示给用户)。成功时为空。 */
+  error?: string;
   /** 音频文件路径(成功是真人声,失败是静音兜底)。 */
   audioPath: string;
   durationSec: number;
   /** true = 真 TTS;false = 静音兜底。 */
   synthesized: boolean;
+  /**
+   * 本次合成【服务端实扣】的积分(仅豆包;Edge 免费恒为 0)。
+   * ⚠️ 以前这个数在 synthesize() 里被丢掉了 —— 于是账单里一串「豆包真人配音」扣费,
+   *    任务页的「本次消耗」却一分不含,用户对不上账,只能怀疑重复扣费。
+   */
+  chargedTokens?: number;
+  /** 本次合成的服务端权威 USD 成本(同上,仅豆包)。 */
+  costUsd?: number;
   /**
    * edge-tts 词边界出的短语级字幕 cue(相对本句起点)。真 TTS 且字幕解析成功才有;
    * 静音兜底 / 解析失败为 undefined,上层退回估算。
@@ -279,6 +413,12 @@ export interface SynthesizeOpts {
   signal?: AbortSignal;
   /** 重试次数上限(默认 5)。多段流水(爆帖逐段配音)可调小,防失败时静默磨太久。 */
   maxAttempts?: number;
+  /**
+   * 进度回调 —— 长等待期间往任务日志推一行,别让界面看着像卡死。
+   * ⚠️ 整段合成(synthesizeWhole)走豆包异步长文本接口:提交后要轮询 30~90 秒,
+   *    期间原来一个字都不输出,用户只看到「配音合成中…请稍候」然后没动静。
+   */
+  onProgress?: (msg: string) => void;
 }
 
 /**
@@ -294,11 +434,23 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
     const d = await synthDoubao(clean, outPath, useVoice, rate, opts?.signal);
     if (d?.ok) {
       const dur = await probeDuration(outPath);
-      return { ok: true, audioPath: outPath, durationSec: dur > 0 ? dur : estDur, synthesized: true };
+      return {
+        ok: true, audioPath: outPath, durationSec: dur > 0 ? dur : estDur, synthesized: true,
+        chargedTokens: d.tokens, costUsd: d.costUsd,
+        // 豆包长文本带回的句级时间戳(短文走在线接口时没有)→ 字幕直接用真时间,不再估算。
+        cues: d.sentences,
+      };
     }
-    // 回退:豆包音色没有 edge 对应体,按语言取 edge 默认音色。
-    const fallbackVoice = /^en[_-]/i.test(useVoice) ? 'en-US-AriaNeural' : 'zh-CN-YunjianNeural';
-    return synthesize(clean, outPath, fallbackVoice, rate, opts);
+    // ⚠️ 豆包合成失败【不回退 Edge】。回退等于把用户选的音色悄悄换成另一个人的声音,
+    //    出来的片子他根本不会要 —— 而钱已经花在出图/生成上了。宁可这一步失败让他重试,
+    //    也不交一条声音不对的成片。(用户 2026-07-31 明确要求)
+    return {
+      ok: false,
+      audioPath: outPath,
+      durationSec: estDur,
+      synthesized: false,
+      error: `豆包音色 ${useVoice} 合成失败${_lastTtsError ? `:${_lastTtsError.slice(0, 120)}` : ''}`,
+    };
   }
 
   if (clean) {
@@ -427,6 +579,9 @@ export interface WholeTtsResult {
   durationSec: number;
   /** 原始逐条 cue(未 group,相对整段起点),切句对齐 + 字幕都用它。 */
   rawCues: TtsCue[];
+  /** 服务端实扣积分(仅豆包;Edge 免费恒为 0/undefined)。不带上来的话整段路径的钱会漏计。 */
+  chargedTokens?: number;
+  costUsd?: number;
 }
 
 /**
@@ -437,6 +592,35 @@ export async function synthesizeWhole(text: string, outPath: string, voice: stri
   const clean = (text || '').trim();
   const fail = (): WholeTtsResult => ({ ok: false, audioPath: outPath, durationSec: 0, rawCues: [] });
   if (!clean) return fail();
+  // ── 豆包:走长文本接口整段合成,用它返回的时间戳当 cue ──────────────────────
+  //  以前这里直接拒绝豆包,因为整段路径是纯 edge 实现、且豆包不给词边界。
+  //  现在走火山【异步长文本】接口(开 enable_timestamp),回的是逐字时间戳 ——
+  //  精度不输 edge 的词边界。于是豆包也能整段:
+  //    · 一次合成,韵律比逐句拼接自然(句与句之间没有接缝)
+  //    · 切句和字幕都用真实时间戳,不再按字数估
+  //  ⚠️ needTimestamps 必须传:在线同步接口不支持时间戳,而 45 秒视频的口播 200 来字
+  //     根本到不了 1024 字节的分流线 —— 不强制走异步,整段合成对短口播永远失败。
+  if (isDoubaoVoice(voice)) {
+    // 本进程已判定长文本接口不可用 → 直接失败让调用方走逐句,别再为每个备用音色重等一轮。
+    if (_longTextBroken) { _lastTtsError = '长文本接口本次不可用,直接逐句合成'; return fail(); }
+    opts?.onProgress?.('🎤 整段合成:已提交长文本任务,等待返回(带时间戳,切句和字幕用真实时间)');
+    const d = await synthDoubao(clean, outPath, voice, rate, opts?.signal, { needTimestamps: true, onProgress: opts?.onProgress });
+    if (!d?.ok) return fail();
+    if (!d.sentences || d.sentences.length === 0) {
+      // 强制走了异步接口还没回时间戳 = 上游没给,只能退回逐句(不是长度问题了)。
+      _lastTtsError = '豆包整段合成未返回时间戳(上游未回),改用逐句合成';
+      return fail();
+    }
+    const dur = await probeDuration(outPath);
+    return {
+      ok: true,
+      audioPath: outPath,
+      durationSec: dur > 0 ? dur : estimateDuration(clean),
+      rawCues: d.sentences,
+      chargedTokens: d.tokens,
+      costUsd: d.costUsd,
+    };
+  }
   const MAX_ATTEMPTS = Math.max(1, opts?.maxAttempts ?? 5);
   let lastDetail = '';
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {

@@ -2980,6 +2980,55 @@ if (!gotTheLock) {
       const media = scanLocalMediaFolder(String(dir || ''));
       return { videoCount: media.videos.length, imageCount: media.images.length };
     });
+    // 配音试听:用选中的音色合成一句样例,回 data URL 给 <audio> 直接播。
+    // ⚠️ 豆包音色走后端代理【按字符计费】,所以样例句必须短(十来个字),且不缓存到磁盘。
+    //    Edge 音色免费。合成失败(网络/音色下线)回 { ok:false } 让 UI 显示原因,不抛。
+    ipcMain.handle('video:previewVoice', async (_e, args: { voice?: string; rate?: number; lang?: string }) => {
+      const os0 = require('os'); const fs0 = require('fs'); const path0 = require('path');
+      let tmp = '';
+      try {
+        const { synthesize } = require('./libs/video/tts');
+        const { voiceSampleText } = require('./libs/video/voiceSample');
+        const voice = String(args?.voice || '').trim();
+        if (!voice) return { ok: false, error: 'no_voice' };
+        const text = voiceSampleText(args?.lang, voice);
+        tmp = path0.join(os0.tmpdir(), `voice_preview_${Date.now()}.mp3`);
+        const r = await synthesize(text, tmp, voice, args?.rate);
+        if (!r?.ok || !fs0.existsSync(tmp)) return { ok: false, error: 'synth_failed' };
+        const b64 = fs0.readFileSync(tmp).toString('base64');
+        if (!b64) return { ok: false, error: 'empty_audio' };
+        return { ok: true, dataUrl: `data:audio/mpeg;base64,${b64}`, text };
+      } catch (e: unknown) {
+        return { ok: false, error: String((e as Error)?.message || e).slice(0, 200) };
+      } finally {
+        try { if (tmp && fs0.existsSync(tmp)) fs0.unlinkSync(tmp); } catch { /* ignore */ }
+      }
+    });
+    // 电影级:分镜表预览。向导里点「预览分镜」时调 —— 只跑解析(1~N 次 LLM,几分钱),
+    // 不出图、不生成视频、不扣图片/视频的钱。用户在分镜表上改完再提交任务。
+    ipcMain.handle('video:parseStoryboard', async (_e, args: {
+      script?: string; scriptMode?: 'strict' | 'ai'; lang?: string; targetSeconds?: number; styleHint?: string;
+    }) => {
+      try {
+        const { parseStoryboardScript, deriveStoryboard } = require('./libs/video/storyboardScript');
+        const { detectLang } = require('./libs/video/scriptWriter');
+        const text = String(args?.script || '').trim();
+        if (!text) return { ok: false, error: 'empty_script' };
+        const lang = args?.lang && args.lang !== 'auto' ? args.lang : detectLang(text);
+        const opts = { lang, targetSeconds: args?.targetSeconds, styleHint: args?.styleHint };
+        const r = args?.scriptMode === 'ai'
+          ? await deriveStoryboard(text, opts)
+          : await parseStoryboardScript(text, opts);
+        if (!r) return { ok: false, error: 'parse_failed' };
+        // 解析器现在会在「一条都没出来」时带回 warnings 说明原因 —— 别再让 UI 只剩 parse_failed。
+        if (!r.shots || r.shots.length === 0) {
+          return { ok: false, error: (r.warnings || []).join('；') || 'parse_failed', warnings: r.warnings };
+        }
+        return { ok: true, ...r };
+      } catch (e: unknown) {
+        return { ok: false, error: String((e as Error)?.message || e).slice(0, 300) };
+      }
+    });
     // 本地混剪:直接多选素材文件(与选文件夹二选一),回 { files, videoCount, imageCount }。
     ipcMain.handle('video:pickLocalFiles', async () => {
       const parent = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
