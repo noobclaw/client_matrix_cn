@@ -63,6 +63,10 @@ const PLATFORM_NAMES: Record<string, string> = {
   instagram: 'Instagram',
   facebook: 'Facebook',
   reddit: 'Reddit',
+  gate: 'Gate广场',
+  bitget: 'Bitget Insight',
+  bybit: 'Bybit Byx',
+  okx: 'OKX星球',
 };
 
 /**
@@ -90,6 +94,10 @@ function inferPlatformFromTask(task: ScenarioTask): string {
   if (sid.startsWith('instagram_')) return 'instagram';
   if (sid.startsWith('facebook_')) return 'facebook';
   if (sid.startsWith('reddit_')) return 'reddit';
+  if (sid.startsWith('gate_')) return 'gate';
+  if (sid.startsWith('bitget_')) return 'bitget';
+  if (sid.startsWith('bybit_')) return 'bybit';
+  if (sid.startsWith('okx_')) return 'okx';
   return 'xhs';
 }
 

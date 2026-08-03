@@ -23,7 +23,7 @@ const FUNNEL_PROB_DEFAULT = 50;
 //     客户端 makeAiCall 在该出口融入(engageRunner.maybeWeaveFunnel);
 //   币安广场/X/小红书 —— 评论走 __raw__ 出口,由各自剧本读 task.funnel_phrase/probability 做 AI 融合
 //     (币安融合结果仍过禁词质检),后端热下发即生效。
-const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube', 'binance', 'facebook', 'instagram', 'reddit', 'x', 'xhs']);
+const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube', 'binance', 'facebook', 'instagram', 'reddit', 'x', 'xhs', 'gate', 'bitget', 'bybit', 'okx']);
 
 type WizardStep = 1 | 2 | 3 | 4;
 // 步骤:1 选账号 / 2 点赞+关注 / 3 评论(数量+语言+引流,单独一步免拥挤) / 4 频率+条款。
@@ -47,7 +47,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
   // 评论语言选择器只给【海外平台 + 币安广场】;中文平台(抖音/小红书/B站/快手/视频号/头条)不显示(默认跟帖子语言)。
-  const overseasEngage = ['x', 'tiktok', 'youtube', 'binance', 'facebook', 'reddit', 'instagram'].includes(String(platform || ''));
+  const overseasEngage = ['x', 'tiktok', 'youtube', 'binance', 'facebook', 'reddit', 'instagram', 'gate', 'bitget', 'bybit', 'okx'].includes(String(platform || ''));
 
   // 📺 刷剧模式(仅抖音互动):无视关键词,AI 在账号自己的推荐流(沉浸式播放器)里
   //   像真人一样刷视频完成点赞/评论/关注。走 quota.engage_mode 透传(全链已贯通);

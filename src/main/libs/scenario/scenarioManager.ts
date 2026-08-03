@@ -789,6 +789,7 @@ function humanizePlatformFromKey(key: string): string {
       douyin: '抖音', kuaishou: '快手', bilibili: '哔哩哔哩', xhs: '小红书', x: '推特',
       binance: '币安广场', youtube: 'YouTube', tiktok: 'TikTok', shipinhao: '视频号',
       toutiao: '头条号', instagram: 'Instagram', facebook: 'Facebook', reddit: 'Reddit', video: '视频创作',
+      gate: 'Gate广场', bitget: 'Bitget Insight', bybit: 'Bybit Byx', okx: 'OKX星球',
     };
     return map[p] || p;
   }
@@ -814,6 +815,10 @@ function humanizePlatformFromKey(key: string): string {
   if (lc.indexOf('instagram') >= 0) return 'Instagram';
   if (lc.indexOf('facebook') >= 0) return 'Facebook';
   if (lc.indexOf('reddit') >= 0) return 'Reddit';
+  if (lc.indexOf('bitget') >= 0) return 'Bitget Insight';
+  if (lc.indexOf('bybit') >= 0) return 'Bybit Byx';
+  if (lc.indexOf('okx') >= 0) return 'OKX星球';
+  if (lc.indexOf('gate') >= 0) return 'Gate广场';
   if (key === 'tab:default') return '默认浏览器标签';
   return key;
 }
