@@ -1085,16 +1085,24 @@ const LOGIN_COOKIES: Record<string, string[]> = {
   //    (needHit 支持带值判据)。只写名字会把未登录的号误判成已登录。
   gate: ['is_login=1'],     // 真机实测:登录态 is_login=1(明文,非 httpOnly)
   bybit: ['isLogin=1'],     // 真机实测:登录态 isLogin=1(注意驼峰,与 Gate 的下划线写法不同)
-  // ⚠️ bitget 【故意不登记】—— 它的登录 cookie 还没真机确认。这里绝不能填占位值:快筛的
-  //    语义是"一条都没命中就直接 return false",填个假名字等于把 Bitget 号全部判成未登录、
-  //    功能直接不可用。未确认前 bitget 走下面 COOKIE_FASTPATH_EXEMPT 豁免 + DOM 正向判据。
+  // ⚠️ bitget 【故意不登记】—— 它的登录 cookie 还没真机确认(2026-08-03 复勘时浏览器侧读不到 cookie,
+  //    只确认了接口判据)。这里绝不能填占位值:快筛的语义是"一条都没命中就直接 return false",
+  //    填个假名字等于把 Bitget 号全部判成未登录、功能直接不可用。未确认前走 COOKIE_FASTPATH_EXEMPT
+  //    豁免 + ② 的接口判据(见 checkKernelLoginInner 的 bitget 分支,已是明确判据,不再是"默认放行")。
 };
 
-// 跳过 ① cookie 快筛的平台 —— 只靠下面 ② 的 DOM/localStorage 正向判据。
+// 跳过 ① cookie 快筛的平台 —— 只靠下面 ② 的 DOM/localStorage/接口正向判据。
 //   binance:重 WAF,session cookie 名多变,登录着也常没 logined/p20t,硬卡会误杀好号。
-//   bitget :登录 cookie 尚未真机确认(见上),先豁免,确认后登记进 LOGIN_COOKIES 并从这里移除。
-//   okx    :登录 cookie 尚未真机确认(同 bitget),先豁免。
+//   bitget :登录 cookie 尚未真机确认(见上),先豁免;② 已有接口判据 + ③.0 严格兜底,不会再假放行。
+//   okx    :登录 cookie 尚未真机确认(同 bitget),先豁免;② 已有 DOM 判据 + ③.0 严格兜底。
 const COOKIE_FASTPATH_EXEMPT = new Set<string>(['binance', 'bitget', 'okx']);
+
+// 【严格模式】平台:② 的 probe 拿不到明确答案(返回 "?" / 抛异常)时,判【未登录】而不是落 ③ 默认放行。
+//   只放【广场页游客可看、永不重定向到登录页】的平台 —— 对它们 ③ 的"URL 不是登录页即放行"恒为 true,
+//   等于无条件说"已登录"(这正是 2026-08-03「Bitget 没登录却显示已连接」的根因)。
+//   ⚠️ 别往这里加没验证过的平台:进了这个名单 = 判据一旦失灵就误判过期,与本文件"绝不误杀好号"的
+//   铁律相反,只有在【假连接的代价 > 误判过期的代价】时才成立(发布类平台正是如此:假连接会白跑 + 计费)。
+const STRICT_LOGIN_PLATFORMS = new Set<string>(['bitget', 'okx']);
 
 /** 该号当前【是否真的登录】对应平台 —— 统一活体校验(发布/涨粉/保活都调它)。分层:
  *  ① cookie 快筛:标志性 cookie 不在 → 必然没登录(不开窗折腾);
@@ -1200,9 +1208,53 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
         + 'if(/\\bLog ?In\\b|\\bSign ?Up\\b/i.test(t))return "0";'
         + 'if(/\\bDeposit\\b|\\bAssets\\b|\\bOrders\\b|充值|资产|订单/i.test(t))return "1";'
         + 'return "?";}catch(e){return "?";}})()';
-    // ⚠️ bitget 暂无 probe —— 页面尚未真机勘察,凭空写判据只会误杀好号(违反本函数的铁律)。
-    //    现状:走 COOKIE_FASTPATH_EXEMPT 豁免 + ③ 兜底(URL 不是登录页即放行),与币安早期同款。
-    //    真机拿到登录/未登录两态的 DOM 后,在这里补 bitget 分支并把 cookie 登记进 LOGIN_COOKIES。
+    } else if (platform === 'bitget') {
+      // Bitget Insights(2026-08-03 真机勘察 · 未登录态实测)。
+      //   判据 = 自家接口 /v1/user/overview/userinfo(同域 GET、cookie 鉴权):
+      //     未登录 → HTTP 200 但 {"code":"00004","group":"common_token","msg":"Log in expired, please re-log in!"} ← 实测原文
+      //     登录   → 带 data 对象(Bitget 全站成功码 "00000")
+      //   ⚠️ 正向判据【故意不看具体字段名,只看 data 在不在】:登录态的 body 没拿到过(勘察时手上只有
+      //     未登录号),赌字段名 = 猜错就永远返回 "?" → 叠加下面 ③.0 的严格模式 = 【真登录的号也连不上】。
+      //     实测未登录 body 里【根本没有 data 键】,所以"有 data 就是登录"不会把游客放行。
+      //   ⚠️ 【为什么必须用接口、不能用侧栏 DOM】:真机实测 Bitget 未登录时侧栏照样渲染
+      //     「个人中心 / 设置 / 发布」,且 href 是固定的 /insights/profile(不像 Gate/OKX 那样带 uid)
+      //     —— 拿它当正向判据必然把游客判成已登录,正是本次「没登录却显示已连接」的同款陷阱。
+      //   跨域拿不到(实测 CORS 拒绝 + credentials),所以先判 hostname:不在 bitget 域上直接 "?"。
+      probe = '(async function(){try{'
+        + 'if(location.hostname.indexOf("bitget.com")<0)return "?";'
+        + 'var r=await fetch("/v1/user/overview/userinfo",{credentials:"include",headers:{accept:"application/json"}});'
+        + 'var j=await r.json();'
+        + 'if(j&&String(j.code)==="00004")return "0";'
+        + 'var d=j&&j.data;'
+        + 'if(d&&typeof d==="object"&&Object.keys(d).length)return "1";'
+        + 'return "?";}catch(e){return "?";}})()';
+    } else if (platform === 'okx') {
+      // OKX 星球 Orbit(2026-08-03 真机勘察 · 登录态 + 游客态两态都实测)。
+      //   判据 = 侧栏导航「个人主页」链接的 href —— 【语言无关】,且顺带给出 uid:
+      //     游客 → /zh-hans/orbit/user/me         (class 还带 navItemDisabled)
+      //     登录 → /zh-hans/orbit/user/872870878072406018  ← 真机实测,尾段是纯数字 uid
+      //   同 Gate 的「我的主页 href 带用户名」路子。⚠️ 必须限定在导航项([class*=navItem])上取:
+      //     推荐关注/直播列表里全是同格式的【别人】的 /orbit/user/<数字> 链接,不限定就会拿别人的号当自己。
+      //   ⚠️ 不用接口:实测 /priapi/v5/content/ugc/* 在【登录态】也回 403(缺 OKX 防爬 header),
+      //     /priapi/v5/content/public/user-info 登录态回 code 50026 —— 两个都不能当判据。
+      //   ⚠️ 【别再试 SSR 兜底】(2026-08-03 实测已否掉):拉 /zh-hans/orbit 的 HTML 判 /orbit/user/<数字>
+      //     两头都错 —— ① 登录态带 cookie 拉到的 SSR 里侧栏【也是 /orbit/user/me】(uid 是客户端渲染后
+      //     才注入的,SSR 只有游客版) → 好号被判未登录;② 游客版 HTML 里【推荐关注/直播列表】本身就有
+      //     一堆别人的 /orbit/user/<数字> → 游客被判已登录。只能用实时 DOM,且必须在 orbit 页上查。
+      //   ⚠️ 侧栏是 SPA 渲染的,首查可能赶在渲染完之前 → 拿不到判据会被 ③.0 严格模式当成"未登录"。
+      //     调用方等待时长不一(engage 4.5s+复判、binancePostRunner 只有 2.5s),所以【probe 自己】
+      //     再补一次 1.5s 重试,把"没渲染完"和"真游客"区分开。
+      probe = '(async function(){try{'
+        + 'if(location.hostname.indexOf("okx.com")<0)return "?";'
+        + 'function scan(){var as=document.querySelectorAll(\'a[class*="navItem"][href*="/orbit/user/"]\');'
+        + 'for(var i=0;i<as.length;i++){var h=(as[i].getAttribute("href")||"").split("?")[0];'
+        + 'var seg=h.replace(/\\/+$/,"").split("/").pop();'
+        + 'if(/^\\d{6,}$/.test(seg))return "1";'
+        + 'if(seg==="me")return "0";}'
+        + 'return "?";}'
+        + 'var v=scan();if(v!=="?")return v;'
+        + 'await new Promise(function(r){setTimeout(r,1500);});'
+        + 'return scan();}catch(e){return "?";}})()';
     } else if (platform === 'instagram') {
       // IG:【语言无关】判据(UI 随 locale 变,不能靠文字)—— 登录墙有 username 输入框 / 或重定向到 /accounts/login。
       //   登录态没有登录表单。只判 0,否则 "?" 交回 cookie。待 VPN 真机确认正向标记(如导航头像)。
@@ -1223,6 +1275,14 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
         if (v === '1') return true; if (v === '0') return false;
       } catch { /* "?"/异常 → 落 ③,绝不误杀 */ }
     }
+    // ③.0 【严格模式:bitget / okx】—— probe 没给出明确答案时判【未登录】,不许落到 ③ 的默认放行。
+    //   为什么这两家要反着来(其余平台一律"不确定就放行,绝不误杀好号"):它们的广场页【游客可看、
+    //   不会重定向到登录页】,而 ③ 的判据就是"URL 不是登录页即放行" → 对这两家等于【无条件 return true】。
+    //   现象(2026-08-03 用户实测):新建的 Bitget 号根本没登录,开窗 3 秒后轮询就判"已登录"、卡片翻绿
+    //   「已连接」,但昵称/头像永远读不出来 —— 假连接。任务选中它,跑到发帖那步才撞登录墙,白跑 + 已计费。
+    //   取舍:严格模式最坏是把真登录的号误判成"未登录"(用户重连一次即可,且 probe 只在拿不到答案时才落这),
+    //   远好过把【全部】未登录的号判成已连接。等 cookie 判据真机确认后可放宽。
+    if (STRICT_LOGIN_PLATFORMS.has(platform)) return false;
     // ③ 通用兜底:当前页被重定向到登录页 = 服务端已判未登录(cookie 还在但失效)。读不到 URL 就只信 cookie。
     //   ⚠️ TikTok 例外:内核常被风控跳到验证/登录页,而 sessionid 是登录专有(登出即无)——已过 ① cookie 就别再让 ③ 误判失效。
     try {
@@ -1333,6 +1393,19 @@ const IDENTITY_EXPR: Record<string, string> = {
   // Reddit:/api/me.json(cookie 鉴权)一把出 name(用户名)/ id(t2 uid)/ icon_img|snoovatar_img(头像)。
   //   头像 URL 里的 &amp; 要还原成 &。displayId = u/<name>。同 xhs/B站 的「问接口」路子,最稳。
   reddit: '(async function(){try{var r=await fetch("/api/me.json",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();var d=(j&&j.data)||j||{};if(!d.name)return "{}";var av=String(d.snoovatar_img||d.icon_img||"").replace(/&amp;/g,"&").split("?")[0];return JSON.stringify({nickname:d.name,displayId:"u/"+d.name,uid:d.id?("t2_"+d.id):d.name,avatar:av});}catch(e){return "{}";}})()',
+  // OKX 星球(2026-08-03 真机实测,登录态 DOM):
+  //   uid  = 侧栏「个人主页」导航项 href 尾段的纯数字(游客是 /orbit/user/me,所以拿到数字必是本人);
+  //   昵称/头像 = 侧栏底部用户卡 [class*="userCard"] 里的 [class*="userName"] 文字 + img。
+  //   ⚠️ class 是 CSS Modules 哈希(userName-zU0Fi / userCard-BZe7q),【只能用前缀 *= 匹配】,
+  //     OKX 每次发版哈希都会变,写死全名下次发版就读不到。
+  //   ⚠️ uid 必须限定在 navItem 上取:推荐关注/直播列表里全是同格式的别人的 /orbit/user/<数字>。
+  okx: '(function(){try{var uid=null;var as=document.querySelectorAll(\'a[class*="navItem"][href*="/orbit/user/"]\');for(var i=0;i<as.length;i++){var seg=((as[i].getAttribute("href")||"").split("?")[0]).replace(/\\/+$/,"").split("/").pop();if(/^\\d{6,}$/.test(seg)){uid=seg;break;}}var nick=null,av=null;var card=document.querySelector(\'[class*="userCard"]\');if(card){var ne=card.querySelector(\'[class*="userName"]\');if(ne)nick=(ne.innerText||"").trim()||null;var im=card.querySelector("img");if(im)av=im.src||null;}return JSON.stringify({uid:uid,displayId:uid,nickname:nick,avatar:av});}catch(e){return "{}";}})()',
+  // Bitget Insights:同 checkKernelLogin 用的那个接口(/v1/user/overview/userinfo,同域 cookie 鉴权)。
+  //   ⚠️ 【data 的字段名未经登录态真机确认】—— 2026-08-03 勘察时手上只有未登录态(接口只回 code 00004,
+  //     没有 data)。所以这里把常见写法全列上兜底(uid/userId/id、nickName/nickname/userName/name、
+  //     avatar/headImage/avatarUrl)。字段猜错的后果只是【读不到昵称】(卡片显示"账号信息未读取"),
+  //     不会影响登录判定 —— 拿到真登录号后打开 insights 跑一次这个接口,按真实 body 修字段名即可。
+  bitget: '(async function(){try{if(location.hostname.indexOf("bitget.com")<0)return "{}";var r=await fetch("/v1/user/overview/userinfo",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();if(!j||String(j.code)==="00004")return "{}";var d=j.data||{};var uid=d.uid||d.userId||d.id||null;var nick=d.nickName||d.nickname||d.userName||d.name||null;var av=d.avatar||d.headImage||d.avatarUrl||d.headPortrait||null;if(!uid&&!nick)return "{}";return JSON.stringify({uid:uid?String(uid):null,displayId:uid?String(uid):null,nickname:nick,avatar:av});}catch(e){return "{}";}})()',
 };
 // uid 在明文 cookie 里的平台(页面 expr 拿不到 uid 时,从 cookie 补)。
 const UID_COOKIE: Record<string, string> = { kuaishou: 'userId', toutiao: 'sso_uid_tt', bilibili: 'DedeUserID', instagram: 'ds_user_id', facebook: 'c_user' };

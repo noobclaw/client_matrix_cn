@@ -31,6 +31,15 @@ const LOGIN_URL: Record<string, string> = {
   shipinhao: 'https://channels.weixin.qq.com/', toutiao: 'https://mp.toutiao.com/',
   // 海外发帖/互动三平台(原来漏了 → 登录失效弹重连窗却导航不到登录页,用户看着像卡住)。
   instagram: 'https://www.instagram.com/accounts/login/', facebook: 'https://www.facebook.com/login/', reddit: 'https://www.reddit.com/login/',
+  // 交易所广场四家(2026-08-03 补:这里【原来整个漏了】,注释却写着"与 MatrixView.LOGIN_URL 一致" —— 实际不一致)。
+  //   漏的后果有两处:① 登录失效弹重连窗导航不到页(同上面 IG/FB 那条老毛病);② 更隐蔽 —— keepAlive
+  //   保活拿 home='' 就【不导航】,内核停在 about:blank 上做登录判定。bitget/okx 的判据依赖【落在自家
+  //   广场页】(接口同域 / 侧栏 DOM),在 about:blank 上必然拿不到答案 → 严格模式会把好号误标「登录过期」。
+  //   四家都落各自广场页(未登录也能浏览,用户点右上角登录即可,登录完就停在该待的位置)。
+  gate: 'https://www.gate.com/zh/post',
+  bitget: 'https://www.bitget.com/zh-CN/insights',
+  bybit: 'https://www.bybit.com/en/social/',
+  okx: 'https://www.okx.com/zh-hans/orbit',
 };
 export function loginUrlFor(platform: string, loginScope?: string): string {
   if (platform === 'kuaishou') return loginScope === 'creator' ? 'https://cp.kuaishou.com/profile' : 'https://www.kuaishou.com/';

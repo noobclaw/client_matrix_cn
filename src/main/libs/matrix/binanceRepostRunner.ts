@@ -52,6 +52,17 @@ function randInt(min: number, max: number): number {
 function matrixDir(): string { return process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix'); }
 
 const BINANCE_SQUARE = 'https://www.binance.com/square';
+// 发布号登录预检导航的广场页(按【发布平台】取)。⚠️ 这里原来写死 BINANCE_SQUARE:本 runner 服务
+//   币安 + 交易所四家,把 Gate/Bitget/Bybit/OKX 的号也导到【币安广场】上做登录判定 —— 各平台的判据
+//   (Gate 的「我的主页」链接、Bitget 的同域接口、OKX 的侧栏 uid)在别人家的域上全都拿不到答案。
+//   与 binancePostRunner.BINANCE_LOGIN_HOME 保持一致。
+const PUBLISH_HOME: Record<string, string> = {
+  binance: BINANCE_SQUARE,
+  gate: 'https://www.gate.com/zh/post',
+  bitget: 'https://www.bitget.com/zh-CN/insights',
+  bybit: 'https://www.bybit.com/en/social/',
+  okx: 'https://www.okx.com/zh-hans/orbit',
+};
 // 采集号登录态预检导航的首页(按源平台)。
 const SOURCE_HOME: Record<string, string> = {
   xhs: 'https://www.xiaohongshu.com/',
@@ -401,7 +412,7 @@ async function publishOne(
       label: accountBadgeLabel(acc), groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
     kernelLaunched = true;
-    await kernelNavigate(accountId, BINANCE_SQUARE);
+    await kernelNavigate(accountId, PUBLISH_HOME[opts.platform] || BINANCE_SQUARE);
     await sleep(2500);
     let loggedIn = true;
     try { loggedIn = await checkKernelLogin(accountId, platformKey(acc)); } catch { loggedIn = true; }
@@ -611,7 +622,7 @@ async function publishVideoOne(
       label: accountBadgeLabel(acc), groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
     });
     kernelLaunched = true;
-    await kernelNavigate(accountId, BINANCE_SQUARE);
+    await kernelNavigate(accountId, PUBLISH_HOME[opts.platform] || BINANCE_SQUARE);
     await sleep(2500);
     let loggedIn = true;
     try { loggedIn = await checkKernelLogin(accountId, platformKey(acc)); } catch { loggedIn = true; }
