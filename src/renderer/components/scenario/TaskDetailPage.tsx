@@ -1751,12 +1751,18 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {i18nService.t('tdVideoDownloadWord')}</span>;
                           if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {i18nService.t('tdImageTextWord')}</span>;
                           if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {i18nService.t('tdViralRewriteWord')}</span>;
-                          if (sid === 'x_post') return <span className="text-gray-400 font-sans">🐦 {i18nService.t('tdTweetWord')}</span>;
-                          if (sid === 'binance_post') return <span className="text-gray-400 font-sans">📊 {i18nService.t('tdPostWord')}</span>;
-                          if (sid === 'facebook_post') return <span className="text-gray-400 font-sans">👥 {i18nService.t('tdPostWord')}</span>;
-                          if (sid === 'reddit_post') return <span className="text-gray-400 font-sans">🟠 {i18nService.t('tdPostWord')}</span>;
-                          if (sid === 'instagram_post') return <span className="text-gray-400 font-sans">📷 {i18nService.t('tdPostWord')}</span>;
-                          if (sid === 'binance_repost') return <span className="text-gray-400 font-sans">♻️ {i18nService.t('tdRepostWord')}</span>;
+                          // ⚠️ 按【后缀】认发帖/搬运,别再逐个 id 硬枚举 —— 原来只列到 binance,
+                          //    新加的 OKX / Bitget / Bybit / Gate 八个场景全漏,tab 上照旧画「👍0/0 ➕0/0 💬0/0」。
+                          //    图标仍按平台给,认不出的用通用 📤 / ♻️。
+                          if (/_repost$/.test(sid)) return <span className="text-gray-400 font-sans">♻️ {i18nService.t('tdRepostWord')}</span>;
+                          if (/_post$/.test(sid)) {
+                            const POST_ICON: Record<string, string> = {
+                              x_post: '🐦', binance_post: '📊', facebook_post: '👥', reddit_post: '🟠',
+                              instagram_post: '📷', okx_post: '⚫', bitget_post: '🔵', bybit_post: '🟠', gate_post: '🟦',
+                            };
+                            const word = sid === 'x_post' ? i18nService.t('tdTweetWord') : i18nService.t('tdPostWord');
+                            return <span className="text-gray-400 font-sans">{POST_ICON[sid] || '📤'} {word}</span>;
+                          }
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
                       </div>
@@ -1993,20 +1999,14 @@ function formatActionBreakdown(
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
-  // 自动发推(矩阵版 x_post):只产生「发帖数」,累计/上次完成显示 📤 N 发帖,绝不显示赞/关注/评论。
+  // 自动发帖 / 批量搬运(*_post、*_repost):只产生「发帖数」,显示 📤 N 发帖,绝不显示赞/关注/评论。
   //   sidecar 存运行记录时 totals 恒以 {like:0,follow:0,comment:0} 打底再补 post(sidecar-server.ts),
   //   不早返回就会落到下面的互动 breakdown 把那三个 0 画成「👍0 ➕0 💬0」。
-  if (sid === 'x_post') {
-    const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
-    return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
-  }
-  // 币安广场自动发帖(矩阵版 binance_post):同 x_post,只产生「发帖数」,显示 📤 N 发帖,绝不显示赞/关注/评论。
-  if (sid === 'binance_post' || sid === 'facebook_post' || sid === 'reddit_post' || sid === 'instagram_post') {
-    const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
-    return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
-  }
-  // 币安广场批量搬运(矩阵版 binance_repost):同上,只产生「发帖数」。
-  if (sid === 'binance_repost') {
+  // ⚠️ 这里原来是【逐个 id 硬枚举】(x_post / binance_post / facebook_post / reddit_post /
+  //    instagram_post / binance_repost),于是新加的 OKX、Bitget、Bybit、Gate 四家发帖和搬运
+  //    全部漏网,任务详情里照旧显示「👍0 ➕0 💬0」。改成按后缀认 —— 现有 14 个 *_post/*_repost
+  //    场景没有一个是互动任务,以后再加平台也不用回来改这里。
+  if (/_(?:re)?post$/.test(sid)) {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }

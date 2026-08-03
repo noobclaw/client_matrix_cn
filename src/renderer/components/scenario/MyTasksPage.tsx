@@ -725,8 +725,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               ? `${cMin}-${cMax}` : String(task.daily_count || 1);
                             return `⏰ ${scheduleLabel(task)} · ${cStr} ${i18nService.t('mtxArticlesRun')}`;
                           }
-                          // 币安广场自动发帖 / 批量搬运:每号每轮 1 条,共 N 条/轮(N=账号数)。
-                          if (sid === 'binance_post' || sid === 'facebook_post' || sid === 'reddit_post' || sid === 'instagram_post' || sid === 'binance_repost') {
+                          // 自动发帖 / 批量搬运:每号每轮 1 条,共 N 条/轮(N=账号数)。
+                          // ⚠️ 按后缀认,别硬枚举 —— 原来只列到 binance,OKX/Bitget/Bybit/Gate 八个场景全漏。
+                          if (/_(?:re)?post$/.test(sid)) {
                             const accN = Array.isArray(t.account_ids) ? t.account_ids.length : 1;
                             return `⏰ ${scheduleLabel(task)} · ${i18nService.t('mtxPerAccountRound').replace('{n}', String(accN))}`;
                           }
@@ -791,12 +792,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid === 'douyin_image_text' ||
                       sid === 'xhs_image_text' ||  // ← v6.x: 之前漏,跟 douyin_image_text 同 post 系
                       sid === 'xhs_viral_production_career' ||
-                      sid === 'x_post' ||  // 矩阵自动发推:主动作 = post(发推),新任务无历史时兜底 ['post'] 不闪「赞」
-                      sid === 'binance_post' ||  // 矩阵币安广场自动发帖:同 x_post,主动作 = post(发帖),不显示赞/关注/评论
-                      sid === 'facebook_post' ||  // 矩阵 Facebook 自动发帖:同上,主动作 = post(发帖)
-                      sid === 'reddit_post' ||  // 矩阵 Reddit 自动发帖:同上,主动作 = post(发帖)
-                      sid === 'instagram_post' ||  // 矩阵 Instagram 自动发帖:同上,主动作 = post(发帖)
-                      sid === 'binance_repost'  // 矩阵币安广场批量搬运:同上,主动作 = post(发帖)
+                      // 一切 *_post / *_repost:主动作 = post(发帖/发推),新任务无历史时兜底 ['post'],
+                      // 不闪「赞」。⚠️ 原来是逐个 id 枚举到 binance 为止,新加的 OKX/Bitget/Bybit/Gate
+                      // 八个场景全漏 —— 现有 14 个 *_post/*_repost 没有一个是互动任务,按后缀认最稳。
+                      /_(?:re)?post$/.test(sid)
                     );
                     // v5.x+: engage scenarios are 3-pronged (like / comment /
                     // follow) so a brand-new task with no history should show

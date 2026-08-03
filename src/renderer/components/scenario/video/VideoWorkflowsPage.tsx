@@ -642,7 +642,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
             : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
           return <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border ${color}`}>{label}</span>;
         })()}
-        <span className="font-medium dark:text-white truncate">{localizeTaskTitle(task.title, isZh)}</span>
+        <span className="font-medium dark:text-white truncate">{videoTaskTitle(task, isZh)}</span>
         <IdTag kind="task" id={task.id} isZh={isZh} />
         {queueBadge}
       </div>
@@ -1025,6 +1025,26 @@ function localizeTaskTitle(title: string | undefined, isZh: boolean): string {
   return title || '';
 }
 
+/** 自动生成的标题尾巴:`（严格文案 · 4224字）` / `（AI 写稿 · 30s）` 及其英文版。 */
+const AUTO_TITLE_TAIL = /[（(](?:严格文案|strict|AI\s*写稿|AI\s*script)\s*·[^）)]*[）)]\s*$/;
+
+/**
+ * 电影级卡片标题。
+ * ⚠️ 老任务的标题是按【关键词】拼的 —— 那时向导还问赛道/关键词,而它们跟成片毫无关系
+ *    (实测:一条讲大摩研报的金融故事被标成「美食探店 / 一人食」)。标题已经写进任务里了,
+ *    历史改不了,但展示时可以按现在的规则重算:取脚本首行(用户粘的分镜脚本首行通常就是标题)。
+ * ⚠️ 只在标题【确实是自动生成的】时才重算(尾巴匹配 AUTO_TITLE_TAIL),用户手改过的名字原样保留。
+ */
+function videoTaskTitle(task: { title?: string; input: VideoCreationInput }, isZh: boolean): string {
+  const raw = (task.title || '').trim();
+  if (task.input?.engine !== 'ai') return localizeTaskTitle(task.title, isZh);
+  const m = raw.match(AUTO_TITLE_TAIL);
+  if (!m) return localizeTaskTitle(task.title, isZh);
+  const head = ((task.input.script || '').split('\n').map((l) => l.trim()).find((l) => l.length > 0) || '').slice(0, 24);
+  if (!head) return localizeTaskTitle(task.title, isZh);
+  return head + m[0].trim();
+}
+
 /** 模板速生:版式 id → emoji + 中英名。 */
 function templateStyleLabel(style: string | undefined, isZh: boolean): string {
   const s = TEMPLATE_STYLES.find((x) => x.id === style);
@@ -1231,7 +1251,8 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
 
 // 电影级画面摘要:Seedance + 清晰度 + 画幅。清晰度用户可选(480/720),档位服务端定。
 function cinematicVisualLabel(input: VideoCreationInput, isZh: boolean): string {
-  const res = (input as any).seedanceResolution ? `${(input as any).seedanceResolution}p` : '';
+  // ⚠️ seedanceResolution 存的就是 '480p' / '720p'(带 p),别再补一个 —— 会显示成「720pp」。
+  const res = String((input as any).seedanceResolution || '').trim();
   const RATIO: Record<string, [string, string]> = {
     '9:16': ['竖屏 9:16', 'portrait 9:16'],
     '16:9': ['横屏 16:9', 'landscape 16:9'],
