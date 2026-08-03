@@ -1193,9 +1193,15 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
       //   未登录时拿不到用户名 → 找到「文案是我的主页且 href 带 /profile/」的链接 = 明确已登录。
       //   ⚠️ 不能拿「发布」按钮/发帖框当正向判据 —— 真机实测【未登录页面照样渲染发帖框和发布按钮】,
       //   点了才弹登录。负向只认明确的登录墙文字。
+      //   ⚠️ 2026-08-03 复勘:【原来那条「文案=我的主页」的判据已经失效】—— 真机(登录态)实测侧栏
+      //     那个链接是【纯图标、innerText 为空】(<a><div class="post-nav-item"><svg icon-CEX_Personal>),
+      //     文字只在宽屏展开时才有 → probe 一直回 "?",Gate 实际上全靠 ① 的 cookie is_login=1 单点judge。
+      //     改成【结构判据】:本人链接 = 带 .post-nav-item 的那个 /profile/ 链接;信息流里别人的链接
+      //     class 是 nickname、不含 post-nav-item,所以不会抓成别人的号。旧的文案判据保留做宽屏兼容。
       probe = '(function(){try{'
         + 'var as=document.querySelectorAll(\'a[href*="/profile/"]\');'
-        + 'for(var i=0;i<as.length;i++){if(/我的主页|My Profile/i.test((as[i].innerText||"").trim()))return "1";}'
+        + 'for(var i=0;i<as.length;i++){if(as[i].querySelector(".post-nav-item"))return "1";}'
+        + 'for(var k=0;k<as.length;k++){if(/我的主页|My Profile/i.test((as[k].innerText||"").trim()))return "1";}'
         + 'var t=(document.body&&document.body.innerText)||"";'
         + 'if(/请先登录|扫码登录|登录后即可|Log ?in to continue/i.test(t))return "0";'
         + 'return "?";}catch(e){return "?";}})()';
@@ -1393,6 +1399,15 @@ const IDENTITY_EXPR: Record<string, string> = {
   // Reddit:/api/me.json(cookie 鉴权)一把出 name(用户名)/ id(t2 uid)/ icon_img|snoovatar_img(头像)。
   //   头像 URL 里的 &amp; 要还原成 &。displayId = u/<name>。同 xhs/B站 的「问接口」路子,最稳。
   reddit: '(async function(){try{var r=await fetch("/api/me.json",{credentials:"include",headers:{accept:"application/json"}});var j=await r.json();var d=(j&&j.data)||j||{};if(!d.name)return "{}";var av=String(d.snoovatar_img||d.icon_img||"").replace(/&amp;/g,"&").split("?")[0];return JSON.stringify({nickname:d.name,displayId:"u/"+d.name,uid:d.id?("t2_"+d.id):d.name,avatar:av});}catch(e){return "{}";}})()',
+  // Gate 广场(2026-08-03 真机实测,登录态 DOM。实测号:huolongyema / UID 5052):
+  //   昵称/displayId = 侧栏【本人主页】链接 href 的 /profile/<用户名> 段(URL 编码要 decode:
+  //     中文昵称形如 /zh/profile/%E8%B5%B5%E5%85%AC%E5%AD%90HODL1)。Gate 广场的显示名就是这个名字
+  //     (信息流里别人的 class="nickname" 文字与其 href 段一一对应),所以不用另找昵称元素。
+  //   ⚠️ 本人链接必须靠【结构】认:选带 .post-nav-item 的那个 —— 页面上有 20+ 个同格式的 /profile/
+  //     链接全是信息流里【别人】的号(class="nickname"),按顺序取第一个必然抓错人。
+  //   uid = 顶栏账户卡的「UID: 5052」文本(class 是 CSS Modules 哈希 uid-XXXX,所以用文本正则兜)。
+  //   头像 = gavatar.staticimgs.com 域的 img(Gate 头像专用 CDN,比哈希 class 稳)。
+  gate: '(function(){try{var link=null;var as=document.querySelectorAll(\'a[href*="/profile/"]\');for(var i=0;i<as.length;i++){if(as[i].querySelector(".post-nav-item")){link=as[i];break;}}var name=null;if(link){var h=(link.getAttribute("href")||"").split("?")[0].replace(/\\/+$/,"");var seg=h.split("/profile/")[1]||"";if(seg){try{name=decodeURIComponent(seg);}catch(e){name=seg;}}}var uid=null;var ns=document.querySelectorAll(\'[class*="uid"]\');for(var k=0;k<ns.length;k++){var m=((ns[k].innerText||"").trim()).match(/^UID[:\\uFF1A]\\s*(\\d{2,})$/);if(m){uid=m[1];break;}}var av=null;var im=document.querySelector(\'img[src*="gavatar."]\');if(im)av=im.src||null;if(!name&&!uid)return "{}";return JSON.stringify({nickname:name,displayId:name,uid:uid||name,avatar:av});}catch(e){return "{}";}})()',
   // OKX 星球(2026-08-03 真机实测,登录态 DOM):
   //   uid  = 侧栏「个人主页」导航项 href 尾段的纯数字(游客是 /orbit/user/me,所以拿到数字必是本人);
   //   昵称/头像 = 侧栏底部用户卡 [class*="userCard"] 里的 [class*="userName"] 文字 + img。
