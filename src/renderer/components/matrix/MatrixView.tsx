@@ -233,6 +233,19 @@ const trackKeywords = (p: TrackPreset, cl: ContentLang): string[] => {
 const trackPersona = (p: TrackPreset, cl: ContentLang): string => (cl === 'en' ? (p.persona_en || p.persona) : p.persona) || '';
 const trackDisplayName = (p: TrackPreset, cl: ContentLang): string => (cl === 'en' ? (p.name_en || p.name) : p.name) || p.name;
 const DEFAULT_TRACK = '🍲 美食 · 探店做饭'; // 默认选中赛道(存 group 的规范名=中文,与视频默认 food 一致)
+// 交易所广场五家:连接账号时默认带出 Web3 赛道 —— 这些平台的内容生态就是加密货币,
+//   默认给「美食」等于每次新建号都要手动改一次。其它平台仍用 DEFAULT_TRACK。
+// ⚠️ 国内版当前 HIDE_WEB3=true,这五家被 VISIBLE_PLATFORMS 过滤掉、界面上根本进不来,
+//   所以这段在国内版是【暂时走不到的分支】。仍然与国际版保持同款实现:一是哪天放开
+//   HIDE_WEB3 就自动生效,二是两仓同处代码一致,后续 cherry-pick 不会在这里撞冲突。
+const CRYPTO_TRACK_PLATFORMS = new Set(['binance', 'okx', 'bitget', 'bybit', 'gate']);
+// ⚠️ 赛道预设是【服务端下发】的(matrix_track_presets,admin 可改名/增删),所以按【id】认最稳:
+//   id 是稳定契约,name 会随文案调整变。id 找不到再退回按名字关键词找,最后才回落 DEFAULT_TRACK ——
+//   保证服务端把这条赛道改没了也只是退回默认,不会让整个默认赛道逻辑失灵。
+const CRYPTO_TRACK_ID = 'crypto';
+const findCryptoTrack = (presets: TrackPreset[]): TrackPreset | undefined =>
+  presets.find((t) => t.id === CRYPTO_TRACK_ID)
+  || presets.find((t) => /web3|加密货币|crypto/i.test(`${t.name || ''} ${t.name_en || ''}`));
 
 const M = () => (window as any).electron?.matrix;
 const fmtTime = (ts?: number) => { if (!ts || ts >= Number.MAX_SAFE_INTEGER) return '—'; const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -485,7 +498,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const cl = uiDefaultContentLang();
     setNewContentLang(cl);
     // 默认选中一个赛道并按内容语言带出人设 + 关键词(可再改)。group 存中文规范名。
-    const def = trackPresets.find((t) => t.name === DEFAULT_TRACK) || trackPresets[0];
+    // 交易所广场(币安/OKX/Bitget/Bybit/Gate)默认 Web3 赛道,其余平台默认 DEFAULT_TRACK。
+    const def = (CRYPTO_TRACK_PLATFORMS.has(platform) ? findCryptoTrack(trackPresets) : undefined)
+      || trackPresets.find((t) => t.name === DEFAULT_TRACK) || trackPresets[0];
     if (def) { setNewGroup(def.name); setNewPersona(trackPersona(def, cl)); setNewKeywords(trackKeywords(def, cl).join(' ')); }
     // 新号从第 1 步开始;代理表单清空(第 2 步填,不填则共用本机 IP)。
     setAddStep(1); setProxyForm({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' });
