@@ -58,6 +58,7 @@ const MATRIX_ENGAGE_SCENARIO_ID: Record<string, string> = {
   youtube: 'youtube_auto_engage', tiktok: 'tiktok_auto_engage',
   // ⚠️ 新平台必须补进来:缺了会兜底成 douyin_auto_engage → 卡片/详情/运行记录全按「抖音」渲染(用户实测)。
   facebook: 'facebook_auto_engage', reddit: 'reddit_auto_engage', instagram: 'instagram_auto_engage',
+  gate: 'gate_auto_engage', bitget: 'bitget_auto_engage', bybit: 'bybit_auto_engage', okx: 'okx_auto_engage',
 };
 const MATRIX_ENGAGE_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_ENGAGE_SCENARIO_ID).map(([p, id]) => [id, p]));
@@ -70,6 +71,8 @@ const MATRIX_ENGAGE_META: Record<string, { name_zh: string; icon: string }> = {
   youtube: { name_zh: 'YouTube 互动涨粉', icon: '▶️' }, tiktok: { name_zh: 'TikTok 互动涨粉', icon: '🎬' },
   facebook: { name_zh: 'Facebook 互动涨粉', icon: '👥' }, reddit: { name_zh: 'Reddit 互动涨粉', icon: '🟠' },
   instagram: { name_zh: 'Instagram 互动涨粉', icon: '📷' },
+  gate: { name_zh: 'Gate广场 互动涨粉', icon: '🟦' }, bitget: { name_zh: 'Bitget Insight 互动涨粉', icon: '🔵' },
+  bybit: { name_zh: 'Bybit Byx 互动涨粉', icon: '🟠' }, okx: { name_zh: 'OKX星球 互动涨粉', icon: '⚫' },
 };
 const engageScenarioIdForPlatform = (platform?: string): string =>
   (platform && MATRIX_ENGAGE_SCENARIO_ID[platform]) || 'douyin_auto_engage';
@@ -146,11 +149,21 @@ const MATRIX_BINANCE_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_BINANCE_SCENARIO_ID).map(([p, id]) => [id, p]));
 const MATRIX_BINANCE_META: Record<string, { name_zh: string; icon: string }> = {
   binance: { name_zh: '币安广场 自动发帖', icon: '📊' },
+  gate: { name_zh: 'Gate广场 自动发帖', icon: '🟦' }, bitget: { name_zh: 'Bitget Insight 自动发帖', icon: '🔵' },
+  bybit: { name_zh: 'Bybit Byx 自动发帖', icon: '🟠' }, okx: { name_zh: 'OKX星球 自动发帖', icon: '⚫' },
 };
 
 // 「币安广场批量搬运」剧本(backend/matrix/scenarios/binance_repost)。1 源平台采集号搜+下 → N 币安号各领一条仿写发。发布目标=币安,scenario_id 固定 'binance_repost'(非平台后缀)。
 const MATRIX_REPOST_SCENARIO_ID = 'binance_repost';
 const MATRIX_REPOST_PLATFORM = 'binance';
+// 交易所广场四家的搬运剧本 id 同样是 `${platform}_repost`。⚠️ 判定搬运任务时必须认全这 5 个,
+//   只认 'binance_repost' 会让四家的搬运任务被当成 engage → 配置丢失 + 卡片显示成互动涨粉。
+const MATRIX_REPOST_IDS = new Set(['binance_repost', 'gate_repost', 'bitget_repost', 'bybit_repost', 'okx_repost']);
+const repostPlatformFromId = (id: string): string => String(id || '').replace(/_repost$/, '') || 'binance';
+const MATRIX_REPOST_META: Record<string, string> = {
+  binance: '币安广场 批量搬运', gate: 'Gate广场 批量搬运', bitget: 'Bitget Insight 批量搬运',
+  bybit: 'Bybit Byx 批量搬运', okx: 'OKX星球 批量搬运',
+};
 
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
  *  配额映射到 daily_*_min/max 这套 douyin_auto_engage 字段)。 */
@@ -178,7 +191,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     //   不在客户端注册表里,scenario_id 映射不到)。之前没带 → 过滤后所有任务全部隐身(用户实测)。
     platform: t.platform,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
-    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? 'binance_repost' : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
+    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
     track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : 'matrix',
     // image_text / viral_rewrite / x_post / binance_post / facebook_post / reddit_post / instagram_post / binance_repost 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     imageText: isImageText ? t.imageText : undefined,
@@ -380,12 +393,13 @@ function scenarioInputToMxSave(input: any, id?: string): any {
     };
   }
   // 币安广场搬运任务(scenario_id = binance_repost):保持 type='binance_repost' + 透传 binanceRepost,否则经 updateTask 兜底会被改成 engage、配置丢失。
-  if (input.scenario_id === MATRIX_REPOST_SCENARIO_ID) {
+  if (MATRIX_REPOST_IDS.has(String(input.scenario_id || ''))) {
+    const _rp = repostPlatformFromId(String(input.scenario_id || ''));
     return {
       id,
-      platform: MATRIX_REPOST_PLATFORM,
+      platform: _rp,
       type: 'binance_repost',
-      name: input.name || (accountIds.length ? `币安广场搬运 · ${accountIds.length} 个号` : '币安广场搬运'),
+      name: input.name || (accountIds.length ? `${MATRIX_REPOST_META[_rp] || '批量搬运'} · ${accountIds.length} 个号` : (MATRIX_REPOST_META[_rp] || '批量搬运')),
       accountIds,
       quota: {},
       binanceRepost: input.binanceRepost,
@@ -467,7 +481,7 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
     case 'facebook_post':  return mk(`${p}_post`, 'Facebook 自动发帖', '📘');
     case 'reddit_post':    return mk(`${p}_post`, 'Reddit 自动发帖', '👽');
     case 'instagram_post': return mk(`${p}_post`, 'Instagram 自动发帖', '📸');
-    case 'binance_repost': return mk(MATRIX_REPOST_SCENARIO_ID, '币安广场 批量搬运', '♻️');
+    case 'binance_repost': return mk(`${p}_repost`, MATRIX_REPOST_META[p] || '批量搬运', '♻️');
     default:               return mk(engageScenarioIdForPlatform(p), MATRIX_ENGAGE_META[p]?.name_zh || '互动涨粉', MATRIX_ENGAGE_META[p]?.icon || '🤝');
   }
 }

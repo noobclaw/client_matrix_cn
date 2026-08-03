@@ -70,7 +70,7 @@ function platformMeta(platformId: string): { icon: string; label: string } {
 
 // scenario 快照常缺发帖类新平台(facebook_post/reddit_post/instagram_post 等)→ scenario.platform
 // 为 undefined 时,从 scenario_id 头段推平台,别再兜底成 'xhs'(会误显「📕 小红书」平台徽章)。
-const KNOWN_PLATFORM_TOKENS = ['xhs', 'x', 'binance', 'douyin', 'tiktok', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'youtube', 'facebook', 'reddit', 'instagram'];
+const KNOWN_PLATFORM_TOKENS = ['xhs', 'x', 'binance', 'douyin', 'tiktok', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'youtube', 'facebook', 'reddit', 'instagram', 'gate', 'bitget', 'bybit', 'okx'];
 function platformFromScenarioId(sid: string | undefined): string | undefined {
   const first = String(sid || '').split('_')[0];
   return KNOWN_PLATFORM_TOKENS.includes(first) ? first : undefined;
