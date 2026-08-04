@@ -917,6 +917,17 @@ export async function concatNativeClips(opts: {
    * ⚠️ 一旦要烧字幕就【必须重编码】,零转码拼接用不了 —— 这是烧字幕的固有代价。
    */
   subtitles?: { text: string; start: number; end: number }[];
+  /**
+   * 可选:从【拼好的成片】现场生成字幕,优先于 subtitles。
+   *
+   * 🚨 电影级为什么必须走这条:声音是 Seedance 生成的,不是我们的 TTS。它是生成模型不是
+   *   朗读器 —— 即便 prompt 明写「人物说:「台词」」也【不保证逐字念】,实测会改词、换语序、
+   *   甚至说别的。于是"字幕用分镜稿的台词"必然和真实人声对不上(用户 2026-08-04 实测
+   *   「文字和配音内容都完全对不上」)。唯一能保证对上的做法:把成片音频转写出来当字幕 ——
+   *   字幕就是它实际说的那句,时间轴就是它实际说话的时刻。
+   * 回调拿到的是【已拼接、已混 BGM】的文件;返回空数组 = 转写失败/没人声 → 回落到 subtitles。
+   */
+  subtitlesFromAudio?: (mergedPath: string) => Promise<{ text: string; start: number; end: number }[]>;
   /** 字幕字号档(同 compose 的口径,默认 20)。 */
   subtitleFontSize?: number;
   /** 画面宽高(烧字幕时用于换算字号/边距);不传则从首个片段探测。 */
@@ -973,7 +984,19 @@ export async function concatNativeClips(opts: {
 
     // 烧字幕(可选)。放在最后一步,和 BGM 分开做 —— BGM 那步是 `-c:v copy`,
     //   这一步必须重编码,合在一起会让没开字幕的用户也白白转码一遍。
-    const cues = (opts.subtitles || []).filter((c) => c.text && c.end > c.start);
+    // 字幕来源:优先【转写成片音频】(电影级 —— 保证字幕就是实际说出来的那句),
+    //   转写失败/没人声再回落到调用方给的稿子。
+    let cueSource = opts.subtitles || [];
+    if (opts.subtitlesFromAudio) {
+      try {
+        const asrCues = await opts.subtitlesFromAudio(merged);
+        if (asrCues && asrCues.length > 0) cueSource = asrCues;
+        else opts.onProgress?.('⚠️ 音频转写没拿到结果,字幕回落到分镜稿台词(可能与人声不完全一致)');
+      } catch (e) {
+        opts.onProgress?.('⚠️ 音频转写失败,字幕回落到分镜稿台词(可能与人声不完全一致)');
+      }
+    }
+    const cues = cueSource.filter((c) => c.text && c.end > c.start);
     if (cues.length > 0) {
       const dim = (opts.width && opts.height)
         ? { width: opts.width, height: opts.height }

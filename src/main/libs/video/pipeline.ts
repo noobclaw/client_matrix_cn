@@ -37,13 +37,35 @@ import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, typ
 import type { TemplateOptions } from './templateHtmlWriter';
 import { runTemplatePipeline } from './template-pipeline';
 import { runThreadPipeline } from './thread-pipeline';
-import { runRepostPipeline } from './repost-pipeline';
+import { runRepostPipeline, transcribeAudio } from './repost-pipeline';
 import { generateStoryboardAnchor } from './storyboardAnchor';
 // 电影级(engine='ai')分镜表:把用户脚本 / 口播稿解析成结构化分镜,口播与画面彻底分家。
 import {
-  parseStoryboardScript, deriveStoryboard, storyboardToText, shotAllowsText, type StoryShot,
+  parseStoryboardScript, deriveStoryboard, formatScriptToShots, storyboardToText, shotAllowsText, type StoryShot,
 } from './storyboardScript';
 import { buildFramePrompt, buildMotionPrompt, buildLegacyPrompt, DEFAULT_STYLE_LOCK } from './shotPrompts';
+
+/**
+ * 用户文案框里的东西是【完整脚本】还是【一句想法】?
+ *
+ * 决定 scriptMode:脚本 → strict(逐字保真,只做结构化,绝不让 AI 改写);
+ *                想法 → ai(拿它当主题去写一篇合适的稿子)。
+ * 🚨 原来只判「非空」,于是「讲讲比特币减半」这种一句话想法也被当成完整脚本,
+ *   整条片子就只剩那一句。判据(任一成立即视为脚本):
+ *     ① 带分镜/场景/旁白/台词这类结构标记(明显是写好的脚本)
+ *     ② 够长(≥60 字)
+ *     ③ 多句(≥3 句)
+ * 宁可把「短脚本」误判成想法 —— 那条路会拿它当主题扩写,产出仍然合理;
+ * 反过来把想法当脚本才是灾难(片子只有一句话)。
+ */
+function looksLikeFullScript(text: string): boolean {
+  const s = (text || '').trim();
+  if (!s) return false;
+  if (/分镜|镜头\s*[\d一二三四五六七八九十]|场景\s*[\d一二三四五六七八九十]|画面[：:]|旁白[：:]|台词[：:]|字幕[：:]|shot\s*\d|scene\s*\d/i.test(s)) return true;
+  if (s.length >= 60) return true;
+  const sentences = s.split(/[。！？!?\n]+/).map((x) => x.trim()).filter((x) => x.length > 1).length;
+  return sentences >= 3;
+}
 import { resolvePublishCaption } from './publishCaptionWriter';
 import { setCurrentVideoTask, clearCurrentVideoTask, videoTypeLabel } from './videoRunWindow';
 
@@ -1058,9 +1080,13 @@ async function runVideoPipeline(
 
     const userText = (input.script || '').trim();
     // 热搜成片恒为 AI 写稿(用户不填稿)。
+    // 用户在向导里显式选过就听用户的;没选才自动判定。
+    // 🚨 原来的自动判定是「文案框非空 = 完整脚本」—— 用户敲一句想法(「讲讲比特币减半」)
+    //   也会被当成脚本去逐字解析成分镜,于是整条片子就只有那一句话。用户要的是:
+    //   【详细脚本→不许改写,只做结构化】/【只是想法→才让 AI 写稿】。所以按内容判。
     const scriptMode: 'strict' | 'ai' = input.engine === 'hotspot'
       ? 'ai'
-      : (input.scriptMode || (userText ? 'strict' : 'ai'));
+      : (input.scriptMode || (looksLikeFullScript(userText) ? 'strict' : 'ai'));
     // 内容语言:口播稿 + 素材搜索词都用它。用户在向导显式选了创作语言(scriptLang)且由 AI
     // 写稿时用它;strict 逐字朗读模式下稿子就是用户原文,语言探测原文才对(选了语言也不生效,
     // 避免「英文语言 + 中文原稿」错配)。无显式选择维持自动:有视频文案就按文案语言走,再按
@@ -1138,7 +1164,7 @@ async function runVideoPipeline(
     } else if (input.engine === 'ai' && input.useStoryboardTable !== false) {
       // strict = 用户粘了脚本(可能是完整分镜脚本)→ 解析;ai = 稿子是 AI 写的口播 → 派生分镜。
       const isUserScript = scriptMode === 'strict';
-      tracker.progress(isUserScript ? '🎬 正在解析你的分镜脚本…' : '🎬 正在为口播稿设计分镜…');
+      tracker.progress(isUserScript ? '🎬 按你的脚本原文分镜(逐字照用,不做改写)…' : '🎬 正在为口播稿设计分镜…');
       try {
         const sbInput = {
           lang: contentLang,
@@ -1147,8 +1173,15 @@ async function runVideoPipeline(
           styleHint: isUserScript ? undefined : [input.track, input.persona].filter(Boolean).join('、') || undefined,
           signal,
         };
+        // 🚨 有脚本时【不再过 LLM】(用户 2026-08-04 拍板:「有详细脚本就不要再过一次 LLM,
+        //   基本格式化一下直接给 Seedance」)。formatScriptToShots 是纯本地正则:认结构标记、
+        //   切镜、台词【逐字照抄】,一个字不改也不花 AI 的钱。逐字保真恒为 1(原文即输出)。
+        //   只有「只是一个想法」才走 deriveStoryboard 让 AI 写。
         const sb = isUserScript
-          ? await parseStoryboardScript(script, sbInput)
+          ? (() => {
+            const f = formatScriptToShots(script, contentLang);
+            return { shots: f.shots, tokens: 0, costUsd: 0, fidelity: 1, warnings: f.warnings };
+          })()
           : await deriveStoryboard(script, sbInput);
         if (sb && sb.shots.length > 0) {
           tracker.addTokens(sb.tokens, sb.costUsd);
@@ -2749,12 +2782,42 @@ async function runVideoPipeline(
           if (cues.length > 0) nativeCues = cues;
         }
 
+        // 🚨 字幕必须来自【成片音频的转写】,不能用分镜稿的台词。
+        //   电影级的声音是 Seedance 生成的 —— 它是生成模型不是朗读器,prompt 里写了
+        //   「人物说:「台词」」也不保证逐字念(实测会改词/换语序/说别的),所以拿稿子当字幕
+        //   必然对不上(用户 2026-08-04 实测「文字和配音内容都完全对不上」)。
+        //   转写之后:字幕 = 它实际说的那句,时间轴 = 它实际说话的时刻,两边天然一致。
+        //   转写失败/没人声 → 回落到 nativeCues(稿子),至少还有字幕,并在日志里说明可能不一致。
+        const asrSubtitles = subtitleEnabled ? async (mergedPath: string) => {
+          const wav = path.join(assetDir, `native_asr_${Date.now()}.wav`);
+          const ax = await runFfmpeg(
+            ['-y', '-i', mergedPath, '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', wav],
+            { timeoutMs: 180_000, signal },
+          );
+          if (!ax.ok || !fs.existsSync(wav)) return [];
+          const dur = await probeDuration(wav).catch(() => 0);
+          tracker.progress(`${label ? label + ' · ' : ''}🎧 转写成片人声,生成与配音完全一致的字幕…`);
+          const asr = await transcribeAudio(wav, dur, contentLang || 'zh', signal);
+          try { fs.unlinkSync(wav); } catch { /* ignore */ }
+          if (!asr.ok || asr.noSpeech) return [];
+          // 句级优先(带时间戳,粒度正好是一行字幕);没有就退回粗粒度 segments。
+          const segs = (asr.sentences && asr.sentences.length > 0) ? asr.sentences : (asr.segments || []);
+          const out = segs
+            .filter((s) => s && s.text && s.text.trim() && s.end > s.start)
+            .map((s) => ({ text: s.text.trim(), start: s.start, end: s.end }));
+          if (out.length > 0) tracker.progress(`${label ? label + ' · ' : ''}✓ 字幕已按真实人声对齐(${out.length} 句)`);
+          // 转写是要花钱的,记进本次成本(与翻译搬运同口径)。
+          if (asr.tokens) tracker.addTokens(asr.tokens, asr.costUsd || 0);
+          return out;
+        } : undefined;
+
         await concatNativeClips({
           clipPaths,
           outputPath: outPath,
           bgmPath,
           bgmVolume: input.bgmVolume !== undefined && input.bgmVolume >= 0 ? input.bgmVolume : undefined,
           subtitles: nativeCues,
+          subtitlesFromAudio: asrSubtitles,
           subtitleFontSize: input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : undefined,
           width, height,
           onProgress: (m) => tracker.progress(`${label ? label + ' · ' : ''}${m}`),

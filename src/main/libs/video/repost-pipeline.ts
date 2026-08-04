@@ -495,7 +495,9 @@ async function resolveSourceVideo(
 }
 
 // ── 后端 ASR:上传音轨 → 带时间戳字幕 ──
-async function transcribeAudio(
+// 已导出:电影级(pipeline.ts)也要用它把 Seedance 生成的人声转写成字幕 —— 那条链路的声音
+//   不是我们合成的,字幕只能来自转写才能和人声完全一致。实现保持单份,别各写一套。
+export async function transcribeAudio(
   audioPath: string, durationSec: number, sourceLang: string, signal?: AbortSignal,
 ): Promise<{ ok: boolean; segments?: Seg[]; sentences?: Seg[]; language?: string; tokens?: number; costUsd?: number; error?: string; noSpeech?: boolean }> {
   const token = getNoobClawAuthToken();
