@@ -63,10 +63,10 @@ const BINANCE_SQUARE = 'https://www.binance.com/square';
 //   与 binancePostRunner.BINANCE_LOGIN_HOME 保持一致。
 const PUBLISH_HOME: Record<string, string> = {
   binance: BINANCE_SQUARE,
-  gate: 'https://www.gate.com/zh/post',
-  bitget: 'https://www.bitget.com/zh-CN/insights',
-  bybit: 'https://www.bybit.com/en/social/',
-  okx: 'https://www.okx.com/zh-hans/orbit',
+  gate: 'https://www.gate.com/post',
+  bitget: 'https://www.bitget.com/insights',
+  bybit: 'https://www.bybit.com/social/',
+  okx: 'https://www.okx.com/orbit',
 };
 // 采集号登录态预检导航的首页(按源平台)。
 const SOURCE_HOME: Record<string, string> = {

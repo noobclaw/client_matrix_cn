@@ -304,10 +304,10 @@ export async function runMatrixRedditThread(
 // 交易所广场的发布落地页(matrix/drivers/<平台>.js 在这个页面上跑)。
 // gate:2026-08-03 真机确认发帖框在 /zh/post,视频 input 常驻 DOM,不用点入口。
 const MATRIX_EXTRA_ANCHOR_URL: Record<string, string> = {
-  gate: 'https://www.gate.com/zh/post',
-  bitget: 'https://www.bitget.com/zh-CN/insights',
+  gate: 'https://www.gate.com/post',
+  bitget: 'https://www.bitget.com/insights',
   // ByX 的发帖框在【专门的发布页】上(信息流页那个内联框只有图片),driver 直接落这里。
-  bybit: 'https://www.bybit.com/en/social/publish',
+  bybit: 'https://www.bybit.com/social/publish',
 };
 
 export async function runMatrixDriver(

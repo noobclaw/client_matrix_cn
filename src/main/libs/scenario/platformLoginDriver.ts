@@ -118,13 +118,13 @@ const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   reddit: /reddit\.com/i,
   // 交易所广场三家。都是【广场在主站路径下】,所以匹配到路径段而不是只匹配域名 ——
   // 否则用户开着现货/合约页(同域)也会被当成"广场 tab 已就绪",跑起来才发现没在广场上。
-  //   Gate   : gate.com/zh/post、gate.com/en/post…(locale 前缀可变)
-  //   Bitget : bitget.com/zh-CN/insights…(官方英文名 Insights)
-  //   Bybit  : bybit.com/en/social/…(广场叫 ByX)
+  //   Gate   : gate.com/post、gate.com/post…(locale 前缀可变)
+  //   Bitget : bitget.com/insights…(官方英文名 Insights)
+  //   Bybit  : bybit.com/social/…(广场叫 ByX)
   gate: /gate\.(com|io)\/(?:[a-z-]+\/)?post/i,
   bitget: /bitget\.com\/(?:[a-z-]+\/)?insights/i,
   bybit: /bybit\.com\/(?:[a-z-]+\/)?social/i,
-  //   OKX    : okx.com/zh-hans/orbit(广场叫「星球」,英文 Orbit)
+  //   OKX    : okx.com/orbit(广场叫「星球」,英文 Orbit)
   okx: /okx\.com\/(?:[a-z-]+\/)?orbit/i,
 };
 
@@ -162,10 +162,10 @@ const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
   instagram: 'https://www.instagram.com/',
   facebook: 'https://www.facebook.com/',
   reddit: 'https://www.reddit.com/',
-  gate: 'https://www.gate.com/zh/post',
-  bitget: 'https://www.bitget.com/zh-CN/insights',
-  bybit: 'https://www.bybit.com/en/social/',
-  okx: 'https://www.okx.com/zh-hans/orbit',
+  gate: 'https://www.gate.com/post',
+  bitget: 'https://www.bitget.com/insights',
+  bybit: 'https://www.bybit.com/social/',
+  okx: 'https://www.okx.com/orbit',
 };
 
 /** v2.6+: chrome-extension tab-group label/color per platform.

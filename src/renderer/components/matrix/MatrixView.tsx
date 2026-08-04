@@ -66,10 +66,10 @@ const LOGIN_URL: Record<string, string> = {
   instagram: 'https://www.instagram.com/accounts/login/', facebook: 'https://www.facebook.com/login/', reddit: 'https://www.reddit.com/login/',
   // 交易所广场三家 —— 直接落在各自的广场页(而不是登录页):这三家都是【未登录也能浏览广场】,
   // 落广场页用户点右上角登录即可,登录完就停在该待的位置,不用再导航一次。
-  gate: 'https://www.gate.com/zh/post',
-  bitget: 'https://www.bitget.com/zh-CN/insights',
-  bybit: 'https://www.bybit.com/en/social/',
-  okx: 'https://www.okx.com/zh-hans/orbit',
+  gate: 'https://www.gate.com/post',
+  bitget: 'https://www.bitget.com/insights',
+  bybit: 'https://www.bybit.com/social/',
+  okx: 'https://www.okx.com/orbit',
 };
 // 平台归属:国内平台该用国内 IP,海外平台该用海外 IP;binance/reddit 等全球平台不校验地区。
 const CN_PLATFORMS = new Set(['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao']);

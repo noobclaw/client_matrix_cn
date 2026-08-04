@@ -54,10 +54,10 @@ const BINANCE_LOGIN_HOME: Record<string, string> = {
   reddit: 'https://www.reddit.com/',
   instagram: 'https://www.instagram.com/',
   // 交易所广场三家(各自独立平台,共用本 runner —— 剧本 id 走 `${platform}_post` 自动对上)。
-  gate: 'https://www.gate.com/zh/post',
-  bitget: 'https://www.bitget.com/zh-CN/insights',
-  bybit: 'https://www.bybit.com/en/social/',
-  okx: 'https://www.okx.com/zh-hans/orbit',
+  gate: 'https://www.gate.com/post',
+  bitget: 'https://www.bitget.com/insights',
+  bybit: 'https://www.bybit.com/social/',
+  okx: 'https://www.okx.com/orbit',
 };
 // 日志用平台名 —— 本 runner 服务 8 个平台,提示语不能写死「币安」(用户实拍:IG 任务弹「币安登录态失效」)。
 const PLATFORM_LABEL: Record<string, string> = {
