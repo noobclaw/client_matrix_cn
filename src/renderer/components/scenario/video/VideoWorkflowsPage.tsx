@@ -2123,6 +2123,22 @@ const VideoTaskDetail: React.FC<{
           {isZh ? '尚未运行。点上方「开始创作 / 重新跑」启动一次。' : 'Not run yet. Start a run above.'}
         </div>
       )}
+      {/* 本次采用的分镜稿 —— 分镜是整条链路上最贵也最容易切错的一步(切错 = 白烧一整批
+          Seedance),原来只落在成片目录的「分镜表.txt」里,用户要翻文件夹才看得到。
+          默认折叠,不挤占进度日志。 */}
+      {latestRun?.storyboardText && (
+        <details className="mt-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
+          <summary className="px-4 py-2.5 text-sm font-medium cursor-pointer select-none dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            🎬 {i18nService.t('vmixStoryboardUsed')}
+            <span className="ml-2 text-xs font-normal text-gray-400">
+              {i18nService.t('vmixStoryboardUsedHint')}
+            </span>
+          </summary>
+          <pre className="px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap break-words max-h-96 overflow-y-auto border-t border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-mono">
+            {latestRun.storyboardText}
+          </pre>
+        </details>
+      )}
       {/* 发布时有账号登录过期 → 给个跳转「我的矩阵账号」的按钮,方便用户点去重扫(对齐用户要求)。 */}
       {latestRun && latestRun.logs.some((l: any) => String(l?.message || '').includes('登录过期')) && (
         <button
@@ -3464,9 +3480,10 @@ const VideoConfigModal: React.FC<{
   // 只读:向导不再提供参考图入口,这里只是把老任务存过的值原样带回提交。
   const [referenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
   // 清晰度:480p / 720p 二选一(传后端;单价/千token 不变,只是 720p token 数更多)。默认 720p。
-  // 默认 720p(清晰档,产品定的);编辑老任务时保留它自己存的值。
+  // 默认 480p(省钱档):720p 每秒吃的 token 是 480p 的 2.25 倍(1280×720 vs 854×480),
+  //   新建任务不该默认落在贵的那档。编辑老任务时保留它自己存的值。
   const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p'>(
-    editTask?.input.seedanceResolution === '480p' ? '480p' : '720p');
+    editTask?.input.seedanceResolution === '720p' ? '720p' : '480p');
   // 纯AI 每秒卖价($/秒)+ 每秒积分,由服务端按清晰度算,动态展示(不写死)。
   const [aiUsdPerSec, setAiUsdPerSec] = useState<number | null>(null);
   const [aiCreditsPerSec, setAiCreditsPerSec] = useState<number | null>(null);
@@ -3855,8 +3872,12 @@ const VideoConfigModal: React.FC<{
 
   /**
    * 提交入口。
-   * 电影级(pure_ai)新建任务 → 先弹分镜表让用户过一眼再落任务;其余模式维持原样直接落。
-   * 编辑老任务不弹(用户是来改配置的,不是来重排分镜的)。
+   * 电影级(pure_ai)+ 我有脚本(strict)→ 【新建和编辑都】先弹分镜表让用户过一眼再落任务。
+   *
+   * 为什么编辑也要弹(2026-08-04 用户要求):原来带 `!isEdit`,编辑老任务保存后直接开跑 ——
+   *   而分镜是不是切对了,只有在分镜表上才看得见。真实事故:一份 4224 字的分镜脚本被切成
+   *   2 镜 20 秒(制作说明还被当口播念),用户是在扣掉 58 万积分、出了条废片之后才发现的。
+   *   分镜表是这条链路上唯一能在【花钱之前】看到结果的地方,编辑同样该走。
    */
   const handleSubmit = async () => {
     // 只有【我有脚本】(strict)才在提交前弹分镜表。
@@ -3864,7 +3885,7 @@ const VideoConfigModal: React.FC<{
     //    pipeline 里 generateScript 写);拿提示词去 deriveStoryboard 会把它当口播逐字切开,
     //    确认后这些分镜作为 storyboardShots 盖掉 AI 写的稿 —— 成片念的就成了那句提示词。
     //    这条路让 pipeline 在运行时按 AI 写好的稿子派生分镜,才是对的。
-    if (mode === 'pure_ai' && !isEdit && scriptMode === 'strict' && script.trim()) {
+    if (mode === 'pure_ai' && scriptMode === 'strict' && script.trim()) {
       setSbShots([]);
       setSbWarnings([]);
       setSbFidelity(undefined);
@@ -4180,7 +4201,7 @@ const VideoConfigModal: React.FC<{
                       ? (isZh ? '我有脚本' : 'I have a script')
                       : (isZh ? '严格按我的视频文案' : 'Use my script verbatim')}
                     desc={mode === 'pure_ai'
-                      ? (isZh ? '粘完整分镜脚本或口播稿，口播逐字照念、画面按你写的拍' : 'paste a full storyboard or narration; read verbatim, shot-for-shot')
+                      ? (isZh ? '粘完整分镜脚本或口播稿，AI 按你的内容拆分镜、画面按你写的拍' : 'paste a full storyboard or narration; AI splits the shots, visuals follow your script')
                       : (isZh ? '逐字朗读，文案长度直接决定视频长度' : 'read verbatim; length sets video length')}
                   />
                   <ModeOption

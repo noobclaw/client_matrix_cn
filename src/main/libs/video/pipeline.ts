@@ -41,7 +41,7 @@ import { runRepostPipeline, transcribeAudio } from './repost-pipeline';
 import { generateStoryboardAnchor } from './storyboardAnchor';
 // 电影级(engine='ai')分镜表:把用户脚本 / 口播稿解析成结构化分镜,口播与画面彻底分家。
 import {
-  parseStoryboardScript, deriveStoryboard, formatScriptToShots, storyboardToText, shotAllowsText, type StoryShot,
+  parseStoryboardScript, deriveStoryboard, storyboardToText, shotAllowsText, type StoryShot,
 } from './storyboardScript';
 import { buildFramePrompt, buildMotionPrompt, buildLegacyPrompt, DEFAULT_STYLE_LOCK } from './shotPrompts';
 
@@ -345,6 +345,8 @@ export interface VideoCreationProgress {
   outputDir?: string;
   /** 本次实际产出的成片条数(批量出片时>1,随终态 done 事件带回供渲染端计数)。 */
   videoCount?: number;
+  /** 本次最终采用的分镜稿(纯文本)。分镜定下来时发一次,渲染端存进运行记录给用户看。 */
+  storyboardText?: string;
 }
 
 export interface VideoCreationResult {
@@ -419,6 +421,19 @@ export class ProgressTracker {
   /** 出片目录开跑即确定,设一次即可,后续每次 emit 都会带上。 */
   setOutputDir(dir: string) {
     this.outputDir = dir;
+  }
+  /** 分镜定下来时把分镜稿发给渲染端存档(详情页展示用)。只发一次,不进 markdown 运行记录。 */
+  sendStoryboard(text: string) {
+    if (!text || !text.trim()) return;
+    this.emit?.({
+      jobId: this.jobId,
+      status: 'running',
+      steps: this.steps.map((s) => ({ ...s })),
+      tokensUsed: this.tokensUsed,
+      costUsd: this.costUsd,
+      outputDir: this.outputDir,
+      storyboardText: text,
+    });
   }
   start(key: string, message?: string) {
     const s = this.steps.find((x) => x.key === key);
@@ -1166,7 +1181,18 @@ async function runVideoPipeline(
     } else if (input.engine === 'ai' && input.useStoryboardTable !== false) {
       // strict = 用户粘了脚本(可能是完整分镜脚本)→ 解析;ai = 稿子是 AI 写的口播 → 派生分镜。
       const isUserScript = scriptMode === 'strict';
-      tracker.progress(isUserScript ? '🎬 按你的脚本原文分镜(逐字照用,不做改写)…' : '🎬 正在为口播稿设计分镜…');
+      tracker.progress(isUserScript ? '🎬 AI 正在解析你的脚本、分拣口播与画面…' : '🎬 正在为口播稿设计分镜…');
+      // 🚨 分镜【必须过 LLM,且不兜底】(用户 2026-08-04 二次拍板)。
+      //   当天早些时候试过「有脚本就纯本地正则(formatScriptToShots)」,栽在真实输入上:
+      //   用户粘的是 AI 生成的分镜表 —— 镜号是【孤立一行数字】、字段名【独占一行不带冒号】
+      //   (「口播旁白」换行才是内容),正则的两条判据(镜头号要带「镜头/场景」前缀、字段要
+      //   同行带冒号)一条都不中 → 全篇落到「普通行=台词」,只能靠空行分段 → 4224 字切出
+      //   2 镜、每镜几千字被 min(10) 压成 10 秒,连「景别运镜」「音乐音效」都当口播念,
+      //   最后照样扣了 58 万积分出一条 20 秒废片。
+      //   「哪几行是口播、哪几行是给摄影师看的」这件事正是 LLM 的活(PARSE_SYSTEM 的 A/B/C
+      //   分拣),正则只能靠关键词猜,猜错还静默。成本上也没什么好省的:过一次 LLM 几分钱,
+      //   一条废片 ¥3+ 的采购成本 —— 所以失败就【整条任务失败】,绝不降级出废片。
+      let sbError: string | null = null;
       try {
         const sbInput = {
           lang: contentLang,
@@ -1175,32 +1201,44 @@ async function runVideoPipeline(
           styleHint: isUserScript ? undefined : [input.track, input.persona].filter(Boolean).join('、') || undefined,
           signal,
         };
-        // 🚨 有脚本时【不再过 LLM】(用户 2026-08-04 拍板:「有详细脚本就不要再过一次 LLM,
-        //   基本格式化一下直接给 Seedance」)。formatScriptToShots 是纯本地正则:认结构标记、
-        //   切镜、台词【逐字照抄】,一个字不改也不花 AI 的钱。逐字保真恒为 1(原文即输出)。
-        //   只有「只是一个想法」才走 deriveStoryboard 让 AI 写。
+        // strict = 用户粘了脚本(可能是完整分镜表)→ parseStoryboardScript 做分拣;
+        // ai     = 稿子是 AI 写的口播 → deriveStoryboard 设计画面。
         const sb = isUserScript
-          ? (() => {
-            const f = formatScriptToShots(script, contentLang);
-            return { shots: f.shots, tokens: 0, costUsd: 0, fidelity: 1, warnings: f.warnings };
-          })()
+          ? await parseStoryboardScript(script, sbInput)
           : await deriveStoryboard(script, sbInput);
         if (sb && sb.shots.length > 0) {
           tracker.addTokens(sb.tokens, sb.costUsd);
           aiCostUsd += sb.costUsd;
           for (const w of sb.warnings) tracker.progress(`⚠️ ${w}`);
-          // 逐字保真复核:口播必须忠于原文(营销文案/热点事实不能被 AI 改写)。低于阈值
-          //   说明 LLM 擅自润色了 → 宁可降级回老链路,也不出一条被改写过的片子。
+          // 逐字保真复核:口播必须忠于原文(营销文案/热点事实不能被 AI 改写)。
+          //   注:这是【子序列】比对,分母是 narration 长度 —— 原文里有多少制作说明都不影响,
+          //   只要念出来的字是从原文逐字抄的就是 1。低于阈值 = AI 真的润色了。
           if (sb.fidelity < 0.85) {
-            tracker.progress(`⚠️ 口播逐字复核仅 ${(sb.fidelity * 100).toFixed(0)}%,放弃分镜表、回退原文案链路`);
+            sbError = `口播逐字复核仅 ${(sb.fidelity * 100).toFixed(0)}% —— AI 改写了你的原文`;
           } else {
             aiShots = sb.shots;
           }
         } else {
-          tracker.progress('⚠️ 分镜解析未成功,回退到按句拆分');
+          sbError = 'AI 没能从这份稿子里拆出可用分镜';
         }
       } catch (e) {
-        tracker.progress(`⚠️ 分镜解析异常(${String((e as any)?.message || e).slice(0, 120)}),回退到按句拆分`);
+        sbError = `分镜解析异常:${String((e as any)?.message || e).slice(0, 140)}`;
+      }
+      // 合理性闸门:LLM 也会偷懒,把一大段口播塞进一镜(PARSE_SYSTEM 要求每镜 4~12 秒)。
+      //   一镜口播超过 25 秒的量 = 根本没按叙事切镜,继续跑只会得到「一张图慢慢动」+ 音画对不上,
+      //   而且钱是照扣的。宁可这里失败让用户重来,也不烧着钱出废片。
+      if (!sbError && aiShots) {
+        const cps = /^(zh|ja|ko)/.test(String(contentLang)) ? 4.5 : 2.2;
+        const tooLong = aiShots.filter((s) => s.narration.trim().length > cps * 25).length;
+        if (tooLong > 0) {
+          sbError = `有 ${tooLong} 个分镜的口播长到一镜念不完(每镜应 4~12 秒)—— 分镜没切开`;
+          aiShots = null;
+        }
+      }
+      if (sbError) {
+        const err = `分镜失败:${sbError}。已中止,未产生视频生成费用 —— 请调整脚本后重试`;
+        tracker.fail('script', err);
+        return { ok: false, error: err };
       }
     }
 
@@ -1291,6 +1329,11 @@ async function runVideoPipeline(
         );
       }
     } catch { /* 写文案 txt 失败不影响出片 */ }
+    // 分镜稿回传给渲染端存进运行记录 —— 详情页要能直接看到「这次到底怎么切的」,
+    //   不用去翻成片目录里的分镜表.txt。分镜是最贵也最容易切错的一步,必须可见。
+    if (aiShots) {
+      try { tracker.sendStoryboard(storyboardToText(aiShots, input.taskTitle || '分镜表')); } catch { /* 展示用,失败不影响出片 */ }
+    }
     tracker.done('script', `脚本约 ${script.length} 字,拆出 ${sentences.length} 个分镜`);
 
     // 2. 逐句配音。同时收集 edge-tts 词边界字幕 cue,按各句在总时间轴上的累计起点

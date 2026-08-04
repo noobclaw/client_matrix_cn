@@ -195,10 +195,41 @@ function cutByWidth(text: string, maxUnits: number): string[] {
   return out;
 }
 
+/** 一条字幕最多占几行(再多就糊满屏)。超出的不丢字,交给 splitCueByLines 拆成下一条。 */
+const MAX_SUB_LINES = 3;
+
 /** 把一句话按【可视宽度】折行:中文=1 字宽、拉丁/数字/空格≈0.5 字宽,英文优先在空格处断词
  *  (真机反馈:英文每个字母被当全宽算 → 行只用一半宽还从单词中间劈开)。 */
 function wrapSubtitle(text: string, maxPerLine = 14): string {
-  return cutByWidth(text, maxPerLine).slice(0, 3).join('\n'); // 最多 3 行,别糊满屏
+  return cutByWidth(text, maxPerLine).slice(0, MAX_SUB_LINES).join('\n');
+}
+
+/**
+ * 一条 cue 折行后超过 MAX_SUB_LINES → 按行分组拆成多条,时间在原区间里平分。
+ *
+ * 🚨 为什么必须拆:原来 wrapSubtitle 直接 `.slice(0,3)`,**第 4 行往后的字被静默丢掉**。
+ *   竖屏 768 宽 + 特大字号(100)时每行只放得下 6 个字,而 ASR 整句对齐出来的一条 cue
+ *   动辄二三十字 → 一条要 4~5 行 → 后面十几个字根本没烧进画面(用户实测:字幕断在
+ *   「…的解读周期逻」就没了)。丢字比糊屏严重得多,拆成多条既不丢也不糊。
+ */
+function splitCueByLines(cues: SubtitleCue[], maxPerLine: number): SubtitleCue[] {
+  const out: SubtitleCue[] = [];
+  for (const cue of cues) {
+    const lines = cutByWidth(cue.text, maxPerLine);
+    if (lines.length <= MAX_SUB_LINES) { out.push(cue); continue; }
+    const groups = Math.ceil(lines.length / MAX_SUB_LINES);
+    const span = Math.max(0.4, cue.end - cue.start);
+    for (let g = 0; g < groups; g++) {
+      const part = lines.slice(g * MAX_SUB_LINES, (g + 1) * MAX_SUB_LINES).join('\n');
+      if (!part.trim()) continue;
+      out.push({
+        text: part,
+        start: cue.start + (span * g) / groups,
+        end: cue.start + (span * (g + 1)) / groups,
+      });
+    }
+  }
+  return out;
 }
 
 /**
@@ -561,8 +592,11 @@ function buildDrawtextChain(
   const safeX = Math.round(W * 0.06);
   const maxPerLine = Math.max(6, Math.floor((W - 2 * safeX) / Math.max(16, style.fontSize)));
   const filters: string[] = [];
-  cues.forEach((cue, j) => {
-    const wrapped = wrapSubtitle(cue.text, maxPerLine);
+  // 先把「3 行装不下」的 cue 拆成多条(时间平分),否则超出的字会被 wrapSubtitle 直接丢掉。
+  //   ASR 整句对齐的一条 cue 常有二三十字,竖屏大字号每行只放 6 个 —— 不拆就必丢字。
+  splitCueByLines(cues, maxPerLine).forEach((cue, j) => {
+    // 已经拆过的 cue 自带换行,别再折一次(重复折行会把英文单词二次劈开)。
+    const wrapped = cue.text.includes('\n') ? cue.text : wrapSubtitle(cue.text, maxPerLine);
     if (!wrapped) return;
     const txtName = `cue_${String(j).padStart(4, '0')}.txt`;
     fs.writeFileSync(path.join(workDir, txtName), wrapped, 'utf8');

@@ -158,6 +158,8 @@ export interface VideoRunRecord {
   outputDir?: string;
   /** 本次实际产出的成片条数(批量出片时>1);缺省 / 老记录按 1 计。 */
   videoCount?: number;
+  /** 本次最终采用的分镜稿(纯文本)。详情页展示,让用户不用翻成片目录就知道 AI 怎么切的。 */
+  storyboardText?: string;
   error?: string;
   /** 本次运行消耗的 DeepSeek token(TTS/ffmpeg 免费不计)。 */
   tokensUsed: number;
@@ -579,6 +581,7 @@ class VideoTaskStore {
         if (typeof p.tokensUsed === 'number') r.tokensUsed = p.tokensUsed;
         if (typeof p.costUsd === 'number') r.costUsd = p.costUsd;
         if (p.outputDir) r.outputDir = p.outputDir;
+        if (p.storyboardText) r.storyboardText = p.storyboardText;
         if (p.message) {
           r.message = p.message;
           // 把本条日志归属到「当前正在跑的步骤」(没有 running 的就归到最后一个

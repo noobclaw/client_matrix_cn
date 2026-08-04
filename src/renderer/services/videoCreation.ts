@@ -276,6 +276,14 @@ export interface VideoCreationProgress {
   outputDir?: string;
   /** 本次实际产出的成片条数(批量出片时>1,随终态 done 事件带回供计数)。 */
   videoCount?: number;
+  /**
+   * 本次【最终采用的分镜稿】(纯文本,storyboardToText 的产物)。分镜定下来那一刻发一次。
+   *
+   * 为什么要回传:分镜是整条链路上最容易出岔子、又最贵的一步(切错 = 白烧一整批 Seedance)。
+   * 原来它只落在成片目录的「分镜表.txt」里 —— 任务详情页看不到,用户要翻文件夹才知道
+   * AI 到底怎么切的。带回来存进运行记录,详情页直接展示。
+   */
+  storyboardText?: string;
 }
 
 export interface VideoCreationResult {
