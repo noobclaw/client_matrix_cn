@@ -26,6 +26,7 @@ import { getAccount, setAccountStatus, accountBadgeLabel, matrixGroupTitle, mark
 import { trackIdFromGroup } from './trackPresets';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 import { getNoobClawAuthToken } from '../claudeSettings';
+import * as newsUsageStore from '../scenario/newsUsageStore';
 import type { EngageItemResult, EngageReport } from './engageRunner';
 import type { BinancePostConfig } from './types';
 
@@ -288,6 +289,24 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
       finish: (status: string, error?: string) => { finished = { status, error }; },
       aiCall,
       apiCall,
+      // 选题查重(照搬老 client 的 phaseRunner:ctx.newsUsage,binance_square_post_creator 一直用的就是它)。
+      //   isUsed(title)  → 这个钱包在这个 scenario 下是不是已经拿这篇资讯发过
+      //   markUsed(title) → 发布成功后记一笔
+      // 🚨 矩阵这边一直没挂这个,所以 fresh-news 每轮都可能返回同一篇 —— 选题重复的根因。
+      //   scenarioId 取 manifest.id(bitget_post / bybit_post / …各家独立)→ 同一条资讯
+      //   每个交易所各能发一次,跟搬运「每个发布平台各记各的」口径一致。
+      newsUsage: {
+        isUsed: (title: string): boolean => {
+          const scenarioId = String(pack?.manifest?.id || '');
+          if (!scenarioId) return false;
+          try { return newsUsageStore.isNewsUsed(scenarioId, title); } catch { return false; }
+        },
+        markUsed: (title: string): void => {
+          const scenarioId = String(pack?.manifest?.id || '');
+          if (!scenarioId) return;
+          try { newsUsageStore.markNewsUsed(scenarioId, title); } catch { /* ignore */ }
+        },
+      },
       // 仅本地模式落盘(可选;失败不阻塞)。
       saveDrafts: async (arr: any[]) => {
         try {
