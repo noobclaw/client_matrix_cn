@@ -3461,8 +3461,10 @@ const VideoConfigModal: React.FC<{
   );
   const [localVideos, setLocalVideos] = useState<string[]>(editTask?.input.localVideos || []);
   // AI 自动成片(Seedance):参考图(≤2,风格/人设统一)+ 清晰度(480/720,用户可选)。
-  const [referenceImages, setReferenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
+  // 只读:向导不再提供参考图入口,这里只是把老任务存过的值原样带回提交。
+  const [referenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
   // 清晰度:480p / 720p 二选一(传后端;单价/千token 不变,只是 720p token 数更多)。默认 720p。
+  // 默认 720p(清晰档,产品定的);编辑老任务时保留它自己存的值。
   const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p'>(
     editTask?.input.seedanceResolution === '480p' ? '480p' : '720p');
   // 纯AI 每秒卖价($/秒)+ 每秒积分,由服务端按清晰度算,动态展示(不写死)。
@@ -3623,14 +3625,8 @@ const VideoConfigModal: React.FC<{
   };
   const removeLocalVideo = (idx: number) => setLocalVideos((prev) => prev.filter((_, i) => i !== idx));
 
-  // AI 自动成片:参考图(≤2),做风格/人设统一。可选,不传也能纯文生视频。
-  const pickReferenceImages = async () => {
-    const remaining = 2 - referenceImages.length;
-    if (remaining <= 0) return;
-    const paths = await videoCreationService.pickReferenceImages(remaining);
-    if (paths.length) setReferenceImages((prev) => [...prev, ...paths].slice(0, 2));
-  };
-  const removeReferenceImage = (idx: number) => setReferenceImages((prev) => prev.filter((_, i) => i !== idx));
+  // 参考图的选/删入口已随向导那块 UI 一起下掉(2026-08-04)。referenceImages 这个 state 留着,
+  //   是为了【编辑老任务】时不把人家早先传过的参考图悄悄抹掉(提交时原样带回去)。
 
   // 背景音乐:选一首本地音频;再点一次「移除」清空。
   const pickBgm = async () => {
@@ -4320,38 +4316,11 @@ const VideoConfigModal: React.FC<{
               </Field>
               )}
 
-              {/* 纯 AI(Seedance):锁定省钱档(1.0 Lite + 480p,不让用户选,避免烧钱)+ 参考图(≤2)。 */}
+              {/* 纯 AI(Seedance):只让用户选清晰度。
+                  参考图入口已按产品要求下掉(2026-08-04)——底层 i2v 能力保留(故事板模式的
+                  每镜首帧还在用),只是向导不再让用户传整片参考图。 */}
               {mode === 'pure_ai' && (
               <>
-                <Field
-                  label={isZh ? '参考图（可选，最多 2 张）' : 'Reference images (optional, max 2)'}
-                  hint={isZh ? '统一画风/人设；不传则纯按文案生成画面' : 'unify style/persona; omit for pure text-to-video'}
-                >
-                  <div className="space-y-1.5">
-                    {referenceImages.map((p, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-1.5">
-                        <span className="text-sm">🖼️</span>
-                        <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{p.split(/[\\/]/).pop()}</span>
-                        <button
-                          type="button"
-                          onClick={() => removeReferenceImage(i)}
-                          className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 text-white text-xs flex items-center justify-center hover:bg-red-500 shrink-0"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    {referenceImages.length < 2 && (
-                      <button
-                        type="button"
-                        onClick={pickReferenceImages}
-                        className="w-full py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-sm text-gray-500 hover:border-rose-400 hover:text-rose-400 transition-colors"
-                      >
-                        ＋ {isZh ? '添加参考图' : 'Add reference image'}
-                      </button>
-                    )}
-                  </div>
-                </Field>
                 <Field
                   label={isZh ? '清晰度' : 'Resolution'}
                   hint={isZh ? '720p 更清晰、按秒计费更高;480p 更省。单价不变,只是 720p 每秒消耗更多' : '720p sharper (pricier per sec), 480p cheaper; same unit price, 720p uses more tokens/sec'}
