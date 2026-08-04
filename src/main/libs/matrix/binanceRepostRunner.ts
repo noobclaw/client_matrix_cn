@@ -708,6 +708,48 @@ async function publishVideoOne(
   }
 }
 
+/**
+ * 把候选素材按【各发布号自己的赛道关键词】分给对应的号。
+ *
+ * 为什么需要:采集只跑一次,用的是所有发布号关键词的【并集】。若勾选的号赛道不同
+ * (号1 DeFi / 号2 NFT / 号3 Meme),并集搜回来的候选是混着的 —— 原来按下标硬分
+ * (candidates[i] → accIds[i]),号1 很可能拿到一条 Meme 素材,内容跟它自己的赛道不搭。
+ *
+ * 做法(贪心两轮,不额外开采集):
+ *   ① 逐号从未分配的候选里挑一条【正文命中该号关键词】的;
+ *   ② 没匹配上的号,再按顺序补剩下的候选(总比不发强)。
+ * 返回与 accIds 等长的数组,元素可能为 null(候选不够)。
+ */
+function allocateByNiche(accIds: string[], candidates: RepostCandidate[]): Array<RepostCandidate | null> {
+  const assigned: Array<RepostCandidate | null> = new Array(accIds.length).fill(null);
+  const taken = new Set<number>();
+
+  // ① 精确匹配:命中该号任一关键词的候选优先给它
+  for (let i = 0; i < accIds.length; i++) {
+    const acc = getAccount(accIds[i]);
+    const kws = acc
+      ? effectiveKeywords(acc).map((k) => String(k || '').trim().toLowerCase()).filter(Boolean)
+      : [];
+    if (!kws.length) continue;
+    for (let j = 0; j < candidates.length; j++) {
+      if (taken.has(j)) continue;
+      const text = String(candidates[j]?.text || '').toLowerCase();
+      if (!text) continue;
+      if (kws.some((k) => text.indexOf(k) >= 0)) { assigned[i] = candidates[j]; taken.add(j); break; }
+    }
+  }
+
+  // ② 兜底:没匹配上的号按顺序领剩下的
+  let p = 0;
+  for (let i = 0; i < accIds.length; i++) {
+    if (assigned[i]) continue;
+    while (p < candidates.length && taken.has(p)) p++;
+    if (p >= candidates.length) break;
+    assigned[i] = candidates[p]; taken.add(p);
+  }
+  return assigned;
+}
+
 export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Promise<EngageReport> {
   if (!opts.kernelPath && !installedKernelPath()) {
     throw new Error(`${NO_KERNEL_ERROR}: 指纹浏览器内核未安装,请先到「我的矩阵账号」下载内核`);
@@ -779,11 +821,28 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
     return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: r })) };
   }
 
+  // 按各号自己的赛道把候选分配好 —— 采集用的是所有发布号关键词的并集,若各号赛道不同,
+  // 按下标硬分会让 DeFi 的号拿到 Meme 素材。命中关键词的优先给对应的号,剩下的再顺次补。
+  const allocated = allocateByNiche(accIds, candidates);
+  const matchedCount = allocated.filter((c, i) => {
+    if (!c) return false;
+    const acc = getAccount(accIds[i]);
+    const kws = acc ? effectiveKeywords(acc).map((k) => String(k || '').trim().toLowerCase()).filter(Boolean) : [];
+    const text = String(c.text || '').toLowerCase();
+    return kws.some((k) => text.indexOf(k) >= 0);
+  }).length;
+  if (candidates.length > 1 && accIds.length > 1) {
+    for (const id of accIds) {
+      opts.onLog?.(id, `🎯 素材按赛道分配:${matchedCount}/${accIds.length} 个号拿到贴合自己关键词的素材`
+        + (matchedCount < accIds.length ? '(其余按顺序补,可能不完全对口)' : ''));
+    }
+  }
+
   // ── 阶段B:分发(顺序执行,每条之间睡 60-120s 防连坐)──
   const items: EngageItemResult[] = [];
   for (let i = 0; i < accIds.length; i++) {
     if (opts.signal?.aborted) { items.push({ accountId: accIds[i], state: 'skipped', reason: 'aborted' }); continue; }
-    const candidate = candidates[i];
+    const candidate = allocated[i];
     if (!candidate) { opts.onLog?.(accIds[i], 'ℹ️ 候选素材已分完,本号本轮不发'); items.push({ accountId: accIds[i], state: 'skipped', reason: 'no_more_candidate' }); continue; }
     const r = isVideo
       ? await publishVideoOne(opts, publishPack, accIds[i], candidate)
@@ -793,7 +852,7 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
     if (r.state === 'success' && candidate.post_id) { try { srcSeen.record(String(candidate.post_id)); } catch { /* ignore */ } }
     try { opts.onItem?.(r); } catch { /* ignore */ }
     // 下一号发布前睡 60-120s(最后一号不睡;停止立即退)。
-    const hasNext = i < accIds.length - 1 && !!candidates[i + 1];
+    const hasNext = i < accIds.length - 1 && !!allocated[i + 1];
     if (hasNext && !opts.signal?.aborted) {
       const gap = randInt(60000, 120000);
       opts.onLog?.(accIds[i + 1], `⏳ 防连坐:距上一条发布间隔 ${Math.round(gap / 1000)}s…`);

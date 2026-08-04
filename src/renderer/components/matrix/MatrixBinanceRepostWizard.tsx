@@ -292,7 +292,10 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
                           {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">@{a.displayId}</span>}
                           {!ready && <span className="text-[11px] text-amber-500 shrink-0">{a.status === 'banned' ? i18nService.t('wzBnRepostStatusBanned') : i18nService.t('wzBnRepostStatusDisconnected')}</span>}
                         </div>
-                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzBnRepostRemarkPrefix')}{a.displayName}{a.group ? ` · ${a.group}` : ''}{Array.isArray(a.keywords) && a.keywords.length > 0 ? `${i18nService.t('wzBnRepostKeywordsPrefix')}${a.keywords.join('、')}` : ''}</div>
+                        {/* 采集号只显示身份(备注/昵称/头像)。它的赛道·人设·关键词【不显示】——
+                            搬运搜什么由【发布号】的赛道决定,把采集号的赛道摆在这里只会让人
+                            以为是按它搜的(用户实拍反馈:小红书美食号的关键词显示在搬运向导里)。 */}
+                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzBnRepostRemarkPrefix')}{a.displayName}</div>
                       </div>
                     </label>
                   );
