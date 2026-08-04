@@ -524,6 +524,10 @@ async function generateOne(
     //   渲染端 videoTaskStore.appendLog 认这个后缀做【原地更新】(不刷屏),ProgressTracker
     //   也认它跳过 markdown 落盘(运行记录里不留上百条只差秒数的行)。改文案先改那两处。
     let lastBeatMs = 0;
+    // 上游最近一次状态:火山 queued=还在离线队列里排着(没轮到),running=已经在生成。
+    //   心跳把这个区分显出来 —— 「排队中」和「生成中」用户体感完全不同,只写"生成中"
+    //   会让排队 20 分钟看起来像卡死。前缀不同 → 状态一变就新起一行,变化看得见。
+    let lastStatus = '';
     // 连续【查询失败】计数:偶发抖动照常重试,连续 12 次(约 1 分钟)说明链路断了,
     //   立刻退出去报错,而不是拿着一条查不动的任务干等满整个预算。
     let pollFails = 0;
@@ -534,7 +538,8 @@ async function generateOne(
       if (waitedMs - lastBeatMs >= 15000) {
         lastBeatMs = waitedMs;
         const s = Math.round(waitedMs / 1000);
-        onProgress?.(`🎬 第 ${idx + 1} 镜 AI 生成中… 已等 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+        const phase = lastStatus === 'queued' ? '排队中' : 'AI 生成中…';
+        onProgress?.(`🎬 第 ${idx + 1} 镜 ${phase} 已等 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
       }
       const st = await pollClipOnce(taskId, chargeId);
       if (st.pollFailed) {
@@ -542,6 +547,7 @@ async function generateOne(
         continue;
       }
       pollFails = 0;
+      lastStatus = st.status || '';
       if (st.status === 'succeeded') {
         if (!st.videoUrl) return { path: null, error: '成片无 video_url', chargedTokens };
         const outPath = path.join(destDir, `seedance_${idx + 1}_${taskId.slice(-8)}.mp4`);
