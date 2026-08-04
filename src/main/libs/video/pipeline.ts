@@ -2827,12 +2827,27 @@ async function runVideoPipeline(
           if (cues.length > 0) nativeCues = cues;
         }
 
-        // 🚨 字幕必须来自【成片音频的转写】,不能用分镜稿的台词。
-        //   电影级的声音是 Seedance 生成的 —— 它是生成模型不是朗读器,prompt 里写了
-        //   「人物说:「台词」」也不保证逐字念(实测会改词/换语序/说别的),所以拿稿子当字幕
-        //   必然对不上(用户 2026-08-04 实测「文字和配音内容都完全对不上」)。
-        //   转写之后:字幕 = 它实际说的那句,时间轴 = 它实际说话的时刻,两边天然一致。
-        //   转写失败/没人声 → 回落到 nativeCues(稿子),至少还有字幕,并在日志里说明可能不一致。
+        // 字幕来源:【稿子优先,转写只做校验和兜底】(2026-08-04 二次调整)。
+        //
+        // 两次真机实测互相矛盾,所以两头都不能赌:
+        //   · 早先一次:Seedance 改词/换语序,拿稿子当字幕「文字和配音完全对不上」→ 那次改成全用转写;
+        //   · 后来一次:它完全照着 narration 念(prompt 里台词是最高优先级、还写了口型严格同步)。
+        // 全用转写的代价很实在:转写会认错同音字,而且切句用的是【翻译搬运】那套参数
+        //   (pauseSec 0.6 / maxCueSec 5,给真人说话调的),合成语音句中的气口会被当成句号,
+        //   一句话被剁成两条字幕 —— 用户看到的「一句话字幕总是只有一半」就是这么来的。
+        // 现在的做法:仍然转写一次,但只拿它跟稿子比对 ——
+        //   一致(说明它老实照念)→ 返回空,让字幕回落到 nativeCues,也就是【稿子原文 + 每镜真实
+        //     时长】:文字完整、没有转写错字、不会被气口切碎;
+        //   差异大(它又改词了)→ 用转写结果,保证字幕和实际人声一致。
+        /** 字符级子序列匹配率:b 的字符能按顺序在 a 里找到多少。同 verifyNarrationFidelity 的口径。 */
+        const textLikeness = (a: string, b: string): number => {
+          const norm = (s: string) => s.replace(/[\s\p{P}\p{S}]/gu, '');
+          const x = norm(a), y = norm(b);
+          if (!y) return 0;
+          let i = 0, hit = 0;
+          for (const ch of y) { const at = x.indexOf(ch, i); if (at >= 0) { hit++; i = at + 1; } }
+          return hit / y.length;
+        };
         const asrSubtitles = subtitleEnabled ? async (mergedPath: string) => {
           const wav = path.join(assetDir, `native_asr_${Date.now()}.wav`);
           const ax = await runFfmpeg(
@@ -2850,9 +2865,26 @@ async function runVideoPipeline(
           const out = segs
             .filter((s) => s && s.text && s.text.trim() && s.end > s.start)
             .map((s) => ({ text: s.text.trim(), start: s.start, end: s.end }));
-          if (out.length > 0) tracker.progress(`${label ? label + ' · ' : ''}✓ 字幕已按真实人声对齐(${out.length} 句)`);
           // 转写是要花钱的,记进本次成本(与翻译搬运同口径)。
           if (asr.tokens) tracker.addTokens(asr.tokens, asr.costUsd || 0);
+          if (out.length === 0) return [];
+          // 跟分镜稿比一比。⚠️ 比的方向要对:算【转写内容有多少能在稿子里找到】,
+          //   而不是反过来。两种失败长得完全不一样,只有这个方向能把它们分开:
+          //     · 转写漏字(弱音/语速快,ASR 常漏,用户实测「字幕里总有字没有,配音里有」)
+          //       → 转写是稿子的子集,匹配率仍然高 → 该用【稿子】,它才是完整的那份;
+          //     · Seedance 改词/换语序 → 转写里冒出稿子没有的字,匹配率掉下来 → 该用【转写】。
+          //   反过来算(稿子的字能在转写里找到多少)会把「漏字」也判成低分,正好选错。
+          const script = (nativeCues || []).map((c) => c.text).join('');
+          const asrText = out.map((o) => o.text).join('');
+          if (script) {
+            const like = textLikeness(script, asrText);
+            if (like >= 0.8) {
+              tracker.progress(`${label ? label + ' · ' : ''}✓ 成片人声就是分镜稿的内容(吻合 ${Math.round(like * 100)}%),字幕用稿子原文 —— 转写会漏字,稿子是完整的`);
+              return [];   // 空 = 交给 concatNativeClips 回落到 nativeCues(稿子 + 每镜真实时长)
+            }
+            tracker.progress(`${label ? label + ' · ' : ''}⚠️ 成片人声与稿子只对上 ${Math.round(like * 100)}%(Seedance 改了词),字幕改用转写结果保证与人声一致`);
+          }
+          tracker.progress(`${label ? label + ' · ' : ''}✓ 字幕已按真实人声对齐(${out.length} 句)`);
           return out;
         } : undefined;
 

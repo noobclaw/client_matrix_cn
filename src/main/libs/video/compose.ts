@@ -1024,8 +1024,9 @@ export async function concatNativeClips(opts: {
     if (opts.subtitlesFromAudio) {
       try {
         const asrCues = await opts.subtitlesFromAudio(merged);
+        // 返回空【不一定是失败】—— 调用方比对过转写与稿子、确认一致后会主动返回空,
+        //   表示「就用稿子」(那边已经打了说明日志),这里再喊一句告警只会让人以为出错了。
         if (asrCues && asrCues.length > 0) cueSource = asrCues;
-        else opts.onProgress?.('⚠️ 音频转写没拿到结果,字幕回落到分镜稿台词(可能与人声不完全一致)');
       } catch (e) {
         opts.onProgress?.('⚠️ 音频转写失败,字幕回落到分镜稿台词(可能与人声不完全一致)');
       }
