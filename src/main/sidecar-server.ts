@@ -1300,7 +1300,10 @@ const server = http.createServer(async (req, res) => {
           case 'shell:openExternal': {
             const { openExternal: oe, getUserDataPath } = await import('./libs/platformAdapter');
             const url = String(args[0] || '');
-            let opened = await oe(url);
+            // preferKernel:用户在 app 里点了「用内置浏览器打开」——系统那条已经试过且没反应
+            //   (Windows 上「启动了但没显示」是检测不到的假成功),所以这次直接跳到内核。
+            const preferKernel = !!(args[1] && (args[1] as any).preferKernel);
+            let opened = preferKernel ? false : await oe(url);
             // 系统默认浏览器打不开(如 LaunchServices/默认浏览器关联损坏)→ 兜底:用已装的
             // 指纹内核(完整 Chromium)直接开这个 URL。独立小 profile(kernel_link_profile),
             // 不碰矩阵账号的指纹环境;没装内核则维持 false,由 renderer 弹「打开链接失败」。

@@ -568,12 +568,27 @@ export function createTauriElectronShim(): typeof window.electron {
         const target = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
         // 点击回执:app 自绘小提示条,系统坏不坏都会出现 —— 保证「点了必有反应」,
         // 也能区分「点击没进代码」vs「系统打不开」(2026-07-25 用户排障时全程无声,难定位)。
+        // ⚠️ Windows 上「浏览器起来了但没显示窗口」是【检测不到的假成功】:`start` 走
+        //    ShellExecute,这种情况照样退出码 0,下面每一层兜底都会被 opened===true 跳过,
+        //    用户只看到提示条一闪、然后什么都没有、连报错都没有。所以提示条本身给一个
+        //    手动出口:点它就直接用指纹内核(完整 Chromium)开,不再问系统。
         try {
           const toast = document.createElement('div');
-          toast.textContent = `🔗 正在打开:${target.slice(0, 64)}${target.length > 64 ? '…' : ''}`;
-          toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(17,20,26,.92);color:#fff;padding:8px 14px;border-radius:10px;font-size:12px;z-index:2147483647;pointer-events:none;max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+          const label = document.createElement('div');
+          label.textContent = `🔗 正在打开:${target.slice(0, 56)}${target.length > 56 ? '…' : ''}`;
+          const hint = document.createElement('div');
+          hint.textContent = '没反应?点这里用内置浏览器打开';
+          hint.style.cssText = 'margin-top:4px;color:#8ab4ff;text-decoration:underline;';
+          toast.appendChild(label);
+          toast.appendChild(hint);
+          toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(17,20,26,.94);color:#fff;padding:10px 16px;border-radius:10px;font-size:12px;z-index:2147483647;cursor:pointer;max-width:80vw;line-height:1.5;text-align:center;';
+          toast.onclick = () => {
+            try { toast.remove(); } catch { /* ignore */ }
+            ipcInvoke('shell:openExternal', target, { preferKernel: true }).catch(() => { /* ignore */ });
+          };
           document.body.appendChild(toast);
-          setTimeout(() => { try { toast.remove(); } catch { /* ignore */ } }, 2500);
+          // 给足点的时间:2.5s 太短,用户还没意识到"没打开"提示条就没了。
+          setTimeout(() => { try { toast.remove(); } catch { /* ignore */ } }, 8000);
         } catch { /* 提示条失败不影响打开 */ }
         // ① 首选 sidecar OS 级打开(主进程 start/open/xdg-open):最稳、不经 webview
         //    权限/弹窗拦截,且成功与否有明确布尔返回。2026-07-25 用户实测 opener 插件

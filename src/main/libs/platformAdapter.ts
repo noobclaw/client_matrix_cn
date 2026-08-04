@@ -219,6 +219,42 @@ export function getResourcesPath(): string {
 
 // ── shell.openExternal() equivalent ──
 
+/**
+ * Windows:http 的默认浏览器关联是不是【真的能用】。
+ *
+ * 顺序跟系统一致:先看用户选择(UserChoice.ProgId),没有再退回 HKCR\http。
+ * 拿到 ProgId 后解析 `shell\open\command`,把命令行里的 exe 抠出来看文件在不在。
+ * 任何一步断了都返回 false —— 宁可让上层用指纹内核开,也别静默什么都不做。
+ * ⚠️ 只做静态体检,不启动进程,所以不会有副作用、也不会慢。
+ */
+function winUrlHandlerLooksUsable(): boolean {
+  if (process.platform !== 'win32') return true;
+  try {
+    const { execFileSync } = require('child_process');
+    const q = (key: string, val: string): string => {
+      try {
+        const out = String(execFileSync('reg', ['query', key, ...(val ? ['/v', val] : ['/ve']), ...['/reg:64']],
+          { encoding: 'utf8', timeout: 4000, windowsHide: true }));
+        // 形如:    ProgId    REG_SZ    ChromeHTML
+        const m = out.match(/REG_(?:SZ|EXPAND_SZ)\s+(.+?)\s*$/m);
+        return m ? m[1].trim() : '';
+      } catch { return ''; }
+    };
+    const progId = q('HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice', 'ProgId')
+      || q('HKCR\\http', '');
+    if (!progId) return false;
+    const cmd = q(`HKCR\\${progId}\\shell\\open\\command`, '');
+    if (!cmd) return false;
+    // 命令行首个 token 就是 exe:带引号取引号内,不带引号取到第一个空格前。
+    const exe = cmd.startsWith('"') ? cmd.slice(1, cmd.indexOf('"', 1)) : cmd.split(/\s+/)[0];
+    if (!exe) return false;
+    return require('fs').existsSync(exe);
+  } catch {
+    // 体检本身失败(reg 不可用等)→ 不要因此把正常的打开也挡掉,按可用处理。
+    return true;
+  }
+}
+
 export async function openExternal(url: string): Promise<boolean> {
   if (isElectronMode()) {
     try {
@@ -242,6 +278,18 @@ export async function openExternal(url: string): Promise<boolean> {
       // Use explorer for local paths, cmd start for URLs.
       const { execFile } = require('child_process');
       if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        // ⚠️ `start` 走 ShellExecute:默认浏览器关联坏掉时它【照样退出码 0】,execSync 不抛,
+        //    于是这里恒返回 true —— sidecar 的指纹内核兜底(只在 !opened 时触发)、renderer
+        //    的 opener 插件 / window.open / 「打开链接失败」弹窗【全都进不去】。用户看到的就是
+        //    「toast 一闪,什么都没发生,连报错都没有」。macOS 那支早就会抓 stderr 判错,
+        //    Windows 这支一直裸奔。
+        //    这里补一道【事前体检】:把 http 的默认关联解析到真实 exe,解析不出来或文件不在
+        //    就直接判失败,让内核兜底有机会接手。(能启动但自己崩掉的浏览器仍检测不到 ——
+        //    那种只能靠 renderer 那个手动出口。)
+        if (!winUrlHandlerLooksUsable()) {
+          console.warn('[platformAdapter] Windows 默认浏览器关联不可用,交给上层兜底');
+          return false;
+        }
         execSync(`start "" "${url}"`, { windowsHide: true });
       } else {
         execFile('explorer.exe', [url], { windowsHide: false }, () => {});

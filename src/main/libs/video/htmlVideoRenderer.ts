@@ -83,6 +83,20 @@ export function resolveHeadlessBrowser(): HeadlessBrowser | null {
     const k = /edge/i.test(env) ? 'edge' : /chromium/i.test(env) ? 'chromium' : 'chrome';
     return { path: env, kind: k };
   }
+  // ① 首选【我们自己的指纹内核】。模板速生只是把 HTML 渲成帧,任何 Chromium 都行,
+  //    没有理由去动用户的浏览器 —— 而动了会出事:
+  //    macOS 的 LaunchServices 认 app bundle、不认进程,只要它看到
+  //    「Google Chrome.app 正在运行」(哪怕是我们起的 --headless=new,或渲染结束后
+  //    残留的 Google Chrome Helper),用户在别处点链接时的 `open <url>` 就会被
+  //    转发给那个没有窗口的实例 —— 页面不出来,而且退出码 0、没有任何报错。
+  //    (同一机制见 browser-use#4610。--user-data-dir 隔离得了数据,隔离不了 bundle。)
+  //    内核是独立 bundle,占用的是它自己,跟用户的 Chrome 再无关系。
+  try {
+    const { installedKernelPath } = require('../matrix/kernelInstaller');
+    const kernel = installedKernelPath();
+    if (kernel && fs.existsSync(kernel)) return { path: kernel, kind: 'chromium' };
+  } catch { /* 内核模块不可用 → 照旧往下找系统浏览器 */ }
+  // ② 内核没装才退回系统浏览器(功能不能因此不可用)。
   const cands: HeadlessBrowser[] = [];
   if (process.platform === 'win32') {
     const pf = process.env['PROGRAMFILES'] || 'C:\\Program Files';
@@ -270,10 +284,42 @@ class HeadlessSession {
     this.pending.clear();
     try { this.ws?.close(); } catch { /* ignore */ }
     this.ws = null;
-    try { this.proc?.kill('SIGKILL'); } catch { /* ignore */ }
+    // ⚠️ 别一上来就 SIGKILL:Chrome 会拉一堆 helper 子进程,主进程被直接杀掉后它们可能
+    //    留下来。而在 macOS 上,该 bundle 只要还有【任何】进程活着,LaunchServices 就认为
+    //    这个 app 在运行 —— 用户的 `open <url>` 会被转发给它,链接就打不开了。
+    //    先 SIGTERM 让 Chrome 自己按正常流程收掉子进程,给 1.5 秒;没退再 SIGKILL 兜底。
+    const proc = this.proc;
     this.proc = null;
+    if (proc) {
+      const { spawnSync } = require('child_process');
+      if (process.platform === 'win32' && proc.pid) {
+        // Windows:proc.kill() 底层是 TerminateProcess,只杀主进程,chrome 的十几个
+        //   子进程会全部变孤儿(本机实测 close 后仍剩 10 个)。taskkill /T 才收整棵树。
+        try { spawnSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore', timeout: 8000 }); } catch { /* ignore */ }
+      } else {
+        // POSIX:先 SIGTERM 让 chrome 自己按正常流程收子进程,给 1.5 秒;没退再 SIGKILL。
+        let exited = false;
+        try { proc.once('exit', () => { exited = true; }); } catch { /* ignore */ }
+        try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+        for (let i = 0; i < 15 && !exited; i++) await sleep(100);
+        if (!exited) { try { proc.kill('SIGKILL'); } catch { /* ignore */ } }
+      }
+    }
     const dir = this.profileDir;
     this.profileDir = '';
+    // 第三道:按【本次的临时 profile 路径】清扫残留子进程。
+    // ⚠️ 真机实测(用户 Mac,2026-08-04):SIGKILL 掉主进程后留下 14 个孤儿
+    //    `Google Chrome Helper (Renderer)`,全部带着本次的 --user-data-dir,
+    //    而且跨越了一次 Chrome 版本升级还活着(残留 .184 / 在用 .187)。
+    //    它们属于 Google Chrome.app,于是系统一直认为该 app 在运行,用户的
+    //    `open <url>` 被吞掉 —— 表现就是「点链接没反应、退出码还是 0」。
+    //    profile 目录名是每次 mkdtemp 随机生成的,拿它当锚点绝不会误杀用户自己的浏览器。
+    if (dir && process.platform !== 'win32') {
+      try {
+        const { spawnSync } = require('child_process');
+        spawnSync('pkill', ['-f', dir], { stdio: 'ignore', timeout: 5000 });
+      } catch { /* 清扫失败不影响主流程 */ }
+    }
     // Windows:chrome 退出后文件锁释放有延迟,删太快会 EPERM → 延迟 + 重试 3 次。
     if (dir) {
       for (let i = 0; i < 3; i++) {
