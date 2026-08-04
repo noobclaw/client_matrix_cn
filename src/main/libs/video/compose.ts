@@ -195,7 +195,7 @@ function cutByWidth(text: string, maxUnits: number): string[] {
   return out;
 }
 
-/** 一条字幕最多占几行(再多就糊满屏)。超出的不丢字,交给 splitCueByLines 拆成下一条。 */
+/** drawtext 路径:一条字幕最多占几行(再多就糊满屏)。超出的不丢字,交给 splitCueByLines 拆。 */
 const MAX_SUB_LINES = 3;
 
 /** 把一句话按【可视宽度】折行:中文=1 字宽、拉丁/数字/空格≈0.5 字宽,英文优先在空格处断词
@@ -212,15 +212,15 @@ function wrapSubtitle(text: string, maxPerLine = 14): string {
  *   动辄二三十字 → 一条要 4~5 行 → 后面十几个字根本没烧进画面(用户实测:字幕断在
  *   「…的解读周期逻」就没了)。丢字比糊屏严重得多,拆成多条既不丢也不糊。
  */
-function splitCueByLines(cues: SubtitleCue[], maxPerLine: number): SubtitleCue[] {
+function splitCueByLines(cues: SubtitleCue[], maxPerLine: number, maxLines = MAX_SUB_LINES): SubtitleCue[] {
   const out: SubtitleCue[] = [];
   for (const cue of cues) {
     const lines = cutByWidth(cue.text, maxPerLine);
-    if (lines.length <= MAX_SUB_LINES) { out.push(cue); continue; }
-    const groups = Math.ceil(lines.length / MAX_SUB_LINES);
+    if (lines.length <= maxLines) { out.push(cue); continue; }
+    const groups = Math.ceil(lines.length / maxLines);
     const span = Math.max(0.4, cue.end - cue.start);
     for (let g = 0; g < groups; g++) {
-      const part = lines.slice(g * MAX_SUB_LINES, (g + 1) * MAX_SUB_LINES).join('\n');
+      const part = lines.slice(g * maxLines, (g + 1) * maxLines).join('\n');
       if (!part.trim()) continue;
       out.push({
         text: part,
@@ -1087,7 +1087,7 @@ function assTime(sec: number): string {
  *   ASS 里 PlayRes 直接写真实分辨率,字号所见即所得。
  * 折行复用 cutByWidth —— 按可视宽度断,英文不会从单词中间劈开。
  */
-function buildNativeAss(
+export function buildNativeAss(
   cues: { text: string; start: number; end: number }[],
   W: number, H: number, fontSetting: number,
 ): string {
@@ -1096,9 +1096,22 @@ function buildNativeAss(
   const outline = Math.max(1, Math.round(fontPx / 18));
   // 每行最多几个字宽:留 8% 安全边,拉丁按 0.5 字宽算(cutByWidth 内部处理)。
   const maxPerLine = Math.max(6, Math.floor((W * 0.92) / fontPx));
-  const esc = (t: string) => cutByWidth(t.replace(/[{}]/g, '').replace(/\r?\n/g, ' ').trim(), maxPerLine)
-    .slice(0, 2)               // 电影级画面为主,字幕最多两行
-    .join('\\N');
+  /** 电影级画面为主,一条字幕最多两行。装不下的【拆成下一条】,不是丢掉。 */
+  const ASS_MAX_LINES = 2;
+  // 🚨 这里原来是 `.slice(0, 2)` —— 第三行往后【直接扔掉】。
+  //   电影级的字号是按画高换算的(fontPx = H × 字号/700),720p 竖屏下 64 号字实际渲染 117px,
+  //   算下来每行只放得下 6 个字 —— 两行封顶 12 字。而一镜的台词动辄三四十字,于是屏幕上
+  //   永远只看到开头十几个字,后面全没了(用户实测「字幕里总有字没有,配音里有」)。
+  //   现在先按行数把长 cue 拆成多条、时间在原区间内平分,一个字都不丢。
+  //   ⚠️ 电影级走的是这条 ASS 路径,不是 drawtext 那条 —— 改 wrapSubtitle 对它没有任何作用。
+  const clean = (t: string) => t.replace(/[{}]/g, '').replace(/\r?\n/g, ' ').trim();
+  const shown = splitCueByLines(
+    cues.map((c) => ({ ...c, text: clean(c.text) })),
+    maxPerLine,
+    ASS_MAX_LINES,
+  );
+  // splitCueByLines 拆出来的 text 已经带好换行,没拆的还是整句 —— 统一再折一次到 ASS 的 \N。
+  const esc = (t: string) => (t.includes('\n') ? t.split('\n') : cutByWidth(t, maxPerLine)).join('\\N');
   return [
     '[Script Info]',
     'ScriptType: v4.00+',
@@ -1113,6 +1126,6 @@ function buildNativeAss(
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Text',
-    ...cues.map((c) => `Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Default,,0,0,0,${esc(c.text)}`),
+    ...shown.map((c) => `Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Default,,0,0,0,${esc(c.text)}`),
   ].join('\n');
 }
