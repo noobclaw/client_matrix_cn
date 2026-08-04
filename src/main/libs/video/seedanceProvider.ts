@@ -514,19 +514,28 @@ async function generateOne(
     const budgetSec = Math.max(60, Math.min(3600, created.pollBudgetSec ?? timeoutSec));
     // 每镜【先扣费再生成】(服务端 /seedance/create 原子扣费),把这笔扣费显出来 ——
     // 否则用户只看到"生成中"、看不到扣费,会以为没收钱(失败镜服务端会自动退)。
-    const waitHint = created.serviceTier === 'flex'
-      ? ` · 离线档排队,最长等 ${Math.round(budgetSec / 60)} 分钟`
-      : '';
     onProgress?.(chargedTokens > 0
-      ? `💎 第 ${idx + 1} 镜 已扣 ${chargedTokens.toLocaleString()} 积分 · AI 生成中…${waitHint}`
-      : `🎬 第 ${idx + 1} 镜 AI 生成中…${waitHint}`);
-    const deadline = Date.now() + budgetSec * 1000;
+      ? `💎 第 ${idx + 1} 镜 已扣 ${chargedTokens.toLocaleString()} 积分 · AI 生成中…`
+      : `🎬 第 ${idx + 1} 镜 AI 生成中…`);
+    const startedAt = Date.now();
+    const deadline = startedAt + budgetSec * 1000;
+    // 等待期间每 15 秒报一次【已等多久】—— 原来只在开头写一句「离线档排队,最长等 30 分钟」,
+    //   之后十几分钟一声不吭,用户分不清是在等还是卡死了。心跳文案统一以「已等 M:SS」结尾:
+    //   渲染端 videoTaskStore.appendLog 认这个后缀做【原地更新】(不刷屏),ProgressTracker
+    //   也认它跳过 markdown 落盘(运行记录里不留上百条只差秒数的行)。改文案先改那两处。
+    let lastBeatMs = 0;
     // 连续【查询失败】计数:偶发抖动照常重试,连续 12 次(约 1 分钟)说明链路断了,
     //   立刻退出去报错,而不是拿着一条查不动的任务干等满整个预算。
     let pollFails = 0;
     while (Date.now() < deadline) {
       await sleep(5000);
       if (signal?.aborted) return { path: null, error: '已停止', chargedTokens };
+      const waitedMs = Date.now() - startedAt;
+      if (waitedMs - lastBeatMs >= 15000) {
+        lastBeatMs = waitedMs;
+        const s = Math.round(waitedMs / 1000);
+        onProgress?.(`🎬 第 ${idx + 1} 镜 AI 生成中… 已等 ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+      }
       const st = await pollClipOnce(taskId, chargeId);
       if (st.pollFailed) {
         if (++pollFails >= 12) return { path: null, error: `任务状态查询持续失败(${st.error || '未知'})` };

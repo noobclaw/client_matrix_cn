@@ -394,7 +394,9 @@ export class ProgressTracker {
     } catch { /* 落盘失败不影响任务 */ }
   }
   private send(status: 'running' | 'done' | 'error', message?: string, extra?: Partial<VideoCreationProgress>) {
-    if (message && this.logFile) {
+    // 心跳消息(以「已等 M:SS」结尾的等待计时)只推给 UI 做原地更新,不写进运行记录 ——
+    //   否则 AI 离线档等 30 分钟会往 markdown 里灌上百条只差几秒的行。约定见 seedanceProvider。
+    if (message && this.logFile && !/\s已等 \d+:\d{2}$/.test(message)) {
       // 每行做成 markdown 列表项:`- `[时:分:秒]` message`(跟其他任务的本地记录一样是 .md)。
       try { fs.appendFileSync(this.logFile, `- \`[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}]\` ${String(message).replace(/\n/g, ' ')}\n`); } catch { /* 忽略落盘错误 */ }
     }

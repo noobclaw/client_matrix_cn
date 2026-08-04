@@ -176,6 +176,16 @@ function nowHms(): string {
 }
 
 /**
+ * 心跳日志的识别:以「已等 M:SS」结尾的进度消息(AI 出片等待计时),返回它去掉计时的前缀。
+ * 前缀相同的两条 = 同一个计时器的两帧 → appendLog 原地替换而不是各占一行。
+ * 不是心跳则返回 ''。约定见 seedanceProvider.generateOne 的心跳注释。
+ */
+function heartbeatPrefix(message: string): string {
+  const m = /^(.*?)\s*已等 \d+:\d{2}$/.exec(String(message || ''));
+  return m ? m[1] : '';
+}
+
+/**
  * 从一帧进度的 steps 推出「当前步骤下标」用于日志归属:
  *   - 优先取正在 running 的那一步;
  *   - 没有 running(步骤间隙 / 全部跑完)时取最后一个 done/error 的步骤;
@@ -439,6 +449,14 @@ class VideoTaskStore {
   private appendLog(r: VideoRunRecord, message: string, step?: number) {
     const last = r.logs[r.logs.length - 1];
     if (last && last.message === message) return; // 去重连续重复
+    // 心跳日志(以「已等 M:SS」结尾,如 AI 出片每 15 秒报一次等待时长)【原地更新】:
+    //   前缀一样就把上一条替换掉,时间戳也跟着走 —— UI 上是一行会跳的计时器。
+    //   直接 push 的话,AI 离线档等 30 分钟能刷出上百条只差几秒的日志,把真正的进度冲没了。
+    const beat = heartbeatPrefix(message);
+    if (beat && last && heartbeatPrefix(last.message) === beat) {
+      r.logs[r.logs.length - 1] = { time: nowHms(), message, step };
+      return;
+    }
     r.logs.push({ time: nowHms(), message, step });
     if (r.logs.length > MAX_LOGS) r.logs = r.logs.slice(-MAX_LOGS);
   }
