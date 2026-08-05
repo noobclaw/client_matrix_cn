@@ -220,62 +220,6 @@ export function getResourcesPath(): string {
 // ── shell.openExternal() equivalent ──
 
 /**
- * Windows:http 的默认浏览器关联是不是【真的能用】。
- *
- * 顺序跟系统一致:先看用户选择(UserChoice.ProgId),没有再退回 HKCR\http。
- * 拿到 ProgId 后解析 `shell\open\command`,把命令行里的 exe 抠出来看文件在不在。
- * 任何一步断了都返回 false —— 宁可让上层用指纹内核开,也别静默什么都不做。
- * ⚠️ 只做静态体检,不启动进程,所以不会有副作用、也不会慢。
- */
-function winUrlHandlerLooksUsable(): boolean {
-  if (process.platform !== 'win32') return true;
-  try {
-    const { execFileSync } = require('child_process');
-    const q = (key: string, val: string): string => {
-      // 【注册表视图】三个都要试。原来写死 `/reg:64`,而 HKCR 是受 WOW64 重定向的合并视图 ——
-      //   浏览器若注册在 32 位视图(装的是 32 位版本,或厂商就写在 WOW6432Node 下),64 位视图里
-      //   查不到 → 体检判死 → 明明浏览器好好的却被判成"关联坏了"。默认视图优先,再补两个显式的。
-      for (const view of [[], ['/reg:64'], ['/reg:32']]) {
-        try {
-          const out = String(execFileSync('reg', ['query', key, ...(val ? ['/v', val] : ['/ve']), ...view],
-            { encoding: 'utf8', timeout: 4000, windowsHide: true }));
-          // 形如:    ProgId    REG_SZ    ChromeHTML
-          const m = out.match(/REG_(?:SZ|EXPAND_SZ)\s+(.+?)\s*$/m);
-          if (m && m[1].trim()) return m[1].trim();
-        } catch { /* 换下一个视图 */ }
-      }
-      return '';
-    };
-    const progId = q('HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice', 'ProgId')
-      || q('HKCR\\http', '');
-    // 🚨【查不出来 ≠ 坏了】。原来这里 `return false`,等于把"没读到"直接判成"关联损坏",
-    //   于是 start 根本不走、直奔指纹内核,没装内核的人就只剩一句"请安装内置浏览器"
-    //   (用户 2026-08-05 实测,他机器上浏览器是好的)。而 reg.exe 在 Node 里【本来就可能调不通】——
-    //   本机实测 execFileSync / spawnSync / execSync 四种方式全报「无效项名」,同一条命令在
-    //   PowerShell 里却正常。这种环境下体检恒失败,等于把每台机器都判死。
-    //   现在只在【能证明坏了】时才判死:读得到关联、但指向的 exe 不存在。读不出来一律按可用处理,
-    //   照常走 start;万一真没打开,用户还有提示条上的手动出口(那条会用系统现成的浏览器直开)。
-    if (!progId) { console.warn('[platformAdapter] 读不到 http 默认关联,按可用处理,仍走 start'); return true; }
-    // 用户级关联(HKCU\Software\Classes)优先于机器级 —— 免安装/单用户装的浏览器只写在这里。
-    const cmd = q(`HKCU\\Software\\Classes\\${progId}\\shell\\open\\command`, '')
-      || q(`HKCR\\${progId}\\shell\\open\\command`, '');
-    if (!cmd) { console.warn('[platformAdapter] 读不到', progId, '的启动命令,按可用处理'); return true; }   // 同上:读不出来不判死
-    // 命令行首个 token 就是 exe:带引号取引号内,不带引号取到第一个空格前。
-    let exe = cmd.startsWith('"') ? cmd.slice(1, cmd.indexOf('"', 1)) : cmd.split(/\s+/)[0];
-    // REG_EXPAND_SZ 里是 %ProgramFiles%\... 这种没展开的形式,不展开必然 existsSync 判否。
-    exe = exe.replace(/%([^%]+)%/g, (whole, name) => process.env[String(name)] || whole);
-    if (!exe) return true;   // 同上:命令行解析不出 exe 也算"查不出来",不判死
-    // 走到这里才是真能下结论的一步:关联指向的 exe 确实不在 → 判死,让上层兜底。
-    const ok = require('fs').existsSync(exe);
-    if (!ok) console.warn('[platformAdapter] 默认浏览器指向的文件不存在:', exe);
-    return ok;
-  } catch {
-    // 体检本身失败(reg 不可用等)→ 不要因此把正常的打开也挡掉,按可用处理。
-    return true;
-  }
-}
-
-/**
  * Windows:找一个【系统上本来就有】的浏览器 exe,给默认关联坏掉时兜底。
  *
  * 之所以要有这层:关联一坏,原来就直接跳到「用指纹内核开」,内核没装就彻底没辙 ——
@@ -345,26 +289,16 @@ export async function openExternal(url: string): Promise<boolean> {
       // Use explorer for local paths, cmd start for URLs.
       const { execFile } = require('child_process');
       if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
-        // ⚠️ `start` 走 ShellExecute:默认浏览器关联坏掉时它【照样退出码 0】,execSync 不抛,
-        //    于是这里恒返回 true —— sidecar 的指纹内核兜底(只在 !opened 时触发)、renderer
-        //    的 opener 插件 / window.open / 「打开链接失败」弹窗【全都进不去】。用户看到的就是
-        //    「toast 一闪,什么都没发生,连报错都没有」。macOS 那支早就会抓 stderr 判错,
-        //    Windows 这支一直裸奔。
-        //    这里补一道【事前体检】:把 http 的默认关联解析到真实 exe,解析不出来或文件不在
-        //    就直接判失败,让内核兜底有机会接手。(能启动但自己崩掉的浏览器仍检测不到 ——
-        //    那种只能靠 renderer 那个手动出口。)
-        if (!winUrlHandlerLooksUsable()) {
-          // 关联不可用 ≠ 没浏览器。先拿系统上现成的 Edge/Chrome/Firefox 直接开(绕过关联),
-          //   这一步能救绝大多数情况;真一个都找不到才交给上层的指纹内核兜底。
-          const b = winFallbackBrowser();
-          if (b) {
-            console.warn('[platformAdapter] Windows 默认浏览器关联不可用,改用', b);
-            execFile(b, [url], { windowsHide: false }, () => { /* detached, 不等 */ });
-            return true;
-          }
-          console.warn('[platformAdapter] Windows 默认浏览器关联不可用且找不到任何浏览器,交给上层兜底');
-          return false;
-        }
+        // 🚨【这里出过一次回归,别再动】
+        //   Windows 打开外链从来就是这一句 `start`,一直好用(用户实测 3.4.6 正常)。
+        //   2026-08-04 为了修 macOS「点了没反应也不报错」,顺手给 Windows 也加了一道
+        //   【关联体检】,体检不过就跳去指纹内核 —— 而那个体检靠 reg.exe,它在 Node 里
+        //   【本来就可能调不通】(本机实测 execFileSync/spawnSync/execSync 四种方式全报
+        //   「无效项名」,同一条命令在 PowerShell 里却正常)。于是体检恒判死、start 一次都不走,
+        //   没装内核的人彻底打不开链接 —— Windows 本来没病,是被修 mac 的药毒到的。
+        //   已回退成原样。要再动这里,先想清楚【Windows 到底出了什么问题】,
+        //   别为了别的平台的毛病给它加判断。
+        //   (打不开时的出口仍在:提示条那条手动入口会用系统现成的浏览器直开,见 openUrlWithAnyBrowser。)
         execSync(`start "" "${url}"`, { windowsHide: true });
       } else {
         execFile('explorer.exe', [url], { windowsHide: false }, () => {});
