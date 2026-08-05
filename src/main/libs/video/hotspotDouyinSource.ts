@@ -109,7 +109,10 @@ async function fetchDouyinClipsViaKernel(
       onLog(mode === 'image' ? '🔎 按标题搜抖音图文、取图…' : '🔎 按标题搜抖音、取无水印源…');
       const r = await runMatrixDouyinSearch(accountId, keywords, wantCount, mode, onLog);
       diag.reached = true; diag.scriptDiag = r.diag;
-      if (Array.isArray(r.titles) && r.titles.length > titles.length) titles = r.titles;
+      // driver 现在让 titles 与 urls 逐个同序(没 desc 的位置留空串占位),这里当【标题池】用,
+      //   所以自己把空的挑掉 —— 别在 driverCtx 里过滤,那会让搬运侧按下标取时全体错位。
+      const ts = Array.isArray(r.titles) ? r.titles.filter((t) => t && t.trim()) : [];
+      if (ts.length > titles.length) titles = ts;
       if (Array.isArray(r.urls) && r.urls.length) { urls = r.urls; break; }
       if (r.reason && r.reason.startsWith('no_matrix_driver')) { onLog('⚠️ ' + r.reason); diag.reason = r.reason; break; }
       if (attempt < MAX_TRIES) { onLog(`   ⚠️ 第 ${attempt}/${MAX_TRIES} 次没搜到,等 ${Math.round(RETRY_WAIT_MS / 1000)}s 再试…`); await abortableWait(RETRY_WAIT_MS, signal); }

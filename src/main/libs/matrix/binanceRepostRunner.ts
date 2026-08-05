@@ -208,7 +208,23 @@ async function downloadVideoUrl(accountId: string, url: string, destPath: string
   return false;
 }
 
-// 抖音视频源:复用 douyin_search driver(返回无水印 play_addr urls + 同序 titles 文案),runner 侧逐个下载。
+/**
+ * 源文案指纹 —— 给拿不到平台侧稳定 id 时当去重 key 用。
+ * 同一条作品的文案不会变,所以它跨运行稳定;而 CDN 地址每次都变,绝不能拿来当 id。
+ * 归一化掉空白和标点,避免平台偶尔多个空格就算成新的一条。
+ */
+function textFingerprint(s: string): string {
+  const norm = String(s || '').replace(/[\s\p{P}\p{S}]/gu, '').slice(0, 120);
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < norm.length; i++) {
+    const c = norm.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 + c, 0x85ebca6b) >>> 0;
+  }
+  return h1.toString(36) + h2.toString(36);
+}
+
+// 抖音视频源:复用 douyin_search driver(返回无水印 play_addr urls + 同序 titles 文案 + 同序 post_ids),runner 侧逐个下载。
 async function collectDouyinVideos(
   opts: BinanceRepostTaskOptions, srcAccId: string, keywords: string[], want: number,
   seen: ContentUsage, log: (m: string) => void,
@@ -219,6 +235,7 @@ async function collectDouyinVideos(
   const r = await runMatrixDouyinSearch(srcAccId, keywords, Math.min(want * 2, 20), 'video', (m) => log(m));
   const urls = Array.isArray(r.urls) ? r.urls : [];
   const titles = Array.isArray(r.titles) ? r.titles : [];
+  const postIds = Array.isArray(r.postIds) ? r.postIds : [];
   if (!urls.length) { log('⚠️ 抖音未取到视频:' + (r.reason || 'empty')); return out; }
   const dir = path.join(matrixDir(), 'repost_src', 'douyin', srcAccId, '原文');
   const pickedLocal = new Set<string>(); // 本轮内去重(seen.set 只含已用满的,采集不再记 → 靠这个防同轮重复)
@@ -226,12 +243,18 @@ async function collectDouyinVideos(
     if (opts.signal?.aborted) break;
     const u = String(urls[i] || '');
     if (!/^https?:\/\//i.test(u)) continue;
-    const idm = u.match(/(\d{15,})/);
-    const id = idm ? idm[1] : `dy_${i}_${randInt(1e5, 9e5)}`;
-    if (seen.set.has(id) || pickedLocal.has(id)) continue;
-    pickedLocal.add(id);
     const cap = String(titles[i] || '').trim();
     if (cap.length < 6) { log('   ⏭ 文案过短,跳过'); continue; } // 仿写需要源文案
+    // 去重 id 必须【跨运行稳定】。
+    // 🚨 老写法 `u.match(/(\d{15,})/)` 是从视频地址里抓数字 —— 但抖音无水印 play_addr 是带签名和
+    //   expire 的临时 CDN 地址,同一条作品每次搜出来的 url 都不一样,抓出的数字自然次次不同;
+    //   抓不到还回落 `dy_<i>_<随机数>`。两种情况都让 seen.set.has(id) 永远落空 = 去重完全没生效,
+    //   同一条视频被反复搬(用户 2026-08-05 实测:同一条财经视频连搬两次)。
+    // 现在优先用 driver 返回的 aweme_id(作品的稳定标识);老 driver 没这个字段时回落【源文案指纹】
+    //   —— 同一条作品 desc 不变,同样跨运行稳定,所以生产没部署新 driver 也照样去重。
+    const id = String(postIds[i] || '').trim() || `dycap_${textFingerprint(cap)}`;
+    if (seen.set.has(id) || pickedLocal.has(id)) { log('   ⏭ 这条已经搬过,跳过'); continue; }
+    pickedLocal.add(id);
     const dest = path.join(dir, `repost_douyin_${id}.mp4`);
     log(`📥 下载无水印视频 ${out.length + 1}/${want}…`);
     const ok = await downloadVideoUrl(srcAccId, u, dest, 'https://www.douyin.com/', opts.signal);

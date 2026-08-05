@@ -207,14 +207,14 @@ export async function runMatrixDouyinSearch(
   wantCount: number,
   mode: 'video' | 'image',
   onLog: (msg: string) => void,
-): Promise<{ urls: string[]; titles: string[]; reason?: string; diag?: unknown }> {
+): Promise<{ urls: string[]; titles: string[]; postIds: string[]; reason?: string; diag?: unknown }> {
   try {
     const drivers = await fetchMatrixDrivers();
     const code = drivers?.['douyin_search'];
-    if (!code) return { urls: [], titles: [], reason: 'no_matrix_driver:douyin_search(后端 /api/matrix/drivers 未下发)' };
+    if (!code) return { urls: [], titles: [], postIds: [], reason: 'no_matrix_driver:douyin_search(后端 /api/matrix/drivers 未下发)' };
     let fn: (ctx: any) => Promise<any>;
     try { fn = new AsyncFunction('ctx', code) as (ctx: any) => Promise<any>; }
-    catch (e: any) { return { urls: [], titles: [], reason: 'compile_failed:' + String(e?.message || e).slice(0, 80) }; }
+    catch (e: any) { return { urls: [], titles: [], postIds: [], reason: 'compile_failed:' + String(e?.message || e).slice(0, 80) }; }
     const ctx = {
       input: { keywords, wantCount, mode },
       cmd: (command: string, params: any, timeoutMs?: number) => matrixCmd(accountId, command, params, timeoutMs),
@@ -223,10 +223,16 @@ export async function runMatrixDouyinSearch(
     };
     const ret: any = await fn(ctx);
     const urls = Array.isArray(ret?.urls) ? ret.urls.filter((u: any) => typeof u === 'string') : [];
-    const titles = Array.isArray(ret?.titles) ? ret.titles.filter((s: any) => typeof s === 'string' && s.trim()).map((s: string) => s.trim()) : [];
-    return { urls, titles, reason: ret?.reason, diag: ret?.diag };
+    // titles / postIds 与 urls 【逐个同序】,所以这里【不能过滤空串】—— 一过滤后面全体错位,
+    //   搬运就会拿别人的文案配这条素材。挑空的是调用方按自己用途做的事:热搜那边当标题池用、
+    //   自己 filter;搬运按下标取,要的就是这个位置对不对得上。
+    const titles = Array.isArray(ret?.titles) ? ret.titles.map((s: any) => (typeof s === 'string' ? s.trim() : '')) : [];
+    // 作品 id(aweme_id),搬运跨运行去重的唯一稳定标识。老 driver 不返这个字段 → 空数组,
+    //   调用方会回落到文案指纹,所以生产没部署新 driver 也不会退化成"不去重"。
+    const postIds = Array.isArray(ret?.post_ids) ? ret.post_ids.map((s: any) => String(s || '')) : [];
+    return { urls, titles, postIds, reason: ret?.reason, diag: ret?.diag };
   } catch (e: any) {
-    return { urls: [], titles: [], reason: 'matrix_search_threw:' + String(e?.message || e).slice(0, 120) };
+    return { urls: [], titles: [], postIds: [], reason: 'matrix_search_threw:' + String(e?.message || e).slice(0, 120) };
   }
 }
 
