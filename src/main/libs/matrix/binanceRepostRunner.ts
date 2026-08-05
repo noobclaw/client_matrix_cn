@@ -224,6 +224,13 @@ function textFingerprint(s: string): string {
   return h1.toString(36) + h2.toString(36);
 }
 
+/** 源文案在去重账本里的 key(与平台 id 分开存,前缀避免撞上真实 id)。文案太短不足以标识内容 → 不用。 */
+function capKeyOf(text: string): string {
+  const t = String(text || '').trim();
+  if (t.length < 10) return '';
+  return 'cap_' + textFingerprint(t);
+}
+
 // 抖音视频源:复用 douyin_search driver(返回无水印 play_addr urls + 同序 titles 文案 + 同序 post_ids),runner 侧逐个下载。
 async function collectDouyinVideos(
   opts: BinanceRepostTaskOptions, srcAccId: string, keywords: string[], want: number,
@@ -232,7 +239,10 @@ async function collectDouyinVideos(
   const out: RepostCandidate[] = [];
   // douyin_search driver 内部会逐个关键词搜直到够 want(随机轮换 + 自带去水印/最高码率)。
   log('🎬 抖音搜索 + 取无水印源(关键词 ' + keywords.length + ' 个,搜尽自动换下一个)…');
-  const r = await runMatrixDouyinSearch(srcAccId, keywords, Math.min(want * 2, 20), 'video', (m) => log(m));
+  // 把【已搬过】的名单一并给 driver:它是无状态的,不给名单就会搜够 want 条便收手,而那几条可能
+  //   全都搬过 → 过滤完剩 0 条报「采集为空」,后面没搜过的关键词却还闲着。给了名单它就能在进详情页
+  //   之前跳过(每条省 navigate+5.5s),并自动往下一个关键词继续搜。
+  const r = await runMatrixDouyinSearch(srcAccId, keywords, Math.min(want * 2, 20), 'video', (m) => log(m), seen.set);
   const urls = Array.isArray(r.urls) ? r.urls : [];
   const titles = Array.isArray(r.titles) ? r.titles : [];
   const postIds = Array.isArray(r.postIds) ? r.postIds : [];
@@ -837,7 +847,24 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
 
   // ── 阶段A:采集 ──
   if (opts.signal?.aborted) return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'aborted' })) };
-  const { candidates, reason: collectReason } = await collectFromSource(opts, collectPack, postCount, srcSeen);
+  const collected = await collectFromSource(opts, collectPack, postCount, srcSeen);
+  const collectReason = collected.reason;
+  // 【第二把锁:源文案指纹】。平台 id 那把锁认的是"这条帖子",指纹认的是"这段内容",两者都记、
+  //   任一命中就跳过。加这道是因为光靠 id 有三种情况会漏:
+  //     ① 历史包用【随机数】当抖音的 id 记过账(见 collectDouyinVideos 的注释),那些记录永远
+  //        对不上今天的 aweme_id —— 老素材还会再搬一次,之后才开始正确记账;
+  //     ② 账本换过 key(f8cd46a 从"采集号"改成"发布平台")→ 旧账作废,全部当新的重搬一轮;
+  //     ③ 同一条内容被转发/在不同关键词下重出,平台给的 id 未必是同一个。
+  //   文案不会因为这些而变,所以它兜得住。放在这里过滤,四个源(含走剧本的 xhs/x/tiktok)一起生效,
+  //   backend 的采集剧本一行都不用改。
+  const candidates = collected.candidates.filter((c) => {
+    const key = capKeyOf(c.text);
+    if (!key) return true;
+    if (srcSeen.set.has(key)) { coworkLog('INFO', 'binanceRepostRunner', 'skip by caption fingerprint: ' + key); return false; }
+    return true;
+  });
+  const dropped = collected.candidates.length - candidates.length;
+  if (dropped > 0) for (const id of accIds) opts.onLog?.(id, `♻️ 跳过 ${dropped} 条搬过的内容(按源文案比对)`);
   if (!candidates.length) {
     const r = collectReason || 'no_candidates';
     for (const id of accIds) opts.onLog?.(id, `⚠️ 采集为空(${r}),本次无可搬运素材`);
@@ -872,7 +899,11 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
       : await publishOne(opts, publishPack, accIds[i], candidate);
     items.push(r);
     // 仅【发布成功】才把这条源计 1 次 → 用满 cap(默认 1)后下轮跳过;发布失败不计,可下轮重试。
-    if (r.state === 'success' && candidate.post_id) { try { srcSeen.record(String(candidate.post_id)); } catch { /* ignore */ } }
+    // 两把锁一起记:平台 id(认这条帖子)+ 源文案指纹(认这段内容,见上面 candidates 过滤处的说明)。
+    if (r.state === 'success') {
+      try { if (candidate.post_id) srcSeen.record(String(candidate.post_id)); } catch { /* ignore */ }
+      try { const ck = capKeyOf(candidate.text); if (ck) srcSeen.record(ck); } catch { /* ignore */ }
+    }
     try { opts.onItem?.(r); } catch { /* ignore */ }
     // 下一号发布前睡 60-120s(最后一号不睡;停止立即退)。
     const hasNext = i < accIds.length - 1 && !!allocated[i + 1];

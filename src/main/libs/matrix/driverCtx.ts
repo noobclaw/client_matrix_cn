@@ -207,6 +207,8 @@ export async function runMatrixDouyinSearch(
   wantCount: number,
   mode: 'video' | 'image',
   onLog: (msg: string) => void,
+  /** 调用方已用过的作品 id —— driver 拿它在进详情页前跳过,并继续往下一个关键词搜(见 douyin_search)。 */
+  seenIds?: Iterable<string>,
 ): Promise<{ urls: string[]; titles: string[]; postIds: string[]; reason?: string; diag?: unknown }> {
   try {
     const drivers = await fetchMatrixDrivers();
@@ -216,7 +218,7 @@ export async function runMatrixDouyinSearch(
     try { fn = new AsyncFunction('ctx', code) as (ctx: any) => Promise<any>; }
     catch (e: any) { return { urls: [], titles: [], postIds: [], reason: 'compile_failed:' + String(e?.message || e).slice(0, 80) }; }
     const ctx = {
-      input: { keywords, wantCount, mode },
+      input: { keywords, wantCount, mode, seenIds: seenIds ? Array.from(seenIds) : [] },
       cmd: (command: string, params: any, timeoutMs?: number) => matrixCmd(accountId, command, params, timeoutMs),
       sleep,
       log: (m: string) => { try { onLog('   ' + m); } catch { /* ignore */ } },
