@@ -232,48 +232,116 @@ function capKeyOf(text: string): string {
 }
 
 // 抖音视频源:复用 douyin_search driver(返回无水印 play_addr urls + 同序 titles 文案 + 同序 post_ids),runner 侧逐个下载。
+// 结构【照搬小红书采集剧本 binance_repost_collect_xhs】,因为它早就把这件事做对了:
+//   洗牌关键词 → 每轮最多试 KW_CAP 个 → 一个词一个词地搜、筛完累加 →【不够就换下一个词】
+//   → 全都搜尽再让 AI 衍生新词存进池子,下轮启用。
+//
+// 🚨 抖音这条原来是【一次性把所有词丢给 driver】。driver 取够 want 条就收手,而【去重发生在
+//   它外面】—— 它压根不知道那几条我们早搬过了。于是 1 条/次的任务只让它取 2 条,两条一撞车,
+//   过滤完剩 0,报「采集为空」,而命中的十几条和另外十几个关键词全晾着,用户还会觉得
+//   「从来没见他换关键词」(2026-08-05 实测)。更糟的是它【自锁】:采不到就发不出,发不出就
+//   不会写新记录,driver 那份名单永远补不上,下一轮照样空。
+//   小红书没这毛病,是因为它的去重在采集循环【里面】,发现这条用过就接着往下找。
+//   现在抖音也按词分轮:每轮只搜一个词,筛完不够就换词再搜,和小红书同构。
 async function collectDouyinVideos(
   opts: BinanceRepostTaskOptions, srcAccId: string, keywords: string[], want: number,
-  seen: ContentUsage, log: (m: string) => void,
+  seen: ContentUsage, log: (m: string) => void, authToken?: string,
 ): Promise<RepostCandidate[]> {
   const out: RepostCandidate[] = [];
-  // douyin_search driver 内部会逐个关键词搜直到够 want(随机轮换 + 自带去水印/最高码率)。
-  log('🎬 抖音搜索 + 取无水印源(关键词 ' + keywords.length + ' 个,搜尽自动换下一个)…');
-  // 把【已搬过】的名单一并给 driver:它是无状态的,不给名单就会搜够 want 条便收手,而那几条可能
-  //   全都搬过 → 过滤完剩 0 条报「采集为空」,后面没搜过的关键词却还闲着。给了名单它就能在进详情页
-  //   之前跳过(每条省 navigate+5.5s),并自动往下一个关键词继续搜。
-  const r = await runMatrixDouyinSearch(srcAccId, keywords, Math.min(want * 2, 20), 'video', (m) => log(m), seen.set);
-  const urls = Array.isArray(r.urls) ? r.urls : [];
-  const titles = Array.isArray(r.titles) ? r.titles : [];
-  const postIds = Array.isArray(r.postIds) ? r.postIds : [];
-  if (!urls.length) { log('⚠️ 抖音未取到视频:' + (r.reason || 'empty')); return out; }
+  if (!keywords.length) { log('⚠️ 采集号没有关键词,无法搜索'); return out; }
   const dir = path.join(matrixDir(), 'repost_src', 'douyin', srcAccId, '原文');
-  const pickedLocal = new Set<string>(); // 本轮内去重(seen.set 只含已用满的,采集不再记 → 靠这个防同轮重复)
-  for (let i = 0; i < urls.length && out.length < want; i++) {
-    if (opts.signal?.aborted) break;
-    const u = String(urls[i] || '');
-    if (!/^https?:\/\//i.test(u)) continue;
-    const cap = String(titles[i] || '').trim();
-    if (cap.length < 6) { log('   ⏭ 文案过短,跳过'); continue; } // 仿写需要源文案
-    // 去重 id 必须【跨运行稳定】。
-    // 🚨 老写法 `u.match(/(\d{15,})/)` 是从视频地址里抓数字 —— 但抖音无水印 play_addr 是带签名和
-    //   expire 的临时 CDN 地址,同一条作品每次搜出来的 url 都不一样,抓出的数字自然次次不同;
-    //   抓不到还回落 `dy_<i>_<随机数>`。两种情况都让 seen.set.has(id) 永远落空 = 去重完全没生效,
-    //   同一条视频被反复搬(用户 2026-08-05 实测:同一条财经视频连搬两次)。
-    // 现在优先用 driver 返回的 aweme_id(作品的稳定标识);老 driver 没这个字段时回落【源文案指纹】
-    //   —— 同一条作品 desc 不变,同样跨运行稳定,所以生产没部署新 driver 也照样去重。
-    const id = String(postIds[i] || '').trim() || `dycap_${textFingerprint(cap)}`;
-    if (seen.set.has(id) || pickedLocal.has(id)) { log('   ⏭ 这条已经搬过,跳过'); continue; }
-    pickedLocal.add(id);
-    const dest = path.join(dir, `repost_douyin_${id}.mp4`);
-    log(`📥 下载无水印视频 ${out.length + 1}/${want}…`);
-    const ok = await downloadVideoUrl(srcAccId, u, dest, 'https://www.douyin.com/', opts.signal);
-    if (!ok) { log('   ⏭ 下载失败,跳过'); continue; }
-    out.push({ post_id: id, source_url: u, author: '抖音用户', text: cap.slice(0, 1500), images: [], video_path: dest });
-    // 采集不计数;计数在发布成功后(runBinanceRepostTask)。本轮内同 id 不重复靠下面 seen.set + 顺序去重。
-    log(`   ✅ 采到 1 条视频(文案 ${cap.length} 字)`);
+  const pickedLocal = new Set<string>();   // 本轮内去重(seen.set 只含已用满的)
+
+  // 洗牌:driver 永远从第一个词搜起,不洗牌的话配 20 个词也只有最前面一两个长期在出力。
+  const shuffled = keywords.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
+  const KW_CAP = Math.min(shuffled.length, 4);   // 每轮最多试几个词(同小红书:限搜索量、防风控)
+  // 每个词让 driver 多取几条当候选池 —— 筛掉搬过的之后才有得挑(同小红书 POOL_MULT)。
+  const poolWant = Math.min(Math.max(want * 3, 6), 20);
+  log(`🎬 抖音采集 · 关键词 ${keywords.length} 个(本轮随机试 ≤${KW_CAP} 个)· 目标 ${want} 条`);
+
+  /** 单个关键词:搜一遍 → 逐条筛(已搬过/文案过短/下载失败都跳)→ 累加到 out。 */
+  const collectForKeyword = async (kw: string): Promise<void> => {
+    const r = await runMatrixDouyinSearch(srcAccId, [kw], poolWant, 'video', (m) => log(m), seen.set);
+    const urls = Array.isArray(r.urls) ? r.urls : [];
+    const titles = Array.isArray(r.titles) ? r.titles : [];
+    const postIds = Array.isArray(r.postIds) ? r.postIds : [];
+    if (!urls.length) { log('   ⚠️ 该词没取到视频:' + (r.reason || 'empty')); return; }
+    log(`   「${kw}」候选 ${urls.length} 条`);
+    for (let i = 0; i < urls.length && out.length < want; i++) {
+      if (opts.signal?.aborted) break;
+      const u = String(urls[i] || '');
+      if (!/^https?:\/\//i.test(u)) continue;
+      const cap = String(titles[i] || '').trim();
+      if (cap.length < 6) { log('   ⏭ 文案过短,跳过'); continue; }   // 仿写需要源文案
+      // 去重 id 必须【跨运行稳定】。老写法从视频地址抓数字,而抖音无水印 play_addr 是带签名和
+      //   expire 的临时 CDN 地址,同一条作品每次搜出来都不一样(抓不到还回落随机数)—— 等于没去重。
+      //   现在优先用 driver 返回的 aweme_id;老 driver 没这字段就回落源文案指纹,同样跨运行稳定。
+      const id = String(postIds[i] || '').trim() || `dycap_${textFingerprint(cap)}`;
+      if (seen.set.has(id) || pickedLocal.has(id)) { log('   ⏭ 这条已经搬过,跳过'); continue; }
+      pickedLocal.add(id);
+      const dest = path.join(dir, `repost_douyin_${id}.mp4`);
+      log(`📥 下载无水印视频 ${out.length + 1}/${want}…`);
+      const ok = await downloadVideoUrl(srcAccId, u, dest, 'https://www.douyin.com/', opts.signal);
+      if (!ok) { log('   ⏭ 下载失败,跳过'); continue; }
+      out.push({ post_id: id, source_url: u, author: '抖音用户', text: cap.slice(0, 1500), images: [], video_path: dest });
+      log(`   ✅ 采到 ${out.length}/${want} 条(文案 ${cap.length} 字)`);
+    }
+  };
+
+  for (let ki = 0; ki < KW_CAP && out.length < want; ki++) {
+    if (opts.signal?.aborted) break;
+    const kw = shuffled[ki];
+    log(`🔍 关键词「${kw}」(${ki + 1}/${KW_CAP})`);
+    const before = out.length;
+    // 单个词出错(命令异常/页面解析等)不该让整条采集崩 —— 记下来换下一个词(同小红书)。
+    try { await collectForKeyword(kw); }
+    catch (e: any) { log(`   ⚠️ 关键词「${kw}」采集出错(跳过):${String(e?.message || e).slice(0, 140)}`); }
+    if (out.length === before) log('   该词本轮无新素材,换下一个');
+  }
+
+  // 一条都没采到 = 这批词的内容都搬过了 → 让 AI 衍生一批新词存进衍生池,下轮就有新料可搜。
+  if (out.length === 0 && !opts.signal?.aborted) {
+    log('🧺 本轮没采到新素材(这些关键词的内容可能都搬过了),尝试衍生新关键词…');
+    await deriveDouyinKeywords(srcAccId, shuffled, authToken, opts.signal, log);
+  }
+  log(`🧺 采集完成:共 ${out.length} 条候选`);
   return out;
+}
+
+/**
+ * 关键词搜尽 → 让 AI 衍生一批同赛道新词,存进【衍生池】(原始词一个不动),下一轮 effectiveKeywords 自动带上。
+ * 对齐小红书采集剧本的 deriveAndPersistKeywords;失败只记日志,绝不让采集因此失败。
+ */
+async function deriveDouyinKeywords(
+  srcAccId: string, usedKeywords: string[], authToken: string | undefined,
+  signal: AbortSignal | undefined, log: (m: string) => void,
+): Promise<void> {
+  if (!authToken) { log('   ⚠️ 未登录,跳过关键词衍生'); return; }
+  try {
+    const aiCall = makeAiCall(authToken, undefined, signal);
+    const sys = '你是中文短视频选题助手。根据给定的一组抖音搜索关键词,推测它们所属的赛道,'
+      + '再给出 8 个【同赛道但更具体、说法不同】的新搜索词,用来在抖音搜到不一样的视频。'
+      + '要求:每个 2-8 个中文字;不要与给定词重复;不要英文、不要标点、不要话题符号;'
+      + '只输出 JSON:{"keywords":["词1","词2"]}';
+    const raw = await aiCall('__raw__', sys, '已用过的关键词:' + usedKeywords.slice(0, 12).join('、'), { max_tokens: 400 });
+    const txt = typeof raw === 'string' ? raw : (raw?.content || raw?.text || JSON.stringify(raw || ''));
+    let words: string[] = [];
+    try {
+      const m = String(txt).match(/\{[\s\S]*\}/);
+      const parsed = m ? JSON.parse(m[0]) : null;
+      if (parsed && Array.isArray(parsed.keywords)) words = parsed.keywords;
+    } catch { /* 解析不了就算了 */ }
+    const clean = words.map((w) => String(w || '').trim()).filter((w) => w && w.length <= 12).slice(0, 8);
+    if (!clean.length) { log('   ⚠️ 没能衍生出新关键词'); return; }
+    appendDerivedKeywords(srcAccId, clean);
+    log(`   ✨ 已衍生 ${clean.length} 个新关键词(下轮启用):${clean.join('、')}`);
+  } catch (e: any) {
+    log('   ⚠️ 关键词衍生失败:' + String(e?.message || e).slice(0, 100));
+  }
 }
 
 // 给采集/发布 orchestrator 公用的 captcha 等待。
@@ -368,7 +436,7 @@ async function collectFromSource(
 
     // 抖音视频源:不走采集剧本,runner 侧复用 douyin_search driver 搜+取无水印 + 逐个下载。
     if (cfg.sourcePlatform === 'douyin') {
-      const dyCands = await collectDouyinVideos(opts, srcAccId, keywords, want, seen, log);
+      const dyCands = await collectDouyinVideos(opts, srcAccId, keywords, want, seen, log, authToken);
       setAccountStatus(srcAccId, 'idle');
       log('采集完成:' + dyCands.length + ' 条候选');
       return { candidates: dyCands };
