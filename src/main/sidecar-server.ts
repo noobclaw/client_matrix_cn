@@ -1304,6 +1304,16 @@ const server = http.createServer(async (req, res) => {
             //   (Windows 上「启动了但没显示」是检测不到的假成功),所以这次直接跳到内核。
             const preferKernel = !!(args[1] && (args[1] as any).preferKernel);
             let opened = preferKernel ? false : await oe(url);
+            // 用户点了「没反应?用内置浏览器打开」→ 先别急着上内核。系统那条的失败多半是
+            //   【默认关联坏了/假成功】,而直接指定一个现成的 exe(Edge 等)是另一条路,通常就通了,
+            //   且不需要用户装任何东西 —— 原来直接跳内核,没装内核的人就彻底没辙了
+            //   (用户 2026-08-05 实测:机器上 Edge 好好的,却被提示要装内置浏览器)。
+            if (!opened && preferKernel && /^https?:\/\//i.test(url)) {
+              try {
+                const { openUrlWithAnyBrowser } = await import('./libs/platformAdapter');
+                opened = openUrlWithAnyBrowser(url);
+              } catch { /* 继续往下走内核兜底 */ }
+            }
             // 系统默认浏览器打不开(如 LaunchServices/默认浏览器关联损坏)→ 兜底:用已装的
             // 指纹内核(完整 Chromium)直接开这个 URL。独立小 profile(kernel_link_profile),
             // 不碰矩阵账号的指纹环境;没装内核则维持 false,由 renderer 弹「打开链接失败」。

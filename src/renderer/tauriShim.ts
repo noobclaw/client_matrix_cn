@@ -582,9 +582,20 @@ export function createTauriElectronShim(): typeof window.electron {
           toast.appendChild(label);
           toast.appendChild(hint);
           toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(17,20,26,.94);color:#fff;padding:10px 16px;border-radius:10px;font-size:12px;z-index:2147483647;cursor:pointer;max-width:80vw;line-height:1.5;text-align:center;';
-          toast.onclick = () => {
+          toast.onclick = async () => {
             try { toast.remove(); } catch { /* ignore */ }
-            ipcInvoke('shell:openExternal', target, { preferKernel: true }).catch(() => { /* ignore */ });
+            // 这条也可能开不出来(找不到任何浏览器、内核没装)。原来结果直接丢掉 → 用户点完
+            //   一片安静,比不点还糟。改成:失败就继续走 opener → window.open,最后把链接
+            //   摆出来让人手动复制。绝不静默。
+            let ok = false;
+            try {
+              const r: any = await ipcInvoke('shell:openExternal', target, { preferKernel: true });
+              ok = r?.opened === true;
+            } catch { /* 往下兜 */ }
+            if (ok) return;
+            if (await openInSystemBrowser(target)) return;
+            try { if (window.open(target, '_blank')) return; } catch { /* ignore */ }
+            try { await tauriDialogMessage(`无法自动打开浏览器,请手动访问 / Could not open the browser, please visit:\n\n${target}`, '打开链接失败 / Open link failed'); } catch { /* ignore */ }
           };
           document.body.appendChild(toast);
           // 给足点的时间:2.5s 太短,用户还没意识到"没打开"提示条就没了。
