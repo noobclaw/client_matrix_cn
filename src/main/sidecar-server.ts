@@ -263,9 +263,10 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   // 仅剧本与 task 字段不同)。其它类型未支持。
   if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post') return { ok: false, error: 'unsupported_task_type' };
   const platform = task.platform;
-  // 并发上限由服务端下发,顺手刷一下(10 分钟内不重复拉,失败不影响)。放在占锁【之前】拉,
-  //   免得刚调大了上限、本次还按旧值把人拦住。
-  await refreshMaxConcurrent();
+  // 并发上限由服务端下发,顺手刷一下 —— 【不等它】:拉一次最多要 8s(网络慢就吃满超时),
+  //   await 在这儿等于每 10 分钟就有一次点「运行」要干等几秒才动静,而这个值只是微调,
+  //   本次用当前值完全够(默认 17 已是平台总数)。拉到的新值供下次用。
+  void refreshMaxConcurrent();
   if (runningPlatforms.has(platform)) return { ok: false, error: 'another_task_running' };       // 同平台已在跑
   if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return { ok: false, error: 'concurrency_full' }; // 并发已满
   runningPlatforms.add(platform);
@@ -498,6 +499,9 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
 // 矩阵定时调度:跑在 sidecar(app 开着即在,切到别的页面也不停),对齐老客户端 60s tick。
 // 全局同时只跑一个;到点的取最早的一个跑。AI/计费 token 在 engageRunner 内回落 getNoobClawAuthToken。
 function startMatrixScheduler(): void {
+  // 启动时先把并发上限拉下来(此刻没人在等,慢一点无所谓)。这样用户第一次点「运行」就已经是
+  //   服务端的值,而不是等到某次运行顺带刷新才生效。失败无所谓,维持默认。
+  void refreshMaxConcurrent();
   setInterval(async () => {
     try {
       const { dueTasks } = await import('./libs/matrix/taskStore');

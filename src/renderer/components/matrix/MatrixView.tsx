@@ -735,7 +735,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     //   实际上后台互动一直在正常跑,发帖压根没起来,纯粹是界面骗人。
     const r = await M()?.runTaskById({ taskId: t.id, kernelPath });
     if (!r?.ok) {
-      setNotice(i18nService.t('mvStartFailed') + (r?.error === 'another_task_running' ? i18nService.t('mvHasTaskRunning') : r?.error || i18nService.t('mvUnknown')));
+      // concurrency_full 原来没映射,会把英文错误码原样甩给用户。它和 another_task_running 是
+      //   两回事:前者是「同时跑的任务数到顶了」(admin 可调 matrix_max_concurrent_tasks),
+      //   后者是「这个平台自己已经在跑了」。分开说,用户才知道该停一个还是该调上限。
+      const why = r?.error === 'another_task_running' ? i18nService.t('mvHasTaskRunning')
+        : r?.error === 'concurrency_full' ? i18nService.t('tdConcurrencyLimit')
+        : (r?.error || i18nService.t('mvUnknown'));
+      setNotice(i18nService.t('mvStartFailed') + why);
       return;   // 界面保持原样:正在跑的那个任务的进度不受影响
     }
     setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setSelectedTaskId(t.id);
