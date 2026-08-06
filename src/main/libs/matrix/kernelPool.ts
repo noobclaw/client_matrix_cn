@@ -1262,19 +1262,31 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
       //     才注入的,SSR 只有游客版) → 好号被判未登录;② 游客版 HTML 里【推荐关注/直播列表】本身就有
       //     一堆别人的 /orbit/user/<数字> → 游客被判已登录。只能用实时 DOM,且必须在 orbit 页上查。
       //   ⚠️ 侧栏是 SPA 渲染的,首查可能赶在渲染完之前 → 拿不到判据会被 ③.0 严格模式当成"未登录"。
-      //     调用方等待时长不一(engage 4.5s+复判、binancePostRunner 只有 2.5s),所以【probe 自己】
-      //     再补一次 1.5s 重试,把"没渲染完"和"真游客"区分开。
+      //   🚨 2026-08-06 用户实测「OKX 跑的时候说登录过期,但号其实是好的」。原来 probe 只
+      //     「扫一次 + 等 1.5s + 再扫一次」,叠加 engageRunner 的 4.5s + 复判前 4s,整个判定窗口
+      //     只有约 11.5 秒 —— OKX 是重 SPA,再叠上代理/VPN,侧栏经常渲染不完,好号就被判过期、
+      //     还弹扫码窗骚扰用户。严格模式本身没错(它是 8/3「Bitget 没登录却显示已连接」的修法,
+      //     那次假绿的代价是白跑一轮 + 已计费),错在【没给判据足够时间拿到答案】。
+      //     改成轮询到有答案为止(最多 ~11s,每 900ms 一次):侧栏一渲染出来立刻返回,
+      //     登录态正常的号第一次扫就命中、不多花一毫秒;只有真拿不到才走到严格模式。
+      //   ⚠️ 拿不到答案时【带回诊断】(找到几个 navItem 链接、尾段长什么样、当前路径)。
+      //     原来一律返回裸 "?",于是「没渲染完」和「OKX 改了 href 格式」两种完全不同的原因
+      //     长得一模一样 —— 后者是【永久】误判(判据要求尾段是 6 位以上纯数字,格式一变就永远
+      //     拿不到答案),再怎么等也没用,只能靠这行日志认出来。
       probe = '(async function(){try{'
-        + 'if(location.hostname.indexOf("okx.com")<0)return "?";'
+        + 'if(location.hostname.indexOf("okx.com")<0)return "?:not_okx_host";'
+        + 'var lastN=0,lastSegs="";'
         + 'function scan(){var as=document.querySelectorAll(\'a[class*="navItem"][href*="/orbit/user/"]\');'
-        + 'for(var i=0;i<as.length;i++){var h=(as[i].getAttribute("href")||"").split("?")[0];'
-        + 'var seg=h.replace(/\\/+$/,"").split("/").pop();'
-        + 'if(/^\\d{6,}$/.test(seg))return "1";'
-        + 'if(seg==="me")return "0";}'
-        + 'return "?";}'
-        + 'var v=scan();if(v!=="?")return v;'
-        + 'await new Promise(function(r){setTimeout(r,1500);});'
-        + 'return scan();}catch(e){return "?";}})()';
+        + ' lastN=as.length;var segs=[];'
+        + ' for(var i=0;i<as.length;i++){var h=(as[i].getAttribute("href")||"").split("?")[0];'
+        + '  var seg=h.replace(/\\/+$/,"").split("/").pop();segs.push(seg);'
+        + '  if(/^\\d{6,}$/.test(seg))return "1";'
+        + '  if(seg==="me")return "0";}'
+        + ' lastSegs=segs.slice(0,3).join(",");return "";}'
+        + 'for(var t=0;t<12;t++){var v=scan();if(v)return v;'
+        + ' await new Promise(function(r){setTimeout(r,900);});}'
+        + 'return "?:navItem="+lastN+(lastSegs?(" segs="+lastSegs):"")+" path="+location.pathname;'
+        + '}catch(e){return "?:err_"+String((e&&e.message)||e).slice(0,40);}})()';
     } else if (platform === 'instagram') {
       // IG:【语言无关】判据(UI 随 locale 变,不能靠文字)—— 登录墙有 username 输入框 / 或重定向到 /accounts/login。
       //   登录态没有登录表单。只判 0,否则 "?" 交回 cookie。待 VPN 真机确认正向标记(如导航头像)。
@@ -1300,7 +1312,9 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
         //   所以拿不到答案时,先把它导到 orbit 页再看一次。
         //   ⚠️ 只在【当前不在 orbit 页】时才导航:互动任务本来就跑在 orbit 页上,那边 scan 直接有
         //   答案,根本走不到这里,不会被打断。
-        if (v === '?' && platform === 'okx') {
+        // ⚠️ 判据现在会带诊断后缀("?:navItem=0 …"),所以别再用 v === '?' 比 —— 那样补救分支
+        //   永远进不去(这正是加诊断时最容易踩的一脚)。
+        if (String(v).charAt(0) === '?' && platform === 'okx') {
           try {
             const href = await kernelEval(accountId, '(function(){try{return location.href;}catch(e){return "";}})()');
             const cur = typeof href === 'string' ? href : '';
@@ -1308,10 +1322,22 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
               await kernelNavigate(accountId, 'https://www.okx.com/zh-hans/orbit');
               await new Promise((r) => setTimeout(r, 3500));   // 侧栏是 SPA 渲染,给它时间
               v = await kernelEval(accountId, probe);
+            } else if (cur.indexOf('/orbit') >= 0) {
+              // 已经在 orbit 页却轮询满 11s 还拿不到判据 = 侧栏很可能渲染卡住了(SPA 半死不活)。
+              //   重新导航一次给它一次重来的机会 —— 严格模式下这一步的代价是多花十几秒,
+              //   不做的代价是把好号判成过期 + 弹扫码窗。只重来一次,不循环。
+              await kernelNavigate(accountId, cur);
+              await new Promise((r) => setTimeout(r, 3500));
+              v = await kernelEval(accountId, probe);
             }
           } catch { /* 导航失败就维持原答案,不改变判定 */ }
         }
         if (v === '1') return true; if (v === '0') return false;
+        // 严格模式平台拿不到答案 = 下面会直接判未登录 → 把 probe 到底看到了什么记下来,
+        //   否则日志里只有一句「登录过期」,分不清是页面慢还是判据失效(后者是永久性的)。
+        if (STRICT_LOGIN_PLATFORMS.has(platform)) {
+          coworkLog('WARN', 'kernelPool', `${platform} 登录判据无结果,将按未登录处理: ${String(v).slice(0, 160)}`);
+        }
       } catch { /* "?"/异常 → 落 ③,绝不误杀 */ }
     }
     // ③.0 【严格模式:bitget / okx】—— probe 没给出明确答案时判【未登录】,不许落到 ③ 的默认放行。
