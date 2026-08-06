@@ -270,6 +270,20 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   if (runningPlatforms.has(platform)) return { ok: false, error: 'another_task_running' };       // 同平台已在跑
   if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return { ok: false, error: 'concurrency_full' }; // 并发已满
   runningPlatforms.add(platform);
+  // 🚨 立刻把本任务的进度占成 running。liveProgressByTask 里【上一次运行那条 status:'done' 从来不清】,
+  //   而真正的 running 要等下面把 live 对象组装好(要先 import 七八个 runner、读账号库、算会员号数墙)
+  //   才写进去 —— 中间隔着一串 await。详情页每 2s 轮一次 matrix:getRunProgress,只要轮在这个窗口里,
+  //   拿到的就是上一次那条 done,当场弹「运行完成」并把 running 置回 false;任务其实在后台正常跑着,
+  //   用户看到的却是"点一下没反应、得点第二下"(2026-08-06 实测,3.4.26 仍在)。
+  //   第一次跑某个任务不会中招:那时表里没条目、走的是 null 分支,而 null 分支有 15s 预热保护、
+  //   done 分支没有。占位条会被下面组装好的整条替换掉。
+  liveProgressByTask.set(task.id, {
+    taskId: task.id, status: 'running', startedAt: Date.now(),
+    targets: { like: 0, follow: 0, comment: 0 },
+    done: { like: 0, follow: 0, comment: 0 },
+    cost: { credits: 0, usd: 0 },
+    perAccountTargets: {}, perAccount: {}, logs: [],
+  });
   // 供 stopTask 强关本平台窗口。binance_repost 还要带上采集号(在源平台,跨平台窗口)一起强关。
   const forceCloseIds = [...(task.accountIds || [])];
   if (task.type === 'binance_repost' && task.binanceRepost?.sourceAccountId) forceCloseIds.push(task.binanceRepost.sourceAccountId);
@@ -492,6 +506,11 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     return { ok: true };
   } catch (e: any) {
     release();
+    // 起跑失败也要把进度落终态。上面占锁时就把它标成了 running,不收尾的话轮询永远看到 running,
+    //   详情页一直转圈、停止也没得停。(这条对占位失败和"组装好之后才抛"两种情况都成立 ——
+    //   后者原来就漏收尾,只是以前没人注意到。)
+    const lp = liveProgressByTask.get(task.id);
+    if (lp && lp.status === 'running') { lp.status = 'error'; lp.error = e?.message || String(e); }
     return { ok: false, error: e?.message || String(e) };
   }
 }
