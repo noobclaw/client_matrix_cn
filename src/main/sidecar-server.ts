@@ -1892,6 +1892,15 @@ const server = http.createServer(async (req, res) => {
           }
           case 'matrix:runTask': {
             // Fire-and-forget(同 video:generate):任务跑数分钟,进度走 matrix:progress SSE。
+            // ⚠️ 这条【没有运行锁】,而另外两个入口(matrix:runTaskById / matrix:runEngage)都有。
+            //   目前渲染端没有暴露它(tauriShim 里只有 runTaskById / runEngage),够不到,所以还安全;
+            //   但哪天有人把它接上去,就能绕开锁把同平台的任务顶掉。先在这里拦一道,占锁的事仍由
+            //   runMatrixTaskById 负责 —— 这里只做「同平台在跑就别进来」的守门。
+            {
+              const _p = String((args[0] as any)?.platform || '');
+              if (_p && runningPlatforms.has(_p)) return writeJSON(res, 200, { ok: false, error: 'another_task_running' });
+              if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return writeJSON(res, 200, { ok: false, error: 'concurrency_full' });
+            }
             try {
               const { runMatrixTask } = await import('./libs/matrix/taskRunner');
               const a = args[0] as any;

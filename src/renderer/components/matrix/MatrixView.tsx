@@ -728,9 +728,17 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     // 只拦【同一平台】已有任务在跑:同平台共用一套指纹内核会打架,不同平台各跑各的没问题。
     //   原来判的是全局 running —— 任意一个任务在跑就谁也点不了。
     if (runningPlatforms.includes(t.platform)) { setNotice(i18nService.t('mvAnotherTaskRunning')); return; }
-    setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setSelectedTaskId(t.id);
+    // 🚨 顺序要紧:【先请求,成功了再动界面】。原来是反的 —— 先把进度/日志清空、切到新任务、
+    //   把 running 置 true,然后才去请求;被 sidecar 以「同平台已有任务在跑」拒绝时又不还原。
+    //   于是跑着币安互动时点一下币安发帖,看到的就是:互动的进度日志没了、页面切到发帖、
+    //   状态显示没在跑 —— 活像互动被关掉、发帖抢了过去(用户 2026-08-05 实测)。
+    //   实际上后台互动一直在正常跑,发帖压根没起来,纯粹是界面骗人。
     const r = await M()?.runTaskById({ taskId: t.id, kernelPath });
-    if (!r?.ok) { setRunning(false); setNotice(i18nService.t('mvStartFailed') + (r?.error === 'another_task_running' ? i18nService.t('mvHasTaskRunning') : r?.error || i18nService.t('mvUnknown'))); }
+    if (!r?.ok) {
+      setNotice(i18nService.t('mvStartFailed') + (r?.error === 'another_task_running' ? i18nService.t('mvHasTaskRunning') : r?.error || i18nService.t('mvUnknown')));
+      return;   // 界面保持原样:正在跑的那个任务的进度不受影响
+    }
+    setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setSelectedTaskId(t.id);
   };
   const stopTask = async () => { setNotice(i18nService.t('mvStopRequested')); await M()?.stopTask?.(); };
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
