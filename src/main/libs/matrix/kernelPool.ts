@@ -1291,7 +1291,26 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
     }
     if (probe) {
       try {
-        const v = await kernelEval(accountId, probe);
+        let v = await kernelEval(accountId, probe);
+        // 【OKX 专属补救】它的判据是侧栏「个人主页」链接,【只有 orbit 页才有这个侧栏】。
+        //   扫码登录后浏览器往往停在账号中心 / 交易页(用户 2026-08-05 实拍:停在
+        //   okx.com/zh-hans/account/users),那里查不到判据 → 返回 "?" → 又因为 OKX 在
+        //   STRICT_LOGIN_PLATFORMS 里,"?" 直接判【未登录】→ 明明扫码登上了,卡片却一直显示
+        //   「尚未连接」,而且怎么重扫都一样(每次登完还是停在别的页)。
+        //   所以拿不到答案时,先把它导到 orbit 页再看一次。
+        //   ⚠️ 只在【当前不在 orbit 页】时才导航:互动任务本来就跑在 orbit 页上,那边 scan 直接有
+        //   答案,根本走不到这里,不会被打断。
+        if (v === '?' && platform === 'okx') {
+          try {
+            const href = await kernelEval(accountId, '(function(){try{return location.href;}catch(e){return "";}})()');
+            const cur = typeof href === 'string' ? href : '';
+            if (cur.indexOf('okx.com') >= 0 && cur.indexOf('/orbit') < 0) {
+              await kernelNavigate(accountId, 'https://www.okx.com/zh-hans/orbit');
+              await new Promise((r) => setTimeout(r, 3500));   // 侧栏是 SPA 渲染,给它时间
+              v = await kernelEval(accountId, probe);
+            }
+          } catch { /* 导航失败就维持原答案,不改变判定 */ }
+        }
         if (v === '1') return true; if (v === '0') return false;
       } catch { /* "?"/异常 → 落 ③,绝不误杀 */ }
     }
