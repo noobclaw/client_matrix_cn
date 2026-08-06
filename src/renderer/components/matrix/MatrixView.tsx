@@ -877,6 +877,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 const expiredCount = expiredCountByPlatform[p] || 0;
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
+                  {/* 该平台有任务正在跑 → 文字前一个闪烁绿点(替代原来的平台 emoji,用户 2026-08-06) */}
+                  {runningPlatforms.includes(p) && <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1.5 align-middle" aria-hidden="true" />}
                   {platLabel(p)}
                   {/* 该平台有登录过期账号 → 红圈计数角标(提醒去重新扫码连接) */}
                   {expiredCount > 0 && (
@@ -992,7 +994,11 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-wrap gap-2 mb-6">
               {PLATFORMS.map((p) => (
-                <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>{platLabel(p)}</button>
+                <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
+                  {/* 同上:该平台有任务在跑才亮绿点 */}
+                  {runningPlatforms.includes(p) && <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1.5 align-middle" aria-hidden="true" />}
+                  {platLabel(p)}
+                </button>
               ))}
             </div>
             {platform === 'douyin' ? (
@@ -1203,7 +1209,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   return (
                   <div key={r.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {platLabel(r.platform) || r.platform}</span>
+                      {/* 原来这里写死一个 🎵,不管什么平台都显示音符 —— 去掉(用户 2026-08-06)。 */}
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">{platLabel(r.platform) || r.platform}</span>
                       {runIsReply && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 {i18nService.t('mvReplyFans')}</span>}
                       <span className="font-medium dark:text-white">{r.taskName}</span>
                       {/* 正在跑的那次由 sidecar 按实时进度现合成(id 形如 live_<taskId>),用绿色脉冲标出来。 */}

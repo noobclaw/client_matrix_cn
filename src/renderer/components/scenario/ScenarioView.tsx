@@ -233,6 +233,22 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // still reaches the user within the normal refresh cycle.
   const [scenarios, setScenarios] = useState<Scenario[]>(() => DEFAULT_SCENARIOS);
   const [tasks, setTasks] = useState<Task[]>([]);
+  // 矩阵平台标签上的「有任务在跑」绿点。sidecar 的 matrix:listTasks 顺带返回 runningPlatforms
+  //   (哪些平台正在跑),这里只取这一项;非矩阵模式不拉。
+  const [matrixRunningPlatforms, setMatrixRunningPlatforms] = useState<string[]>([]);
+  useEffect(() => {
+    if (!matrixMode) return;
+    let alive = true;
+    const pull = async () => {
+      try {
+        const r = await (window as any).electron?.matrix?.listTasks?.();
+        if (alive && r?.ok) setMatrixRunningPlatforms(Array.isArray(r.runningPlatforms) ? r.runningPlatforms : []);
+      } catch { /* 拉不到就不显示绿点,不影响其它功能 */ }
+    };
+    void pull();
+    const t = setInterval(pull, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [matrixMode]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -2307,7 +2323,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                       : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'
                   }`}
                 >
-                  <span className="text-base leading-none">{tab.icon}</span>
+                  {/* 矩阵页不显示平台 emoji(用户 2026-08-06:一排彩色 emoji 噪音大、辨识度反而低)。
+                      文字前只在【该平台有任务正在跑】时亮一个闪烁绿点,让"哪个平台在忙"一眼可见。 */}
+                  {matrixRunningPlatforms.includes(tab.id) && (
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" aria-hidden="true" />
+                  )}
                   <span>{i18nService.t(tab.labelKey)}</span>
                 </button>
               );
