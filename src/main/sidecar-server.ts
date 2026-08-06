@@ -187,7 +187,33 @@ const matrixScanWatching = new Set<string>();
 
 // 矩阵号运行锁:按【平台】并发(参照老客户端 scenarioManager 的 runningByResource 按资源并发)——
 // 不同平台的任务可同时跑(各平台账号是独立指纹内核,互不冲突);同一平台同时只跑一个。封顶防开爆内核。
-const MATRIX_MAX_CONCURRENT = 3;
+// 【同时能跑几个平台的任务】写死 3 太紧 —— 光五个交易所广场(币安/OKX/Bybit/Gate/Bitget)就占满了:
+//   用户 2026-08-05 跑着币安+OKX+Bybit,再点 Gate/Bitget 就被「同时运行的任务已达上限」拦下。
+//   仍要封顶(每个平台要开一个指纹 Chromium,开爆了机器就卡死),但【值改由服务端下发】,
+//   admin 配 matrix_max_concurrent_tasks 即可随时调,不必再打包。拉不到就用 DEFAULT。
+const MATRIX_MAX_CONCURRENT_DEFAULT = 5;
+let MATRIX_MAX_CONCURRENT = MATRIX_MAX_CONCURRENT_DEFAULT;
+let _maxConcurrentFetchedAt = 0;
+/** 从 /api/matrix/config 取并发上限;10 分钟内不重复拉。任何失败都保持当前值,绝不因此挡住运行。 */
+async function refreshMaxConcurrent(): Promise<void> {
+  if (Date.now() - _maxConcurrentFetchedAt < 600_000) return;
+  _maxConcurrentFetchedAt = Date.now();
+  try {
+    const { getNoobClawAuthToken } = await import('./libs/claudeSettings');
+    const token = getNoobClawAuthToken();
+    if (!token) return;
+    const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+    const r = await fetch(`${base}/api/matrix/config`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000),
+    });
+    const j: any = await r.json();
+    const n = Number(j?.maxConcurrentTasks);
+    if (Number.isFinite(n) && n >= 1 && n <= 20 && n !== MATRIX_MAX_CONCURRENT) {
+      MATRIX_MAX_CONCURRENT = Math.floor(n);
+      coworkLog('INFO', 'sidecar-server', 'matrix max concurrent tasks = ' + MATRIX_MAX_CONCURRENT);
+    }
+  } catch { /* 拉不到就维持现值 */ }
+}
 const runningPlatforms = new Set<string>();                 // 正在跑的平台集合(并发锁的键)
 const abortByPlatform = new Map<string, AbortController>();  // 各平台的停止句柄(matrix:stopTask 用)
 const runAccountsByPlatform = new Map<string, string[]>();  // 各平台正在跑的账号(停某平台时强关这些号的窗口,立即止损)
@@ -233,6 +259,9 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   // 仅剧本与 task 字段不同)。其它类型未支持。
   if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post') return { ok: false, error: 'unsupported_task_type' };
   const platform = task.platform;
+  // 并发上限由服务端下发,顺手刷一下(10 分钟内不重复拉,失败不影响)。放在占锁【之前】拉,
+  //   免得刚调大了上限、本次还按旧值把人拦住。
+  await refreshMaxConcurrent();
   if (runningPlatforms.has(platform)) return { ok: false, error: 'another_task_running' };       // 同平台已在跑
   if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return { ok: false, error: 'concurrency_full' }; // 并发已满
   runningPlatforms.add(platform);

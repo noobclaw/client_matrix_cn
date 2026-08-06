@@ -8,7 +8,6 @@ import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { getBackendApiUrl } from '../../services/endpoints';
 import { openWallet } from '../../services/walletNav';
-import { HIDE_EXCHANGE_SQUARES } from '../../buildFlags';
 
 /**
  * 矩阵号主界面 —— 由左侧分组菜单驱动的 4 屏(screen prop):
@@ -44,14 +43,7 @@ function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).m
 // ⚠️ 两处曾经漂移:这里末尾是 instagram/facebook/reddit,任务页却是 facebook/reddit/instagram,
 //    而任务页注释还写着"已与 PLATFORMS 一致" —— 用户在两个页面间来回切会觉得错乱。
 //    现已按任务页口径统一,改任一处都要同步另一处。
-// 📌 CN 版特有的顺序:交易所广场五家(币安/OKX/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
-//    (整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
-const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'okx', 'bitget', 'bybit', 'gate'];
-// 交易所广场五家。⚠️ 产品定的口径是【保留】(HIDE_EXCHANGE_SQUARES=false):国内版这五个
-//    平台照常能加号、能建任务,只是菜单排在最后。所以这里不能再看 HIDE_WEB3 ——
-//    那个开关管的是钱包/返佣/链上支付,国内版仍要砍,两者不是一回事。
-const WEB3_SQUARE_PLATFORMS = ['binance', 'okx', 'bitget', 'bybit', 'gate'];
-const VISIBLE_PLATFORMS = HIDE_EXCHANGE_SQUARES ? PLATFORMS.filter((p) => !WEB3_SQUARE_PLATFORMS.includes(p)) : PLATFORMS;
+const PLATFORMS = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'binance', 'okx', 'bitget', 'bybit', 'gate', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram'];
 // 每个平台最多添加的账号数:客户端兜底 10,服务端 /api/matrix/config 的 maxAccountsPerPlatform 可覆盖(admin 调,不打包)。
 const MAX_ACCOUNTS_PER_PLATFORM_FALLBACK = 10;
 const PLAT_KEY: Record<string, string> = { douyin: 'platDouyin', xhs: 'platXhs', bilibili: 'platBilibili', kuaishou: 'platKuaishou', x: 'platX', binance: 'platBinance', shipinhao: 'platShipinhao', toutiao: 'platToutiao' };
@@ -234,8 +226,6 @@ const trackDisplayName = (p: TrackPreset, cl: ContentLang): string => (cl === 'e
 const DEFAULT_TRACK = '🍲 美食 · 探店做饭'; // 默认选中赛道(存 group 的规范名=中文,与视频默认 food 一致)
 // 交易所广场五家:连接账号时默认带出 Web3 赛道 —— 这些平台的内容生态就是加密货币,
 //   默认给「美食」等于每次新建号都要手动改一次。其它平台仍用 DEFAULT_TRACK。
-// 国内版现在【保留】这五家(HIDE_EXCHANGE_SQUARES=false),所以这段是真会走到的 ——
-//   以前它被 VISIBLE_PLATFORMS 过滤掉、注释写着"暂时走不到的分支",那条已经不成立了。
 const CRYPTO_TRACK_PLATFORMS = new Set(['binance', 'okx', 'bitget', 'bybit', 'gate']);
 // ⚠️ 赛道预设是【服务端下发】的(matrix_track_presets,admin 可改名/增删),所以按【id】认最稳:
 //   id 是稳定契约,name 会随文案调整变。id 找不到再退回按名字关键词找,最后才回落 DEFAULT_TRACK ——
@@ -316,6 +306,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [logs, setLogs] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  // 正在跑的平台集合。并发是【按平台】算的(sidecar 允许多个平台同时跑),不能拿全局 running
+  //   一刀切 —— 那会把服务端给的并发能力白白浪费掉(跑着币安就点不动 Gate)。
+  const [runningPlatforms, setRunningPlatforms] = useState<string[]>([]);
   const [doneReport, setDoneReport] = useState<any>(null);
 
   // 账号弹窗 + 通知
@@ -366,7 +359,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [kernelMenuOpen, setKernelMenuOpen] = useState(false);
 
   const reload = useCallback(async () => { const r = await M()?.listAccounts(); if (r?.ok) setAccounts(r.accounts || []); }, []);
-  const reloadTasks = useCallback(async () => { const r = await M()?.listTasks?.(); if (r?.ok) { setTasks(r.tasks || []); if (typeof r.running === 'boolean') setRunning(r.running); } }, []);
+  const reloadTasks = useCallback(async () => { const r = await M()?.listTasks?.(); if (r?.ok) { setTasks(r.tasks || []); if (typeof r.running === 'boolean') setRunning(r.running); setRunningPlatforms(Array.isArray(r.runningPlatforms) ? r.runningPlatforms : []); } }, []);
   const reloadRuns = useCallback(async () => { const r = await M()?.listRuns?.(); if (r?.ok) setRuns(r.runs || []); }, []);
 
   useEffect(() => { reload(); reloadTasks(); }, [reload, reloadTasks]);
@@ -659,11 +652,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         const hg = r?.hostGeo;
         const hgLabel = hg?.countryCode ? `${flagEmoji(hg.countryCode)} ${hg.country || hg.countryCode}${hg.city ? ' · ' + hg.city : ''}` : '';
         if (r?.cloudReachable === true) {
+          // 场景③:云端正常、本地不通 → 代理有效,需开 TUN。
           issues.push(i18nService.t('mvProxyCloudOkLocalFail').replace('{geo}', hgLabel || (hg?.country || '')));
           needTun = true;
         } else if (r?.cloudReachable === false) {
+          // 场景④:两端都不通 → 代理不可用。
           issues.push(i18nService.t('mvProxyUnreachable').replace('{err}', r?.error || i18nService.t('mvTimeout')));
         } else if (hg?.countryCode && hg.countryCode !== 'CN') {
+          // 云端测没跑成,但 host 是海外 IP → 仍提示开 TUN。
           issues.push(i18nService.t('mvProxyFailOverseasTun').replace('{geo}', hgLabel));
           needTun = true;
         } else {
@@ -729,7 +725,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     //   与 TaskDetailPage.handleRunNow 口径一致(手动运行都先拦一道)。
     if (!noobClawAuth.hasEnoughBalanceForTask()) return;
     if (!requireKernel()) return;
-    if (running) { setNotice(i18nService.t('mvAnotherTaskRunning')); return; }
+    // 只拦【同一平台】已有任务在跑:同平台共用一套指纹内核会打架,不同平台各跑各的没问题。
+    //   原来判的是全局 running —— 任意一个任务在跑就谁也点不了。
+    if (runningPlatforms.includes(t.platform)) { setNotice(i18nService.t('mvAnotherTaskRunning')); return; }
     setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setSelectedTaskId(t.id);
     const r = await M()?.runTaskById({ taskId: t.id, kernelPath });
     if (!r?.ok) { setRunning(false); setNotice(i18nService.t('mvStartFailed') + (r?.error === 'another_task_running' ? i18nService.t('mvHasTaskRunning') : r?.error || i18nService.t('mvUnknown'))); }
@@ -854,7 +852,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             </div>
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {VISIBLE_PLATFORMS.map((p) => {
+              {PLATFORMS.map((p) => {
                 const expiredCount = expiredCountByPlatform[p] || 0;
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
@@ -972,7 +970,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {screen === 'newTask' && (
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-wrap gap-2 mb-6">
-              {VISIBLE_PLATFORMS.map((p) => (
+              {PLATFORMS.map((p) => (
                 <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>{platLabel(p)}</button>
               ))}
             </div>
@@ -1044,7 +1042,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <h2 className="text-lg font-bold dark:text-white">📋 {i18nService.t('mvMyGrowthTasks').replace('{platform}', platLabel(platform))}</h2>
               <div className="flex items-center gap-2">
                 <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="text-sm px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-white">
-                  {VISIBLE_PLATFORMS.map((p) => <option key={p} value={p}>{platLabel(p)}</option>)}
+                  {PLATFORMS.map((p) => <option key={p} value={p}>{platLabel(p)}</option>)}
                 </select>
                 <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">🎶 {i18nService.t('mvNewTask')}</button>
               </div>
@@ -1092,7 +1090,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         {isRunning
                           ? <span onClick={(e) => { e.stopPropagation(); stopTask(); }} className="text-xs px-3 py-1 rounded-lg font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</span>
-                          : <span onClick={(e) => { e.stopPropagation(); runTaskNow(t); }} className={`text-xs px-3 py-1 rounded-lg font-semibold ${running ? 'bg-gray-300 text-gray-500 dark:bg-gray-700' : 'bg-violet-500 text-white hover:bg-violet-600'}`}>🎯 {i18nService.t('mvRun')}</span>}
+                          : <span onClick={(e) => { e.stopPropagation(); runTaskNow(t); }} className={`text-xs px-3 py-1 rounded-lg font-semibold ${runningPlatforms.includes(t.platform) ? 'bg-gray-300 text-gray-500 dark:bg-gray-700' : 'bg-violet-500 text-white hover:bg-violet-600'}`}>🎯 {i18nService.t('mvRun')}</span>}
                       </div>
                     </button>
                   );
@@ -1113,7 +1111,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="ml-auto flex gap-2">
                 {runningTaskId === selectedTask.id
                   ? <button onClick={stopTask} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</button>
-                  : <button onClick={() => runTaskNow(selectedTask)} disabled={running} className={`px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 ${selectedIsReply ? 'bg-fuchsia-500 hover:bg-fuchsia-600' : 'bg-violet-500 hover:bg-violet-600'}`}>{running ? i18nService.t('mvRunningEllipsis') : i18nService.t('mvRunNow')}</button>}
+                  : <button onClick={() => runTaskNow(selectedTask)} disabled={runningPlatforms.includes(selectedTask.platform)} className={`px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 ${selectedIsReply ? 'bg-fuchsia-500 hover:bg-fuchsia-600' : 'bg-violet-500 hover:bg-violet-600'}`}>{runningPlatforms.includes(selectedTask.platform) ? i18nService.t('mvRunningEllipsis') : i18nService.t('mvRunNow')}</button>}
                 <button onClick={() => { if (!requireLogin()) return; if (selectedIsReply) { setReplyEditId(selectedTask.id); setShowReplyEditModal(true); } else { setTaskEditId(selectedTask.id); setShowTaskEditModal(true); } }} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{i18nService.t('mvEdit')}</button>
                 <button onClick={() => deleteTask(selectedTask)} className="px-3 py-2 rounded-lg text-sm font-medium border border-red-500/40 text-red-500 hover:bg-red-500/5">{i18nService.t('mvDelete')}</button>
               </div>
