@@ -2317,16 +2317,20 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setPlatform(tab.id)}
+                  // 有任务在跑的平台:未选中时整颗标签染绿(边框+文字+淡背景),不用盯着小圆点也能一眼扫到;
+                  //   选中态仍用紫色(那是"你当前在看哪个"),不被绿色顶掉,两种含义不打架。
                   className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm border transition-colors whitespace-nowrap ${
                     active
                       ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium'
-                      : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'
+                      : matrixRunningPlatforms.includes(tab.id)
+                        ? 'border-green-500/60 bg-green-500/10 text-green-500 font-medium'
+                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'
                   }`}
                 >
                   {/* 矩阵页不显示平台 emoji(用户 2026-08-06:一排彩色 emoji 噪音大、辨识度反而低)。
                       文字前只在【该平台有任务正在跑】时亮一个闪烁绿点,让"哪个平台在忙"一眼可见。 */}
                   {matrixRunningPlatforms.includes(tab.id) && (
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" aria-hidden="true" />
+                    <span className="relative flex w-2.5 h-2.5 shrink-0" aria-hidden="true"><span className="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping" /><span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_10px_3px_rgba(74,222,128,0.9)]" /></span>
                   )}
                   <span>{i18nService.t(tab.labelKey)}</span>
                 </button>

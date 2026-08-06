@@ -878,7 +878,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
                   {/* 该平台有任务正在跑 → 文字前一个闪烁绿点(替代原来的平台 emoji,用户 2026-08-06) */}
-                  {runningPlatforms.includes(p) && <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1.5 align-middle" aria-hidden="true" />}
+                  {runningPlatforms.includes(p) && <span className="relative inline-flex w-2.5 h-2.5 mr-2 align-middle" aria-hidden="true"><span className="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping" /><span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_10px_3px_rgba(74,222,128,0.9)]" /></span>}
                   {platLabel(p)}
                   {/* 该平台有登录过期账号 → 红圈计数角标(提醒去重新扫码连接) */}
                   {expiredCount > 0 && (
@@ -996,7 +996,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               {PLATFORMS.map((p) => (
                 <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
                   {/* 同上:该平台有任务在跑才亮绿点 */}
-                  {runningPlatforms.includes(p) && <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1.5 align-middle" aria-hidden="true" />}
+                  {runningPlatforms.includes(p) && <span className="relative inline-flex w-2.5 h-2.5 mr-2 align-middle" aria-hidden="true"><span className="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping" /><span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_10px_3px_rgba(74,222,128,0.9)]" /></span>}
                   {platLabel(p)}
                 </button>
               ))}

@@ -571,7 +571,13 @@ function mxRunToRecord(r: any): any {
       tokens_used: Number(r.cost?.credits) || 0, cost_usd: Number(r.cost?.usd) || 0, collected_count: 0, draft_count: 0,
     },
 
-    summary: `成功 ${r.success || 0} · 失败 ${r.failed || 0} · 跳过 ${r.skipped || 0}（共 ${items.length} 个号）`,
+    // 在跑的那条:三项计数都还是 0(号都是 running 态),只报「成功0·失败0·跳过0」像白跑了一趟。
+    //   把【进行中几个号】排在最前,状态一眼能看出来。
+    summary: (() => {
+      const inflight = items.filter((it) => it.state !== 'success' && it.state !== 'failed' && it.state !== 'skipped').length;
+      const tail = `成功 ${r.success || 0} · 失败 ${r.failed || 0} · 跳过 ${r.skipped || 0}（共 ${items.length} 个号）`;
+      return r.running && inflight > 0 ? `进行中 ${inflight} · ${tail}` : tail;
+    })(),
     step_logs,
   };
 }
