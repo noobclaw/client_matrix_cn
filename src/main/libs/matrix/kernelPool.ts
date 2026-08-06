@@ -1325,7 +1325,12 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
           try {
             const href = await kernelEval(accountId, '(function(){try{return location.href;}catch(e){return "";}})()');
             const cur = typeof href === 'string' ? href : '';
-            const looksLoginUrl = /\/(login|signin|sign-in|register|signup|auth|passport|verify|account\/(login|users|security))/i.test(cur);
+            // ⚠️ 只列【登录表单页】。别把 account/users、account/security 这类【登录成功后的
+            //   账号中心】算进来 —— 这段补救存在的理由恰恰就是「扫码登录后停在 account/users、
+            //   那儿查不到判据」(见上面注释),把它堵住等于让好号永远连不上
+            //   (2026-08-06 实测:已登录、页面停在 account/users,卡片一直「尚未连接」)。
+            //   真正在输密码的场景由下面那道【可见密码框】守卫兜住,它比 URL 准。
+            const looksLoginUrl = /\/(login|signin|sign-in|register|signup|passport)(\/|\?|#|$)/i.test(cur);
             let userTyping = false;
             try {
               const t = await kernelEval(accountId,
