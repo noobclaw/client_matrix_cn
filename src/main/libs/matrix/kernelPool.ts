@@ -1314,11 +1314,28 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
         //   答案,根本走不到这里,不会被打断。
         // ⚠️ 判据现在会带诊断后缀("?:navItem=0 …"),所以别再用 v === '?' 比 —— 那样补救分支
         //   永远进不去(这正是加诊断时最容易踩的一脚)。
+        // 🚨🚨 用户正在【手动登录】时绝不能碰他的页面。扫码/登录窗每 3s 轮询一次登录态,
+        //   而这段补救会把「okx.com 上但不在 /orbit」的页面直接导走 —— 登录页正好满足这个条件,
+        //   于是用户密码还没输完,页面就被刷回 orbit,来回几次根本登不上去
+        //   (用户 2026-08-06 实拍并明确抱怨)。判据拿不到答案是小事(最多多轮询一轮),
+        //   把人家正在填的表单冲掉是大事。两道守卫:
+        //     ① URL 像登录/验证页 → 不动;
+        //     ② 页面上有可见的密码框 / 验证码输入 → 不动(URL 认不出的登录弹窗也能兜住)。
         if (String(v).charAt(0) === '?' && platform === 'okx') {
           try {
             const href = await kernelEval(accountId, '(function(){try{return location.href;}catch(e){return "";}})()');
             const cur = typeof href === 'string' ? href : '';
-            if (cur.indexOf('okx.com') >= 0 && cur.indexOf('/orbit') < 0) {
+            const looksLoginUrl = /\/(login|signin|sign-in|register|signup|auth|passport|verify|account\/(login|users|security))/i.test(cur);
+            let userTyping = false;
+            try {
+              const t = await kernelEval(accountId,
+                '(function(){try{var e=document.querySelector(\'input[type="password"],input[name*="verif" i],input[autocomplete="one-time-code"]\');'
+                + 'return !!(e&&e.offsetParent!==null);}catch(e){return false;}})()');
+              userTyping = t === true || t === 'true';
+            } catch { /* 读不到就按"没在输"处理,仍有 URL 那道守卫 */ }
+            if (looksLoginUrl || userTyping) {
+              coworkLog('INFO', 'kernelPool', `okx 判据无结果,但用户正在登录页${userTyping ? '(检到密码框)' : ''},不导航`);
+            } else if (cur.indexOf('okx.com') >= 0 && cur.indexOf('/orbit') < 0) {
               await kernelNavigate(accountId, 'https://www.okx.com/zh-hans/orbit');
               await new Promise((r) => setTimeout(r, 3500));   // 侧栏是 SPA 渲染,给它时间
               v = await kernelEval(accountId, probe);
