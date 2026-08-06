@@ -756,9 +756,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 🚨 停止必须带平台:无参调用在 sidecar 是「全停」语义(abort 所有平台 + 关全部窗口),
   //   停一个任务会把别的平台正在跑的任务全部误杀(用户 2026-08-06 实测)。两处调用点都有任务对象。
   const stopTask = async (t?: MatrixTask) => {
+    const target = t || selectedTask;
+    // 🚨 拿不到任务就【拒绝】,绝不落到 sidecar 的无参全停分支(用户 2026-08-06 明确要求:
+    //   只能停当前这个任务)。两个调用点都传了任务对象,正常到不了这里;真到了宁可让用户再点一次。
+    if (!target?.platform) { setNotice('⚠️ 未能确定要停哪个任务,请从任务卡片上点停止'); return; }
     setNotice(i18nService.t('mvStopRequested'));
-    const plat = t?.platform || selectedTask?.platform;
-    await M()?.stopTask?.(plat ? { platform: plat } : undefined);
+    // taskId 一起带上:sidecar 会核对「该平台正在跑的确实是这个任务」才停(任务级停止语义)。
+    const r = await M()?.stopTask?.({ platform: target.platform, taskId: target.id });
+    if (r && r.ok === false && r.error === 'task_mismatch') setNotice('⚠️ 该平台正在跑的是另一个任务,未停止');
   };
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
 

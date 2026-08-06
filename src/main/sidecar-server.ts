@@ -221,6 +221,9 @@ async function refreshMaxConcurrent(): Promise<void> {
 const runningPlatforms = new Set<string>();                 // 正在跑的平台集合(并发锁的键)
 const abortByPlatform = new Map<string, AbortController>();  // 各平台的停止句柄(matrix:stopTask 用)
 const runAccountsByPlatform = new Map<string, string[]>();  // 各平台正在跑的账号(停某平台时强关这些号的窗口,立即止损)
+// 各平台正在跑的任务 id。stopTask 带 taskId 时逐一核对:只有「正在跑的确实是这个任务」才停 ——
+//   停止语义必须是【任务级】,不靠「一个平台同时只跑一个任务」这个模型假设兜底(用户 2026-08-06 要求)。
+const runningTaskByPlatform = new Map<string, string>();
 const anyMatrixRunning = (): boolean => runningPlatforms.size > 0;
 
 // 实时进度(供 matrix:getRunProgress 轮询 → 适配成 ScenarioRunProgress 给真 TaskDetailPage)。
@@ -284,13 +287,14 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
     cost: { credits: 0, usd: 0 },
     perAccountTargets: {}, perAccount: {}, logs: [],
   });
+  runningTaskByPlatform.set(platform, task.id);   // 供 stopTask 按任务核对(release 时清)
   // 供 stopTask 强关本平台窗口。binance_repost 还要带上采集号(在源平台,跨平台窗口)一起强关。
   const forceCloseIds = [...(task.accountIds || [])];
   if (task.type === 'binance_repost' && task.binanceRepost?.sourceAccountId) forceCloseIds.push(task.binanceRepost.sourceAccountId);
   runAccountsByPlatform.set(platform, forceCloseIds);
   const abort = new AbortController();
   abortByPlatform.set(platform, abort);
-  const release = () => { runningPlatforms.delete(platform); abortByPlatform.delete(platform); runAccountsByPlatform.delete(platform); };
+  const release = () => { runningPlatforms.delete(platform); abortByPlatform.delete(platform); runAccountsByPlatform.delete(platform); runningTaskByPlatform.delete(platform); };
   try {
     const { runEngageTask } = await import('./libs/matrix/engageRunner');
     const { runImageTextTask } = await import('./libs/matrix/imageTextRunner');
@@ -1973,7 +1977,7 @@ const server = http.createServer(async (req, res) => {
               runAccountsByPlatform.set(platform, a?.accountIds || []); // 供 stopTask 强关本平台窗口
               const abort = new AbortController();
               abortByPlatform.set(platform, abort);
-              const release = () => { runningPlatforms.delete(platform); abortByPlatform.delete(platform); runAccountsByPlatform.delete(platform); };
+              const release = () => { runningPlatforms.delete(platform); abortByPlatform.delete(platform); runAccountsByPlatform.delete(platform); runningTaskByPlatform.delete(platform); };
               try {
                 const { runEngageTask } = await import('./libs/matrix/engageRunner');
                 broadcastSSE('matrix:progress', { type: 'taskStart' });
@@ -2007,8 +2011,17 @@ const server = http.createServer(async (req, res) => {
             // 不传 platform → 全停(abort 所有 + 强关全部窗口立即止损,跟以前一致)。
             try {
               const sp = (args[0] as any)?.platform as string | undefined;
+              const stopTaskId = (args[0] as any)?.taskId as string | undefined;
               if (sp) {
                 if (!runningPlatforms.has(sp)) return writeJSON(res, 200, { ok: true, status: 'idle' });
+                // 🚨 任务级核对:带 taskId 且该平台正在跑的【不是】这个任务 → 拒绝,谁都不停。
+                //   停止语义 = 只停当前这个任务(用户 2026-08-06 要求),不靠并发模型兜底 ——
+                //   将来平台内允许多任务并行时这里依然正确。正在跑的 id 未知(runEngage 即时跑
+                //   那条路没有 taskId)时按平台停,维持旧行为。
+                const curId = runningTaskByPlatform.get(sp);
+                if (stopTaskId && curId && curId !== stopTaskId) {
+                  return writeJSON(res, 200, { ok: false, error: 'task_mismatch', running: curId });
+                }
                 abortByPlatform.get(sp)?.abort();
                 // 强关该平台正在跑的号窗口立即止损(参照旧客户端 closeAllKernels,但只关本平台,不连累别的平台)。
                 try {

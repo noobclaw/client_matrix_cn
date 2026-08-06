@@ -980,7 +980,8 @@ class ScenarioService {
           const t = await this.getTask(_taskId);
           platform = (t as any)?.platform || (t ? MATRIX_ENGAGE_ID_TO_PLATFORM[(t as any).scenario_id] : undefined);
         }
-        if (platform) await MX()?.stopTask?.({ platform });
+        // taskId 一起带上:sidecar 核对「该平台正在跑的确实是这个任务」才停(任务级停止语义)。
+        if (platform) await MX()?.stopTask?.({ platform, taskId: _taskId });
         else console.warn(`[scenario] requestAbort: no platform for task ${_taskId}, refusing global stop`);
       } catch {}
       return;
