@@ -191,7 +191,11 @@ const matrixScanWatching = new Set<string>();
 //   用户 2026-08-05 跑着币安+OKX+Bybit,再点 Gate/Bitget 就被「同时运行的任务已达上限」拦下。
 //   仍要封顶(每个平台要开一个指纹 Chromium,开爆了机器就卡死),但【值改由服务端下发】,
 //   admin 配 matrix_max_concurrent_tasks 即可随时调,不必再打包。拉不到就用 DEFAULT。
-const MATRIX_MAX_CONCURRENT_DEFAULT = 5;
+//   ⚠️⚠️ 这里管的是【同时跑几个平台的任务】,【不是】浏览器个数 —— 两者是【相乘】的关系:
+//   每个任务内部还会按选中的号数再开一批(runner 的 worker pool,concurrency=号数,硬上限 10)。
+//   所以 17 个平台各选 5 个号 = 85 个指纹 Chromium。默认给 17(= 平台总数,全都能同时跑),
+//   机器吃不消就在 admin 调小 matrix_max_concurrent_tasks。
+const MATRIX_MAX_CONCURRENT_DEFAULT = 17;
 let MATRIX_MAX_CONCURRENT = MATRIX_MAX_CONCURRENT_DEFAULT;
 let _maxConcurrentFetchedAt = 0;
 /** 从 /api/matrix/config 取并发上限;10 分钟内不重复拉。任何失败都保持当前值,绝不因此挡住运行。 */
