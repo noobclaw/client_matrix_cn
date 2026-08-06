@@ -1197,6 +1197,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (view.kind === 'task_detail') return view.from || 'tasks';
     return 'create';
   })();
+  // 运行中绿点【只在「我的矩阵涨粉任务」和「运行记录」两处显示】。新建任务页(create)选的是
+  //   「要给哪个平台建任务」,那儿标出别的平台在跑属于噪音,用户 2026-08-06 明确不要。
+  const showRunningDot = matrixMode && (currentSection === 'tasks' || currentSection === 'history');
 
   const setSection = (section: SectionId) => {
     // Clear any task filter when manually switching sections via the L1 tabs.
@@ -2322,14 +2325,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm border transition-colors whitespace-nowrap ${
                     active
                       ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium'
-                      : matrixRunningPlatforms.includes(tab.id)
+                      : showRunningDot && matrixRunningPlatforms.includes(tab.id)
                         ? 'border-green-500/60 bg-green-500/10 text-green-500 font-medium'
                         : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'
                   }`}
                 >
                   {/* 矩阵页不显示平台 emoji(用户 2026-08-06:一排彩色 emoji 噪音大、辨识度反而低)。
                       文字前只在【该平台有任务正在跑】时亮一个闪烁绿点,让"哪个平台在忙"一眼可见。 */}
-                  {matrixRunningPlatforms.includes(tab.id) && (
+                  {showRunningDot && matrixRunningPlatforms.includes(tab.id) && (
                     <span className="relative flex w-2.5 h-2.5 shrink-0" aria-hidden="true"><span className="absolute inline-flex w-full h-full rounded-full bg-green-400 opacity-75 animate-ping" /><span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_10px_3px_rgba(74,222,128,0.9)]" /></span>
                   )}
                   <span>{i18nService.t(tab.labelKey)}</span>
