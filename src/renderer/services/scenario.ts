@@ -966,11 +966,22 @@ class ScenarioService {
 
   async requestAbort(_taskId?: string): Promise<void> {
     if (MATRIX_EDITION) {
-      // 按平台并发:只停【这个任务所在平台】,不连累其它平台正在跑的任务。拿不到平台才全停。
+      // 按平台并发:只停【这个任务所在平台】,不连累其它平台正在跑的任务。
+      // 🚨 平台必须取 task.platform(mxTaskToScenario 一直在透传的真实字段),不能查
+      //   MATRIX_ENGAGE_ID_TO_PLATFORM —— 那张表【只收录 *_auto_engage】,搬运/发帖/图文/回粉
+      //   的 scenario_id(bitget_repost / okx_post / …)查不到 → undefined → 落到 sidecar 的
+      //   「全停」分支:abort 所有平台 + closeAllKernels 全关。用户 2026-08-06 实测:跑着币安
+      //   涨粉,停掉 OKX 的搬运,币安涨粉连窗口一起被杀。
+      // 🚨 拿不到平台时【宁可不停,也不能全停】:全停的误伤(杀掉所有平台正在跑的任务)远大于
+      //   漏停(用户再点一次任务卡上的停止,那条路带 platform)。
       try {
         let platform: string | undefined;
-        if (_taskId) { const t = await this.getTask(_taskId); platform = t ? MATRIX_ENGAGE_ID_TO_PLATFORM[(t as any).scenario_id] : undefined; }
-        await MX()?.stopTask?.(platform ? { platform } : undefined);
+        if (_taskId) {
+          const t = await this.getTask(_taskId);
+          platform = (t as any)?.platform || (t ? MATRIX_ENGAGE_ID_TO_PLATFORM[(t as any).scenario_id] : undefined);
+        }
+        if (platform) await MX()?.stopTask?.({ platform });
+        else console.warn(`[scenario] requestAbort: no platform for task ${_taskId}, refusing global stop`);
       } catch {}
       return;
     }

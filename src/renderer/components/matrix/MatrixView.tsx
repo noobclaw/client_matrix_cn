@@ -753,7 +753,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     }
     setItems({}); setLogs([]); setDoneReport(null); setRunning(true); setSelectedTaskId(t.id);
   };
-  const stopTask = async () => { setNotice(i18nService.t('mvStopRequested')); await M()?.stopTask?.(); };
+  // 🚨 停止必须带平台:无参调用在 sidecar 是「全停」语义(abort 所有平台 + 关全部窗口),
+  //   停一个任务会把别的平台正在跑的任务全部误杀(用户 2026-08-06 实测)。两处调用点都有任务对象。
+  const stopTask = async (t?: MatrixTask) => {
+    setNotice(i18nService.t('mvStopRequested'));
+    const plat = t?.platform || selectedTask?.platform;
+    await M()?.stopTask?.(plat ? { platform: plat } : undefined);
+  };
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
 
   // ── 复用片段 ──
@@ -1112,7 +1118,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <div className="text-[11px] text-gray-400 mt-1">{t.lastRunAt ? i18nService.t('mvLastRun').replace('{time}', fmtTime(t.lastRunAt)) : i18nService.t('mvNotRunYet')}</div>
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         {isRunning
-                          ? <span onClick={(e) => { e.stopPropagation(); stopTask(); }} className="text-xs px-3 py-1 rounded-lg font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</span>
+                          ? <span onClick={(e) => { e.stopPropagation(); stopTask(t); }} className="text-xs px-3 py-1 rounded-lg font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</span>
                           : <span onClick={(e) => { e.stopPropagation(); runTaskNow(t); }} className={`text-xs px-3 py-1 rounded-lg font-semibold ${runningPlatforms.includes(t.platform) ? 'bg-gray-300 text-gray-500 dark:bg-gray-700' : 'bg-violet-500 text-white hover:bg-violet-600'}`}>🎯 {i18nService.t('mvRun')}</span>}
                       </div>
                     </button>
@@ -1133,7 +1139,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 : <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-violet-500 bg-violet-500/10 border-violet-500/30">🎶 {i18nService.t('mvEngageGrowth')}</span>}
               <div className="ml-auto flex gap-2">
                 {runningTaskId === selectedTask.id
-                  ? <button onClick={stopTask} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</button>
+                  ? <button onClick={() => stopTask(selectedTask || undefined)} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600">⏹ {i18nService.t('mvStop')}</button>
                   : <button onClick={() => runTaskNow(selectedTask)} disabled={runningPlatforms.includes(selectedTask.platform)} className={`px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50 ${selectedIsReply ? 'bg-fuchsia-500 hover:bg-fuchsia-600' : 'bg-violet-500 hover:bg-violet-600'}`}>{runningPlatforms.includes(selectedTask.platform) ? i18nService.t('mvRunningEllipsis') : i18nService.t('mvRunNow')}</button>}
                 <button onClick={() => { if (!requireLogin()) return; if (selectedIsReply) { setReplyEditId(selectedTask.id); setShowReplyEditModal(true); } else { setTaskEditId(selectedTask.id); setShowTaskEditModal(true); } }} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{i18nService.t('mvEdit')}</button>
                 <button onClick={() => deleteTask(selectedTask)} className="px-3 py-2 rounded-lg text-sm font-medium border border-red-500/40 text-red-500 hover:bg-red-500/5">{i18nService.t('mvDelete')}</button>
