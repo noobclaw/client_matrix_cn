@@ -311,7 +311,16 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     //   被当「超额号」暂停,UI 冒出一个不存在的号(displayName 回退成 id,如 douyin_xxx_yyy)还
     //   报「超出会员号数」误导用户。在源头剔除,不显示也不判暂停;suspendedIds 就只剩真正超档的真号。
     const validIds = new Set(platformAccts.map((a) => a.id));
-    const accIds: string[] = (task.accountIds || []).filter((id) => validIds.has(id));
+    // 🚨 正在【手动扫码/登录】的号,本轮不跑。openLogin 那边拦了「任务在跑时不许开登录窗」,
+    //   但反过来没拦:登录窗用 skipLease(故意不占使用锁,免得阻塞任务),于是定时任务到点
+    //   照样能在这个号上起跑,而 runner 起手就是 kernelNavigate 到平台首页 ——
+    //   用户正在输的账号密码被直接冲掉(2026-08-06 在 OKX 实拍;这条路径【所有平台通用】,
+    //   跟 OKX 那个判据补救不是同一个问题)。跳过该号即可,别整个任务失败:其它号照跑。
+    const scanning: string[] = (task.accountIds || []).filter((id) => matrixScanWatching.has(id));
+    const accIds: string[] = (task.accountIds || []).filter((id) => validIds.has(id) && !matrixScanWatching.has(id));
+    if (scanning.length) {
+      coworkLog('INFO', 'sidecar-server', `skip ${scanning.length} account(s) mid-login: ${scanning.join(',')}`);
+    }
     // 会员号数墙:按当前生效档位上限,本平台只跑【最早绑定的前 N 个】号;超额号(会员到期/降级后
     //   多出来的)暂停跳过——数据不删,续费/升级即恢复。limit 由渲染进程从 /api/ai/balance 推下来
     //   (planLimit store);从未推送 → 默认很大 → 不暂停任何号(宁可不拦绝不误杀)。
