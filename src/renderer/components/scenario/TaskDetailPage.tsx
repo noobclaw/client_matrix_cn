@@ -493,6 +493,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         }
         nullStreak = 0;
         if (prog && prog.taskId === task.id) {
+          // 🚨 刚点完运行的头 15s 内,收到的终态若【开始时间早于本次点击】= 上一次运行的残影,
+          //   不能当成"这次跑完了"。3.4.26 在 sidecar 端占位堵了一半:sidecar 忙时 IPC 会排队
+          //   数秒,占位还没写进去,这里的 2s 轮询已经把上次的 done 读回来 → 弹「运行完成」、
+          //   running 归 false,几秒后又自己"复活"(用户 3.4.27 实测仍在)。startedAt 对不上就
+          //   忽略这个 tick,等 sidecar 把新一轮的进度写进来。
+          const sinceClick = justStartedAtRef.current > 0 ? Date.now() - justStartedAtRef.current : Infinity;
+          const progStartedAt = Number((prog as any).startedAt) || 0;
+          if ((prog.status === 'done' || prog.status === 'error') && sinceClick < 15_000
+              && progStartedAt < justStartedAtRef.current) {
+            return;   // 残影,跳过本 tick;新运行的进度写入后 startedAt 自然对上
+          }
           setProgress(prog);
           // If progress says "done" or "error", task has finished
           if (prog.status === 'done') {

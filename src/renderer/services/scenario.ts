@@ -588,6 +588,10 @@ function mxProgressToScenario(taskId: string, resp: any): ScenarioRunProgress | 
   if (!p || p.taskId !== taskId) return null;
   const status: ScenarioRunProgress['status'] = p.status === 'running' ? 'running' : p.status === 'error' ? 'error' : p.status === 'done' ? 'done' : 'idle';
   const running = status === 'running';
+  // startedAt 要透传:TaskDetailPage 靠它分辨「这条终态是不是【上一次】运行的残影」。
+  //   点运行后 sidecar 写入 running 占位前有 IPC 排队窗口(sidecar 忙时可达数秒),期间轮询
+  //   读到的还是上次的 done → 弹「运行完成」误导用户(3.4.26 在 sidecar 端堵了占位窗口,
+  //   但 IPC 排队这段堵不到,必须渲染端配合判断)。
   const allLogs: Array<{ ts: number; accountId: string; msg: string }> = Array.isArray(p.logs) ? p.logs : [];
   const mapped = allLogs.map((l, i) => ({
     time: hhmmss(l.ts),
@@ -621,7 +625,7 @@ function mxProgressToScenario(taskId: string, resp: any): ScenarioRunProgress | 
   // 本次消耗:💎 = p.cost.credits(钱包真实扣的积分),$ = p.cost.usd(后端按 token_price_per_million 算好)。
   // 之前没映射 → TaskDetailPage 的「本次消耗」恒显 0,即使钱已经扣了。
   const cost = p.cost || { credits: 0, usd: 0 };
-  return { taskId, status, currentStep: status === 'done' ? 3 : 2, steps, error: p.error, action_progress, accounts, tokens_used: Number(cost.credits) || 0, cost_usd: Number(cost.usd) || 0 };
+  return { taskId, status, currentStep: status === 'done' ? 3 : 2, steps, error: p.error, action_progress, accounts, tokens_used: Number(cost.credits) || 0, cost_usd: Number(cost.usd) || 0, startedAt: Number(p.startedAt) || 0 } as any;
 }
 
 class ScenarioService {
