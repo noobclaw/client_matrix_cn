@@ -2027,7 +2027,40 @@ const server = http.createServer(async (req, res) => {
           }
           case 'matrix:listRuns': {
             const { listRuns } = await import('./libs/matrix/runStore');
-            return writeJSON(res, 200, { ok: true, runs: listRuns((args[0] as any)?.taskId) });
+            const wantId = (args[0] as any)?.taskId as string | undefined;
+            const done = listRuns(wantId);
+            // 🚨 正在跑的那次也要出现在运行记录里。addRun 只在【结束时】写(见 runMatrixTaskById 的
+            //   runP.then),所以在跑的任务在这张表里根本不存在 —— 矩阵版运行记录页从 fork 老
+            //   scenario 的 RunHistoryPage 时就漏了这一块(那边一直是显示的,见其注释
+            //   "running records ARE included now")。这里按 liveProgressByTask 现合成一行插到最前。
+            const live: any[] = [];
+            try {
+              const { getTask } = await import('./libs/matrix/taskStore');
+              for (const [tid, lp] of liveProgressByTask) {
+                if (lp.status !== 'running') continue;
+                if (wantId && tid !== wantId) continue;
+                const t = getTask(tid);
+                const pa = lp.perAccount || {};
+                const ids = Object.keys(pa);
+                live.push({
+                  id: 'live_' + tid,
+                  running: true,                      // 渲染端据此显示「运行中」并隐藏耗时
+                  taskId: tid,
+                  taskName: (t && t.name) || tid,
+                  platform: (t && t.platform) || '',
+                  type: (t && t.type) || 'engage',
+                  startedAt: lp.startedAt,
+                  finishedAt: 0,
+                  success: ids.filter((k) => pa[k].status === 'success').length,
+                  failed: ids.filter((k) => pa[k].status === 'failed').length,
+                  skipped: ids.filter((k) => pa[k].status === 'skipped').length,
+                  totals: { like: lp.done.like, follow: lp.done.follow, comment: lp.done.comment },
+                  cost: lp.cost,
+                  items: ids.map((k) => ({ accountId: k, displayName: pa[k].displayName, state: pa[k].status })),
+                });
+              }
+            } catch { /* 合成失败不影响已完成记录的返回 */ }
+            return writeJSON(res, 200, { ok: true, runs: [...live, ...done] });
           }
           case 'matrix:getRunProgress': {
             // 实时进度轮询(真 TaskDetailPage 每 2s 拉一次,带本任务 taskId)。按任务隔离:并发时各取各的进度。

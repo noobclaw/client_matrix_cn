@@ -45,7 +45,11 @@ export interface ImageTextWizardSave {
   aiImageStyle: string;
   autoPublish: boolean;
   references: Record<string, string>;   // 各号各自参考文案(键=accountId,值可留空);空则该号按身份生成
-  // 每号每轮固定 1 篇,不再让用户调篇数。
+  // 每号每轮生成几篇(1-20,默认 3)。9a49558 当初按「约定设计」把这个滑杆删了、写死 1 篇,
+  //   但字段、runner(imageTextRunner 传 daily_count,上限 50)和剧本(orchestrator 里有
+  //   Fisher–Yates 洗牌保证不重复、池子用尽才允许重复)【一直都在】—— 删的只是 UI。
+  //   用户 2026-08-06 要求恢复可选。
+  dailyCount: number;
   imageDownloadAccountId?: string;       // 仅视频号/头条 + 网络图:抖音下图号(用其登录态搜抖音图)
 }
 
@@ -107,6 +111,8 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   };
   const removeLocalImage = (idx: number) => setLocalImages((prev) => prev.filter((_, i) => i !== idx));
   const [imageCount, setImageCount] = useState<number>(Math.max(2, Math.min(6, Number(it.imageCount) || (it.useRealPhotos ? 6 : 4))));
+  // 每号每轮几篇。老任务存的是 1(当时写死),编辑时照旧显示 1;新建默认 3。
+  const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(20, Number(it.dailyCount) || 3)));
   const [aiImageStyle, setAiImageStyle] = useState<string>(it.aiImageStyle || 'ai_auto');
   // 全量风格目录(server-side 单源;拉不到回退兜底列表)。
   const [stylesList, setStylesList] = useState<ImageStyle[]>(FALLBACK_IMAGE_STYLES);
@@ -140,7 +146,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, imageSource, localImages, imageCount, references, contentSource, sourceIds, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, imageSource, localImages, imageCount, dailyCount, references, contentSource, sourceIds, runInterval]);
 
   // 网络图模式要求每个选中号都配了关键词(没词没法搜);AI 生图模式不强制。
   const selectedNoKeyword = useMemo(
@@ -185,6 +191,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         imageSource,
         localImages: imageSource === 'local' ? localImages.slice(0, 6) : [],
         imageCount: imageSource === 'local' ? Math.max(1, localImages.length) : imageCount,
+        dailyCount,
         aiImageStyle,
         autoPublish,
         references: refsOut,
@@ -431,6 +438,13 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </div>
             )}
 
+            {/* 每号每轮生成几篇。剧本侧本来就支持(洗牌抽题、优先不重复),这里只是把选择权还给用户。 */}
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgPerRoundPrefix')} <span className="text-emerald-500 font-bold">{dailyCount}</span> {i18nService.t('wzImgPerRoundSuffix')}</label>
+              <input type="range" min={1} max={20} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>20</span></div>
+            </div>
+
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 {i18nService.t('wzImgAfterGenLabel')}</label>
               <div className="grid grid-cols-2 gap-2">
@@ -460,7 +474,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzImgSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzImgSummaryAccounts')} value={i18nService.t('wzImgSummaryAccountsVal').replace('{n}', String(selectedIds.length))} />
               <SummaryRow label={i18nService.t('wzImgSummaryImage')} value={imageSource === 'local' ? i18nService.t('wzImgSummaryImageLocal').replace('{n}', String(localImages.length)) : useRealPhotos ? i18nService.t('wzImgSummaryImageWeb').replace('{n}', String(imageCount)) : i18nService.t('wzImgSummaryImageAi').replace('{n}', String(imageCount)).replace('{style}', (() => { const s = stylesList.find((x) => x.id === aiImageStyle); return s ? (isZhStyle ? s.zh : s.en) : aiImageStyle; })())} />
-              <SummaryRow label={i18nService.t('wzImgSummaryCount')} value={i18nService.t('wzImgSummaryCountVal').replace('{n}', String(selectedIds.length))} />
+              <SummaryRow label={i18nService.t('wzImgSummaryCount')} value={i18nService.t('wzImgSummaryCountVal').replace('{daily}', String(dailyCount)).replace('{n}', String(selectedIds.length * dailyCount))} />
               <SummaryRow label={i18nService.t('wzImgSummaryPublish')} value={autoPublish ? i18nService.t('wzImgSummaryPublishAuto') : i18nService.t('wzImgSummaryPublishLocal')} />
               {contentSource === 'sources'
                 ? <SummaryRow label={T('数据源', 'Sources')} value={sourceIdsLabel(sourceIds, isZh)} />

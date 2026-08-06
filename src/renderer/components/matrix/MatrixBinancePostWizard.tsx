@@ -36,6 +36,7 @@ export interface BinancePostWizardSave {
   localImages: string[];
   language: string;
   autoPublish: boolean;
+  dailyCount: number;   // 每号每轮发几条(1-10,默认 3);runner 里循环,每条隔 10-60s
 }
 
 interface Props {
@@ -74,6 +75,8 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
   const [localImages, setLocalImages] = useState<string[]>(Array.isArray((bp as any).localImages) ? (bp as any).localImages.filter((p: unknown) => typeof p === 'string').slice(0, 6) : []);
   const [language, setLanguage] = useState<string>(bp.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(bp.autoPublish !== false); // 默认群发
+  // 老任务没存这个字段 → 按老行为 1 条显示;新建默认 3。
+  const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(10, Number((bp as any).dailyCount) || (Object.keys(bp||{}).length ? 1 : 3))));
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
@@ -116,6 +119,7 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
         localImages: imageMode === 'local' ? localImages.slice(0, 6) : [],
         language,
         autoPublish,
+        dailyCount,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzBnPostErrSaveFailed'));
@@ -225,6 +229,12 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
               )}
             </div>
 
+            {/* 每号每轮发几条。runner 里循环,每条之间隔 10-60s(防同号短时间连发)。 */}
+            <div className="mb-4">
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzPostPerAccPrefix')} <span className="text-amber-500 font-bold">{dailyCount}</span> {i18nService.t('wzPostPerAccSuffix')}</label>
+              <input type="range" min={1} max={10} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} className="w-full accent-amber-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>10</span></div>
+            </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzBnPostAfterGenLabel')}</label>
               <div className="grid grid-cols-2 gap-2">

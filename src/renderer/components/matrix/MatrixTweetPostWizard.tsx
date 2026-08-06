@@ -39,6 +39,7 @@ export interface TweetPostWizardSave {
   language: string;
   isBlueV: boolean;
   autoPublish: boolean;
+  dailyCount: number;   // 每号每轮发几条(1-10,默认 3);runner 里循环,每条隔 10-60s
   references: Record<string, string>;   // 各号各自参考文案(仅 free 模式;可留空)
 }
 
@@ -85,6 +86,8 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [language, setLanguage] = useState<string>(tp.language || 'mixed');
   const [isBlueV, setIsBlueV] = useState<boolean>(!!tp.isBlueV);
   const [autoPublish, setAutoPublish] = useState<boolean>(tp.autoPublish !== false); // 默认群发
+  // 老任务没存这个字段 → 按老行为 1 条显示;新建默认 3。
+  const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(10, Number((tp as any).dailyCount) || (Object.keys(tp||{}).length ? 1 : 3))));
   // 各号各自的参考文案(键=accountId,可留空)。
   const [references, setReferences] = useState<Record<string, string>>(() => {
     const refs = (tp.references || {}) as Record<string, unknown>;
@@ -134,6 +137,7 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
         imageMode,
         localImages: imageMode === 'local' ? localImages.slice(0, 4) : [],
         autoPublish,
+        dailyCount,
         references: refsOut,
       });
     } catch (err) {
@@ -327,6 +331,12 @@ const MatrixTweetPostWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </button>
             </div>
 
+            {/* 每号每轮发几条。runner 里循环,每条之间隔 10-60s(防同号短时间连发)。 */}
+            <div className="mb-4">
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzPostPerAccPrefix')} <span className="text-sky-500 font-bold">{dailyCount}</span> {i18nService.t('wzPostPerAccSuffix')}</label>
+              <input type="range" min={1} max={10} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} className="w-full accent-sky-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>10</span></div>
+            </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 {i18nService.t('wzTweetAfterGen')}</label>
               <div className="grid grid-cols-2 gap-2">

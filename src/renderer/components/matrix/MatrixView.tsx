@@ -364,6 +364,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
   useEffect(() => { reload(); reloadTasks(); }, [reload, reloadTasks]);
   useEffect(() => { if (screen === 'runs') reloadRuns(); }, [screen, reloadRuns]);
+  // 运行记录里现在会有一行【正在跑的】(sidecar 按实时进度合成),不刷新的话它的计数是死的。
+  //   只在停留于该页时轮询,离开即清掉定时器。
+  useEffect(() => {
+    if (screen !== 'runs') return;
+    const t = setInterval(() => { void reloadRuns(); }, 5000);
+    return () => clearInterval(t);
+  }, [screen, reloadRuns]);
 
   useEffect(() => {
     const off = M()?.onProgress?.((p: any) => {
@@ -1199,6 +1206,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎵 {platLabel(r.platform) || r.platform}</span>
                       {runIsReply && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30">💌 {i18nService.t('mvReplyFans')}</span>}
                       <span className="font-medium dark:text-white">{r.taskName}</span>
+                      {/* 正在跑的那次由 sidecar 按实时进度现合成(id 形如 live_<taskId>),用绿色脉冲标出来。 */}
+                      {(r as any).running && <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-green-500 bg-green-500/10 border-green-500/30 animate-pulse">⏳ {i18nService.t('rhStatusRunning')}</span>}
                       <span className="text-xs text-gray-500">{fmtTime(r.startedAt)}</span>
                       <span className="ml-auto text-xs"><span className="text-green-500">{i18nService.t('mvSuccessN').replace('{n}', String(r.success))}</span> · <span className="text-red-500">{i18nService.t('mvFailedN').replace('{n}', String(r.failed))}</span> · <span className="text-amber-500">{i18nService.t('mvSkippedN').replace('{n}', String(r.skipped))}</span></span>
                     </div>

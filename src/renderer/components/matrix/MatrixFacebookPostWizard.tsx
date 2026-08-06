@@ -35,6 +35,7 @@ export interface FacebookPostWizardSave {
   localImages: string[];
   language: string;
   autoPublish: boolean;
+  dailyCount: number;   // 每号每轮发几条(1-10,默认 3);runner 里循环,每条隔 10-60s
   // 内容来源二选一:'reference'=参考文案(按身份+可选参考文案自由创作);'sources'=数据源选题。
   contentSource: 'reference' | 'sources';
   references: Record<string, string>;   // 仅 reference 模式:各号各自参考文案(可留空)
@@ -90,6 +91,8 @@ const MatrixFacebookPostWizard: React.FC<Props> = ({ platformLabel, platform, ac
   const [localImages, setLocalImages] = useState<string[]>(Array.isArray((fp as any).localImages) ? (fp as any).localImages.filter((p: unknown) => typeof p === 'string').slice(0, 6) : []);
   const [language, setLanguage] = useState<string>(fp.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(fp.autoPublish !== false);
+  // 老任务没存这个字段 → 按老行为 1 条显示;新建默认 3。
+  const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(10, Number((fp as any).dailyCount) || (Object.keys(fp||{}).length ? 1 : 3))));
   // 各号各自的参考文案(键=accountId,可留空)。
   const [references, setReferences] = useState<Record<string, string>>(() => {
     const refs = (fp.references || {}) as Record<string, unknown>;
@@ -134,6 +137,7 @@ const MatrixFacebookPostWizard: React.FC<Props> = ({ platformLabel, platform, ac
         concurrency: selectedIds.length,
         frequency: runInterval,
         withImage, language, autoPublish,
+        dailyCount,
         imageMode,
         localImages: imageMode === 'local' ? localImages.slice(0, 6) : [],
         contentSource,
@@ -299,6 +303,12 @@ const MatrixFacebookPostWizard: React.FC<Props> = ({ platformLabel, platform, ac
               )}
             </div>
 
+            {/* 每号每轮发几条。runner 里循环,每条之间隔 10-60s(防同号短时间连发)。 */}
+            <div className="mb-4">
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('每号每轮发布', 'Posts per account per round:')} <span className="text-blue-500 font-bold">{dailyCount}</span> {T('条', '')}</label>
+              <input type="range" min={1} max={10} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} className="w-full accent-blue-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>10</span></div>
+            </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{T('发布方式', 'After generation')}</label>
               <div className="grid grid-cols-2 gap-2">

@@ -56,6 +56,7 @@ export interface BinanceRepostWizardSave {
   withImage: boolean;
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;
+  perAccountCount: number;   // 每号每轮搬几条(1-10,默认 3);采集量 = 号数 × 本值
 }
 
 interface Props {
@@ -101,6 +102,8 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
   const [withImage, setWithImage] = useState<boolean>(br.withImage !== false);
   const [language, setLanguage] = useState<string>(br.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(br.autoPublish !== false);
+  // 每号每轮搬几条。老任务没存这个字段 → 按老行为 1 条显示;新建默认 3。
+  const [perAccountCount, setPerAccountCount] = useState<number>(Math.max(1, Math.min(10, Number(br.perAccountCount) || (br.sourcePlatform ? 1 : 3))));
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
@@ -159,6 +162,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
         withImage,
         language,
         autoPublish,
+        perAccountCount,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzBnRepostSaveFailed'));
@@ -336,6 +340,13 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
                 </div>
               </div>
             )}
+            {/* 每号每轮搬几条。采集量 = 号数 × 本值;分发按轮次交替,同号两条之间隔 1~2 分钟。 */}
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzBnRepostPerAccPrefix')} <span className="text-amber-500 font-bold">{perAccountCount}</span> {i18nService.t('wzBnRepostPerAccSuffix')}</label>
+              <input type="range" min={1} max={10} value={perAccountCount} onChange={(e) => setPerAccountCount(Number(e.target.value))} disabled={saving} className="w-full accent-amber-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>10</span></div>
+            </div>
+
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">📤 {i18nService.t('wzBnRepostAfterGenLabel')}</label>
               <div className="grid grid-cols-2 gap-2">

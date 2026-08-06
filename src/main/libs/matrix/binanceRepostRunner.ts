@@ -5,7 +5,7 @@
  *   阶段A · 采集(1 个采集号):用 config.sourceAccountId(在 sourcePlatform 上已登录)的指纹内核,
  *     跑 binance_repost_collect_<sourcePlatform> 剧本,按关键词搜索 → 筛选 → 下源图,采够 N 条候选。
  *   阶段B · 分发(N 个币安号):把候选逐条分给勾选的币安账号,每号在各自指纹内核里跑 binance_repost
- *     发布剧本(AI 仿写 + 配源图 → 发币安广场),每条之间睡 60-120s,成功一条扣 repost_image_text。
+ *     发布剧本(AI 仿写 + 配源图 → 发币安广场),每条之间睡 10-60s,成功一条扣 repost_image_text。
  *
  * 设计要点:① 采集只跑一次(币安号不需要各自登录源平台);② 候选按 post_id 任务内去重 + 采集号跨运行
  * 去重(seen 库),两号不撞同源;③ 每号【独立仿写】→ 同源也出不同文案,降低连坐。
@@ -81,7 +81,7 @@ export interface BinanceRepostTaskOptions {
   taskId?: string;
   accountIds: string[];             // 币安发布号
   config: BinanceRepostConfig;      // 搬运配置(含 sourcePlatform / sourceAccountId / keyword / material …)
-  concurrency?: number;             // 此处忽略:分发阶段顺序执行(每条睡 60-120s)
+  concurrency?: number;             // 此处忽略:分发阶段顺序执行(每条睡 10-60s)
   jitterMinMs?: number; jitterMaxMs?: number;
   kernelPath?: string;
   authToken?: string;
@@ -898,8 +898,13 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
     return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_publish_scenario' })) };
   }
 
-  // 本轮目标条数 = min(币安号数, perRunCount||号数)。采集就采这么多。
-  const postCount = Math.max(1, Math.min(accIds.length, Number(cfg.perRunCount) || accIds.length));
+  // 每号每轮搬几条(1-10,默认 1 = 老行为)。老任务没有这个字段 → 仍是一号一条。
+  //   ⚠️ 用新字段而不是复用 perRunCount:后者的语义是【本轮总条数】且被号数封顶,
+  //   老任务里存的值按那个语义解释,直接改语义会让老任务的行为悄悄变掉。
+  const perAcc = Math.max(1, Math.min(10, Number(cfg.perAccountCount) || 1));
+  // 采集目标 = 号数 × 每号条数(老行为下 perAcc=1,等于原来的号数)。
+  //   原来还额外 min(号数),那是因为「一个号只领一条」;现在一个号能领多条,这个封顶就不成立了。
+  const postCount = Math.max(1, accIds.length * perAcc);
 
   coworkLog('INFO', 'binanceRepostRunner', `repost src=${cfg.sourcePlatform} want=${postCount} → binance x${accIds.length}`);
 
@@ -956,15 +961,51 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
     }
   }
 
-  // ── 阶段B:分发(顺序执行,每条之间睡 60-120s 防连坐)──
-  const items: EngageItemResult[] = [];
-  for (let i = 0; i < accIds.length; i++) {
-    if (opts.signal?.aborted) { items.push({ accountId: accIds[i], state: 'skipped', reason: 'aborted' }); continue; }
-    const candidate = allocated[i];
-    if (!candidate) { opts.onLog?.(accIds[i], 'ℹ️ 候选素材已分完,本号本轮不发'); items.push({ accountId: accIds[i], state: 'skipped', reason: 'no_more_candidate' }); continue; }
+  // ── 发布计划:每号 perAcc 条。按【轮次】铺开(第 1 轮每号各一条,第 2 轮再各一条…),
+  //   而不是同一个号连着发 perAcc 条 —— 这样同号两条之间天然隔着其它号的发布 + 各自的
+  //   10-60s 间隔,节奏更像真人,也避免同一账号短时间内连续发帖被平台盯上。
+  //   每轮都重新 allocateByNiche 一次,让本轮剩余候选继续按各号赛道就近分配。
+  const plan: Array<{ accountId: string; candidate: any }> = [];
+  {
+    let pool = candidates.slice();
+    for (let round = 0; round < perAcc && pool.length; round++) {
+      const alloc = round === 0 ? allocated : allocateByNiche(accIds, pool);
+      const used = new Set<any>();
+      for (let i = 0; i < accIds.length; i++) {
+        const c = alloc[i];
+        if (!c || used.has(c)) continue;
+        plan.push({ accountId: accIds[i], candidate: c });
+        used.add(c);
+      }
+      if (!used.size) break;                       // 这一轮一条都没分出去 → 池子对不上,别空转
+      pool = pool.filter((c) => !used.has(c));
+    }
+  }
+  if (perAcc > 1) {
+    for (const id of accIds) opts.onLog?.(id, `📋 本轮计划发布 ${plan.length} 条(每号最多 ${perAcc} 条,按轮次交替)`);
+  }
+  // 🚨 一条都没分到的号必须补一条 skipped。改成按 plan 迭代后,这些号在 items 里【完全消失】,
+  //   而 sidecar 只按 items 回填每号状态(runP.then 里 `for (const it of report.items)`)——
+  //   没出现的号会永远停在「运行中」,运行记录里也查无此号。旧代码本来有这条(no_more_candidate),
+  //   重构时被我一并删掉了,审计时才发现。
+  const planned = new Set(plan.map((p) => p.accountId));
+  const preItems: EngageItemResult[] = [];
+  for (const id of accIds) {
+    if (planned.has(id)) continue;
+    opts.onLog?.(id, 'ℹ️ 候选素材已分完,本号本轮不发');
+    const it: EngageItemResult = { accountId: id, state: 'skipped', reason: 'no_more_candidate' };
+    preItems.push(it);
+    try { opts.onItem?.(it); } catch { /* ignore */ }
+  }
+
+  // ── 阶段B:分发(顺序执行,每条之间睡 10-60s 防连坐)──
+  const items: EngageItemResult[] = preItems.slice();   // 先带上「没分到素材」的那些号
+  for (let i = 0; i < plan.length; i++) {
+    if (opts.signal?.aborted) { items.push({ accountId: plan[i].accountId, state: 'skipped', reason: 'aborted' }); continue; }
+    const candidate = plan[i].candidate;
     const r = isVideo
-      ? await publishVideoOne(opts, publishPack, accIds[i], candidate)
-      : await publishOne(opts, publishPack, accIds[i], candidate);
+      ? await publishVideoOne(opts, publishPack, plan[i].accountId, candidate)
+      : await publishOne(opts, publishPack, plan[i].accountId, candidate);
     items.push(r);
     // 仅【发布成功】才把这条源计 1 次 → 用满 cap(默认 1)后下轮跳过;发布失败不计,可下轮重试。
     // 两把锁一起记:平台 id(认这条帖子)+ 源文案指纹(认这段内容,见上面 candidates 过滤处的说明)。
@@ -973,11 +1014,11 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
       try { const ck = capKeyOf(candidate.text); if (ck) srcSeen.record(ck); } catch { /* ignore */ }
     }
     try { opts.onItem?.(r); } catch { /* ignore */ }
-    // 下一号发布前睡 60-120s(最后一号不睡;停止立即退)。
-    const hasNext = i < accIds.length - 1 && !!allocated[i + 1];
+    // 下一条发布前睡 10-60s(最后一条不睡;停止立即退)。同号连发也走这条 = 1~2 分钟间隔。
+    const hasNext = i < plan.length - 1;
     if (hasNext && !opts.signal?.aborted) {
-      const gap = randInt(60000, 120000);
-      opts.onLog?.(accIds[i + 1], `⏳ 防连坐:距上一条发布间隔 ${Math.round(gap / 1000)}s…`);
+      const gap = randInt(10000, 60000);
+      opts.onLog?.(plan[i + 1].accountId, `⏳ 防连坐:距上一条发布间隔 ${Math.round(gap / 1000)}s…`);
       await new Promise<void>((resolve) => { const t = setTimeout(resolve, gap); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
     }
   }

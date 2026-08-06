@@ -591,14 +591,15 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const saveMatrixImageTextTask = async (input: ImageTextWizardSave) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
-    // 各号各自参考文案(wizard 已过滤空值,只含填了的号);每号每轮固定 1 篇。
+    // 各号各自参考文案(wizard 已过滤空值,只含填了的号)。
+    // dailyCount 原来在这里写死 1(9a49558 删滑杆时一并写死),导致向导选了也没用 —— 现在透传。
     const imageText = {
       useRealPhotos: input.useRealPhotos,
       // 图源三选一('ai'/'real'/'local');local 带本地图绝对路径(≤6,runner 读盘转 base64)。
       imageSource: input.imageSource,
       localImages: input.localImages,
       imageCount: input.imageCount,
-      dailyCount: 1,
+      dailyCount: input.dailyCount,
       aiImageStyle: input.aiImageStyle,
       autoPublish: input.autoPublish,
       references: input.references,
@@ -673,6 +674,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       isBlueV: input.isBlueV,
       autoPublish: input.autoPublish,
       references: input.references,
+      dailyCount: input.dailyCount,   // 每号每轮发几条(runner 循环,每条隔 10-60s)
     };
     const r = await m?.saveTask?.({ id: matrixTweetTask?.id, platform: matrixTweetPlatform, type: 'x_post', name: input.name, accountIds: input.accountIds, tweetPost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
@@ -734,6 +736,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       localImages: input.localImages,
       language: input.language,
       autoPublish: input.autoPublish,
+      dailyCount: input.dailyCount,   // 每号每轮发几条(runner 循环,每条隔 10-60s)
     };
     // 🚨 type 是【任务类型枚举】(MatrixTaskType),不是剧本 id —— 不能拼成 `${platform}_post`。
     //    binance 只是碰巧拼出合法的 'binance_post';gate/okx/bitget/bybit 拼出 'gate_post' 这种
@@ -804,6 +807,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       sourceKind: input.sourceKind,
       source: input.source,
       catKey: input.catKey,
+      dailyCount: input.dailyCount,   // 每号每轮发几条(runner 循环,每条隔 10-60s)
     };
     const r = await m?.saveTask?.({ id: matrixFacebookTask?.id, platform: matrixFacebookPlatform, type: 'facebook_post', name: input.name, accountIds: input.accountIds, facebookPost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
@@ -868,6 +872,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       source: input.source,
       catKey: input.catKey,
       subreddit: input.subreddit,
+      dailyCount: input.dailyCount,   // 每号每轮发几条(runner 循环,每条隔 10-60s)
     };
     const r = await m?.saveTask?.({ id: matrixRedditTask?.id, platform: matrixRedditPlatform, type: 'reddit_post', name: input.name, accountIds: input.accountIds, redditPost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
@@ -934,6 +939,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       sourceKind: input.sourceKind,
       source: input.source,
       catKey: input.catKey,
+      dailyCount: input.dailyCount,   // 每号每轮发几条(runner 循环,每条隔 10-60s)
     };
     const r = await m?.saveTask?.({ id: matrixInstagramTask?.id, platform: matrixInstagramPlatform, type: 'instagram_post', name: input.name, accountIds: input.accountIds, instagramPost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
@@ -987,6 +993,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       withImage: input.withImage,
       language: input.language,
       autoPublish: input.autoPublish,
+      perAccountCount: input.perAccountCount,   // 每号每轮搬几条(采集量 = 号数 × 本值)
     };
     // 同上:type 用枚举 'binance_repost',剧本 id 走 `${platform}_repost` 由 runner 推。
     const r = await m?.saveTask?.({ id: matrixRepostTask?.id, platform: matrixRepostPlatform, type: 'binance_repost', name: input.name, accountIds: input.accountIds, binanceRepost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });

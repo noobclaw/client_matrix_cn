@@ -396,7 +396,26 @@ export async function runTweetPostTask(opts: TweetPostTaskOptions): Promise<Enga
     };
   }
   coworkLog('INFO', 'tweetPostRunner', `x_post ${opts.platform} x${opts.accountIds.length} (${scenarioId})`);
-  const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id), opts.onItem);
+  // 每号每轮发几条(1-10,默认 1 = 老行为)。循环放这里而不是剧本里的理由同 binancePostRunner:
+  //   剧本是线性流程 + 多处 return,改它等于重构真发布链路;而选题去重(ctx.newsUsage →
+  //   newsUsageStore,按 scenarioId + 标题持久化)在客户端,重跑剧本自然换选题。
+  //   每条之间隔 10-60s,避免同号短时间连发。
+  const perAcc = Math.max(1, Math.min(10, Number((opts.config as any)?.dailyCount) || 1));
+  const items = await runPool(opts.accountIds, k, async (id) => {
+    let last: EngageItemResult = { accountId: id, state: 'skipped', reason: 'no_run' };
+    for (let n = 0; n < perAcc; n++) {
+      if (opts.signal?.aborted) break;
+      if (n > 0) {
+        const gap = randInt(10000, 60000);
+        opts.onLog?.(id, `⏳ 距上一条发布间隔 ${Math.round(gap / 1000)}s…(本号第 ${n + 1}/${perAcc} 条)`);
+        await abortableSleep(gap, opts.signal);
+        if (opts.signal?.aborted) break;
+      }
+      last = await runOne(opts, pack, id);
+      if (n < perAcc - 1) { try { opts.onItem?.(last); } catch { /* ignore */ } }
+    }
+    return last;
+  }, opts.onItem);
   return {
     platform: opts.platform, total: items.length,
     success: items.filter((x) => x.state === 'success').length,

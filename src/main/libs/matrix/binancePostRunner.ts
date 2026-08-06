@@ -435,8 +435,31 @@ export async function runBinancePostTask(opts: BinancePostTaskOptions): Promise<
       items: opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_scenario(后端未部署?)' })),
     };
   }
-  coworkLog('INFO', 'binancePostRunner', `binance_post ${opts.platform} x${opts.accountIds.length} (${scenarioId})`);
-  const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id), opts.onItem);
+  // 每号每轮发几条(1-10,默认 1 = 老行为)。
+  // 🚨 循环放在【这里】而不是剧本里,是有意的:
+  //   ① 剧本的 STEP 2 是线性流程、中间好几处 return,五份剧本又不同构(344~581 行),
+  //      在里面套循环等于重构五条【真发布 + 真扣费】的链路,风险远大于收益;
+  //   ② 选题去重本来就在客户端:ctx.newsUsage 背后是 newsUsageStore(按 scenarioId + 标题
+  //      持久化),剧本每跑一次都会 markUsed → 重跑自然换选题,不用改剧本一行;
+  //   ③ 每条之间隔 10-60s(同搬运的防连坐口径),避免同号短时间连发被平台盯上。
+  const perAcc = Math.max(1, Math.min(10, Number((opts.config as any)?.dailyCount) || 1));
+  coworkLog('INFO', 'binancePostRunner', `binance_post ${opts.platform} x${opts.accountIds.length} (${scenarioId}) perAcc=${perAcc}`);
+  const items = await runPool(opts.accountIds, k, async (id) => {
+    let last: EngageItemResult = { accountId: id, state: 'skipped', reason: 'no_run' };
+    for (let n = 0; n < perAcc; n++) {
+      if (opts.signal?.aborted) break;
+      if (n > 0) {
+        const gap = randInt(10000, 60000);
+        opts.onLog?.(id, `⏳ 距上一条发布间隔 ${Math.round(gap / 1000)}s…(本号第 ${n + 1}/${perAcc} 条)`);
+        await abortableSleep(gap, opts.signal);
+        if (opts.signal?.aborted) break;
+      }
+      last = await runOne(opts, pack, id);
+      // 中间几条也要上报,否则界面只看得到最后一条;最后一条由 runPool 统一上报,别重复。
+      if (n < perAcc - 1) { try { opts.onItem?.(last); } catch { /* ignore */ } }
+    }
+    return last;
+  }, opts.onItem);
   return {
     platform: opts.platform, total: items.length,
     success: items.filter((x) => x.state === 'success').length,

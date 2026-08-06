@@ -165,6 +165,9 @@ export interface TweetPostConfig {
   isBlueV: boolean;              // 蓝V(X Premium)→ 字数自由(三档随机);普通号 ≤140 字
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
   references?: Record<string, string>; // 可选:各账号参考文案 { accountId: text }(仅 free 模式参考);空则按身份生成
+  // 每号每轮发几条(1-10,默认 3)。循环在 runner 里(binancePostRunner/tweetPostRunner),
+  //   每条之间隔 60-120s;选题去重靠 ctx.newsUsage(newsUsageStore 持久化),重跑自然换选题。
+  dailyCount?: number;
 }
 
 /**
@@ -179,6 +182,9 @@ export interface BinancePostConfig {
   localImages?: string[];        // 仅 imageMode='local':本地图绝对路径(≤6,runner 读盘转 base64)
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts)
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
+  // 每号每轮发几条(1-10,默认 3)。循环在 runner 里(binancePostRunner/tweetPostRunner),
+  //   每条之间隔 60-120s;选题去重靠 ctx.newsUsage(newsUsageStore 持久化),重跑自然换选题。
+  dailyCount?: number;
 }
 
 /**
@@ -201,6 +207,9 @@ export interface FacebookPostConfig {
   sourceKind: 'news' | 'category' | 'hot';  // 数据源类型(旧单选字段=第一个选中源,兼容旧 orchestrator)
   source?: string;                          // hot 模式:热榜名(如 "微博热搜")
   catKey?: string;                          // category 模式:分类键(web3 / tech)
+  // 每号每轮发几条(1-10,默认 3)。循环在 runner 里(binancePostRunner/tweetPostRunner),
+  //   每条之间隔 60-120s;选题去重靠 ctx.newsUsage(newsUsageStore 持久化),重跑自然换选题。
+  dailyCount?: number;
 }
 
 /**
@@ -220,6 +229,9 @@ export interface RedditPostConfig {
   source?: string;
   catKey?: string;
   subreddit: string;                        // 目标 subreddit(选填,不带 r/ 前缀也行;空 = 发到账号自己的个人主页 u_用户名)
+  // 每号每轮发几条(1-10,默认 3)。循环在 runner 里(binancePostRunner/tweetPostRunner),
+  //   每条之间隔 60-120s;选题去重靠 ctx.newsUsage(newsUsageStore 持久化),重跑自然换选题。
+  dailyCount?: number;
 }
 
 /**
@@ -241,6 +253,9 @@ export interface InstagramPostConfig {
   sourceKind: 'news' | 'category' | 'hot';
   source?: string;
   catKey?: string;
+  // 每号每轮发几条(1-10,默认 3)。循环在 runner 里(binancePostRunner/tweetPostRunner),
+  //   每条之间隔 60-120s;选题去重靠 ctx.newsUsage(newsUsageStore 持久化),重跑自然换选题。
+  dailyCount?: number;
 }
 
 /**
@@ -261,7 +276,10 @@ export interface BinanceRepostConfig {
   withImage: boolean;            // 图文模式恒配源图;视频模式此项保留兼容(一般 true)
   language: string;   // 'mixed'/'auto'=跟随账号;或 9 种语言码之一(见 postLangs.ts) // 仿写语言(mixed 跟随客户端)
   autoPublish: boolean;          // true=直接发布,false=仅本地生成(不发)
-  perRunCount?: number;          // 本轮目标条数;缺省=min(币安号数, 候选池数)。封顶见 runner
+  perRunCount?: number;          // 【旧】本轮目标条数;缺省=min(币安号数, 候选池数)。老任务仍按此语义
+  // 【新】每号每轮搬几条(1-10,默认 1 = 老行为)。采集量 = 号数 × 本值;分发按轮次交替
+  //   (第 1 轮每号各一条、第 2 轮再各一条…),同号两条之间隔着其它号 + 各自 60-120s 间隔。
+  perAccountCount?: number;
 }
 
 // 互动(点赞/评论/关注)= engage;自动回复粉丝评论 = reply_fan(抖音创作者中心评论管理);
