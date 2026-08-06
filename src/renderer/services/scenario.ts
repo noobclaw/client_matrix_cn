@@ -524,7 +524,11 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
 
 function mxRunToRecord(r: any): any {
   const t = r.totals || {};
-  const status = r.failed > 0 && r.success === 0 ? 'error' : r.failed > 0 ? 'partial' : 'done';
+  // 🚨 正在跑的那条(sidecar 按实时进度合成,带 running:true)必须映射成 'running',否则会掉进
+  //   下面的三分支被当成【已完成】—— failed=0 → 'done' → 卡片显示「✅ 成功」,既不发光也没进度
+  //   (用户 2026-08-06 实拍)。RunHistoryPage 本来就支持 'running'(⏳ + 绿色脉冲),缺的只是这一步映射。
+  const status = r.running ? 'running'
+    : (r.failed > 0 && r.success === 0 ? 'error' : r.failed > 0 ? 'partial' : 'done');
   const items: any[] = Array.isArray(r.items) ? r.items : [];
   // ⚠️ step 字段必须给:RunRecordDetailPage 按 log.step 分组(Object.keys→Number),
   // 缺了 step 会得到 key='undefined'→Number('undefined')=NaN→stepGroups[NaN]=undefined→
@@ -534,7 +538,11 @@ function mxRunToRecord(r: any): any {
     time: hhmmss(r.finishedAt || r.startedAt),
     step: 1,
     status: it.state === 'success' ? 'done' : it.state === 'failed' ? 'error' : 'running',
-    message: `[${it.displayName || it.accountId}] ${it.state}${it.counts ? ` 赞${it.counts.like || 0}/关${it.counts.follow || 0}/评${it.counts.comment || 0}` : ''}${it.reason ? ` (${it.reason})` : ''}`,
+    // 原来直接把内部枚举(success/failed/skipped/running)甩给用户。在跑的那条尤其难看:
+    //   每个号显示一行光秃秃的「running」,看不出在干什么 —— 换成人话。
+    message: `[${it.displayName || it.accountId}] ${
+      it.state === 'success' ? '成功' : it.state === 'failed' ? '失败' : it.state === 'skipped' ? '跳过' : '进行中'
+    }${it.counts ? ` 赞${it.counts.like || 0}/关${it.counts.follow || 0}/评${it.counts.comment || 0}` : ''}${it.reason ? ` (${it.reason})` : ''}`,
   }));
   // 运行记录按真实 platform + 任务类型还原 scenario_snapshot(原来只按 platform 写死 engage → 回复粉丝等非
   //   engage 任务的记录全错显成「互动涨粉」)。
@@ -545,7 +553,8 @@ function mxRunToRecord(r: any): any {
     scenario_snapshot: mxRunScenarioSnapshot(r.type, rPlatform),
     task_snapshot: { track: 'matrix', name: r.taskName, account_ids: items.map((it) => it.accountId) },
     started_at: r.startedAt,
-    finished_at: r.finishedAt,
+    // 在跑的那条没有结束时间(合成时给的 0)→ 传 undefined,免得界面把耗时算成 1970 年至今。
+    finished_at: r.running ? undefined : r.finishedAt,
     status,
     result: {
       action_counts: {
@@ -553,7 +562,12 @@ function mxRunToRecord(r: any): any {
         ...(typeof t.post === 'number' ? { post: t.post } : {}),
         ...(typeof t.download === 'number' ? { download: t.download } : {}),
       },
-      action_targets: {},
+      // 在跑的那条带上目标值,列表就能渲染「11/32」这种 X/Y 进度 —— 老 scenario 页正是靠
+      //   action_counts + action_targets 显示实时进度的(见 RunHistoryPage 里那段注释)。
+      //   已完成的记录不带(它的 targets 没落盘),保持原样。
+      action_targets: r.running && r.targets
+        ? { like: r.targets.like || 0, follow: r.targets.follow || 0, comment: r.targets.comment || 0 }
+        : {},
       tokens_used: Number(r.cost?.credits) || 0, cost_usd: Number(r.cost?.usd) || 0, collected_count: 0, draft_count: 0,
     },
 

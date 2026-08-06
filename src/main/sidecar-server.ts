@@ -2055,6 +2055,8 @@ const server = http.createServer(async (req, res) => {
                   failed: ids.filter((k) => pa[k].status === 'failed').length,
                   skipped: ids.filter((k) => pa[k].status === 'skipped').length,
                   totals: { like: lp.done.like, follow: lp.done.follow, comment: lp.done.comment },
+                  // 目标值:列表里渲染「已完成/目标」的 X/Y 进度用(仅在跑的这条有)。
+                  targets: { like: lp.targets.like, follow: lp.targets.follow, comment: lp.targets.comment },
                   cost: lp.cost,
                   items: ids.map((k) => ({ accountId: k, displayName: pa[k].displayName, state: pa[k].status })),
                 });
