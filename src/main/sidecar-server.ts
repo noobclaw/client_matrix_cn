@@ -1729,6 +1729,7 @@ const server = http.createServer(async (req, res) => {
                     catch { await new Promise((r) => setTimeout(r, 1300)); }
                   }
                 }
+                let identMissStreak = 0;   // 连续几轮读不到真实身份(见下面说明)
                 for (let i = 0; i < 200; i++) {
                   await new Promise((r) => setTimeout(r, 3000));
                   if (!getSession(acc.id)) break; // 窗口被关
@@ -1747,7 +1748,21 @@ const server = http.createServer(async (req, res) => {
                     try {
                       const { kernelReadIdentity } = await import('./libs/matrix/kernelPool');
                       ident = await kernelReadIdentity(acc.id, pk);
-                    } catch { /* 身份读取失败不影响登录 */ }
+                    } catch { /* 身份读取失败:不直接判失败,下面按「连续读不到就继续等」处理 */ }
+                    // 🚨 身份一点都读不出来 = 大概率还没真登录(判据误放行)。原来无条件 setStat('idle'),
+                    //   于是卡片翻绿、窗口关掉,昵称头像却永远是空的(用户 2026-08-06 实测 IG 新号:
+                    //   验证码还没输完就被判已连接)。这里不收工,继续轮询等真身份 —— 轮询上限 ~10 分钟,
+                    //   等不到就自然超时,总好过留一个「绿着但什么都没有」的假连接。
+                    if (!ident || (!ident.uid && !ident.nickname && !ident.displayId)) {
+                      identMissStreak++;
+                      if (identMissStreak < 3) {
+                        continue;   // 再等一轮(3s)重查:登录刚成功时身份接口也可能慢半拍
+                      }
+                      // 连着 3 轮(~9s+)都读不到 → 判据多半是误放行,别标已连接,继续等用户完成登录
+                      identMissStreak = 0;
+                      continue;
+                    }
+                    identMissStreak = 0;
                     // 去重(B):这个真实账号(uid)已被别的矩阵号关联 → 拒绝本次关联,清 cookie + 标未关联 + 提示换号。
                     const { findAccountByUid, setAccountStatus: setStat, setAccountIdentity } = await import('./libs/matrix/accountManager');
                     const dup = ident.uid ? findAccountByUid(pk, String(ident.uid), acc.id) : undefined;

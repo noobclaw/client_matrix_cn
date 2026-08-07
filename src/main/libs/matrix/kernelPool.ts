@@ -1290,7 +1290,16 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
     } else if (platform === 'instagram') {
       // IG:【语言无关】判据(UI 随 locale 变,不能靠文字)—— 登录墙有 username 输入框 / 或重定向到 /accounts/login。
       //   登录态没有登录表单。只判 0,否则 "?" 交回 cookie。待 VPN 真机确认正向标记(如导航头像)。
-      probe = '(function(){try{if(document.querySelector(\'input[name="username"]\')||/\\/accounts\\/login/.test(location.pathname))return "0";return "?";}catch(e){return "?";}})()';
+      //   ⚠️ 只查用户名框 + /accounts/login 不够:新号登录要过【验证码 / 二次校验】页,那儿两条都不命中
+      //     → "?" → ③ 兜底 return true → 判已登录、关掉窗口(用户 2026-08-06 实测)。补上
+      //     challenge/checkpoint/codeentry/two_factor 路径,以及可见的密码框/验证码输入框
+      //     —— 页面上还在要密码或验证码,就绝不可能是登录成功态。
+      probe = '(function(){try{'
+        + 'if(document.querySelector(\'input[name="username"]\'))return "0";'
+        + 'if(/\\/accounts\\/login|\\/challenge|\\/checkpoint|codeentry|two_factor|twofactor/i.test(location.pathname))return "0";'
+        + 'var e=document.querySelector(\'input[type="password"],input[autocomplete="one-time-code"],input[name*="verif" i],input[name*="code" i]\');'
+        + 'if(e&&e.offsetParent!==null)return "0";'
+        + 'return "?";}catch(e){return "?";}})()';
     } else if (platform === 'facebook') {
       // FB(2026-07-03 真机验):登录墙有 email 输入框 / 重定向 /login → "0";登录态有 [role=navigation]
       //   + c_user 明文 cookie → 明确 "1"(真机实测 onLogin:false/hasNav:true)。都不是则 "?"。语言无关。
@@ -1374,7 +1383,12 @@ async function checkKernelLoginInner(accountId: string, platform: string): Promi
     //   ⚠️ TikTok 例外:内核常被风控跳到验证/登录页,而 sessionid 是登录专有(登出即无)——已过 ① cookie 就别再让 ③ 误判失效。
     try {
       const href = await kernelEval(accountId, 'location.href');
-      if (platform !== 'tiktok' && /(login|passport|signin|sign-in|account\/security)/i.test(String(href || ''))) return false;
+      // 🚨 除登录页外,还必须认【验证/二次校验页】:challenge / checkpoint / 验证码输入 / 两步验证。
+      //   用户 2026-08-06 实测(IG 新号):停在验证码输入页时,probe 给不出答案 → 这条正则又不含
+      //   challenge → ③ 直接 return true 判已登录 → 扫码轮询收工、finally 关掉窗口,人验证码还没输完;
+      //   卡片翻「已连接」但身份读不出来,永远是空的。这类页面【绝不可能是登录成功态】,一律判未登录。
+      if (platform !== 'tiktok'
+          && /(login|passport|signin|sign-in|account\/security|challenge|checkpoint|codeentry|two_factor|twofactor|\/verify)/i.test(String(href || ''))) return false;
     } catch { /* ignore */ }
     return true;
   } catch { return false; }
