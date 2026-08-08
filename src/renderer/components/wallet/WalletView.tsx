@@ -106,7 +106,23 @@ function getStatusColor(status: string): string {
 
 // Network logo for the deposit-chain selector + order rows. Inline SVG so we
 // have a single source of truth and no extra asset fetch. Sizes are square px.
-const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON'; size?: number }> = ({ chain, size = 18 }) => {
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY'; size?: number }> = ({ chain, size = 18 }) => {
+  if (chain === 'WXPAY') {
+    // 微信支付绿气泡(简化标)
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+        <circle cx={12} cy={12} r={12} fill="#07C160" />
+        <ellipse cx="9.6" cy="10.4" rx="5.4" ry="4.4" fill="white" />
+        <path fill="white" d="M6.2 16.6l1.2-2.6 2.6 1z" />
+        <ellipse cx="15.4" cy="13.4" rx="4.3" ry="3.5" fill="white" />
+        <path fill="white" d="M18.6 18.2l-1-2.1-2.1.8z" />
+        <circle cx="7.8" cy="9.6" r="0.75" fill="#07C160" />
+        <circle cx="11.4" cy="9.6" r="0.75" fill="#07C160" />
+        <circle cx="14" cy="12.8" r="0.65" fill="#07C160" />
+        <circle cx="16.9" cy="12.8" r="0.65" fill="#07C160" />
+      </svg>
+    );
+  }
   if (chain === 'TRON') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
@@ -127,9 +143,9 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON'; size?: number }> = ({ chain, 
 // Get the active chain block + a list of packages for it from PaymentInfo,
 // falling back to legacy top-level fields when the backend predates the
 // multi-chain block.
-function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON') {
+function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON' | 'WXPAY') {
   if (!info) return null;
-  const fromChains = info.chains && info.chains[chain];
+  const fromChains: any = info.chains && info.chains[chain];
   if (fromChains) return fromChains;
   // legacy fallback: only BSC was supported, top-level packages == BSC
   if (chain === 'BSC') {
@@ -160,15 +176,20 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // right unit + treasury address. Kept as a single string + chain rather
   // than two separate states to avoid drift between the two on chain switch.
   const [pendingAmount, setPendingAmount] = useState('');
-  const [pendingChain, setPendingChain] = useState<'BSC' | 'TRON'>('BSC');
+  const [pendingChain, setPendingChain] = useState<'BSC' | 'TRON' | 'WXPAY'>('BSC');
   const [pendingCreatedAt, setPendingCreatedAt] = useState('');
+  // 微信 Native 下单返回的 weixin:// 付款链接(渲染成二维码)。只在下单响应里有,
+  // 为了让「充值记录 → 查看待支付订单」也能重新展示,同时落一份 localStorage
+  //(单 key:pending 订单同时最多 1 笔)。
+  const [pendingCodeUrl, setPendingCodeUrl] = useState('');
   // Currently selected deposit chain on the package picker. Defaulted to
   // TRON in loadData() when the backend reports TRON is available, since
   // USDT is the more common new-user path. lazy-init reads the cached
   // paymentInfo so on second-and-later visits the picker doesn't flash
   // BSC for one frame before flipping to TRON.
-  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON'>(() => {
+  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON' | 'WXPAY'>(() => {
     const cached = readCachedPaymentInfo();
+    if (cached?.chains?.WXPAY && (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW')) return 'WXPAY';
     return cached?.chains?.TRON ? 'TRON' : 'BSC';
   });
   const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
@@ -283,7 +304,16 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       // Default the picker to TRON (USDT) when the backend reports it as
       // available — matches the website's product decision that stablecoin
       // deposit is the more discoverable first option for new users.
-      if (info?.chains?.TRON) setCurrentChain('TRON');
+      // 中文界面且后端开了微信支付 → 默认选微信(人民币扫码是中文用户最顺路径);
+      // 否则维持 TRON 优先的原决策。
+      if (info?.chains?.WXPAY && (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW')) {
+        setCurrentChain('WXPAY');
+        // 国内版 cnySelected 初始值是 HIDE_WEB3(默认卡密面板)—— 有微信通道时
+        // 切到微信面板作为默认(卡密仍是 tab 可选)。
+        setCnySelected(false);
+      } else if (info?.chains?.TRON) {
+        setCurrentChain('TRON');
+      }
     }).catch(() => { /* network/auth failure — keep showing cached info or "套餐加载中..." */ });
 
     // 充值记录是二级页(subPage='orderHistory'),用户点 "充值记录 →" 才进去,
@@ -483,28 +513,36 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     };
   }, [partnerColor]);
 
-  const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' = currentChain) => {
+  const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' | 'WXPAY' = currentChain) => {
     setLoading(true);
     setError('');
     const result = await noobClawApi.createOrder(amount, chain);
     if (result?.order) {
-      // TRON orders carry usdt_amount; BSC orders carry bnb_amount. Either
-      // way, what we display on the pay screen is the unique-tail value
-      // (already includes the matching tail).
+      // TRON orders carry usdt_amount; BSC orders carry bnb_amount; WXPAY
+      // orders carry face_value_rmb (人民币面值,无 unique-tail). Either way,
+      // what we display on the pay screen is the amount the user must pay.
       const order = result.order;
-      const amountStr = chain === 'TRON'
+      const amountStr = chain === 'WXPAY'
+        ? String(parseFloat(order.face_value_rmb ?? result.cnyAmount ?? 0))
+        : chain === 'TRON'
         ? String(parseFloat(order.usdt_amount))
         : String(parseFloat(order.bnb_amount));
       setPendingOrderNo(order.order_no);
       setPendingAmount(amountStr);
       setPendingChain(chain);
       setPendingCreatedAt(order.created_at);
+      setPendingCodeUrl(chain === 'WXPAY' ? (result.codeUrl || '') : '');
+      if (chain === 'WXPAY' && result.codeUrl) {
+        try { localStorage.setItem('noobclaw_wxpay_qr', JSON.stringify({ orderNo: order.order_no, codeUrl: result.codeUrl })); } catch { /* quota */ }
+      }
       setIsExpired(false);
       setStep('pay');
     } else if (result?.code === 'PENDING_LIMIT') {
       setError(i18nService.t('walletPendingLimitError'));
     } else if (result?.code === 'TRON_DISABLED') {
       setError(i18nService.t('wvTronDisabled'));
+    } else if (result?.code === 'WXPAY_DISABLED' || result?.code === 'WXPAY_CREATE_FAILED') {
+      setError(i18nService.t('wxpayCreateFailed'));
     } else {
       setError(result?.error || i18nService.t('walletCreateOrderFailed'));
     }
@@ -515,23 +553,30 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const startSubscriptionPay = async (
     planCode: string,
     period: 'month' | 'quarter' | 'half' | 'year',
-    chain: 'BSC' | 'TRON',
+    chain: 'BSC' | 'TRON' | 'WXPAY',
   ): Promise<string | null> => {
     setError('');
     const result = await noobClawApi.createSubscriptionOrder(planCode, period, chain);
     if (result?.order) {
       const order = result.order;
-      const amountStr = chain === 'TRON' ? String(parseFloat(order.usdt_amount)) : String(parseFloat(order.bnb_amount));
+      const amountStr = chain === 'WXPAY'
+        ? String(parseFloat(order.face_value_rmb ?? result.cnyAmount ?? 0))
+        : chain === 'TRON' ? String(parseFloat(order.usdt_amount)) : String(parseFloat(order.bnb_amount));
       setPendingOrderNo(order.order_no);
       setPendingAmount(amountStr);
       setPendingChain(chain);
       setPendingCreatedAt(order.created_at);
+      setPendingCodeUrl(chain === 'WXPAY' ? (result.codeUrl || '') : '');
+      if (chain === 'WXPAY' && result.codeUrl) {
+        try { localStorage.setItem('noobclaw_wxpay_qr', JSON.stringify({ orderNo: order.order_no, codeUrl: result.codeUrl })); } catch { /* quota */ }
+      }
       setIsExpired(false);
       setStep('pay');
       return null;
     }
     if (result?.code === 'PENDING_LIMIT') return i18nService.t('walletPendingLimitError');
     if (result?.code === 'TRON_DISABLED') return i18nService.t('wvTronDisabledSub');
+    if (result?.code === 'WXPAY_DISABLED' || result?.code === 'WXPAY_CREATE_FAILED') return i18nService.t('wxpayCreateFailed');
     return result?.error || i18nService.t('walletCreateOrderFailed');
   };
 
@@ -564,10 +609,25 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   };
 
   const handleViewPendingOrder = (order: any) => {
-    const chain: 'BSC' | 'TRON' = (order.chain || 'BSC').toUpperCase() === 'TRON' ? 'TRON' : 'BSC';
-    const amountStr = chain === 'TRON'
+    const rawChain = (order.chain || 'BSC').toUpperCase();
+    const chain: 'BSC' | 'TRON' | 'WXPAY' = rawChain === 'TRON' ? 'TRON' : rawChain === 'WXPAY' ? 'WXPAY' : 'BSC';
+    const amountStr = chain === 'WXPAY'
+      ? String(parseFloat(order.face_value_rmb ?? 0))
+      : chain === 'TRON'
       ? String(parseFloat(order.usdt_amount))
       : String(parseFloat(order.bnb_amount));
+    // 微信订单:code_url 只在下单响应里,从 localStorage 恢复;订单号对不上
+    // (localStorage 被清/换设备)则展示「二维码已失效,请取消重下」提示。
+    if (chain === 'WXPAY') {
+      let codeUrl = '';
+      try {
+        const saved = JSON.parse(localStorage.getItem('noobclaw_wxpay_qr') || 'null');
+        if (saved?.orderNo === order.order_no && saved?.codeUrl) codeUrl = saved.codeUrl;
+      } catch { /* corrupted */ }
+      setPendingCodeUrl(codeUrl);
+    } else {
+      setPendingCodeUrl('');
+    }
     setPendingOrderNo(order.order_no);
     setPendingAmount(amountStr);
     setPendingChain(chain);
@@ -587,6 +647,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     setPendingAmount('');
     setPendingChain('BSC');
     setPendingCreatedAt('');
+    setPendingCodeUrl('');
     setIsExpired(false);
     setCountdown('');
   };
@@ -803,10 +864,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 //   3) order_no 以 RD 开头(redeem code 兑换订单实测前缀,如 RD1781083633513EEK8B)
                 //   4) bnb_amount 和 usdt_amount 都为 null(卡密没链上资产,这两字段都 NULL)
                 const orderNo = String(order.order_no || '');
-                const isRedeem = order.payment_method === 'redeem'
+                // 微信支付订单:chain='WXPAY',bnb/usdt 都为 NULL — 必须先于卡密的
+                // 第 4 条兜底判掉,否则会被误标成「CNY 卡密」。
+                const isWxpay = String(order.chain || '').toUpperCase() === 'WXPAY';
+                const isRedeem = !isWxpay && (order.payment_method === 'redeem'
                   || order.kind === 'redeem'
                   || /^RD/i.test(orderNo)
-                  || (order.bnb_amount == null && order.usdt_amount == null);
+                  || (order.bnb_amount == null && order.usdt_amount == null));
                 // Chain-aware amount + unit. BSC orders carry bnb_amount,
                 // TRON orders carry usdt_amount (the other is NULL). Legacy
                 // BSC rows without a chain field default to 'BSC'.
@@ -838,7 +902,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       <div>
                         <code className="text-xs font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{order.order_no}</code>
                         <div className="flex items-center gap-1.5 text-sm font-medium dark:text-claude-darkText text-claude-text mt-1">
-                          {isRedeem ? (
+                          {isWxpay ? (
+                            // 微信支付:绿标 + ¥金额
+                            <>
+                              <ChainLogo chain="WXPAY" size={14} />
+                              <span>¥{order.face_value_rmb != null ? Number(order.face_value_rmb).toFixed(2) : '—'}</span>
+                            </>
+                          ) : isRedeem ? (
                             // CNY 卡密:🎟️ 图标 + 「CNY 卡密」标签 + 可选金额(¥xx)
                             <>
                               <span className="text-base leading-none">🎟️</span>
@@ -1721,7 +1791,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <MembershipPanel onPay={startSubscriptionPay} />
+          <MembershipPanel onPay={startSubscriptionPay} wxpayEnabled={!!paymentInfo?.chains?.WXPAY} />
         </div>
         )}
 
@@ -1751,10 +1821,23 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   老单 grid)。现在 CNY 卡密通道(redeemInfo 非空)也会让这行露出,
                   即使只有 BSC + CNY 两个选项。USDT/TRON 按产品决策排第一。
                   cnySelected 标记当前是否在卡密面板,与 currentChain 正交。
-                  国内版(HIDE_WEB3):只走 CNY 卡密,链上充值 tab 整行隐藏。 */}
-              {!HIDE_WEB3 && (paymentInfo?.chains?.TRON || redeemInfo) && (
+                  国内版(HIDE_WEB3):链上充值(USDT/BNB)tab 隐藏,但微信支付不是
+                  web3 —— 有 WXPAY 通道时露「微信支付 + CNY 卡密」两个 tab;没有
+                  WXPAY 则维持老行为(整行隐藏,直接卡密面板)。 */}
+              {(HIDE_WEB3
+                ? !!paymentInfo?.chains?.WXPAY
+                : (paymentInfo?.chains?.TRON || paymentInfo?.chains?.WXPAY || redeemInfo)) && (
                 <div className="mb-3 flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-                  {paymentInfo?.chains?.TRON && (
+                  {paymentInfo?.chains?.WXPAY && (
+                    <button
+                      onClick={() => { setCnySelected(false); setCurrentChain('WXPAY'); }}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'WXPAY' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
+                    >
+                      <ChainLogo chain="WXPAY" size={16} />
+                      {i18nService.t('wxpayTab')}
+                    </button>
+                  )}
+                  {!HIDE_WEB3 && paymentInfo?.chains?.TRON && (
                     <button
                       onClick={() => { setCnySelected(false); setCurrentChain('TRON'); }}
                       className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'TRON' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
@@ -1763,6 +1846,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       USDT · TRC20
                     </button>
                   )}
+                  {!HIDE_WEB3 && (
                   <button
                     onClick={() => { setCnySelected(false); setCurrentChain('BSC'); }}
                     className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'BSC' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
@@ -1770,6 +1854,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     <ChainLogo chain="BSC" size={16} />
                     BNB · BSC
                   </button>
+                  )}
                   {redeemInfo && (
                     <button
                       onClick={() => { setCnySelected(true); setRedeemMsg({ text: '', color: '' }); }}
@@ -1850,8 +1935,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     );
                   }
                   return packages.map((pkg: any) => {
-                    const isTron = currentChain === 'TRON';
-                    const amount = isTron ? (pkg.usdt as number) : (pkg.bnb as number);
+                    // WXPAY 的档位金额同样以 usdt 数下单(后端折人民币),卡面显示 ¥ label。
+                    const amount = currentChain === 'BSC' ? (pkg.bnb as number) : (pkg.usdt as number);
                     const key = `${currentChain}-${amount}`;
                     return (
                       <div key={key} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
@@ -1894,6 +1979,64 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     {i18nService.t('walletBack')}
                   </button>
                 </div>
+              ) : pendingChain === 'WXPAY' ? (
+                /* ─── 微信扫码支付面板 ───
+                   跟链上面板同一骨架(标题/倒计时/金额/QR/等待/操作),差异:
+                   金额是 ¥、二维码是 weixin:// 付款链接、没有收款地址行。 */
+                <>
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    <ChainLogo chain="WXPAY" size={20} />
+                    <h4 className="text-sm font-bold dark:text-claude-darkText text-claude-text text-center">
+                      {i18nService.t('wxpayPayTitle')}
+                    </h4>
+                  </div>
+                  <div className="text-center mb-1">
+                    {(() => {
+                      const tpl = i18nService.t('wxpayPayWithin');
+                      const parts = tpl.split('{countdown}');
+                      return (
+                        <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">
+                          {parts[0]}
+                          <span className="font-mono font-bold text-red-500">{countdown || '0:30:00'}</span>
+                          {parts[1] ?? ''}
+                        </p>
+                      );
+                    })()}
+                    <code className="font-bold text-primary text-lg">¥{pendingAmount}</code>
+                  </div>
+                  {pendingCodeUrl ? (
+                    <div className="flex flex-col items-center mb-3">
+                      <div className="bg-white p-2.5 rounded-lg">
+                        <QRCodeSVG value={pendingCodeUrl} size={160} />
+                      </div>
+                      <p className="text-xs text-primary mt-2">{i18nService.t('wxpayScanTip')}</p>
+                    </div>
+                  ) : (
+                    <div className="mb-3 p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/20 text-xs text-yellow-500 text-center">
+                      {i18nService.t('wxpayQrLost')}
+                    </div>
+                  )}
+                  <div className="mb-3 p-2.5 rounded-lg bg-primary/5 border border-primary/20 flex items-center gap-3">
+                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+                    <p className="text-xs text-primary">
+                      {i18nService.t('walletWaitingConfirmation')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleCancelOrder(pendingOrderNo)}
+                      className="flex-1 py-2 rounded-lg border dark:border-claude-darkBorder border-claude-border text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400 hover:border-red-400/40 transition-colors"
+                    >
+                      {i18nService.t('walletCancelOrder')}
+                    </button>
+                    <button
+                      onClick={handleBack}
+                      className="flex-1 py-2 rounded-lg border dark:border-claude-darkBorder border-claude-border text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text transition-colors"
+                    >
+                      {i18nService.t('walletBack')}
+                    </button>
+                  </div>
+                </>
               ) : (() => {
                 // Chain-aware payment instructions. The visual structure stays
                 // the same as the legacy BNB-only flow; just the unit, the

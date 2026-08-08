@@ -10,11 +10,27 @@ import { HIDE_WEB3 } from '../../buildFlags';
 // 配色用 .text-primary / .bg-primary 等(随 WalletView 的 partner 金 / 默认绿主题自动适配)。
 
 type Period = 'month' | 'quarter' | 'half' | 'year';
-type PayMethod = 'TRON' | 'BSC' | 'RMB';
+type PayMethod = 'TRON' | 'BSC' | 'RMB' | 'WXPAY';
 
 // 币种图标(对齐购买积分那排支付方式 tab)。本地复制自 WalletView 的 ChainLogo:
 // WalletView 已 import 本组件,反向 import 会形成循环依赖,故按矩阵惯例就地复制两枚 SVG。
-const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON'; size?: number }> = ({ chain, size = 16 }) => {
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY'; size?: number }> = ({ chain, size = 16 }) => {
+  if (chain === 'WXPAY') {
+    // 微信支付绿气泡(简化标,与 WalletView 同款)
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+        <circle cx={12} cy={12} r={12} fill="#07C160" />
+        <ellipse cx="9.6" cy="10.4" rx="5.4" ry="4.4" fill="white" />
+        <path fill="white" d="M6.2 16.6l1.2-2.6 2.6 1z" />
+        <ellipse cx="15.4" cy="13.4" rx="4.3" ry="3.5" fill="white" />
+        <path fill="white" d="M18.6 18.2l-1-2.1-2.1.8z" />
+        <circle cx="7.8" cy="9.6" r="0.75" fill="#07C160" />
+        <circle cx="11.4" cy="9.6" r="0.75" fill="#07C160" />
+        <circle cx="14" cy="12.8" r="0.65" fill="#07C160" />
+        <circle cx="16.9" cy="12.8" r="0.65" fill="#07C160" />
+      </svg>
+    );
+  }
   if (chain === 'TRON') {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
@@ -51,7 +67,11 @@ function fmtCredits(n: number): string {
   return String(n);
 }
 
-const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC') => Promise<string | null> }> = ({ onPay }) => {
+const MembershipPanel: React.FC<{
+  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY') => Promise<string | null>;
+  /** 后端 /payment/info 报了 WXPAY 通道时为 true — 支付方式里露出「微信支付」 */
+  wxpayEnabled?: boolean;
+}> = ({ onPay, wxpayEnabled }) => {
   // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
   // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
@@ -82,6 +102,12 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
 
   useEffect(() => { load(); }, [load]);
 
+  // 中文界面 + 后端开了微信支付 → 默认支付方式选微信(与购买积分 tab 同一决策)。
+  // wxpayEnabled 由父级 paymentInfo 拉回后翻 true,只在此时切一次。
+  useEffect(() => {
+    if (wxpayEnabled && (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW')) setMethod('WXPAY');
+  }, [wxpayEnabled]);
+
   const plans = cfg?.plans || [];
   const cur = cfg?.current;
   const curCode = cur?.planCode || 'free';
@@ -94,7 +120,7 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
   const subscribe = async (planCode: string) => {
     if (method === 'RMB' || !onPay) return;
     setBusy(true); setError('');
-    const chain: 'TRON' | 'BSC' = method === 'BSC' ? 'BSC' : 'TRON';
+    const chain: 'TRON' | 'BSC' | 'WXPAY' = method === 'BSC' ? 'BSC' : method === 'WXPAY' ? 'WXPAY' : 'TRON';
     const err = await onPay(planCode, period, chain);
     if (err) setError(err);
     setBusy(false);
@@ -129,12 +155,17 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
     <div>
       {/* 支付方式 + 周期:同一行两组菜单(左=支付方式 / 右=周期),折扣在卡片里显示 */}
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-        {/* 支付方式选择器 —— 国内版(HIDE_WEB3)只有 CNY 兑换码一种,整行隐藏(method 已锁定 RMB) */}
-        {!HIDE_WEB3 && (
+        {/* 支付方式选择器 —— 国内版(HIDE_WEB3)藏 USDT/BNB;有微信通道时露
+            「微信支付 + CNY 兑换码」两种,没有则整行隐藏(method 已锁定 RMB) */}
+        {(!HIDE_WEB3 || wxpayEnabled) && (
         <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          {([['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC'], ['RMB', i18nService.t('mpPayCny')]] as Array<[PayMethod, string]>).map(([m, label]) => (
+          {([
+            ...(wxpayEnabled ? [['WXPAY', i18nService.t('wxpayTab')]] : []),
+            ...(HIDE_WEB3 ? [] : [['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC']]),
+            ['RMB', i18nService.t('mpPayCny')],
+          ] as Array<[PayMethod, string]>).map(([m, label]) => (
             <button key={m} onClick={() => { setMethod(m); setError(''); }} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
-              {(m === 'TRON' || m === 'BSC') && <ChainLogo chain={m} size={16} />}
+              {(m === 'TRON' || m === 'BSC' || m === 'WXPAY') && <ChainLogo chain={m} size={16} />}
               {label}
             </button>
           ))}
@@ -160,8 +191,9 @@ const MembershipPanel: React.FC<{ onPay?: (planCode: string, period: Period, cha
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
           const tier = TIER_COLOR[plan.code] || '#9aa0aa';
-          // 币种跟支付方式:USDT/BNB → 美元 $;CNY → 人民币 ¥。
-          const useCny = method === 'RMB';
+          // 币种跟支付方式:USDT/BNB → 美元 $;CNY 卡密 / 微信支付 → 人民币 ¥
+          //(微信下单后端也按 plans.price_cny 口径收款,显示与实付一致)。
+          const useCny = method === 'RMB' || method === 'WXPAY';
           const sym = useCny ? '¥' : '$';
           const months = PERIOD_MONTHS[period];
           const discount = price?.discount ?? 1;

@@ -72,9 +72,24 @@ export interface PaymentInfo {
   // Optional — present when backend has the multi-chain TRON channel enabled.
   // TRON is keyed only when tron_treasury_address is set in system_config; if
   // missing, the client falls back to BSC-only behavior.
+  // WXPAY(微信 Native 扫码)only appears when the backend has WeChat Pay
+  // merchant credentials configured — packages are the USDT tiers priced in
+  // CNY via usdt_to_cny_rate.
   chains?: {
     BSC?: ChainBlock;
     TRON?: ChainBlock;
+    WXPAY?: {
+      enabled: boolean;
+      cnyRate: number;
+      packages: Array<{
+        usdt: number;
+        cny: number;
+        label: string;
+        usdValue: string;
+        tokens: number;
+        tokensDisplay: string;
+      }>;
+    };
   };
 }
 
@@ -155,11 +170,13 @@ class NoobClawApiService {
    */
   async createOrder(
     amount: number,
-    chain: 'BSC' | 'TRON' = 'BSC',
-  ): Promise<{ order?: any; treasuryWallet?: string; error?: string; code?: string } | null> {
+    chain: 'BSC' | 'TRON' | 'WXPAY' = 'BSC',
+  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
-      const body = chain === 'TRON'
-        ? { chain: 'TRON', usdtAmount: amount }
+      // WXPAY 的 amount 也是 USDT 档位数(后端按 usdt_to_cny_rate 折人民币),
+      // 响应多 codeUrl(weixin:// 链接)由前端渲染成付款二维码。
+      const body = chain === 'TRON' || chain === 'WXPAY'
+        ? { chain, usdtAmount: amount }
         : { chain: 'BSC',  bnbAmount: amount };
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
         method: 'POST',
@@ -210,8 +227,8 @@ class NoobClawApiService {
   async createSubscriptionOrder(
     planCode: string,
     period: 'month' | 'quarter' | 'half' | 'year',
-    chain: 'BSC' | 'TRON' = 'TRON',
-  ): Promise<{ order?: any; treasuryWallet?: string; error?: string; code?: string } | null> {
+    chain: 'BSC' | 'TRON' | 'WXPAY' = 'TRON',
+  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
         method: 'POST',
