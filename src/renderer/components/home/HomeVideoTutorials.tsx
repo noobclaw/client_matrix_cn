@@ -2,12 +2,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 
 /**
- * 首页「视频教程」区 — 与官网首页横排同款交互:
- * 分类标签(全部/成片效果/各平台) + 两行横向翻页(首/末页藏对应箭头) + 点卡片当前页弹层播放。
+ * 首页「视频教程」区 — 分类标签(全部/成片效果/各平台) + 两行横向翻页(首/末页藏对应箭头)。
  *
  * 数据来自 R2 清单 site/videos/manifest.json(backend/scripts/sync-bili-videos.js 生成),
- * B 站发新视频重跑脚本即对所有已装客户端生效,零打包。带 ?v=时间戳 绕 CDN 缓存。
- * 播放用 B 站官方外嵌 player(iframe,tauri csp 为 null 不拦);清单拉不到时整个区不渲染。
+ * B 站发新视频重跑脚本即对所有已装客户端生效,零打包。带 ?v=时间戳 绕 CDN 缓存;
+ * 清单经 tauriShim 的 fetch 代理走 sidecar 拉取,拉不到时整个区不渲染。
+ *
+ * 点卡片【新开系统浏览器】到 B 站视频页播放 —— 不在应用内嵌播:B 站外嵌播放器对
+ * 未登录观众限 480p 不清晰(用户拍板 2026-08-09,弃应用内弹层方案)。
  */
 
 const MANIFEST_URL = 'https://static.noobclaw.com/site/videos/manifest.json';
@@ -25,12 +27,9 @@ const HomeVideoTutorials: React.FC = () => {
   const [videos, setVideos] = useState<ManifestVideo[]>([]);
   const [groups, setGroups] = useState<ManifestGroup[]>([]);
   const [active, setActive] = useState('all');
-  const [playing, setPlaying] = useState<ManifestVideo | null>(null);
-  const [showLoading, setShowLoading] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const [canPrev, setCanPrev] = useState(false);
   const [canNext, setCanNext] = useState(false);
-  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -61,28 +60,10 @@ const HomeVideoTutorials: React.FC = () => {
     if (r) r.scrollBy({ left: d * r.clientWidth * 0.9, behavior: 'smooth' });
   };
 
-  const openVideo = (v: ManifestVideo) => {
-    setPlaying(v);
-    setShowLoading(true);
-    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-    // B 站 iframe 起播前有一段黑/灰,提示压 6 秒(与官网一致)
-    loadTimerRef.current = setTimeout(() => setShowLoading(false), 6000);
-  };
-  const closeVideo = () => {
-    setPlaying(null);
-    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
-  };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeVideo(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
   const openExternal = (url: string) => { try { window.electron?.shell?.openExternal?.(url); } catch { /* noop */ } };
+  const openVideo = (v: ManifestVideo) => openExternal(`https://www.bilibili.com/video/${v.bvid}/`);
 
   if (!videos.length) return null;
-
-  const portrait = playing ? playing.h > playing.w : false;
 
   return (
     <div className="space-y-4">
@@ -143,6 +124,7 @@ const HomeVideoTutorials: React.FC = () => {
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openVideo(v); } }}
               className="group cursor-pointer rounded-xl overflow-hidden border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:-translate-y-0.5 hover:shadow-md transition-all"
               aria-label={`播放:${v.title}`}
+              title={v.title}
             >
               <div className="relative bg-black" style={{ aspectRatio: '16/10' }}>
                 <img src={v.cover} alt={v.title} loading="lazy" className="w-full h-full object-cover" />
@@ -165,39 +147,6 @@ const HomeVideoTutorials: React.FC = () => {
           aria-label="下一页"
         >→</button>
       </div>
-
-      {/* 弹层播放:标题在播放框上方,起播前压 6 秒加载提示 */}
-      {playing && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/85 flex items-center justify-center p-5"
-          role="dialog"
-          aria-modal="true"
-          onClick={(e) => { if (e.target === e.currentTarget) closeVideo(); }}
-        >
-          <button
-            type="button"
-            onClick={closeVideo}
-            className="fixed top-14 right-5 w-9 h-9 rounded-full bg-white/15 hover:bg-white/30 text-white text-lg z-[101]"
-            aria-label="关闭"
-          >✕</button>
-          <div className="w-full" style={{ maxWidth: portrait ? 'min(90vw, 380px)' : 'min(92vw, 860px)' }}>
-            <div className="text-white text-sm font-semibold mb-2 pr-10 leading-snug">{playing.title}</div>
-            <div className="relative w-full rounded-xl overflow-hidden border border-emerald-400/25 bg-[#0d0d15]" style={{ maxHeight: '80vh' }}>
-              <div style={{ paddingTop: `${(playing.h / playing.w) * 100}%` }} />
-              <iframe
-                title={playing.title}
-                src={`https://player.bilibili.com/player.html?isOutside=true&bvid=${playing.bvid}&cid=${playing.cid}&p=1&autoplay=1&high_quality=1`}
-                allowFullScreen
-                allow="autoplay; fullscreen"
-                className="absolute inset-0 w-full h-full border-0 z-[1]"
-              />
-              {showLoading && (
-                <div className="absolute inset-0 z-[2] pointer-events-none flex items-center justify-center bg-black/55 text-gray-300 text-sm">▶ {i18nService.t('hvVideosLoading')}</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
