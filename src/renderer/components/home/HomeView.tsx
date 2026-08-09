@@ -6,8 +6,8 @@ import ComposeIcon from '../icons/ComposeIcon';
 import TickerMarquee from '../cowork/TickerMarquee';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { WalletBadge } from '../common/WalletBadge';
-import { HIDE_EXCHANGE_SQUARES } from '../../buildFlags';
 import { ContactFloatWidget } from '../common/ContactWidgets';
+import HomeVideoTutorials from './HomeVideoTutorials';
 
 export interface HomeViewProps {
   isSidebarCollapsed?: boolean;
@@ -140,29 +140,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             <p className="text-sm leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary max-w-xl mx-auto">
               {i18nService.t('hvHeroDesc')}
             </p>
-            {/* 平台标签 */}
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-              {[
-                ['🐦', i18nService.t('hvPlatformX')],
-                ['📕', i18nService.t('hvPlatformRed')],
-                ['🎬', i18nService.t('hvPlatformDouyin')],
-                ['🎦', i18nService.t('hvPlatformKuaishou')],
-                ['📺', i18nService.t('hvPlatformBilibili')],
-                ['📹', i18nService.t('hvPlatformChannels')],
-                ['📰', i18nService.t('hvPlatformToutiao')],
-                ['🎵', 'TikTok'],
-                ['▶️', 'YouTube'],
-                // 币安广场:国内版也保留(HIDE_EXCHANGE_SQUARES=false),与账号页/任务页口径一致
-                ...(HIDE_EXCHANGE_SQUARES ? [] : [['🔶', i18nService.t('hvPlatformBinance')]]),
-              ].map(([icon, label]) => (
-                <span
-                  key={label}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white dark:text-gray-200 text-gray-700"
-                >
-                  <span>{icon}</span>{label}
-                </span>
-              ))}
-            </div>
+            {/* 平台标签行已按需求移除(2026-08-09);位置换给下方「视频教程」区 */}
           </div>
 
           {/* 登录引导:未登录时给一个醒目的登录按钮 */}
@@ -230,6 +208,9 @@ const HomeView: React.FC<HomeViewProps> = ({
               />
             </div>
           </div>
+
+          {/* 视频教程横排(与官网首页同款):数据来自 R2 清单,拉不到整个区不渲染 */}
+          <HomeVideoTutorials />
 
           {/* 开源安全提示 */}
           <div className="flex justify-center">
