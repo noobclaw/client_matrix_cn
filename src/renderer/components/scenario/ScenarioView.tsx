@@ -1013,6 +1013,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       language: input.language,
       autoPublish: input.autoPublish,
       perAccountCount: input.perAccountCount,   // 每号每轮搬几条(采集量 = 号数 × 本值)
+      // keyword(搜索词覆盖)没有向导 UI;taskStore 是整对象替换,不带上编辑一次就丢(审计发现)。
+      ...(matrixRepostTask?.binanceRepost?.keyword ? { keyword: matrixRepostTask.binanceRepost.keyword } : {}),
     };
     // 同上:type 用枚举 'binance_repost',剧本 id 走 `${platform}_repost` 由 runner 推。
     const r = await m?.saveTask?.({ id: matrixRepostTask?.id, platform: matrixRepostPlatform, type: 'binance_repost', name: input.name, accountIds: input.accountIds, binanceRepost, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });

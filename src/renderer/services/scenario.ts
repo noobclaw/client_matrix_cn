@@ -99,6 +99,8 @@ const MATRIX_DOWNLOAD_SCENARIO_ID: Record<string, string> = {
   douyin: 'douyin_video_download', kuaishou: 'kuaishou_video_download',
   bilibili: 'bilibili_video_download', tiktok: 'tiktok_video_download',
   xhs: 'xhs_video_download',
+  // youtube:下载向导已支持(yt-dlp 无账号模式),缺映射会让 updateTask 兜底把平台改写成 douyin(审计发现)。
+  youtube: 'youtube_video_download',
 };
 const MATRIX_DOWNLOAD_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_DOWNLOAD_SCENARIO_ID).map(([p, id]) => [id, p]));
@@ -106,6 +108,7 @@ const MATRIX_DOWNLOAD_META: Record<string, { name_zh: string; icon: string }> = 
   douyin: { name_zh: '抖音 视频无水印下载', icon: '⬇️' }, kuaishou: { name_zh: '快手 视频无水印下载', icon: '⬇️' },
   bilibili: { name_zh: '哔哩哔哩 视频无水印下载', icon: '⬇️' }, tiktok: { name_zh: 'TikTok 视频无水印下载', icon: '⬇️' },
   xhs: { name_zh: '小红书 视频无水印下载', icon: '⬇️' },
+  youtube: { name_zh: 'YouTube 视频无水印下载', icon: '⬇️' },
 };
 
 // 「图文创作」剧本(backend/matrix/scenarios/<platform>_image_text)。N 个号各自按身份生成图文+配图+发布。
@@ -223,6 +226,9 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
   return {
     id: t.id,
+    // name 必须透传:scenarioInputToMxSave 各分支是 input.name || 硬编码默认名,不带的话
+    // updateTask 兜底会把任务改名(engage 分支恒「抖音互动」,无视平台)。审计发现的潜伏坑。
+    name: t.name,
     // 任务真实 platform 必须透传:ScenarioView 矩阵模式按 t.platform 过滤 tab(FB/Reddit/Ins 剧本
     //   不在客户端注册表里,scenario_id 映射不到)。之前没带 → 过滤后所有任务全部隐身(用户实测)。
     platform: t.platform,

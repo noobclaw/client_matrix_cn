@@ -126,8 +126,12 @@ const MatrixFunnelConfig: React.FC<Props> = ({ accounts, accent, perMode, setPer
               <button
                 key={a.id}
                 type="button"
-                disabled={disabled || !perMode}
-                onClick={() => { if (justDraggedRef.current) return; if (perMode) setActiveId(a.id); }}
+                // 不用 disabled 表达「共用模式不可选」:disabled 按钮吞鼠标事件,会让按住卡片
+                // 拖动横排失效。改由 onClick 守卫 + tabIndex 摘出焦点链,拖拽任何模式都好使。
+                disabled={disabled}
+                tabIndex={perMode ? 0 : -1}
+                aria-disabled={!perMode}
+                onClick={() => { if (justDraggedRef.current || disabled) return; if (perMode) setActiveId(a.id); }}
                 className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition-colors ${
                   isActive ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/50' : 'border-gray-200 dark:border-gray-700'
                 } ${perMode ? 'cursor-pointer hover:border-gray-400 dark:hover:border-gray-500' : 'cursor-default'}`}
