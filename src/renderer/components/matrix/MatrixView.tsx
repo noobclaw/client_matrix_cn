@@ -759,11 +759,11 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const target = t || selectedTask;
     // 🚨 拿不到任务就【拒绝】,绝不落到 sidecar 的无参全停分支(用户 2026-08-06 明确要求:
     //   只能停当前这个任务)。两个调用点都传了任务对象,正常到不了这里;真到了宁可让用户再点一次。
-    if (!target?.platform) { setNotice('⚠️ 未能确定要停哪个任务,请从任务卡片上点停止'); return; }
+    if (!target?.platform) { setNotice('⚠️ ' + i18nService.t('mvStopNoTask')); return; }
     setNotice(i18nService.t('mvStopRequested'));
     // taskId 一起带上:sidecar 会核对「该平台正在跑的确实是这个任务」才停(任务级停止语义)。
     const r = await M()?.stopTask?.({ platform: target.platform, taskId: target.id });
-    if (r && r.ok === false && r.error === 'task_mismatch') setNotice('⚠️ 该平台正在跑的是另一个任务,未停止');
+    if (r && r.ok === false && r.error === 'task_mismatch') setNotice('⚠️ ' + i18nService.t('mvStopTaskMismatch'));
   };
   const deleteTask = async (t: MatrixTask) => { await M()?.removeTask({ id: t.id }); setSelectedTaskId(null); await reloadTasks(); };
 
