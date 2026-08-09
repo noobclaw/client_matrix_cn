@@ -103,6 +103,9 @@ export interface EngageTaskOptions {
   engageMode?: 'search' | 'binge';
   scenarioId?: string;             // 显式指定后端剧本 id(reply_fan→*_reply_fans_comment / video_download→*_video_download);缺省按平台推
   funnel?: { funnel_phrase?: string; funnel_probability?: number }; // 引流尾巴配置:reply_fan 走后端剧本;engage 由 makeAiCall 对 comment_composer 融入
+  // 各账号独立引流语:有值时按 accountId 取,未配的账号视为不带引流(不回落共用值);
+  // undefined 时沿用 funnel(共用,老行为)。
+  funnelByAccount?: Record<string, { funnel_phrase?: string; funnel_probability?: number }>;
   urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
   concurrency?: number;
   jitterMinMs?: number; jitterMaxMs?: number;
@@ -414,8 +417,15 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       selfNickname: acc.nickname || '',
       selfUid: acc.boundUid || acc.displayId || '',
       selfDisplayId: acc.displayId || '',
-      funnel_phrase: opts.funnel?.funnel_phrase || '',
-      funnel_probability: typeof opts.funnel?.funnel_probability === 'number' ? opts.funnel.funnel_probability : 0,
+      // 引流语按模式取:各账号模式下取本账号的(未配=不带引流,【不】回落共用值);
+      // 共用模式(funnelByAccount 为空)沿用任务级 funnel。reply_fan 剧本与 engage 融合都吃这两个字段。
+      ...(() => {
+        const f = opts.funnelByAccount ? (opts.funnelByAccount[accountId] || {}) : (opts.funnel || {});
+        return {
+          funnel_phrase: f.funnel_phrase || '',
+          funnel_probability: typeof f.funnel_probability === 'number' ? f.funnel_probability : 0,
+        };
+      })(),
       // video_download 剧本读 task.urls(用户粘贴的待下载链接清单)。
       urls: Array.isArray(opts.urls) ? opts.urls : [],
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,

@@ -13,6 +13,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -33,7 +34,7 @@ interface Props {
   accountsLoading?: boolean;
   initialTask?: any | null;                // 编辑时传入矩阵任务
   onCancel: () => void;
-  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number } }) => Promise<void> | void;
+  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount: Record<string, { funnel_phrase: string; funnel_probability: number }> | null }) => Promise<void> | void;
 }
 
 const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
@@ -68,6 +69,16 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
       ? Math.min(FUNNEL_PROB_MAX, initialTask.funnel.funnel_probability)
       : FUNNEL_PROB_DEFAULT
   );
+  // ── 各账号独立引流语(同 MatrixTaskWizard;编辑回填 funnelByAccount) ──
+  const [funnelPerMode, setFunnelPerMode] = useState<boolean>(!!(initialTask?.funnelByAccount && Object.keys(initialTask.funnelByAccount).length));
+  const [funnelPerMap, setFunnelPerMap] = useState<Record<string, { funnel_phrase: string; funnel_probability: number }>>(() => {
+    const src = initialTask?.funnelByAccount || {};
+    const out: Record<string, { funnel_phrase: string; funnel_probability: number }> = {};
+    for (const [id, v] of Object.entries(src) as any) out[id] = { funnel_phrase: String(v?.funnel_phrase || ''), funnel_probability: typeof v?.funnel_probability === 'number' && v.funnel_probability >= FUNNEL_PROB_MIN ? Math.min(FUNNEL_PROB_MAX, v.funnel_probability) : FPD };
+    return out;
+  });
+  const [funnelUnsetConfirm, setFunnelUnsetConfirm] = useState<number | null>(null);
+  const selectedAccounts = accounts.filter((a) => selected.has(a.id)).map((a) => ({ id: a.id, title: a.nickname || a.displayName, group: a.group, platformName: PLATFORM_NAME[a.platform || ''] || a.platform, avatar: a.avatar }));
 
   // ── 调度(对齐矩阵 MatrixTaskFrequency:回复评论用 once/3h/6h/每日随机) ──
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
@@ -96,7 +107,13 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
         accountIds: [...selected],
         concurrency: selected.size,
         frequency: runInterval,
-        funnel: { funnel_phrase: funnelPhrase.trim(), funnel_probability: hasFunnel ? funnelProb : 0 },
+        // 各账号模式:任务级 funnel 置空、逐账号走 funnelByAccount;共用模式显式传 null 清掉旧的逐账号配置。
+        funnel: !funnelPerMode ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: hasFunnel ? funnelProb : 0 } : { funnel_phrase: '', funnel_probability: 0 },
+        funnelByAccount: funnelPerMode ? (() => {
+          const out: Record<string, { funnel_phrase: string; funnel_probability: number }> = {};
+          for (const id of selected) { const v = funnelPerMap[id]; const ph = (v?.funnel_phrase || '').trim(); if (ph) out[id] = { funnel_phrase: ph, funnel_probability: v.funnel_probability }; }
+          return out;
+        })() : null,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzReplyErrSaveFailed'));
@@ -177,40 +194,18 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
         {step === 2 && (
           <>
-            {/* 引流语 textarea */}
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                🎣 {i18nService.t('wzReplyFunnelLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzReplyFunnelHint')}</span>
-              </label>
-              <textarea
-                value={funnelPhrase}
-                onChange={(e) => setFunnelPhrase(e.target.value.slice(0, FUNNEL_PHRASE_MAX))}
-                placeholder={i18nService.t('wzReplyFunnelPlaceholder')}
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[80px]"
-                disabled={saving}
-              />
-              <div className="text-[11px] text-gray-400 mt-1">{i18nService.t('wzReplyCharCount').replace('{n}', String(funnelPhrase.trim().length)).replace('{max}', String(FUNNEL_PHRASE_MAX))}</div>
-            </div>
-
-            {/* 引流概率 slider */}
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                🎲 {i18nService.t('wzReplyProbLabel').replace('{n}', String(hasFunnel ? funnelProb : 0))}
-                <span className="text-xs text-gray-400 font-normal ml-1">
-                  {hasFunnel ? i18nService.t('wzReplyProbHintOn') : i18nService.t('wzReplyProbHintOff')}
-                </span>
-              </label>
-              <input
-                type="range"
-                min={FUNNEL_PROB_MIN}
-                max={FUNNEL_PROB_MAX}
-                value={funnelProb}
-                onChange={(e) => setFunnelProb(parseInt(e.target.value, 10))}
-                disabled={saving || !hasFunnel}
-                className="w-full accent-fuchsia-500 disabled:opacity-40"
-              />
-            </div>
+            {/* 引流语配置:共用一份 / 各账号各自(点账号卡逐号配,未配=该号回复不带引流)。 */}
+            <MatrixFunnelConfig
+              accounts={selectedAccounts}
+              accent="fuchsia"
+              perMode={funnelPerMode}
+              setPerMode={setFunnelPerMode}
+              shared={{ funnel_phrase: funnelPhrase, funnel_probability: funnelProb }}
+              setShared={(v) => { setFunnelPhrase(v.funnel_phrase.slice(0, FUNNEL_PHRASE_MAX)); setFunnelProb(v.funnel_probability); }}
+              perMap={funnelPerMap}
+              setPerMap={setFunnelPerMap}
+              disabled={saving}
+            />
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
               <div className="font-semibold">⚠️ {i18nService.t('wzReplySafetyTitle')}</div>
               <ul className="list-disc list-inside space-y-0.5">
@@ -235,7 +230,9 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">📋 {i18nService.t('wzReplySummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzReplySumAccountsLabel')} value={i18nService.t('wzReplySumAccountsValue').replace('{n}', String(selected.size)).replace('{item}', itemZh)} />
-              <SummaryRow label={i18nService.t('wzReplySumFunnelLabel')} value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzReplySumFunnelEmpty')} />
+              <SummaryRow label={i18nService.t('wzReplySumFunnelLabel')} value={funnelPerMode
+                ? i18nService.t('wzFunnelSummaryPer').replace('{done}', String(selectedAccounts.length - countUnconfigured(selectedAccounts, funnelPerMap))).replace('{total}', String(selectedAccounts.length))
+                : (hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzReplySumFunnelEmpty'))} />
               <SummaryRow label={i18nService.t('wzReplySumScopeLabel')} value={i18nService.t('wzReplySumScopeValue').replace('{item}', isXhs ? i18nService.t('wzReplyScopeUnitXhs') : i18nService.t('wzReplyScopeUnitOther'))} />
               <SummaryRow label={i18nService.t('wzReplySumConcurrencyLabel')} value={i18nService.t('wzReplySumConcurrencyValue').replace('{n}', String(selected.size))} />
               <SummaryRow label={i18nService.t('wzReplySumFrequencyLabel')} value={intervalLabel} />
@@ -265,11 +262,28 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
         <div className="flex-1" />
         {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzReplyPrevStep')}</button>}
         {step < 3 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">{i18nService.t('wzReplyNextStep')}</button>
+          <button type="button" onClick={() => {
+            if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; }
+            // 各账号模式下还有账号没配引流语 → 弹确认(返回配置 / 不管了下一步),新建与编辑同拦。
+            if (step === 2 && funnelPerMode) {
+              const unset = countUnconfigured(selectedAccounts, funnelPerMap);
+              if (unset > 0) { setFunnelUnsetConfirm(unset); return; }
+            }
+            setSaveError(null); setStep((step + 1) as WizardStep);
+          }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">{i18nService.t('wzReplyNextStep')}</button>
         ) : (
           <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">{saving ? i18nService.t('wzReplySaving') : (editing ? i18nService.t('wzReplySaveEdit') : i18nService.t('wzReplyCreateTask'))}</button>
         )}
       </div>
+
+      {funnelUnsetConfirm !== null && (
+        <FunnelUnsetConfirm
+          count={funnelUnsetConfirm}
+          accent="fuchsia"
+          onBack={() => setFunnelUnsetConfirm(null)}
+          onContinue={() => { setFunnelUnsetConfirm(null); setSaveError(null); setStep((step + 1) as WizardStep); }}
+        />
+      )}
     </div>
   );
 };

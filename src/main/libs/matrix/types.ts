@@ -306,6 +306,9 @@ export interface MatrixTask {
   accountIds: string[];            // 勾选的(已登录)账号
   quota: EngageQuota;              // 仅 engage 用;reply_fan / video_download 任务为空对象
   funnel?: ReplyFanConfig;         // 仅 reply_fan 用:引流尾巴配置
+  // 各账号独立引流语(可选):有值 = 「各账号各自」模式,未配的账号视为不带引流;
+  // 为空/undefined = 沿用 funnel(所有账号共用,老行为)。key=accountId。
+  funnelByAccount?: Record<string, ReplyFanConfig>;
   imageText?: ImageTextConfig;     // 仅 image_text 用:图文创作配置
   viralRewrite?: ViralRewriteConfig; // 仅 viral_rewrite 用:爆款仿写配置
   tweetPost?: TweetPostConfig;     // 仅 x_post 用:自动发推配置

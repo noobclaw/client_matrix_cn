@@ -708,19 +708,19 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
   // ── 任务 ──
   // 向导(MatrixTaskWizard)保存:成功回 tasks 屏;失败抛出让向导显示红字。
-  const saveTaskFromWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel?: { funnel_phrase: string; funnel_probability: number } }) => {
+  const saveTaskFromWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel?: { funnel_phrase: string; funnel_probability: number }; funnelByAccount?: Record<string, { funnel_phrase: string; funnel_probability: number }> | null }) => {
     if (!requireLogin()) throw new Error(i18nService.t('mvLoginFirst'));
     // funnel:互动评论引流(选填)。留空 → funnel_probability=0 → 视作未配,评论纯 AI 内容(向后兼容)。
-    const r = await M()?.saveTask({ id: taskEditId || undefined, platform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, funnel: input.funnel, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await M()?.saveTask({ id: taskEditId || undefined, platform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, funnel: input.funnel, funnelByAccount: input.funnelByAccount, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) throw new Error(({ platform_task_limit: i18nService.t('mvTaskLimit'), duplicate_type: i18nService.t('mvDuplicateEngage'), task_not_found: i18nService.t('mvTaskNotFound') } as any)[r?.error] || r?.error || i18nService.t('mvSaveFailed'));
     await reloadTasks(); setNotice(i18nService.t('mvTaskSaved'));
     setShowTaskEditModal(false); setTaskEditId(null);
     onNavigate?.('tasks');
   };
   // 「自动回复粉丝」向导保存:type='reply_fan' + funnel(无配额)。与 engage 同平台可并存(不同 type)。
-  const saveTaskFromReplyWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number } }) => {
+  const saveTaskFromReplyWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount?: Record<string, { funnel_phrase: string; funnel_probability: number }> | null }) => {
     if (!requireLogin()) throw new Error(i18nService.t('mvLoginFirst'));
-    const r = await M()?.saveTask({ id: replyEditId || undefined, platform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await M()?.saveTask({ id: replyEditId || undefined, platform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, funnelByAccount: input.funnelByAccount, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) throw new Error(({ platform_task_limit: i18nService.t('mvTaskLimit'), duplicate_type: i18nService.t('mvDuplicateReply'), task_not_found: i18nService.t('mvTaskNotFound') } as any)[r?.error] || r?.error || i18nService.t('mvSaveFailed'));
     await reloadTasks(); setNotice(i18nService.t('mvTaskSaved'));
     setShowReplyEditModal(false); setReplyEditId(null);

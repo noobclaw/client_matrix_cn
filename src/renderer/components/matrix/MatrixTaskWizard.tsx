@@ -8,6 +8,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
 
 const LIKE_HARDCAP = 500;
 const FOLLOW_HARDCAP = 100;
@@ -25,9 +26,9 @@ const FUNNEL_PROB_DEFAULT = 50;
 //     (币安融合结果仍过禁词质检),后端热下发即生效。
 const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube', 'binance', 'facebook', 'instagram', 'reddit', 'x', 'xhs', 'gate', 'bitget', 'bybit', 'okx']);
 
-type WizardStep = 1 | 2 | 3 | 4;
-// 步骤:1 选账号 / 2 点赞+关注 / 3 评论(数量+语言+引流,单独一步免拥挤) / 4 频率+条款。
-const TOTAL_STEPS = 4;
+type WizardStep = number;
+// 步骤(动态):1 选账号 / 2 点赞+关注 / 3 评论(数量+语言) / [4 引流(平台支持且评论>0 才有)] / 末步 频率+条款。
+// 引流独立成一步:支持「所有账号共用」与「各账号各自配置」两种模式(用户需求 2026-08-09)。
 
 export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
@@ -40,7 +41,7 @@ interface Props {
   accountsLoading?: boolean;               // 账号异步加载中(弹窗先开、账号后填);加载中显「加载中」而非「无账号」
   initialTask?: any | null;                // 编辑时传入矩阵任务
   onCancel: () => void;
-  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel: { funnel_phrase: string; funnel_probability: number } }) => Promise<void> | void;
+  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; quota: any; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount: Record<string, { funnel_phrase: string; funnel_probability: number }> | null }) => Promise<void> | void;
 }
 
 const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
@@ -94,6 +95,16 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       ? Math.min(FUNNEL_PROB_MAX, initialTask.funnel.funnel_probability)
       : FUNNEL_PROB_DEFAULT
   );
+  // ── 各账号独立引流语(编辑回填:任务存了 funnelByAccount 即进「各账号」模式) ──
+  const [funnelPerMode, setFunnelPerMode] = useState<boolean>(!!(initialTask?.funnelByAccount && Object.keys(initialTask.funnelByAccount).length));
+  const [funnelPerMap, setFunnelPerMap] = useState<Record<string, { funnel_phrase: string; funnel_probability: number }>>(() => {
+    const src = initialTask?.funnelByAccount || {};
+    const out: Record<string, { funnel_phrase: string; funnel_probability: number }> = {};
+    for (const [id, v] of Object.entries(src) as any) out[id] = { funnel_phrase: String(v?.funnel_phrase || ''), funnel_probability: typeof v?.funnel_probability === 'number' && v.funnel_probability >= FUNNEL_PROB_MIN ? Math.min(FUNNEL_PROB_MAX, v.funnel_probability) : FPD };
+    return out;
+  });
+  // 「不管了,下一步」确认弹层(各账号模式下有账号未配引流时,新建/编辑都拦一道)
+  const [funnelUnsetConfirm, setFunnelUnsetConfirm] = useState<number | null>(null);
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   // 评论语言:auto(跟帖子语言)+ 9 种 UI 语言;强制模式。默认 auto。
@@ -106,18 +117,36 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const funnelSupported = FUNNEL_SUPPORTED_PLATFORMS.has(platform || '');
   const showFunnel = cmtMax > 0 && funnelSupported;
   const totalMaxActions = likeMax + folMax + cmtMax;
+  // 动态步骤表:引流一步只在(平台支持 + 评论>0)时出现
+  const stepNames: string[] = showFunnel ? ['accounts', 'quota', 'comment', 'funnel', 'final'] : ['accounts', 'quota', 'comment', 'final'];
+  const TOTAL_STEPS = stepNames.length;
+  const cur = stepNames[Math.min(step, TOTAL_STEPS) - 1];
+  // 已选账号(引流步的卡片列表用;标题/赛道与 Step1 行一致)
+  const selectedAccounts = accounts.filter((a) => selected.has(a.id)).map((a) => ({ id: a.id, title: a.nickname || a.displayName, group: a.group, platformName: PLATFORM_NAME[a.platform || ''] || a.platform, avatar: a.avatar }));
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, funnelPhrase, funnelProb, runInterval]);
 
-  const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: selected.size >= 1, reason: i18nService.t('wzEngageErrSelectAccount') },
-    2: { ok: true }, // 点赞+关注:可全 0(只评论也行),校验放到评论那步保证「至少配一种动作」
-    3: totalMaxActions === 0 ? { ok: false, reason: i18nService.t('wzEngageErrConfigAction') } : { ok: true },
-    4: { ok: allTermsAccepted, reason: i18nService.t('wzEngageErrAcceptTerms') },
+  const canAdvance: Record<string, { ok: boolean; reason?: string }> = {
+    accounts: { ok: selected.size >= 1, reason: i18nService.t('wzEngageErrSelectAccount') },
+    quota: { ok: true }, // 点赞+关注:可全 0(只评论也行),校验放到评论那步保证「至少配一种动作」
+    comment: totalMaxActions === 0 ? { ok: false, reason: i18nService.t('wzEngageErrConfigAction') } : { ok: true },
+    funnel: { ok: true }, // 未配置账号的拦截走确认弹层(下一步按钮里),不在这硬卡
+    final: { ok: allTermsAccepted, reason: i18nService.t('wzEngageErrAcceptTerms') },
+  };
+
+  // 各账号模式:保存/透传用的净化 map(只留有引流语的账号,且只留已勾选账号)
+  const cleanPerMap = () => {
+    const out: Record<string, { funnel_phrase: string; funnel_probability: number }> = {};
+    for (const id of selected) {
+      const v = funnelPerMap[id];
+      const ph = (v?.funnel_phrase || '').trim();
+      if (ph) out[id] = { funnel_phrase: ph, funnel_probability: v.funnel_probability };
+    }
+    return out;
   };
 
   const handleSave = async () => {
     if (saving) return;
-    if (!canAdvance[3].ok) { setSaveError(canAdvance[3].reason || ''); return; }
+    if (!canAdvance.comment.ok) { setSaveError(canAdvance.comment.reason || ''); return; }
     setSaving(true);
     try {
       await onSave({
@@ -128,7 +157,9 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         // Reddit 无关注玩法 → 强制 follow=0(即使有老值也清零),隐藏了滑块也不落库脏数据。
         quota: { daily_like_min: likeMin, daily_like_max: likeMax, daily_follow_min: platform === 'reddit' ? 0 : folMin, daily_follow_max: platform === 'reddit' ? 0 : folMax, daily_comment_min: cmtMin, daily_comment_max: cmtMax, comment_lang: commentLang, engage_mode: (bingeSupported && bingeMode) ? 'binge' : '' },
         // 引流:评论时按概率把引流文案融进 AI 评论。留空/平台不支持 → funnel_probability=0 → 视作未配,纯 AI 评论。
-        funnel: (funnelSupported && hasFunnel) ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb } : { funnel_phrase: '', funnel_probability: 0 },
+        // 各账号模式:任务级 funnel 置空,逐账号配置走 funnelByAccount;共用模式显式传 null 清掉旧的逐账号配置。
+        funnel: (funnelSupported && !funnelPerMode && hasFunnel) ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb } : { funnel_phrase: '', funnel_probability: 0 },
+        funnelByAccount: (funnelSupported && funnelPerMode) ? cleanPerMap() : null,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzEngageErrSaveFailed'));
@@ -151,7 +182,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-        {step === 1 && (
+        {cur === 'accounts' && (
           <>
             {bingeSupported && (() => {
               const zh = i18nService.currentLanguage === 'zh';
@@ -238,7 +269,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
           </>
         )}
 
-        {step === 2 && (
+        {cur === 'quota' && (
           <>
             <RangeSlider label={i18nService.t('wzEngageLikeLabel')} min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} hardCap={LIKE_HARDCAP} hint={i18nService.t('wzEngageLikeHint').replace('{min}', String(likeMin)).replace('{max}', String(likeMax)).replace('{cap}', String(LIKE_HARDCAP))} disabled={saving} />
             {/* Reddit 无「关注用户」玩法(涨粉靠发帖不靠关注)→ 隐藏关注数量;其余平台照常。
@@ -262,8 +293,8 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
           </>
         )}
 
-        {/* Step 3:评论(数量 + 语言 + 引流)单独一步 —— 一页放不下,拆出来。 */}
-        {step === 3 && (
+        {/* Step 3:评论(数量 + 语言);引流拆去下一步(共用/各账号两种模式)。 */}
+        {cur === 'comment' && (
           <>
             <RangeSlider label={i18nService.t('wzEngageCommentLabel')} min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax} hardCap={COMMENT_HARDCAP} hint={i18nService.t('wzEngageCommentHint').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax)).replace('{cap}', String(COMMENT_HARDCAP))} disabled={saving} />
 
@@ -285,46 +316,25 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
               </div>
             )}
 
-            {/* 引流(评论 max>0 且平台支持时显示):评论时 AI 按概率把引流文案自然融进评论。留空=纯 AI 评论,老任务不受影响。 */}
-            {showFunnel && (
-              <div className="rounded-xl border border-fuchsia-500/25 bg-fuchsia-500/5 px-4 py-3 space-y-3">
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    {i18nService.t('wzEngageFunnelPhraseLabel')}<span className="text-xs text-gray-400 font-normal ml-1">{i18nService.t('wzEngageFunnelPhraseHint')}</span>
-                  </label>
-                  <textarea
-                    value={funnelPhrase}
-                    onChange={(e) => setFunnelPhrase(e.target.value.slice(0, FUNNEL_PHRASE_MAX))}
-                    placeholder={i18nService.t('wzEngageFunnelPhrasePlaceholder')}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[64px]"
-                    disabled={saving}
-                  />
-                  <div className="text-[11px] text-gray-400 mt-1">{i18nService.t('wzEngageFunnelCharCount').replace('{n}', String(funnelPhrase.trim().length)).replace('{max}', String(FUNNEL_PHRASE_MAX))}</div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    {i18nService.t('wzEngageFunnelProbLabel').replace('{n}', String(hasFunnel ? funnelProb : 0))}
-                    <span className="text-xs text-gray-400 font-normal ml-1">
-                      {hasFunnel ? i18nService.t('wzEngageFunnelProbHintOn') : i18nService.t('wzEngageFunnelProbHintOff')}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min={FUNNEL_PROB_MIN}
-                    max={FUNNEL_PROB_MAX}
-                    value={funnelProb}
-                    onChange={(e) => setFunnelProb(parseInt(e.target.value, 10))}
-                    disabled={saving || !hasFunnel}
-                    className="w-full accent-fuchsia-500 disabled:opacity-40"
-                  />
-                </div>
-              </div>
-            )}
           </>
         )}
 
-        {step === 4 && (
+        {/* Step 4(动态):引流语 —— 共用一份 / 各账号各自配置(点账号卡逐号配,未配=该号不带引流)。 */}
+        {cur === 'funnel' && (
+          <MatrixFunnelConfig
+            accounts={selectedAccounts}
+            accent="violet"
+            perMode={funnelPerMode}
+            setPerMode={setFunnelPerMode}
+            shared={{ funnel_phrase: funnelPhrase, funnel_probability: funnelProb }}
+            setShared={(v) => { setFunnelPhrase(v.funnel_phrase.slice(0, FUNNEL_PHRASE_MAX)); setFunnelProb(v.funnel_probability); }}
+            perMap={funnelPerMap}
+            setPerMap={setFunnelPerMap}
+            disabled={saving}
+          />
+        )}
+
+        {cur === 'final' && (
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzEngageRunIntervalLabel')}</label>
@@ -342,7 +352,9 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
               <SummaryRow label={i18nService.t('wzEngageSummaryLikes')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(likeMin)).replace('{max}', String(likeMax))} />
               <SummaryRow label={i18nService.t(platform === 'facebook' ? 'wzEngageSummaryAddFriends' : 'wzEngageSummaryFollows')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(folMin)).replace('{max}', String(folMax))} />
               <SummaryRow label={i18nService.t('wzEngageSummaryComments')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax))} />
-              {showFunnel && <SummaryRow label={i18nService.t('wzEngageSummaryFunnel')} value={hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzEngageSummaryFunnelEmpty')} />}
+              {showFunnel && <SummaryRow label={i18nService.t('wzEngageSummaryFunnel')} value={funnelPerMode
+                ? i18nService.t('wzFunnelSummaryPer').replace('{done}', String(selectedAccounts.length - countUnconfigured(selectedAccounts, funnelPerMap))).replace('{total}', String(selectedAccounts.length))
+                : (hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzEngageSummaryFunnelEmpty'))} />}
               <SummaryRow label={i18nService.t('wzEngageSummaryConcurrency')} value={i18nService.t('wzEngageSummaryConcurrencyValue').replace('{n}', String(selected.size))} />
               <SummaryRow label={i18nService.t('wzEngageSummaryFrequency')} value={intervalLabel} />
             </div>
@@ -373,11 +385,28 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         <div className="flex-1" />
         {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzEngagePrev')}</button>}
         {step < TOTAL_STEPS ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{i18nService.t('wzEngageNext')}</button>
+          <button type="button" onClick={() => {
+            if (!canAdvance[cur].ok) { setSaveError(canAdvance[cur].reason || ''); return; }
+            // 各账号模式下还有账号没配引流语 → 弹确认(返回配置 / 不管了下一步),新建与编辑同拦。
+            if (cur === 'funnel' && funnelPerMode) {
+              const unset = countUnconfigured(selectedAccounts, funnelPerMap);
+              if (unset > 0) { setFunnelUnsetConfirm(unset); return; }
+            }
+            setSaveError(null); setStep((step + 1) as WizardStep);
+          }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{i18nService.t('wzEngageNext')}</button>
         ) : (
           <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50">{saving ? i18nService.t('wzEngageSaving') : (editing ? i18nService.t('wzEngageSaveEdit') : i18nService.t('wzEngageCreate'))}</button>
         )}
       </div>
+
+      {funnelUnsetConfirm !== null && (
+        <FunnelUnsetConfirm
+          count={funnelUnsetConfirm}
+          accent="violet"
+          onBack={() => setFunnelUnsetConfirm(null)}
+          onContinue={() => { setFunnelUnsetConfirm(null); setSaveError(null); setStep((step + 1) as WizardStep); }}
+        />
+      )}
     </div>
   );
 };

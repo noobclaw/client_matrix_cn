@@ -918,6 +918,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   })()}
                   {/* 互动任务的「评论引流」(填了才显示):评论时 AI 按概率把引流语融进评论。 */}
                   {isMatrix && !isReplyFan && /_auto_engage$/.test(String(task.scenario_id || '')) && (() => {
+                    const fba = (task as any).funnel_by_account as Record<string, any> | undefined;
+                    if (fba && Object.keys(fba).length) {
+                      return (
+                        <div className='text-xs text-gray-500 dark:text-gray-400'>
+                          🎣 {i18nService.t('tdCommentFunnel')}: {i18nService.t('wzFunnelSummaryPer').replace('{done}', String(Object.keys(fba).length)).replace('{total}', String(((task as any).account_ids || []).length || Object.keys(fba).length))}
+                        </div>
+                      );
+                    }
                     const funnel = String((task as any).funnel_phrase || '').trim();
                     if (!funnel) return null;
                     const prob = typeof (task as any).funnel_probability === 'number' ? (task as any).funnel_probability : 0;
@@ -1194,6 +1202,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           关键词(不是 Token);Token 单独从 task.cashtags 取。 */}
                       {/* 自动回复粉丝:展示 引流语 + 引流概率(对齐 wizard),不显示关键词 */}
                       {isReplyFan && (() => {
+                        const fba2 = (task as any).funnel_by_account as Record<string, any> | undefined;
+                        if (fba2 && Object.keys(fba2).length) {
+                          return (
+                            <div className='text-xs text-gray-500 dark:text-gray-400'>
+                              🎣 {i18nService.t('tdFunnelPhrase')}: {i18nService.t('wzFunnelSummaryPer').replace('{done}', String(Object.keys(fba2).length)).replace('{total}', String(((task as any).account_ids || []).length || Object.keys(fba2).length))}
+                            </div>
+                          );
+                        }
                         const funnel = String((task as any).funnel_phrase || '').trim();
                         const prob = typeof (task as any).funnel_probability === 'number' ? (task as any).funnel_probability : 0;
                         return (

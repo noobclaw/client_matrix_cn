@@ -494,6 +494,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           // engage 由客户端 makeAiCall 对 comment_composer 输出按概率融入;reply_fan 走后端剧本。
           // 老任务没配 funnel → undefined → 两条路径都视作未填,行为不变(向后兼容)。
           funnel: task.funnel,
+          // 各账号独立引流语:runner 在逐账号装配 task.funnel_* 时按 accountId 覆写。
+          funnelByAccount: task.funnelByAccount,
           urls: isVideoDownload ? task.urls : undefined,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         });

@@ -271,6 +271,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     // 互动任务的引流用于「评论时按概率把引流语融进 AI 评论」(见 engageRunner.makeAiCall)。
     funnel_phrase: (isReply || isEngage) ? (fn.funnel_phrase || '') : undefined,
     funnel_probability: (isReply || isEngage) ? (typeof fn.funnel_probability === 'number' ? fn.funnel_probability : 0) : undefined,
+    // 各账号独立引流语:必须透传,否则 updateTask 兜底(如 MyTasksPage 改启用)会把它抹掉(与 comment_lang 同类坑)。
+    funnel_by_account: (isReply || isEngage) ? (t.funnelByAccount || undefined) : undefined,
     account_ids: t.accountIds || [],
     created_at: t.createdAt || 0,
     updated_at: t.createdAt || 0,
@@ -295,6 +297,8 @@ function scenarioInputToMxSave(input: any, id?: string): any {
         funnel_phrase: input.funnel_phrase || '',
         funnel_probability: typeof input.funnel_probability === 'number' ? input.funnel_probability : 0,
       },
+      // 各账号独立引流语写回(undefined 时 taskStore 保留旧值,不误清)。
+      funnelByAccount: input.funnel_by_account,
       concurrency: accountIds.length,
       frequency: input.run_interval || 'daily_random',
       enabled: input.enabled !== false,
@@ -468,6 +472,8 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       funnel_phrase: input.funnel_phrase || '',
       funnel_probability: typeof input.funnel_probability === 'number' ? input.funnel_probability : 0,
     },
+    // 各账号独立引流语写回(undefined 时 taskStore 保留旧值,不误清)。
+    funnelByAccount: input.funnel_by_account,
     concurrency: accountIds.length,
     frequency: input.run_interval || 'daily_random',
     enabled: input.enabled !== false,
