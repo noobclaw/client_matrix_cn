@@ -15,7 +15,7 @@ import { HIDE_WEB3 } from '../buildFlags';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns';
+  activeView: 'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'contact' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns';
   onShowHome: () => void;
   onShowSkills: () => void;
   onShowCowork: () => void;
@@ -31,6 +31,7 @@ interface SidebarProps {
   onShowHotSearch: () => void;
   onShowPersonality: () => void;
   onShowPartners: () => void;
+  onShowContact?: () => void;
   onShowMatrix: () => void;
   matrixExpiredCount?: number;
   onShowMatrixTaskNew?: () => void;
@@ -60,6 +61,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowHotSearch,
   onShowPersonality,
   onShowPartners,
+  onShowContact,
   onShowMatrix,
   matrixExpiredCount = 0,
   onShowMatrixTaskNew,
@@ -460,6 +462,22 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-sm">🤝</span>
             {i18nService.t('eventsPartners')}
           </button>
+
+          {/* Contact Us */}
+          {onShowContact && (
+            <button
+              type="button"
+              onClick={() => { setIsSearchOpen(false); onShowContact(); }}
+              className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                activeView === 'contact'
+                  ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                  : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+              }`}
+            >
+              <span className="text-sm">💬</span>
+              {i18nService.t('contactUsMenu')}
+            </button>
+          )}
         </div>
       </div>
       {!MATRIX_EDITION && (

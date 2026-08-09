@@ -7,6 +7,7 @@ import TickerMarquee from '../cowork/TickerMarquee';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { WalletBadge } from '../common/WalletBadge';
 import { HIDE_EXCHANGE_SQUARES } from '../../buildFlags';
+import { ContactFloatWidget } from '../common/ContactWidgets';
 
 export interface HomeViewProps {
   isSidebarCollapsed?: boolean;
@@ -50,6 +51,8 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   return (
     <div className="flex-1 flex flex-col dark:bg-claude-darkBg bg-claude-bg h-full">
+      {/* 右侧「联系我们」悬浮小组件 — 与官网浮窗同源同款(无回到顶部小火箭) */}
+      <ContactFloatWidget />
       {/* ── 顶栏:与 AI对话首页同款(钱包/余额/充值/登录 + 官网/Twitter/Telegram) ── */}
       <div className="draggable flex h-12 items-center justify-between px-4 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
         <div className="non-draggable h-8 flex items-center gap-2">

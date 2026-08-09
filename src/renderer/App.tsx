@@ -42,6 +42,7 @@ import { InviteView } from './components/invite/InviteView';
 import NotificationCenter from './components/notifications/NotificationCenter';
 import { ScenarioView } from './components/scenario/ScenarioView';
 import PartnersView from './components/partners/PartnersView';
+import ContactView from './components/contact/ContactView';
 import PersonalityView from './components/personality/PersonalityView';
 import LoginWall from './components/LoginWall';
 import TokenInsufficientDialog from './components/TokenInsufficientDialog';
@@ -71,7 +72,7 @@ const App: React.FC = () => {
   // 启动默认落到「一键涨粉」(scenarioCreate),而不是 AI 对话(cowork)。副作用:Sidebar 的
   // 「AI对话」二级折叠组只在其子项(cowork/mcp/web3news/scheduledTasks)激活时才强制展开,
   // 默认页非该组子项 → 该组保持收起(aiChatOpen 初始 false),正好满足「AI对话菜单默认收起」。
-  const [mainView, setMainView] = useState<'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns'>(MATRIX_EDITION ? 'home' : 'scenarioCreate');
+  const [mainView, setMainView] = useState<'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'contact' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns'>(MATRIX_EDITION ? 'home' : 'scenarioCreate');
   // 从「所有 AI 对话」列表点进某条对话时置 true:此时侧栏仍高亮「所有 AI 对话」、详情页左上显示返回按钮。
   const [coworkFromHistory, setCoworkFromHistory] = useState(false);
   // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
@@ -1003,6 +1004,7 @@ const App: React.FC = () => {
   const handleShowWeb3News = () => setMainView('web3news');
   const handleShowHotSearch = () => setMainView('hotsearch');
   const handleShowPartners = () => setMainView('partners');
+  const handleShowContact = () => setMainView('contact');
   const handleShowPersonality = () => setMainView('personality');
   const handleShowMatrix = () => setMainView('matrix');
   // 侧栏点「新建/我的/记录」:复位到默认【多平台视频创作】tab(从某平台「已有任务」跳过去才带具体平台)。
@@ -1072,6 +1074,7 @@ const App: React.FC = () => {
           onShowHotSearch={handleShowHotSearch}
           onShowPersonality={handleShowPersonality}
           onShowPartners={handleShowPartners}
+          onShowContact={handleShowContact}
           onShowMatrix={handleShowMatrix}
           matrixExpiredCount={matrixExpiredTotal}
           onShowMatrixTaskNew={handleShowMatrixTaskNew}
@@ -1181,6 +1184,13 @@ const App: React.FC = () => {
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
                 initialPlatform={quickUseInitialPlatform}
                 onShowInvite={handleShowInvite}
+              />
+            ) : mainView === 'contact' ? (
+              <ContactView
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                onNewChat={handleNewChat}
+                updateBadge={isSidebarCollapsed ? updateBadge : null}
               />
             ) : mainView === 'partners' ? (
               <PartnersView
