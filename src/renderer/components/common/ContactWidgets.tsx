@@ -82,6 +82,7 @@ const ContactModal: React.FC<{ id: string; conf: { link?: string; image?: string
         {conf.image && (
           <img src={conf.image} alt={contactLabel(id)} className="w-[200px] h-[200px] object-contain mx-auto mb-3" />
         )}
+        {/* email / 纯群号:没有可跳转链接 → 展示文本 + 复制。 */}
         {copyable && raw && (
           <div className="flex items-center justify-center gap-2 text-sm">
             <span className="break-all">{id === 'qq_group' ? `${i18nService.t('cuGroupNo')} ${raw}` : raw}</span>
@@ -90,10 +91,17 @@ const ContactModal: React.FC<{ id: string; conf: { link?: string; image?: string
             </button>
           </div>
         )}
+        {/* 有 http(s) 链接(QQ客服/QQ群加群链接/TG…):链接本身【可点击】走系统浏览器,
+            旁边再给一个复制按钮 —— 用户既能直接打开,也能复制转发(2026-08-07 反馈:链接要能点)。 */}
         {!copyable && href && (
-          <button type="button" onClick={() => openExternal(href)} className="text-sm text-blue-600 hover:underline break-all">
-            {i18nService.t('cuClickContact')} {raw}
-          </button>
+          <div className="flex items-center justify-center gap-2 text-sm">
+            <button type="button" onClick={() => openExternal(href)} className="text-blue-600 hover:underline break-all text-left">
+              {i18nService.t('cuClickContact')} {raw}
+            </button>
+            <button type="button" onClick={doCopy} className="shrink-0 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs">
+              {copied ? i18nService.t('cuCopied') : i18nService.t('cuCopy')}
+            </button>
+          </div>
         )}
         <div className="mt-4">
           <button type="button" onClick={onClose} className="px-4 py-1.5 rounded-lg text-xs dark:bg-gray-100 bg-gray-100 hover:bg-gray-200 text-gray-600">
