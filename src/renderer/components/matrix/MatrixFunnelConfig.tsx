@@ -8,7 +8,7 @@
  *
  * 数据约定:perMap 里 phrase 为空 = 未配置;保存时由向导过滤空项。
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 
 export const FUNNEL_PHRASE_MAX = 200;
@@ -37,6 +37,33 @@ export function countUnconfigured(accounts: FunnelAccount[], perMap: Record<stri
 const MatrixFunnelConfig: React.FC<Props> = ({ accounts, accent, perMode, setPerMode, shared, setShared, perMap, setPerMap, disabled }) => {
   const [activeId, setActiveId] = useState<string>(accounts[0]?.id || '');
   const active = accounts.find((a) => a.id === activeId) || accounts[0];
+
+  // ── 账号卡横排:50 个号也不换行 —— 单行横向滚动 + 鼠标拖拽,左右边缘渐隐提示
+  //   「后面还有」(尾部卡片自然露一半)。拖拽后 50ms 内抑制 click,避免拖完误触发选卡。
+  const rowRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ x: number; sl: number; moved: boolean } | null>(null);
+  const justDraggedRef = useRef(false);
+  const [fadeL, setFadeL] = useState(false);
+  const [fadeR, setFadeR] = useState(false);
+  const updateFades = () => {
+    const r = rowRef.current;
+    if (!r) return;
+    setFadeL(r.scrollLeft > 4);
+    setFadeR(r.scrollLeft + r.clientWidth < r.scrollWidth - 4);
+  };
+  useEffect(() => { const t = setTimeout(updateFades, 50); return () => clearTimeout(t); }, [accounts.length, perMode]);
+  const onRowMouseDown = (e: React.MouseEvent) => { const r = rowRef.current; if (!r) return; dragRef.current = { x: e.clientX, sl: r.scrollLeft, moved: false }; };
+  const onRowMouseMove = (e: React.MouseEvent) => {
+    const d = dragRef.current, r = rowRef.current;
+    if (!d || !r || e.buttons !== 1) return;
+    const dx = e.clientX - d.x;
+    if (Math.abs(dx) > 4) d.moved = true;
+    r.scrollLeft = d.sl - dx;
+  };
+  const onRowMouseUp = () => {
+    if (dragRef.current?.moved) { justDraggedRef.current = true; setTimeout(() => { justDraggedRef.current = false; }, 50); }
+    dragRef.current = null;
+  };
   const ac = accent === 'violet' ? {
     ring: 'ring-violet-500/40', border: 'border-violet-500', bg: 'bg-violet-500/5', text: 'text-violet-500', accentCls: 'accent-violet-500', focus: 'focus:ring-violet-500/40', chipBg: 'bg-violet-500/10',
   } : {
@@ -81,7 +108,17 @@ const MatrixFunnelConfig: React.FC<Props> = ({ accounts, accent, perMode, setPer
           {i18nService.t('wzFunnelAccountsLabel').replace('{n}', String(accounts.length))}
           {perMode && <span className="ml-1 font-normal">{i18nService.t('wzFunnelPerHint')}</span>}
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="relative">
+          <div
+            ref={rowRef}
+            onScroll={updateFades}
+            onMouseDown={onRowMouseDown}
+            onMouseMove={onRowMouseMove}
+            onMouseUp={onRowMouseUp}
+            onMouseLeave={onRowMouseUp}
+            className="flex gap-1.5 overflow-x-auto pb-1 select-none"
+            style={{ scrollbarWidth: 'none', cursor: accounts.length > 3 ? 'grab' : undefined }}
+          >
           {accounts.map((a) => {
             const configured = !!(perMap[a.id]?.funnel_phrase || '').trim();
             const isActive = perMode && active?.id === a.id;
@@ -90,9 +127,9 @@ const MatrixFunnelConfig: React.FC<Props> = ({ accounts, accent, perMode, setPer
                 key={a.id}
                 type="button"
                 disabled={disabled || !perMode}
-                onClick={() => perMode && setActiveId(a.id)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition-colors ${
-                  isActive ? `${ac.border} ${ac.bg} ring-1 ${ac.ring}` : 'border-gray-200 dark:border-gray-700'
+                onClick={() => { if (justDraggedRef.current) return; if (perMode) setActiveId(a.id); }}
+                className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition-colors ${
+                  isActive ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/50' : 'border-gray-200 dark:border-gray-700'
                 } ${perMode ? 'cursor-pointer hover:border-gray-400 dark:hover:border-gray-500' : 'cursor-default'}`}
               >
                 {a.avatar
@@ -110,6 +147,10 @@ const MatrixFunnelConfig: React.FC<Props> = ({ accounts, accent, perMode, setPer
               </button>
             );
           })}
+          </div>
+          {/* 边缘渐隐:提示左右还有更多账号(与向导底色一致 white/gray-900) */}
+          {fadeL && <div className="pointer-events-none absolute left-0 top-0 bottom-1 w-8 bg-gradient-to-r from-white dark:from-gray-900 to-transparent" />}
+          {fadeR && <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-white dark:from-gray-900 to-transparent" />}
         </div>
       </div>
 

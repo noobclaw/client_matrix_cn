@@ -96,9 +96,12 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       : FUNNEL_PROB_DEFAULT
   );
   // ── 各账号独立引流语(编辑回填:任务存了 funnelByAccount 即进「各账号」模式) ──
-  const [funnelPerMode, setFunnelPerMode] = useState<boolean>(!!(initialTask?.funnelByAccount && Object.keys(initialTask.funnelByAccount).length));
+  // 模式判定按【字段存在】而非条目数:各账号模式但一个都没配(允许放行)保存的是 {},
+  // 用 length 判会误回共用(用户实测 bug)。兼容 camel(矩阵原始)与 snake(scenario 映射)两种形状。
+  const initFba = (initialTask as any)?.funnelByAccount ?? (initialTask as any)?.funnel_by_account;
+  const [funnelPerMode, setFunnelPerMode] = useState<boolean>(initFba !== undefined && initFba !== null && typeof initFba === 'object');
   const [funnelPerMap, setFunnelPerMap] = useState<Record<string, { funnel_phrase: string; funnel_probability: number }>>(() => {
-    const src = initialTask?.funnelByAccount || {};
+    const src = initFba || {};
     const out: Record<string, { funnel_phrase: string; funnel_probability: number }> = {};
     for (const [id, v] of Object.entries(src) as any) out[id] = { funnel_phrase: String(v?.funnel_phrase || ''), funnel_probability: typeof v?.funnel_probability === 'number' && v.funnel_probability >= FUNNEL_PROB_MIN ? Math.min(FUNNEL_PROB_MAX, v.funnel_probability) : FPD };
     return out;

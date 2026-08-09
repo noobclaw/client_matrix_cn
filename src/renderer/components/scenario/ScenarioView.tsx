@@ -414,6 +414,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       },
       // 评论引流回填(老任务无此字段 → 空 → 向导显示未填)。
       funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },
+      // 各账号独立引流语回填(mxTaskToScenario 拍平为 funnel_by_account;漏带会让编辑永远显示共用模式 —— 用户实测 bug)。
+      funnelByAccount: (task as any).funnel_by_account || undefined,
       frequency: task.run_interval,
     });
     setMatrixWizardPlatform(plat);
@@ -430,7 +432,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const m = (window as any).electron?.matrix;
     // 带 id = 更新现有任务(saveTask 是整体 upsert);无 id = 新建。
     // funnel:互动评论引流(选填),留空 → funnel_probability=0 → 评论纯 AI(向后兼容)。
-    const r = await m?.saveTask?.({ id: matrixWizardTask?.id, platform: matrixWizardPlatform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, funnel: input.funnel, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await m?.saveTask?.({ id: matrixWizardTask?.id, platform: matrixWizardPlatform, type: 'engage', name: input.name, accountIds: input.accountIds, quota: input.quota, funnel: input.funnel, funnelByAccount: (input as any).funnelByAccount, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixWizardPlatform; setMatrixWizardPlatform(null); setMatrixWizardTask(null); setDupNotice({ platform: dp as string, label: '互动' }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
@@ -483,6 +485,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       name: task.name,
       accountIds: task.account_ids || [],
       funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },
+      funnelByAccount: (task as any).funnel_by_account || undefined,
       frequency: task.run_interval,
     });
     setMatrixReplyPlatform(plat);
@@ -497,7 +500,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
     // type='reply_fan' + funnel(无配额)。与同平台互动任务是不同 type,可并存。
-    const r = await m?.saveTask?.({ id: matrixReplyTask?.id, platform: matrixReplyPlatform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await m?.saveTask?.({ id: matrixReplyTask?.id, platform: matrixReplyPlatform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, funnelByAccount: (input as any).funnelByAccount, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixReplyPlatform; setMatrixReplyPlatform(null); setMatrixReplyTask(null); setDupNotice({ platform: dp as string, label: '回复粉丝' }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
