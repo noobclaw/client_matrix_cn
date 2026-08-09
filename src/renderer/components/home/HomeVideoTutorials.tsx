@@ -26,6 +26,9 @@ const fmtDur = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2
 const HomeVideoTutorials: React.FC = () => {
   const [videos, setVideos] = useState<ManifestVideo[]>([]);
   const [groups, setGroups] = useState<ManifestGroup[]>([]);
+  // 先渲染骨架占住版位(标题/标签/两行卡位),清单到了原地填充 —— 避免整个区
+  // "loading 完才突然冒出来"把下方内容顶下去。只有拉取失败才整区消失。
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [active, setActive] = useState('all');
   const rowRef = useRef<HTMLDivElement>(null);
   const [canPrev, setCanPrev] = useState(false);
@@ -35,8 +38,13 @@ const HomeVideoTutorials: React.FC = () => {
     let alive = true;
     fetch(`${MANIFEST_URL}?v=${Date.now()}`)
       .then((r) => r.json())
-      .then((m) => { if (!alive) return; setVideos(m.videos || []); setGroups(m.groups || []); })
-      .catch(() => { /* 拉不到就不渲染本区 */ });
+      .then((m) => {
+        if (!alive) return;
+        const vs = m.videos || [];
+        setVideos(vs); setGroups(m.groups || []);
+        setStatus(vs.length ? 'ready' : 'error');
+      })
+      .catch(() => { if (alive) setStatus('error'); });
     return () => { alive = false; };
   }, []);
 
@@ -63,7 +71,8 @@ const HomeVideoTutorials: React.FC = () => {
   const openExternal = (url: string) => { try { window.electron?.shell?.openExternal?.(url); } catch { /* noop */ } };
   const openVideo = (v: ManifestVideo) => openExternal(`https://www.bilibili.com/video/${v.bvid}/`);
 
-  if (!videos.length) return null;
+  if (status === 'error') return null;
+  const loading = status === 'loading';
 
   return (
     <div className="space-y-4">
@@ -82,8 +91,11 @@ const HomeVideoTutorials: React.FC = () => {
         </button>
       </div>
 
-      {/* 分类标签(标签文案来自清单,B 站内容为中文) */}
+      {/* 分类标签(标签文案来自清单,B 站内容为中文);loading 时先放灰条占位 */}
       <div className="flex flex-wrap gap-1.5">
+        {loading && Array.from({ length: 6 }).map((_, i) => (
+          <span key={i} className="h-[26px] w-16 rounded-full dark:bg-white/[0.06] bg-gray-200/70 animate-pulse" />
+        ))}
         {groups.map((g) => (
           <button
             key={g.key}
@@ -115,6 +127,15 @@ const HomeVideoTutorials: React.FC = () => {
           className="flex-1 overflow-x-auto"
           style={{ display: 'grid', gridAutoFlow: 'column', gridTemplateRows: 'repeat(2, auto)', gridAutoColumns: '176px', gap: 10, scrollBehavior: 'smooth', scrollbarWidth: 'none' }}
         >
+          {loading && Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-xl overflow-hidden border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white">
+              <div className="dark:bg-white/[0.06] bg-gray-200/70 animate-pulse" style={{ aspectRatio: '16/10' }} />
+              <div className="px-2 py-1.5 h-[42px]">
+                <div className="h-3 w-11/12 rounded dark:bg-white/[0.06] bg-gray-200/70 animate-pulse mb-1.5" />
+                <div className="h-3 w-2/3 rounded dark:bg-white/[0.06] bg-gray-200/70 animate-pulse" />
+              </div>
+            </div>
+          ))}
           {shown.map((v) => (
             <div
               key={v.bvid}
