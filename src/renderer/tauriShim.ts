@@ -622,38 +622,8 @@ export function createTauriElectronShim(): typeof window.electron {
       },
     },
 
-    // ── Auto Launch — bridged to tauri-plugin-autostart ──
-    // Settings.tsx talks to `window.electron.autoLaunch.{get,set}` which
-    // on Electron hits the autoLaunchManager IPC. Under Tauri we route
-    // the same calls to the autostart plugin (Mac LaunchAgent, Windows
-    // registry Run key) so the user-facing toggle just works without
-    // any renderer changes.
-    autoLaunch: {
-      get: async () => {
-        try {
-          const tauri = (window as any).__TAURI__;
-          const enabled = await tauri?.autostart?.isEnabled?.();
-          return { enabled: !!enabled };
-        } catch (e) {
-          console.warn('[TauriShim] autostart.isEnabled failed:', e);
-          return { enabled: false };
-        }
-      },
-      set: async (enabled: boolean) => {
-        try {
-          const tauri = (window as any).__TAURI__;
-          if (enabled) {
-            await tauri?.autostart?.enable?.();
-          } else {
-            await tauri?.autostart?.disable?.();
-          }
-          return { success: true };
-        } catch (e: any) {
-          console.warn('[TauriShim] autostart toggle failed:', e);
-          return { success: false, error: String(e?.message || e) };
-        }
-      },
-    },
+    // 开机自启已下线(2026-08-10):Rust 侧 autostart 插件未注册,调用会报
+    // 「plugin autostart not found」。设置页开关已移除,这里的桥接一并删掉。
 
     // ── App Info ──
     appInfo: {

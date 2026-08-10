@@ -25,9 +25,6 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "notification:default",
-    "notification:allow-notify",
-    "autostart:allow-enable",
-    "autostart:allow-disable",
-    "autostart:allow-is-enabled"
+    "notification:allow-notify"
   ]
 }

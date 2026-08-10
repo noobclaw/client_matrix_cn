@@ -330,13 +330,11 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
   const [activeTab, setActiveTab] = useState<TabType>(initialTab ?? 'general');
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [language, setLanguage] = useState<LanguageType>('zh');
-  const [autoLaunch, setAutoLaunchState] = useState(false);
   const [useSystemProxy, setUseSystemProxy] = useState(false);
   const [useNoobClawServer, setUseNoobClawServer] = useState(true);
   const [aiAssistantName, setAiAssistantName] = useState('Adia Laura');
   const [aiAssistantAvatar, setAiAssistantAvatar] = useState<string | undefined>(undefined);
   const aiAvatarInputRef = useRef<HTMLInputElement>(null);
-  const [isUpdatingAutoLaunch, setIsUpdatingAutoLaunch] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(notice ?? null);
@@ -563,13 +561,6 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
       setTestMode(savedTestMode);
       if (savedTestMode) setTestModeUnlocked(true);
 
-      // Load auto-launch setting
-      window.electron.autoLaunch.get().then(({ enabled }) => {
-        setAutoLaunchState(enabled);
-      }).catch(err => {
-        console.error('Failed to load auto-launch setting:', err);
-      });
-      
       // Set up providers based on saved config
       if (config.api) {
         // For backward compatibility with older config
@@ -1729,54 +1720,8 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
               </div>
             </div>
 
-            {/* Auto-launch Section */}
-            <div>
-              <h4 className="text-sm font-medium dark:text-claude-darkText text-claude-text mb-3">
-                {i18nService.t('autoLaunch')}
-              </h4>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm dark:text-claude-darkSecondaryText text-claude-secondaryText">
-                  {i18nService.t('autoLaunchDescription')}
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={autoLaunch}
-                  onClick={async () => {
-                    if (isUpdatingAutoLaunch) return;
-                    const next = !autoLaunch;
-                    setIsUpdatingAutoLaunch(true);
-                    try {
-                      const result = await window.electron.autoLaunch.set(next);
-                      if (result.success) {
-                        setAutoLaunchState(next);
-                      } else {
-                        setError(result.error || 'Failed to update auto-launch setting');
-                      }
-                    } catch (err) {
-                      console.error('Failed to set auto-launch:', err);
-                      setError('Failed to update auto-launch setting');
-                    } finally {
-                      setIsUpdatingAutoLaunch(false);
-                    }
-                  }}
-                  disabled={isUpdatingAutoLaunch}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                    isUpdatingAutoLaunch ? 'opacity-50 cursor-not-allowed' : ''
-                  } ${
-                    autoLaunch
-                      ? 'bg-claude-accent'
-                      : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      autoLaunch ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </label>
-            </div>
+            {/* 开机自启 UI 已移除(2026-08-10):Rust 侧 autostart 插件未注册,保留开关会调用未注册插件
+               报「plugin autostart not found」红条。产品决定不提供该功能,连开关一起去掉。 */}
 
             {/* System proxy Section */}
             <div>
