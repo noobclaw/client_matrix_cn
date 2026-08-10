@@ -2132,11 +2132,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     pwLoginTab: '登录', pwRegisterTab: '注册',
     pwAccountLabel: '用户名或邮箱', pwUsernameLabel: '用户名（4-32 位字母/数字/下划线）',
     pwEmailLabel: '邮箱', pwPasswordLabel: '密码', pwPasswordNewLabel: '密码（至少 8 位）', pwConfirmLabel: '确认密码',
-<<<<<<< HEAD
-    pwLoginBtn: '登录', pwRegisterBtn: '注册并登录', pwOr: '或使用其他方式登录',
-=======
-    pwLoginBtn: '登录', pwRegisterBtn: '注册并登录', pwRegGift: '送100万Token', pwOr: '或使用钱包 / 社交登录',
->>>>>>> 2233e1b (feat(auth): gift emoji + 1M-token corner badge on the register button)
+    pwLoginBtn: '登录', pwRegisterBtn: '注册并登录', pwRegGift: '送100万Token', pwOr: '或使用其他方式登录',
     pwForgotHint: '忘记密码？请联系客服重置。',
     pwErrRequired: '请输入账号和密码', pwErrUsername: '用户名需为 4-32 位字母、数字或下划线',
     pwErrEmail: '请输入有效的邮箱地址', pwErrPassword: '密码至少 8 位', pwErrMismatch: '两次输入的密码不一致',
@@ -5482,11 +5478,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     pwLoginTab: 'Sign In', pwRegisterTab: 'Sign Up',
     pwAccountLabel: 'Username or Email', pwUsernameLabel: 'Username (4-32 letters/digits/_)',
     pwEmailLabel: 'Email', pwPasswordLabel: 'Password', pwPasswordNewLabel: 'Password (min 8 chars)', pwConfirmLabel: 'Confirm Password',
-<<<<<<< HEAD
-    pwLoginBtn: 'Sign In', pwRegisterBtn: 'Create Account', pwOr: 'or use another sign-in method',
-=======
-    pwLoginBtn: 'Sign In', pwRegisterBtn: 'Create Account', pwRegGift: 'Free 1M Tokens', pwOr: 'or use wallet / social login',
->>>>>>> 2233e1b (feat(auth): gift emoji + 1M-token corner badge on the register button)
+    pwLoginBtn: 'Sign In', pwRegisterBtn: 'Create Account', pwRegGift: 'Free 1M Tokens', pwOr: 'or use another sign-in method',
     pwForgotHint: 'Forgot your password? Contact support to reset.',
     pwErrRequired: 'Enter your account and password', pwErrUsername: 'Username: 4-32 letters, digits or underscores',
     pwErrEmail: 'Please enter a valid email address', pwErrPassword: 'Password must be at least 8 characters', pwErrMismatch: 'Passwords do not match',
