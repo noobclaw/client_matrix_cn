@@ -21,7 +21,6 @@ import { IMGatewayManager, IMPlatform, IMGatewayConfig } from './im';
 import { APP_NAME } from './appConstants';
 import { getSkillServiceManager } from './skillServices';
 import { createTray, destroyTray, updateTrayMenu } from './trayManager';
-import { isAutoLaunched, getAutoLaunchEnabled, setAutoLaunchEnabled } from './autoLaunchManager';
 import { McpStore } from './mcpStore';
 import { ScheduledTaskStore } from './scheduledTaskStore';
 import { Scheduler } from './libs/scheduler';
@@ -1127,31 +1126,6 @@ if (!gotTheLock) {
   });
 
   // Auto-launch IPC handlers
-  // Use SQLite store as the source of truth for UI state, because
-  // app.getLoginItemSettings() returns unreliable values on macOS and
-  // requires matching args on Windows.
-  ipcMain.handle('app:getAutoLaunch', () => {
-    const stored = getStore().get<boolean>('auto_launch_enabled');
-    // Fall back to OS API if SQLite has no record yet (e.g. upgraded from older version)
-    const enabled = stored ?? getAutoLaunchEnabled();
-    return { enabled };
-  });
-
-  ipcMain.handle('app:setAutoLaunch', (_event, enabled: unknown) => {
-    if (typeof enabled !== 'boolean') {
-      return { success: false, error: 'Invalid parameter: enabled must be boolean' };
-    }
-    try {
-      setAutoLaunchEnabled(enabled);
-      getStore().set('auto_launch_enabled', enabled);
-      return { success: true };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to set auto-launch',
-      };
-    }
-  });
 
   // Window control IPC handlers
   ipcMain.on('window-minimize', () => {
@@ -3402,10 +3376,7 @@ if (!gotTheLock) {
     // Wait for content to finish loading before showing the window
     mainWindow.once('ready-to-show', () => {
       emitWindowState();
-      // When auto-launched at startup, do not show the window, only show the tray icon
-      if (!isAutoLaunched()) {
-        mainWindow?.show();
-      }
+      mainWindow?.show();
       // Create the system tray after the window is ready
       createTray(() => mainWindow, getStore());
 
@@ -3610,13 +3581,6 @@ if (!gotTheLock) {
     getIMGatewayManager().startAllEnabled().catch((error) => {
       console.error('[IM] Failed to auto-start enabled gateways:', error);
     });
-
-    // Enable auto-launch by default on first startup (write the flag before setting, to avoid repeated setup after a crash)
-    if (!getStore().get('auto_launch_initialized')) {
-      getStore().set('auto_launch_initialized', true);
-      getStore().set('auto_launch_enabled', true);
-      setAutoLaunchEnabled(true);
-    }
 
     let lastLanguage = getStore().get<AppConfigSettings>('app_config')?.language;
     let lastUseSystemProxy = getUseSystemProxyFromConfig(getStore().get<AppConfigSettings>('app_config'));

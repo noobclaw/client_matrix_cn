@@ -2686,8 +2686,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckSuggestion_dingtalk_bot_membership_hint: '确认机器人已加入目标会话并允许收发消息。',
 
     // General settings
-    autoLaunch: '开机自启动',
-    autoLaunchDescription: '系统启动时自动运行应用',
     aiAssistantName: 'AI 助理名称',
     aiAssistantNamePlaceholder: '请输入 AI 助理名称',
     aiAssistantNameDesc: '自定义您的 AI 助理名称，最多30个字符',
@@ -6032,8 +6030,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckSuggestion_dingtalk_bot_membership_hint: 'Ensure the bot is in the target conversation with send/receive rights.',
 
     // General Settings
-    autoLaunch: 'Launch at Login',
-    autoLaunchDescription: 'Automatically start the app when you log in',
     aiAssistantName: 'AI Assistant Name',
     aiAssistantNamePlaceholder: 'Enter AI assistant name',
     aiAssistantNameDesc: 'Customize your AI assistant name, up to 30 characters',
@@ -7289,7 +7285,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckTitle_telegram_privacy_mode_hint: 'Telegram Privacy Mode',
     imConnectivityCheckTitle_dingtalk_bot_membership_hint: '釘釘會話權限',
     // General settings
-    autoLaunch: '開機自啟動', autoLaunchDescription: '系統啟動時自動執行應用程式',
     aiAssistantName: 'AI 助理名稱', aiAssistantNamePlaceholder: '請輸入 AI 助理名稱', aiAssistantNameDesc: '自訂您的 AI 助理名稱，最多30個字元', aiAssistantNameDefault: '恢復預設',
     aiAssistantAvatar: 'AI 助理頭像', aiAssistantAvatarDesc: '自訂 AI 助理頭像，圖片不超過 2MB', aiAssistantAvatarChange: '更換頭像', aiAssistantAvatarReset: '恢復預設', aiAssistantAvatarTooLarge: '圖片大小不能超過 2MB', aiAssistantSection: 'AI 助理個性化',
     useSystemProxy: '使用系統代理', useSystemProxyDescription: '開啟後網路請求將跟隨系統代理（儲存後生效）',
@@ -10195,7 +10190,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckTitle_telegram_privacy_mode_hint: 'Telegram Privacy Mode',
     imConnectivityCheckTitle_dingtalk_bot_membership_hint: 'DingTalk 대화 권한',
     // General settings
-    autoLaunch: '로그인 시 시작', autoLaunchDescription: '로그인할 때 앱을 자동으로 시작합니다',
     aiAssistantName: 'AI 어시스턴트 이름', aiAssistantNamePlaceholder: 'AI 어시스턴트 이름 입력', aiAssistantNameDesc: 'AI 어시스턴트 이름을 사용자 정의, 최대 30자', aiAssistantNameDefault: '초기화',
     aiAssistantAvatar: 'AI 어시스턴트 아바타', aiAssistantAvatarDesc: 'AI 어시스턴트 아바타 사용자 정의, 최대 2MB', aiAssistantAvatarChange: '아바타 변경', aiAssistantAvatarReset: '초기화', aiAssistantAvatarTooLarge: '이미지는 2MB 이하여야 합니다', aiAssistantSection: 'AI 어시스턴트 개인화',
     useSystemProxy: '시스템 프록시 사용', useSystemProxyDescription: '활성화하면 네트워크 요청이 시스템 프록시를 따릅니다 (저장 후 적용)',
@@ -13112,7 +13106,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityLastChecked: '最終確認', imConnectivitySuggestion: '提案',
     imConnectivityVerdict_pass: '正常', imConnectivityVerdict_warn: '注意必要', imConnectivityVerdict_fail: '利用不可',
     // General settings
-    autoLaunch: 'ログイン時に起動', autoLaunchDescription: 'ログイン時にアプリを自動的に起動します',
     aiAssistantName: 'AIアシスタント名', aiAssistantNamePlaceholder: 'AIアシスタント名を入力', aiAssistantNameDesc: 'AIアシスタント名をカスタマイズ（最大30文字）', aiAssistantNameDefault: 'リセット',
     aiAssistantAvatar: 'AIアシスタントアバター', aiAssistantAvatarDesc: 'AIアシスタントアバターをカスタマイズ（最大2MB）', aiAssistantAvatarChange: 'アバター変更', aiAssistantAvatarReset: 'リセット', aiAssistantAvatarTooLarge: '画像は2MB以下にしてください', aiAssistantSection: 'AIアシスタント個人設定',
     useSystemProxy: 'システムプロキシを使用', useSystemProxyDescription: '有効にするとネットワークリクエストがシステムプロキシに従います（保存後に適用）',
@@ -15991,7 +15984,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckTitle_discord_group_requires_mention: 'Правило срабатывания в группе Discord',
     imConnectivityCheckTitle_telegram_privacy_mode_hint: 'Telegram Privacy Mode',
     imConnectivityCheckTitle_dingtalk_bot_membership_hint: 'Права бота DingTalk в чате',
-    autoLaunch: 'Автозапуск', autoLaunchDescription: 'Запускать при входе в систему',
     aiAssistantName: 'Имя AI-ассистента', aiAssistantNamePlaceholder: 'Введите имя AI-ассистента', aiAssistantNameDesc: 'Настройте имя AI-ассистента, до 30 символов', aiAssistantNameDefault: 'Сброс',
     aiAssistantAvatar: 'Аватар AI-ассистента', aiAssistantAvatarDesc: 'Настройте аватар, макс. 2МБ', aiAssistantAvatarChange: 'Сменить аватар', aiAssistantAvatarReset: 'Сброс', aiAssistantAvatarTooLarge: 'Изображение должно быть меньше 2МБ', aiAssistantSection: 'Персонализация AI-ассистента',
     useSystemProxy: 'Системный прокси', useSystemProxyDescription: 'Запросы через системный прокси (после сохранения)',
@@ -18890,7 +18882,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckTitle_discord_group_requires_mention: 'Règle de déclenchement groupe Discord',
     imConnectivityCheckTitle_telegram_privacy_mode_hint: 'Telegram Privacy Mode',
     imConnectivityCheckTitle_dingtalk_bot_membership_hint: 'Permission de conversation DingTalk',
-    autoLaunch: 'Lancer au démarrage', autoLaunchDescription: 'Démarrer l\'app à la connexion',
     aiAssistantName: 'Nom de l\'assistant IA', aiAssistantNamePlaceholder: 'Entrez le nom de l\'assistant IA', aiAssistantNameDesc: 'Personnalisez le nom, max 30 caractères', aiAssistantNameDefault: 'Réinitialiser',
     aiAssistantAvatar: 'Avatar de l\'assistant IA', aiAssistantAvatarDesc: 'Personnalisez l\'avatar, max 2Mo', aiAssistantAvatarChange: 'Changer l\'avatar', aiAssistantAvatarReset: 'Réinitialiser', aiAssistantAvatarTooLarge: 'L\'image doit faire moins de 2Mo', aiAssistantSection: 'Personnalisation de l\'assistant IA',
     useSystemProxy: 'Proxy système', useSystemProxyDescription: 'Les requêtes suivront le proxy (après enregistrement)',
@@ -21789,7 +21780,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckTitle_discord_group_requires_mention: 'Discord-Gruppenauslöser',
     imConnectivityCheckTitle_telegram_privacy_mode_hint: 'Telegram Privacy Mode',
     imConnectivityCheckTitle_dingtalk_bot_membership_hint: 'DingTalk-Konversationsberechtigung',
-    autoLaunch: 'Autostart', autoLaunchDescription: 'App beim Anmelden starten',
     aiAssistantName: 'AI-Assistent Name', aiAssistantNamePlaceholder: 'AI-Assistent Name eingeben', aiAssistantNameDesc: 'Passen Sie den Namen an, max. 30 Zeichen', aiAssistantNameDefault: 'Zurücksetzen',
     aiAssistantAvatar: 'AI-Assistent Avatar', aiAssistantAvatarDesc: 'Avatar anpassen, max. 2MB', aiAssistantAvatarChange: 'Avatar ändern', aiAssistantAvatarReset: 'Zurücksetzen', aiAssistantAvatarTooLarge: 'Bild muss kleiner als 2MB sein', aiAssistantSection: 'AI-Assistent Personalisierung',
     useSystemProxy: 'Systemproxy', useSystemProxyDescription: 'Anfragen nutzen Systemproxy (nach Speichern)',
@@ -26758,8 +26748,6 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     imConnectivityCheckSuggestion_discord_group_requires_mention: "Dùng @bot kèm nội dung tin nhắn trong kênh.",
     imConnectivityCheckSuggestion_telegram_privacy_mode_hint: "Xem lại Chế độ riêng tư trong cài đặt @BotFather.",
     imConnectivityCheckSuggestion_dingtalk_bot_membership_hint: "Đảm bảo bot đã ở trong hội thoại mục tiêu và có quyền gửi/nhận.",
-    autoLaunch: "Khởi động khi đăng nhập",
-    autoLaunchDescription: "Tự động khởi động ứng dụng khi bạn đăng nhập",
     aiAssistantName: "Tên trợ lý AI",
     aiAssistantNamePlaceholder: "Nhập tên trợ lý AI",
     aiAssistantNameDesc: "Tùy chỉnh tên trợ lý AI của bạn, tối đa 30 ký tự",

@@ -543,10 +543,6 @@ interface IElectronAPI {
     showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
   };
-  autoLaunch: {
-    get: () => Promise<{ enabled: boolean }>;
-    set: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
-  };
   video: {
     generate: (input: unknown) => Promise<{ ok: boolean; outputPath?: string; error?: string }>;
     stop: (taskId: string) => Promise<{ ok: boolean; error?: string }>;

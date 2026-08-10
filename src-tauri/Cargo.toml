@@ -28,7 +28,6 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-notification = "2"
-tauri-plugin-autostart = "2"
 # NOTE: tauri-plugin-updater (+ tauri-plugin-process) is deliberately
 # NOT wired here yet — the plugin requires a base64 ed25519 pubkey
 # committed to tauri.conf.json, and we don't want to rotate signing
