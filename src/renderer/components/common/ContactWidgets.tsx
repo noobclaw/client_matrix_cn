@@ -41,8 +41,13 @@ const ICON_PATHS: Record<string, React.ReactNode> = {
   email: <path d="M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 4.2-8 4.8-8-4.8V6l8 4.8L20 6v2.2z" />,
 };
 
+// 品牌亮色(用户要求与官网一致的亮色,不再跟灰色文字走 currentColor)
+const BRAND_COLOR: Record<string, string> = {
+  wechat: '#07C160', telegram: '#26A5E4', qq_service: '#12B7F5', qq_group: '#4D9EF6', email: '#F87171',
+};
+
 export const ContactIcon: React.FC<{ id: string; size?: number }> = ({ id, size = 20 }) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" width={size} height={size} aria-hidden="true">{ICON_PATHS[id]}</svg>
+  <svg viewBox="0 0 24 24" fill="currentColor" width={size} height={size} aria-hidden="true" style={{ color: BRAND_COLOR[id] || 'currentColor' }}>{ICON_PATHS[id]}</svg>
 );
 
 // 渲染顺序 + 文案 key(与官网浮窗一致:微信客服/Telegram/QQ客服/QQ群/邮箱)
