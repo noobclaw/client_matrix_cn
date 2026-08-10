@@ -143,24 +143,28 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
           <p className="text-[11px] dark:text-gray-500 text-gray-400 mb-1">{t('pwForgotHint')}</p>
         )}
 
-        {/* ── Divider + wallet/social login via website (unchanged path) ── */}
-        <div className="flex items-center gap-3 my-3">
-          <div className="flex-1 border-t dark:border-white/10 border-gray-200" />
-          <span className="text-xs dark:text-gray-500 text-gray-400">{t('pwOr')}</span>
-          <div className="flex-1 border-t dark:border-white/10 border-gray-200" />
-        </div>
+        {/* ── Divider + wallet/social login via website — 仅登录 tab 显示(注册时隐藏,用户要求 2026-08-10) ── */}
+        {tab === 'login' && (
+          <>
+            <div className="flex items-center gap-3 my-3">
+              <div className="flex-1 border-t dark:border-white/10 border-gray-200" />
+              <span className="text-xs dark:text-gray-500 text-gray-400">{t('pwOr')}</span>
+              <div className="flex-1 border-t dark:border-white/10 border-gray-200" />
+            </div>
 
-        <button
-          onClick={() => noobClawAuth.openWebsiteLogin()}
-          className="w-full py-3 rounded-xl bg-green-500/20 border border-green-500/40 text-green-400 font-semibold hover:bg-green-500/30 transition-all mb-3"
-        >
-          {i18nService.t('loginWallConnectBtn')}
-        </button>
+            <button
+              onClick={() => noobClawAuth.openWebsiteLogin()}
+              className="w-full py-3 rounded-xl bg-green-500/20 border border-green-500/40 text-green-400 font-semibold hover:bg-green-500/30 transition-all mb-3"
+            >
+              {i18nService.t('loginWallConnectBtn')}
+            </button>
 
-        <p className="text-xs dark:text-gray-500 text-gray-400 leading-relaxed">
-          {i18nService.t('loginWallSupports')}<br />
-          {i18nService.t('loginWallNoGas')}
-        </p>
+            <p className="text-xs dark:text-gray-500 text-gray-400 leading-relaxed">
+              {i18nService.t('loginWallSupports')}<br />
+              {i18nService.t('loginWallNoGas')}
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
