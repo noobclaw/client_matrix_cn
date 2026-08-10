@@ -100,9 +100,13 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
           </button>
           <button
             onClick={() => { setTab('register'); setErr(''); }}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'register' ? 'bg-green-500/20 border border-green-500/40 text-green-400' : 'border dark:border-white/10 border-gray-200 dark:text-gray-400 text-gray-500 hover:text-green-400'}`}
+            className={`relative flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${tab === 'register' ? 'bg-green-500/20 border border-green-500/40 text-green-400' : 'border dark:border-white/10 border-gray-200 dark:text-gray-400 text-gray-500 hover:text-green-400'}`}
           >
             {t('pwRegisterTab')}
+            {/* 礼包角标常驻注册 tab:登录页也能看到(用户要求 2026-08-10;原在提交按钮上) */}
+            <span className="absolute -top-2.5 -right-1 px-2 py-1 rounded-full text-[10px] font-bold leading-none text-white whitespace-nowrap" style={{ background: 'linear-gradient(135deg, #ff006e, #ff9500)', boxShadow: '0 2px 12px rgba(255,0,110,0.5)' }}>
+              {t('pwRegGift')}
+            </span>
           </button>
         </div>
 
@@ -134,12 +138,6 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
           className="relative w-full py-3 rounded-xl bg-green-500 text-white font-semibold hover:bg-green-600 transition-all mb-1 disabled:opacity-60"
         >
           {busy ? '…' : (tab === 'login' ? t('pwLoginBtn') : <>🎁 {t('pwRegisterBtn')}</>)}
-          {/* 注册礼包角标 — 与官网 hero 注册按钮同款(粉橙渐变右上角) */}
-          {tab === 'register' && !busy && (
-            <span className="absolute -top-2.5 -right-1 px-2 py-1 rounded-full text-[10px] font-bold leading-none text-white whitespace-nowrap" style={{ background: 'linear-gradient(135deg, #ff006e, #ff9500)', boxShadow: '0 2px 12px rgba(255,0,110,0.5)' }}>
-              {t('pwRegGift')}
-            </span>
-          )}
         </button>
         {tab === 'register' && (
           <p className="text-[11px] dark:text-gray-500 text-gray-400 mb-1">{t('pwForgotHint')}</p>
