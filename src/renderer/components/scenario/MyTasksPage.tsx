@@ -46,6 +46,14 @@ interface Props {
    *  parent already filters tasks by this; we just need to know which
    *  one for display. */
   platformId?: 'xhs' | 'x' | 'binance';
+  /** 「只看运行中」聚合模式:父层不再按平台过滤(tasks 传全量),本组件按自己轮询到的
+   *  runningTaskIds 只展示运行中的卡片。卡片自带平台徽章,天然可辨识归属。 */
+  runningOnly?: boolean;
+  /** 聚合模式下正在运行的【视频创作】任务数(视频任务体系独立不混排,>0 时列表顶部
+   *  出一条横幅入口)。 */
+  videoRunningCount?: number;
+  /** 点视频横幅 → 跳视频创作 tab(父层负责关开关 + 切 tab)。 */
+  onGoVideoTasks?: () => void;
 }
 
 // Platform pill label is locale-aware: Chinese when zh, English when en.
@@ -237,7 +245,7 @@ function taskConfigChips(task: Task): string[] {
   return chips;
 }
 
-export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh, onGoCreate, platformId }) => {
+export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh, onGoCreate, platformId, runningOnly, videoRunningCount, onGoVideoTasks }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
   // Per-task derived data for the "actions strip" on each card:
@@ -320,6 +328,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
   }, [scenarios]);
 
   // Sort: running first, then by created_at desc. Stable inside each group.
+  // runningOnly(「只看运行中」聚合模式)→ 再按运行态过滤,只留运行中的卡。
   const sortedTasks = useMemo(() => {
     return [...tasks]
       .map((t, i) => ({ task: t, originalIdx: i, running: runningTaskIds.has(t.id) }))
@@ -330,15 +339,17 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
         if (ca !== cb) return cb - ca;
         return a.originalIdx - b.originalIdx;
       })
-      .map(({ task }) => task);
-  }, [tasks, runningTaskIds]);
+      .map(({ task }) => task)
+      .filter(t => !runningOnly || runningTaskIds.has(t.id));
+  }, [tasks, runningTaskIds, runningOnly]);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <section className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold dark:text-white">
-            📋 {i18nService.t('mtpMyTasks').replace('{platform}', platformLabel)}
+            {/* 聚合模式 platformLabel 为空串 —— 压掉英文 'My  Tasks' 里的双空格 */}
+            📋 {i18nService.t('mtpMyTasks').replace('{platform}', platformLabel).replace(/\s{2,}/g, ' ')}
           </h2>
           {/* Tutorial entry — opens the docs page for this platform's growth
               workflow in the system browser. zh / zh-TW go to the Chinese
@@ -346,6 +357,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               platformId isn't in the tutorialUrl map so the button silently
               hides on unknown platforms instead of opening a 404. */}
           {(() => {
+            // 聚合模式没有"当前平台",平台教程入口无从指向 → 隐藏。
+            if (runningOnly) return null;
             const url = tutorialUrl(platformId || '', isZh);
             if (!url) return null;
             return (
@@ -375,10 +388,36 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
           })()}
         </div>
 
+        {/* 「只看运行中」聚合模式:视频创作任务体系独立(videoTaskStore + 专属卡片),不混排;
+            有运行中的就给一条横幅入口跳视频 tab,空态时也保留(可能只有视频任务在跑)。 */}
+        {runningOnly && (videoRunningCount ?? 0) > 0 && onGoVideoTasks && (
+          <button
+            type="button"
+            onClick={onGoVideoTasks}
+            className="w-full mb-3 flex items-center justify-between px-4 py-3 rounded-xl border border-rose-500/40 bg-rose-500/10 text-sm font-semibold text-rose-600 dark:text-rose-300 hover:bg-rose-500/20 transition-colors"
+          >
+            <span className="inline-flex items-center gap-2">
+              <span className="relative flex w-2.5 h-2.5 shrink-0" aria-hidden="true">
+                <span className="absolute inline-flex w-full h-full rounded-full bg-rose-400 opacity-75 animate-ping" />
+                <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-rose-400" />
+              </span>
+              <span>🎬 {i18nService.t('mtxOnlyRunningVideoBanner', { n: String(videoRunningCount) })}</span>
+            </span>
+            <span aria-hidden>→</span>
+          </button>
+        )}
+
         {loading && tasks.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
             <span className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
             {i18nService.t('rhLoading')}
+          </div>
+        ) : runningOnly && sortedTasks.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
+            <div className="text-4xl mb-2">💤</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {i18nService.t('mtxOnlyRunningEmpty')}
+            </div>
           </div>
         ) : tasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">

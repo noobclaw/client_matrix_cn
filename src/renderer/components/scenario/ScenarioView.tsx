@@ -35,6 +35,7 @@ import { ToutiaoWorkflowsPage } from './ToutiaoWorkflowsPage';
 import { KuaishouWorkflowsPage } from './KuaishouWorkflowsPage';
 import { BilibiliWorkflowsPage } from './BilibiliWorkflowsPage';
 import { VideoWorkflowsPage } from './video/VideoWorkflowsPage';
+import { videoTaskStore } from '../../services/videoTaskStore';
 import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -236,6 +237,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 矩阵平台标签上的「有任务在跑」绿点。sidecar 的 matrix:listTasks 顺带返回 runningPlatforms
   //   (哪些平台正在跑),这里只取这一项;非矩阵模式不拉。
   const [matrixRunningPlatforms, setMatrixRunningPlatforms] = useState<string[]>([]);
+  // 「只看运行中」:管理页标题旁的开关(默认关)。开 → 隐藏平台 tab,所有平台运行中的任务卡
+  //   聚到一个列表方便追踪;视频创作任务体系独立(videoTaskStore),不混排,以顶部横幅入口代替。
+  //   只作用于 manage 菜单的任务列表态;下钻详情/运行记录不受影响。
+  const [showRunningOnly, setShowRunningOnly] = useState(false);
+  // 运行中的视频创作任务数(渲染端单例,随平台绿点同频轮询,横幅用)
+  const [videoRunningCount, setVideoRunningCount] = useState(0);
   useEffect(() => {
     if (!matrixMode) return;
     let alive = true;
@@ -244,6 +251,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         const r = await (window as any).electron?.matrix?.listTasks?.();
         if (alive && r?.ok) setMatrixRunningPlatforms(Array.isArray(r.runningPlatforms) ? r.runningPlatforms : []);
       } catch { /* 拉不到就不显示绿点,不影响其它功能 */ }
+      try {
+        if (alive) setVideoRunningCount(videoTaskStore.getTasks().filter((t) => t.lastStatus === 'running').length);
+      } catch { /* 同上:失败只影响横幅 */ }
     };
     void pull();
     const t = setInterval(pull, 5000);
@@ -1205,6 +1215,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 运行中绿点【只在「我的矩阵涨粉任务」和「运行记录」两处显示】。新建任务页(create)选的是
   //   「要给哪个平台建任务」,那儿标出别的平台在跑属于噪音,用户 2026-08-06 明确不要。
   const showRunningDot = matrixMode && (currentSection === 'tasks' || currentSection === 'history');
+  // 「只看运行中」聚合视图是否生效:仅 manage 菜单的任务列表态(main+tasks)。开关本身在
+  //   下钻详情时保持开启,回列表后继续生效。
+  const runningOnlyActive = !!matrixMode && mode === 'manage' && showRunningOnly
+    && view.kind === 'main' && currentSection === 'tasks';
 
   const setSection = (section: SectionId) => {
     // Clear any task filter when manually switching sections via the L1 tabs.
@@ -1463,6 +1477,27 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
+        />
+      );
+    }
+
+    // 「只看运行中」聚合视图:无视当前平台 tab,把全部矩阵任务交给 MyTasksPage,
+    // 由它按自己轮询到的 runningTaskIds 过滤出运行中的卡片(运行态在它手里,别搬出来)。
+    // 视频创作任务体系独立(videoTaskStore + 专属卡片),不混排 —— 有运行中的就在列表顶部
+    // 给一条横幅入口跳视频 tab。
+    if (runningOnlyActive) {
+      return (
+        <MyTasksPage
+          tasks={Array.isArray(tasks) ? tasks : []}
+          scenarios={scenarios}
+          loading={loading}
+          platformLabel=""
+          platformId="xhs"
+          onOpenTask={openTask}
+          onRefresh={refreshAll}
+          runningOnly
+          videoRunningCount={videoRunningCount}
+          onGoVideoTasks={() => { setShowRunningOnly(false); setPlatform('video'); }}
         />
       );
     }
@@ -2190,7 +2225,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             This makes Create feel like a pushed sub-page rather than
             another tab equal to the others — matches user expectation
             of "task vs view" actions. */}
-      {view.kind === 'main' && currentSection !== 'create' && !(currentPlatform === 'video' && videoInDetail) && (() => {
+      {view.kind === 'main' && currentSection !== 'create' && (runningOnlyActive || !(currentPlatform === 'video' && videoInDetail)) && (() => {
         const isVideo = currentPlatform === 'video';
         const isHistory = currentSection === 'history';
         // v6.x: 原「我的涨粉任务 / 运行记录」两个 L1 段 tab 已拆成两个独立左侧菜单,
@@ -2200,9 +2235,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // 仅当从【我的涨粉任务】里某任务详情下钻到该任务的运行记录(manage 内部
         // section 临时切到 history)时,补一个「← 返回」回到任务列表,避免没了 L1
         // tab 之后无路可退。
+        // 「只看运行中」时不分平台,标题固定用通用的「我的涨粉任务」(哪怕开关前停在视频 tab)。
         const sectionTitle = isHistory
           ? i18nService.t('svRunHistoryTitle')
-          : isVideo ? i18nService.t('svMyVideosTitle')
+          : (isVideo && !runningOnlyActive) ? i18nService.t('svMyVideosTitle')
                     : i18nService.t('svMyTasksTitle');
         return (
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
@@ -2221,11 +2257,49 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <h2 className="text-base font-bold dark:text-white text-gray-900 whitespace-nowrap">
               {sectionTitle}
             </h2>
+            {/* 「只看运行中」左右开关(默认关)。开 → 隐藏下方平台 tab,全平台运行中的任务卡
+                聚成一个列表,方便逐个追踪进度。仅矩阵 manage 菜单的任务列表显示。 */}
+            {matrixMode && mode === 'manage' && !isHistory && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showRunningOnly}
+                onClick={() => {
+                  setShowRunningOnly(v => !v);
+                  // 从视频 tab 的详情态切进聚合视图时 VideoWorkflowsPage 会被卸载,
+                  // videoInDetail 不会再由它上报复位 —— 这里手动清掉,防头部/平台 tab 显隐错乱。
+                  setVideoInDetail(false);
+                }}
+                className="non-draggable inline-flex items-center gap-2 ml-2 shrink-0"
+                title={i18nService.t('mtxOnlyRunning')}
+              >
+                <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${showRunningOnly ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                  <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${showRunningOnly ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                </span>
+                <span className={`text-xs font-medium whitespace-nowrap ${showRunningOnly ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {i18nService.t('mtxOnlyRunning')}
+                </span>
+              </button>
+            )}
           </div>
           {/* Right-aligned CTA — 只在「我的涨粉任务」(tasks)展示;运行记录页无需新建入口。
               Always clickable; per-platform task-cap (>= 5) check happens inside the
               create page's scenario cards. Video tab is local-only (rose tint). */}
-          {currentSection === 'tasks' && (
+          {currentSection === 'tasks' && (runningOnlyActive ? (
+          /* 「只看运行中」聚合态没有"当前平台"语境 —— 按钮退化为通用「新建任务」,
+             跳「新建矩阵涨粉任务」选择页(与侧栏入口一致),由用户在那儿挑平台和类型。 */
+          <button
+            type="button"
+            onClick={() => {
+              if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+              onSwitchToCreate?.();
+            }}
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap active:scale-95 text-white shadow-md shadow-green-500/30 bg-green-500 hover:bg-green-600 border border-green-500"
+          >
+            <span>✨</span>
+            <span>{i18nService.t('svNewTaskGeneric')}</span>
+          </button>
+          ) : (
           <button
             type="button"
             onClick={() => {
@@ -2241,7 +2315,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <span>✨</span>
             <span>{isVideo ? i18nService.t('svNewVideoTask') : i18nService.t('svNewFanTask')}</span>
           </button>
-          )}
+          ))}
         </div>
         );
       })()}
@@ -2311,7 +2385,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           visible frame; the active one differentiates only by green tint
           + green border + slight glow shadow, matching the L1 section tabs'
           active treatment. */}
-      {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
+      {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && !runningOnlyActive && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。
               国内版:交易所广场五家(币安/OKX/Bitget/Bybit/Gate)【保留】且排在最后 —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录三处都露。 */}
