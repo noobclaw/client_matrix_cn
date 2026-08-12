@@ -90,6 +90,20 @@ export interface PaymentInfo {
         tokensDisplay: string;
       }>;
     };
+    // 银行卡(Dodo 海外收单)。档位是固定美元面值 —— 价格锚在 Dodo 后台的 product 上,
+    //   客户端不换算。subscriptionPlans 列出该渠道真有 product 的订阅档(如 'basic:month'),
+    //   客户端据此决定哪些周期能用银行卡买(没建 product 的档位会被后端拒)。
+    DODO?: {
+      enabled: boolean;
+      packages: Array<{
+        usd: number;
+        label: string;
+        productId: string;
+        tokens: number;
+        tokensDisplay: string;
+      }>;
+      subscriptionPlans?: string[];
+    };
   };
 }
 
@@ -170,12 +184,14 @@ class NoobClawApiService {
    */
   async createOrder(
     amount: number,
-    chain: 'BSC' | 'TRON' | 'WXPAY' = 'BSC',
-  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' = 'BSC',
+  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
       // WXPAY 的 amount 也是 USDT 档位数(后端按 usdt_to_cny_rate 折人民币),
       // 响应多 codeUrl(weixin:// 链接)由前端渲染成付款二维码。
-      const body = chain === 'TRON' || chain === 'WXPAY'
+      // DODO(银行卡)同样传美元档位数,响应多 checkoutUrl —— 用系统浏览器打开 Dodo 收银台,
+      //   客户端不内嵌收银台(PCI 合规 + 三方页面不该塞进 app)。
+      const body = chain === 'TRON' || chain === 'WXPAY' || chain === 'DODO'
         ? { chain, usdtAmount: amount }
         : { chain: 'BSC',  bnbAmount: amount };
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
@@ -206,6 +222,10 @@ class NoobClawApiService {
     current: {
       planCode: string; subActive: boolean; period: string | null;
       periodEnd: string | null; nextGrantAt: string | null;
+      // 银行卡开的订阅到期自动扣款;USDT/卡密开的到期即停。界面据此决定
+      //   给「续费」按钮还是「自动续费中 + 取消入口」—— 给自动续费的用户再点续费
+      //   会开出第二笔订阅重复扣款。
+      autoRenew?: boolean;
       subUsedRatio: number; subExpireAt: string | null; paidBalance: number;
     };
   } | null> {
@@ -226,9 +246,9 @@ class NoobClawApiService {
    */
   async createSubscriptionOrder(
     planCode: string,
-    period: 'month' | 'quarter' | 'half' | 'year',
-    chain: 'BSC' | 'TRON' | 'WXPAY' = 'TRON',
-  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
+    period: 'month' | 'quarter' | 'half' | 'year' | 'once',
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' = 'TRON',
+  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
         method: 'POST',
@@ -237,6 +257,26 @@ class NoobClawApiService {
       });
       const data = await res.json();
       if (!res.ok) return { error: data.message || data.error, code: data.code };
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+
+  /**
+   * 取消自动续费(银行卡订阅)。语义是【到期取消】:当前周期已付费,剩余天数照用到底,
+   *   只是不再自动扣下一期 —— 提示文案必须说清楚,别让用户以为立刻失去会员。
+   */
+  async cancelSubscription(): Promise<{ ok: boolean; message?: string; periodEnd?: string; error?: string } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/plan/subscription/cancel`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) return { ok: false, error: data.message || data.error };
       return data;
     } catch {
       return null;

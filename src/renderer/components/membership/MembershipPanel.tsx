@@ -10,11 +10,21 @@ import { HIDE_WEB3 } from '../../buildFlags';
 // 配色用 .text-primary / .bg-primary 等(随 WalletView 的 partner 金 / 默认绿主题自动适配)。
 
 type Period = 'month' | 'quarter' | 'half' | 'year';
-type PayMethod = 'TRON' | 'BSC' | 'RMB' | 'WXPAY';
+type PayMethod = 'TRON' | 'BSC' | 'RMB' | 'WXPAY' | 'DODO';
 
 // 币种图标(对齐购买积分那排支付方式 tab)。本地复制自 WalletView 的 ChainLogo:
 // WalletView 已 import 本组件,反向 import 会形成循环依赖,故按矩阵惯例就地复制两枚 SVG。
-const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY'; size?: number }> = ({ chain, size = 16 }) => {
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: number }> = ({ chain, size = 16 }) => {
+  if (chain === 'DODO') {
+    // 银行卡(Dodo)。通用卡片图标,不打三方品牌。
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" style={{ verticalAlign: 'middle' }}>
+        <rect x="1.5" y="4" width="21" height="16" rx="2.5" fill="#635BFF" />
+        <rect x="1.5" y="7.5" width="21" height="3" fill="#1a1a2e" />
+        <rect x="4" y="14" width="6" height="2" rx="1" fill="white" opacity=".9" />
+      </svg>
+    );
+  }
   if (chain === 'WXPAY') {
     // 微信支付绿气泡(简化标,与 WalletView 同款)
     return (
@@ -68,18 +78,24 @@ function fmtCredits(n: number): string {
 }
 
 const MembershipPanel: React.FC<{
-  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY') => Promise<string | null>;
+  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO') => Promise<string | null>;
   /** 后端 /payment/info 报了 WXPAY 通道时为 true — 支付方式里露出「微信支付」 */
   wxpayEnabled?: boolean;
-}> = ({ onPay, wxpayEnabled }) => {
+  /** 后端报了 DODO 通道 → 支付方式里露出「银行卡」(推荐渠道,支持自动续费) */
+  dodoEnabled?: boolean;
+  /** DODO 渠道真有 product 的订阅档,如 ['basic:month', ...] —— 没有的档位不能用银行卡买 */
+  dodoPlans?: string[];
+}> = ({ onPay, wxpayEnabled, dodoEnabled, dodoPlans }) => {
   // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
   // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
   const [loading, setLoading] = useState<boolean>(() => !readCachedPlanConfig());
   const [period, setPeriod] = useState<Period>('month');
-  // 国内版(HIDE_WEB3):只走 CNY 兑换码,默认支付方式即 RMB,不给 USDT/BNB 入口。
+  // 国内版(HIDE_WEB3):不给 USDT/BNB 入口。有银行卡通道时默认银行卡(覆盖面最广),
+  //   否则回落 CNY 兑换码。国际版维持原来的 TRON 默认。
   const [method, setMethod] = useState<PayMethod>(HIDE_WEB3 ? 'RMB' : 'TRON');
   const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
   // rmb redeem
   const [redeemInput, setRedeemInput] = useState('');
@@ -120,7 +136,8 @@ const MembershipPanel: React.FC<{
   const subscribe = async (planCode: string) => {
     if (method === 'RMB' || !onPay) return;
     setBusy(true); setError('');
-    const chain: 'TRON' | 'BSC' | 'WXPAY' = method === 'BSC' ? 'BSC' : method === 'WXPAY' ? 'WXPAY' : 'TRON';
+    const chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' =
+      method === 'BSC' ? 'BSC' : method === 'WXPAY' ? 'WXPAY' : method === 'DODO' ? 'DODO' : 'TRON';
     const err = await onPay(planCode, period, chain);
     if (err) setError(err);
     setBusy(false);
@@ -149,34 +166,87 @@ const MembershipPanel: React.FC<{
 
   // ── 选择视图 ──
   const planName = (p: any) => ((i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? (p?.name_zh || p?.name_en) : (p?.name_en || p?.name_zh)) || '';
+  // 取消自动续费。确认文案必须说清「当前周期仍然有效」—— 否则用户以为一点就没了会员。
+  const handleCancelAutoRenew = async () => {
+    const end = cur?.periodEnd ? new Date(cur.periodEnd).toLocaleDateString() : '';
+    if (!window.confirm(i18nService.t('subCancelConfirm').replace('{date}', end))) return;
+    setCancelling(true);
+    setError('');
+    const res = await noobClawApi.cancelSubscription();
+    setCancelling(false);
+    if (res?.ok) {
+      window.alert(i18nService.t('subCancelDone').replace('{date}', end));
+      load();
+    } else {
+      setError(res?.error || i18nService.t('subCancelFailed'));
+    }
+  };
+
   const sorted = [...plans].sort((a, b) => a.sort_order - b.sort_order); // free 在前
 
   return (
     <div>
       {/* 支付方式 + 周期:同一行两组菜单(左=支付方式 / 右=周期),折扣在卡片里显示 */}
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-        {/* 支付方式选择器 —— 国内版(HIDE_WEB3)藏 USDT/BNB;有微信通道时露
-            「微信支付 + CNY 兑换码」两种,没有则整行隐藏(method 已锁定 RMB) */}
-        {(!HIDE_WEB3 || wxpayEnabled) && (
         <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
           {([
+            ...(dodoEnabled ? [['DODO', i18nService.t('dodoCardTab')]] : []),
             ...(wxpayEnabled ? [['WXPAY', i18nService.t('wxpayTab')]] : []),
-            ...(HIDE_WEB3 ? [] : [['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC']]),
+            // 国内版藏 USDT/BNB —— 大陆用户走银行卡 / 微信 / 卡密。
+            ...(HIDE_WEB3 ? [] : ([['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC']] as Array<[PayMethod, string]>)),
             ['RMB', i18nService.t('mpPayCny')],
           ] as Array<[PayMethod, string]>).map(([m, label]) => (
-            <button key={m} onClick={() => { setMethod(m); setError(''); }} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
-              {(m === 'TRON' || m === 'BSC' || m === 'WXPAY') && <ChainLogo chain={m} size={16} />}
+            <button key={m} onClick={() => {
+              setMethod(m); setError('');
+              // 切到银行卡时,若当前周期 Dodo 没有 product(半年),自动落回月付 ——
+              //   否则按钮虽已置灰,选中态仍是半年,点订阅会被后端拒。
+              if (m === 'DODO' && dodoPlans?.length && !dodoPlans.some(x => String(x).endsWith(':' + period))) {
+                setPeriod('month');
+              }
+            }} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
+              {(m === 'TRON' || m === 'BSC' || m === 'WXPAY' || m === 'DODO') && <ChainLogo chain={m} size={16} />}
               {label}
             </button>
           ))}
         </div>
-        )}
         <div className="inline-flex rounded-lg overflow-hidden border dark:border-claude-darkBorder border-claude-border">
-          {periods().map(p => (
-            <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>
-          ))}
+          {periods().map(p => {
+            // 银行卡渠道:只放开 Dodo 后台真有 product 的周期(后端下发 dodoPlans)。
+            //   半年档 Dodo 没建 → 置灰,否则点了会开出一张永远收不到钱的单。
+            //   列表为空(老后端)时不拦,交给后端拒。
+            const off = method === 'DODO' && !!dodoPlans?.length
+              && !dodoPlans.some(x => String(x).endsWith(':' + p.key));
+            if (off) {
+              return (
+                <button key={p.key} disabled title={i18nService.t('dodoPeriodUnavailable')}
+                  className="px-4 py-2 text-xs opacity-40 cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                  {p.label}
+                </button>
+              );
+            }
+            return (
+              <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>
+            );
+          })}
         </div>
       </div>
+
+      {/* 自动续费状态条:说明下次扣款时间 + 给一条退出路径。
+          语义是「到期取消」—— 当前周期已付费,剩余天数照用,只是不再自动续。 */}
+      {subActive && cur?.autoRenew && (
+        <div className="mb-3 flex items-center justify-between gap-3 flex-wrap p-3 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+          <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+            {i18nService.t('subNextCharge')} {cur.periodEnd ? new Date(cur.periodEnd).toLocaleDateString() : ''}
+          </span>
+          <button
+            onClick={handleCancelAutoRenew}
+            disabled={cancelling}
+            className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400 underline underline-offset-2 disabled:opacity-40 transition-colors"
+          >
+            {i18nService.t('subCancelAutoRenew')}
+          </button>
+        </div>
+      )}
 
       {error && <div className="mb-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-red-400">{error}</div>}
 
@@ -187,7 +257,12 @@ const MembershipPanel: React.FC<{
           const isCur = plan.code === curCode;
           const isCurActive = subActive && isCur;          // 当前档(订阅有效)→ 续费
           const isLower = subActive && plan.sort_order < curOrder; // 低于当前档 → 不可降级(置灰)
-          const cta = isCurActive ? i18nService.t('mpCtaRenew') : (subActive ? i18nService.t('mpCtaUpgrade') : i18nService.t('mpCtaSubscribe'));
+          // 自动续费(银行卡)的当前档不能再给「续费」—— 它自己会扣款,再点会开出
+          //   第二笔订阅并行扣钱。改为展示「自动续费中」并禁用。
+          const autoOn = !!cur?.autoRenew;
+          const cta = isCurActive
+            ? (autoOn ? i18nService.t('subAutoRenewing') : i18nService.t('mpCtaRenew'))
+            : (subActive ? i18nService.t('mpCtaUpgrade') : i18nService.t('mpCtaSubscribe'));
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
           const tier = TIER_COLOR[plan.code] || '#9aa0aa';
@@ -230,6 +305,8 @@ const MembershipPanel: React.FC<{
                 // CNY:同样显示「订阅」按钮,点击新开浏览器到店铺购买卡密(回来在下方输入兑换码开通)。
                 //   店铺地址必须后端下发,没拿到前禁用(避免跳死链)。
                 <button disabled={!shopUrl} onClick={openShop} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{cta}</button>
+              ) : isCurActive && autoOn ? (
+                <button disabled title={i18nService.t('subAutoRenewHint')} className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{cta}</button>
               ) : (
                 <button disabled={busy} onClick={() => subscribe(plan.code)} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{cta}</button>
               )}
