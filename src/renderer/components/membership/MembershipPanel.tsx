@@ -1,16 +1,24 @@
-import React, { useState, useEffect, useCallback } from 'react';import { i18nService } from '../../services/i18n';
+import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { i18nService } from '../../services/i18n';
 
+import { HIDE_WEB3 } from '../../buildFlags';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
+import { getWebsiteUrl } from '../../services/endpoints';
 import { readCachedPlanConfig, writeCachedPlanConfig } from '../../services/paymentInfoCache';
-import { HIDE_WEB3 } from '../../buildFlags';
 
 // 嵌入「我的充值」页「会员订阅」tab 的会员面板(无独立页面 chrome)。
-// 4 档(免费版第一)+ 周期选择 + 支付方式(USDT / BNB / 人民币兑换码)。
+// 对齐官网(website/index.html subChoosePlan/subPayWith):
+//   周期行 = 连续包月 / 连续包季 / 连续包年 / 单月购买(默认连续包季),
+//   支付方式【不再是常驻 tab】—— 点套餐卡片后弹窗选(银行卡 / USDT / BNB / 官方店铺卡密)。
 // 配色用 .text-primary / .bg-primary 等(随 WalletView 的 partner 金 / 默认绿主题自动适配)。
 
-type Period = 'month' | 'quarter' | 'half' | 'year';
-type PayMethod = 'TRON' | 'BSC' | 'RMB' | 'WXPAY' | 'DODO';
+// 'half'(半年)只保留在类型与月数表里 —— 周期行已下线该档(Dodo 没有对应 product),
+//   但历史订单 / 会员兑换码回传的 plan_period 仍可能是 'half',periodLabel 要认得。
+type Period = 'month' | 'quarter' | 'half' | 'year' | 'once';
+// 弹窗里的四个支付方式。SHOP = 官方店铺(卡密),不下单、只开兑换弹窗。
+type PayMethod = 'DODO' | 'TRON' | 'BSC' | 'SHOP';
 
 // 币种图标(对齐购买积分那排支付方式 tab)。本地复制自 WalletView 的 ChainLogo:
 // WalletView 已 import 本组件,反向 import 会形成循环依赖,故按矩阵惯例就地复制两枚 SVG。
@@ -57,15 +65,42 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: num
   );
 };
 
+// 弹窗里的一行支付方式(图标 + 标题 + 副标题 + 可选角标)。禁用时置灰不可点。
+const MethodRow: React.FC<{
+  icon: React.ReactNode; title: string; desc: string; badge?: string;
+  disabled?: boolean; onClick: () => void;
+}> = ({ icon, title, desc, badge, disabled, onClick }) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={disabled ? undefined : onClick}
+    className={`w-full flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all ${disabled
+      ? 'opacity-40 cursor-not-allowed dark:border-claude-darkBorder border-claude-border'
+      : 'dark:border-claude-darkBorder border-claude-border hover:border-primary/60 hover:bg-primary/5 cursor-pointer'}`}
+  >
+    <span className="shrink-0">{icon}</span>
+    <span className="flex-1 min-w-0">
+      <span className="flex items-center gap-2">
+        <span className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{title}</span>
+        {badge && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-black">{badge}</span>}
+      </span>
+      <span className="block text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">{desc}</span>
+    </span>
+    <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">›</span>
+  </button>
+);
+
 // ⚠️ 用函数【每次调用求值】i18n —— 模块级 const 会在加载时(语言默认中文)冻结,切英文/小语种后周期文案仍中文。
+// 4 种购买模式:前 3 个是连续订阅(银行卡走 Dodo 自动续费;USDT/BNB 无法自动续费,等同一次买断该时长);
+//   'once' 是单月购买(明确不续费,后端单独定价 price_usd_once,比连续包月贵)。
 const periods = (): Array<{ key: Period; label: string }> => [
-  { key: 'month', label: i18nService.t('mpPeriodMonth') },
-  { key: 'quarter', label: i18nService.t('mpPeriodQuarter') },
-  { key: 'half', label: i18nService.t('mpPeriodHalf') },
-  { key: 'year', label: i18nService.t('mpPeriodYear') },
+  { key: 'month', label: i18nService.t('mpPeriodMonthAuto') },
+  { key: 'quarter', label: i18nService.t('mpPeriodQuarterAuto') },
+  { key: 'year', label: i18nService.t('mpPeriodYearAuto') },
+  { key: 'once', label: i18nService.t('mpPeriodOnce') },
 ];
-const periodLabel = (k: string): string => (({ month: i18nService.t('mpUnitMonth'), quarter: i18nService.t('mpUnitQuarter'), half: i18nService.t('mpUnitHalf'), year: i18nService.t('mpUnitYear') } as Record<string, string>)[k] || '');
-const PERIOD_MONTHS: Record<Period, number> = { month: 1, quarter: 3, half: 6, year: 12 };
+const periodLabel = (k: string): string => (({ month: i18nService.t('mpUnitMonth'), quarter: i18nService.t('mpUnitQuarter'), half: i18nService.t('mpUnitHalf'), year: i18nService.t('mpUnitYear'), once: i18nService.t('mpUnitMonth') } as Record<string, string>)[k] || '');
+const PERIOD_MONTHS: Record<Period, number> = { month: 1, quarter: 3, half: 6, year: 12, once: 1 }; // once=单月购买
 const RECOMMENDED = 'pro';
 // 档位主题色:免费灰 / 基础蓝银 / 进阶金 / 旗舰紫。
 const TIER_COLOR: Record<string, string> = { free: '#9aa0aa', basic: '#60a5fa', pro: '#fbbf24', max: '#a78bfa' };
@@ -79,30 +114,31 @@ function fmtCredits(n: number): string {
 
 const MembershipPanel: React.FC<{
   onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO') => Promise<string | null>;
-  /** 后端 /payment/info 报了 WXPAY 通道时为 true — 支付方式里露出「微信支付」 */
-  wxpayEnabled?: boolean;
-  /** 后端报了 DODO 通道 → 支付方式里露出「银行卡」(推荐渠道,支持自动续费) */
+  /** 后端报了 DODO 通道 → 支付方式弹窗里露出「银行卡」(推荐渠道,支持自动续费) */
   dodoEnabled?: boolean;
-  /** DODO 渠道真有 product 的订阅档,如 ['basic:month', ...] —— 没有的档位不能用银行卡买 */
+  /** DODO 渠道真有 product 的订阅档,如 ['basic:month','basic:once'] —— 没有的档位银行卡那行置灰 */
   dodoPlans?: string[];
-}> = ({ onPay, wxpayEnabled, dodoEnabled, dodoPlans }) => {
+}> = ({ onPay, dodoEnabled, dodoPlans }) => {
   // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
   // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
   const [loading, setLoading] = useState<boolean>(() => !readCachedPlanConfig());
-  const [period, setPeriod] = useState<Period>('month');
-  // 国内版(HIDE_WEB3):不给 USDT/BNB 入口。有银行卡通道时默认银行卡(覆盖面最广),
-  //   否则回落 CNY 兑换码。国际版维持原来的 TRON 默认。
-  const [method, setMethod] = useState<PayMethod>(HIDE_WEB3 ? 'RMB' : 'TRON');
+  // 默认连续包季(对齐官网 _subPeriod = 'quarter')。
+  const [period, setPeriod] = useState<Period>('quarter');
+  // 支付方式弹窗:非 null = 正在为这个档位选支付方式。
+  const [methodPlan, setMethodPlan] = useState<string | null>(null);
+  // 官方店铺(卡密)弹窗:去店铺按钮 + 兑换框同窗 —— 直接跳走的话用户买完回来不知道在哪填码。
+  const [shopOpen, setShopOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
-  // rmb redeem
+  // 中性提示(非报错):目前只用于「取消自动续费请去官网」。
+  const [notice, setNotice] = useState('');
+  // 会员码兑换
   const [redeemInput, setRedeemInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
   const [redeemBusy, setRedeemBusy] = useState(false);
   // CNY 店铺地址:【必须后端下发】(/cny/packages 的 xianyu_shop_url,admin 可改),客户端不兜底。
-  //   没拿到前 = 空 → 订阅/去店铺按钮禁用,绝不跳写死/猜的地址。
+  //   没拿到前 = 空 → 去店铺按钮禁用,绝不跳写死/猜的地址。
   const [shopUrl, setShopUrl] = useState('');
 
   const load = useCallback(async () => {
@@ -113,16 +149,10 @@ const MembershipPanel: React.FC<{
     try { const rp = await noobClawApi.getRedeemPackages(); if (rp?.xianyu_shop_url) setShopUrl(rp.xianyu_shop_url); } catch { /* 用默认 */ }
   }, []);
 
-  // CNY「订阅」按钮:新开系统浏览器到店铺(店铺买卡密 → 回来在下方兑换码框输入开通)。
+  // 「前往店铺购买」:新开系统浏览器到店铺(店铺买卡密 → 回来在兑换框输入开通)。
   const openShop = () => { if (!shopUrl) return; try { (window as any).electron?.shell?.openExternal?.(shopUrl); } catch { /* noop */ } };
 
   useEffect(() => { load(); }, [load]);
-
-  // 中文界面 + 后端开了微信支付 → 默认支付方式选微信(与购买积分 tab 同一决策)。
-  // wxpayEnabled 由父级 paymentInfo 拉回后翻 true,只在此时切一次。
-  useEffect(() => {
-    if (wxpayEnabled && (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW')) setMethod('WXPAY');
-  }, [wxpayEnabled]);
 
   const plans = cfg?.plans || [];
   const cur = cfg?.current;
@@ -132,15 +162,31 @@ const MembershipPanel: React.FC<{
   const subActive = !!cur?.subActive;
   const curOrder = subActive ? (plans.find(p => p.code === curCode)?.sort_order ?? 0) : 0;
 
+  // 点套餐卡片 → 先确认「升级会从今天重算周期」,再开支付方式弹窗。
+  const choosePlan = (planCode: string) => {
+    setError('');
+    const isUpgradeNow = subActive && !!cur?.planCode && cur.planCode !== planCode;
+    if (isUpgradeNow) {
+      const endTxt = cur?.periodEnd ? new Date(cur.periodEnd).toLocaleDateString() : '';
+      if (!window.confirm(i18nService.t('mpUpgradeRestartWarn').replace('{date}', endTxt))) return;
+    }
+    setMethodPlan(planCode);
+  };
+
   // 订阅下单交给 WalletView,复用「购买积分」那套支付步骤(QR/倒计时/轮询/取消)。失败回错误串在此显示。
-  const subscribe = async (planCode: string) => {
-    if (method === 'RMB' || !onPay) return;
+  // ⚠️ period 原样传后端 —— 'once'(单月购买)后端有独立定价 + 一次性 product,绝不能折算成 'month'。
+  const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'DODO') => {
+    if (!onPay) return;
     setBusy(true); setError('');
-    const chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' =
-      method === 'BSC' ? 'BSC' : method === 'WXPAY' ? 'WXPAY' : method === 'DODO' ? 'DODO' : 'TRON';
     const err = await onPay(planCode, period, chain);
     if (err) setError(err);
     setBusy(false);
+  };
+
+  const payWith = (m: PayMethod, planCode: string) => {
+    setMethodPlan(null);
+    if (m === 'SHOP') { setRedeemMsg({ text: '', color: '' }); setShopOpen(true); return; }
+    subscribe(planCode, m);
   };
 
   const submitRedeem = async () => {
@@ -166,68 +212,29 @@ const MembershipPanel: React.FC<{
 
   // ── 选择视图 ──
   const planName = (p: any) => ((i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? (p?.name_zh || p?.name_en) : (p?.name_en || p?.name_zh)) || '';
-  // 取消自动续费。确认文案必须说清「当前周期仍然有效」—— 否则用户以为一点就没了会员。
-  const handleCancelAutoRenew = async () => {
-    const end = cur?.periodEnd ? new Date(cur.periodEnd).toLocaleDateString() : '';
-    if (!window.confirm(i18nService.t('subCancelConfirm').replace('{date}', end))) return;
-    setCancelling(true);
+  // 取消自动续费:客户端【不调接口】,改为打开官网用户中心让用户在网页上完成。
+  //   ① 客户端直调 /subscription/cancel 实测会报错,把人卡住;② 多一层摩擦也是产品要的。
+  //   URL 走 getWebsiteUrl()(cn 版内部按 HIDE_WEB3 自动带 /cn),绝不硬编码域名。
+  const handleCancelAutoRenew = () => {
     setError('');
-    const res = await noobClawApi.cancelSubscription();
-    setCancelling(false);
-    if (res?.ok) {
-      window.alert(i18nService.t('subCancelDone').replace('{date}', end));
-      load();
-    } else {
-      setError(res?.error || i18nService.t('subCancelFailed'));
-    }
+    setNotice(i18nService.t('subCancelOnWeb'));
+    try { (window as any).electron?.shell?.openExternal?.(getWebsiteUrl() + '/#page-user-center'); } catch { /* noop */ }
   };
 
   const sorted = [...plans].sort((a, b) => a.sort_order - b.sort_order); // free 在前
+  const isOnce = period === 'once';
+  // 银行卡可用性以后端下发的 subscriptionPlans 为准(它只列真有 product id 的档位,如 'pro:once')。
+  //   列表为空(老后端)时不拦,交给后端拒。
+  const dodoHasPlan = (planCode: string) => !dodoPlans?.length || dodoPlans.some(x => String(x) === `${planCode}:${period}`);
 
   return (
     <div>
-      {/* 支付方式 + 周期:同一行两组菜单(左=支付方式 / 右=周期),折扣在卡片里显示 */}
-      <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          {([
-            ...(dodoEnabled ? [['DODO', i18nService.t('dodoCardTab')]] : []),
-            ...(wxpayEnabled ? [['WXPAY', i18nService.t('wxpayTab')]] : []),
-            // 国内版藏 USDT/BNB —— 大陆用户走银行卡 / 微信 / 卡密。
-            ...(HIDE_WEB3 ? [] : ([['TRON', 'USDT · TRC20'], ['BSC', 'BNB · BSC']] as Array<[PayMethod, string]>)),
-            ['RMB', i18nService.t('mpPayCny')],
-          ] as Array<[PayMethod, string]>).map(([m, label]) => (
-            <button key={m} onClick={() => {
-              setMethod(m); setError('');
-              // 切到银行卡时,若当前周期 Dodo 没有 product(半年),自动落回月付 ——
-              //   否则按钮虽已置灰,选中态仍是半年,点订阅会被后端拒。
-              if (m === 'DODO' && dodoPlans?.length && !dodoPlans.some(x => String(x).endsWith(':' + period))) {
-                setPeriod('month');
-              }
-            }} className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all ${method === m ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
-              {(m === 'TRON' || m === 'BSC' || m === 'WXPAY' || m === 'DODO') && <ChainLogo chain={m} size={16} />}
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* 周期行:连续包月 / 连续包季 / 连续包年 / 单月购买。支付方式不在这里选 —— 点套餐卡片后弹窗。 */}
+      <div className="mb-4 flex items-center justify-center">
         <div className="inline-flex rounded-lg overflow-hidden border dark:border-claude-darkBorder border-claude-border">
-          {periods().map(p => {
-            // 银行卡渠道:只放开 Dodo 后台真有 product 的周期(后端下发 dodoPlans)。
-            //   半年档 Dodo 没建 → 置灰,否则点了会开出一张永远收不到钱的单。
-            //   列表为空(老后端)时不拦,交给后端拒。
-            const off = method === 'DODO' && !!dodoPlans?.length
-              && !dodoPlans.some(x => String(x).endsWith(':' + p.key));
-            if (off) {
-              return (
-                <button key={p.key} disabled title={i18nService.t('dodoPeriodUnavailable')}
-                  className="px-4 py-2 text-xs opacity-40 cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                  {p.label}
-                </button>
-              );
-            }
-            return (
-              <button key={p.key} onClick={() => setPeriod(p.key)} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>
-            );
-          })}
+          {periods().map(p => (
+            <button key={p.key} onClick={() => { setPeriod(p.key); setError(''); }} className={`px-4 py-2 text-xs ${period === p.key ? 'bg-primary text-black font-semibold' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText'}`}>{p.label}</button>
+          ))}
         </div>
       </div>
 
@@ -240,8 +247,7 @@ const MembershipPanel: React.FC<{
           </span>
           <button
             onClick={handleCancelAutoRenew}
-            disabled={cancelling}
-            className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400 underline underline-offset-2 disabled:opacity-40 transition-colors"
+            className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary underline underline-offset-2 transition-colors"
           >
             {i18nService.t('subCancelAutoRenew')}
           </button>
@@ -249,6 +255,8 @@ const MembershipPanel: React.FC<{
       )}
 
       {error && <div className="mb-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-red-400">{error}</div>}
+      {/* 中性提示条(不是报错)—— 例如「取消自动续费请在官网完成」 */}
+      {notice && <div className="mb-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{notice}</div>}
 
       {/* 套餐卡(4 档,免费版第一) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -266,19 +274,23 @@ const MembershipPanel: React.FC<{
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
           const tier = TIER_COLOR[plan.code] || '#9aa0aa';
-          // 币种跟支付方式:USDT/BNB → 美元 $;CNY 卡密 / 微信支付 → 人民币 ¥
-          //(微信下单后端也按 plans.price_cny 口径收款,显示与实付一致)。
-          const useCny = method === 'RMB' || method === 'WXPAY';
-          const sym = useCny ? '¥' : '$';
+          // 一律美元展示(支付方式在点卡片后的弹窗里选;Dodo 收银台会按用户本币结算,但标价统一 $)。
+          //   'once' 取后端下发的单月购买价(prices.once,比连续包月贵)。
+          const sym = '$';
           const months = PERIOD_MONTHS[period];
           const discount = price?.discount ?? 1;
-          const finalP = isFree ? 0 : (useCny ? (price?.cny ?? plan.price_cny) : (price?.usd ?? plan.price_usd));
-          const origP = useCny ? (plan.price_cny * months) : (plan.price_usd * months);
+          const finalP = isFree ? 0 : (price?.usd ?? plan.price_usd);
+          const origP = plan.price_usd * months;
           const hasDiscount = !isFree && discount < 0.999;
           const off = Math.round(discount * 100) / 10; // 0.7→7、0.9→9
+          // 连续订阅 vs 单月购买的省钱对比:用后端下发的 once 价减去本周期折合的每月价。
+          //   省了才显示 —— 让「连续更划算」一眼可见。
+          const oncePrice = plan.prices?.once?.usd ?? 0;
+          const perMonth = (!isFree && months > 0) ? finalP / months : 0;
+          const savePerMo = (!isOnce && oncePrice > 0 && perMonth > 0) ? (oncePrice - perMonth) : 0;
           return (
             <div key={plan.code} className={`relative rounded-2xl p-4 flex flex-col dark:bg-claude-darkSurface bg-claude-surface ${isLower ? 'opacity-50' : ''}`}
-              style={{ border: `${isRec ? 2 : 1}px solid`, borderColor: isRec ? tier : (isCur ? tier + '88' : 'rgba(255,255,255,0.08)'), boxShadow: isRec ? `0 0 26px -10px ${tier}` : undefined }}>
+              style={{ border: '1px solid', borderColor: isCur ? tier + '88' : 'rgba(255,255,255,0.08)' }}>
               {isRec && <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-black whitespace-nowrap" style={{ background: tier }}>{i18nService.t('mpMostPopular')}</span>}
               {/* 档位名 + 档位色点 + 限时折扣 */}
               <div className="flex items-center gap-2 flex-wrap">
@@ -292,6 +304,9 @@ const MembershipPanel: React.FC<{
                 {hasDiscount && <span className="text-xs line-through dark:text-claude-darkTextSecondary text-claude-textSecondary">{sym}{Math.round(origP)}</span>}
                 {!isFree && <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">/{periodLabel(period)}</span>}
               </div>
+              {savePerMo > 0.01 && (
+                <div className="mt-1 text-[11px] font-semibold text-primary">{i18nService.t('mpSaveVsOnce').replace('{n}', savePerMo.toFixed(1))}</div>
+              )}
               <ul className="mt-3 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary flex-1">
                 <li>· {isFree ? i18nService.t('mpFeatSignupGift') : i18nService.t('mpFeatMonthlyCredits').replace('{n}', fmtCredits(plan.monthly_credits))}</li>
                 <li>· {i18nService.t('mpFeatMaxAccounts').replace('{n}', String(plan.max_accounts_per_platform))}</li>
@@ -301,37 +316,98 @@ const MembershipPanel: React.FC<{
                 <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }} title={i18nService.t('mpNoDowngradeTip')}>{i18nService.t('mpBelowCurrent')}</button>
               ) : isFree ? (
                 <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{!subActive ? i18nService.t('mpCurrentPlan') : i18nService.t('mpFree')}</button>
-              ) : method === 'RMB' ? (
-                // CNY:同样显示「订阅」按钮,点击新开浏览器到店铺购买卡密(回来在下方输入兑换码开通)。
-                //   店铺地址必须后端下发,没拿到前禁用(避免跳死链)。
-                <button disabled={!shopUrl} onClick={openShop} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{cta}</button>
               ) : isCurActive && autoOn ? (
                 <button disabled title={i18nService.t('subAutoRenewHint')} className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{cta}</button>
               ) : (
-                <button disabled={busy} onClick={() => subscribe(plan.code)} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{cta}</button>
+                <button disabled={busy} onClick={() => choosePlan(plan.code)} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{cta}</button>
               )}
             </div>
           );
         })}
       </div>
 
-      {/* 人民币兑换码 */}
-      {method === 'RMB' && (
-        <div className="mt-4 p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <div className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('mpRedeemTitle')}</div>
-            <button disabled={!shopUrl} onClick={openShop} className="px-3 py-1 rounded-lg text-xs font-semibold bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-40">{i18nService.t('mpCtaSubscribe')}</button>
+      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')}</p>
+
+      {/* ── 支付方式弹窗:点套餐卡片后选怎么付 ──
+          顺序即推荐序:银行卡(推荐,走 Dodo,连续订阅)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。
+          ⚠️ portal 到 body —— 合伙人金色卡片的 filter/glow 会成为 position:fixed 的包含块,
+             不 portal 会把全屏遮罩裁进卡片里。 */}
+      {methodPlan && createPortal(
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setMethodPlan(null)}>
+          <div className="w-full max-w-md rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-base font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('payChooseMethod')}</div>
+              <button onClick={() => setMethodPlan(null)} className="text-lg leading-none dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400">✕</button>
+            </div>
+            <div className="space-y-2.5">
+              <MethodRow
+                icon={<ChainLogo chain="DODO" size={22} />}
+                // ⚠️ Dodo 的微信支付【不支持订阅】(只支持一次性付款)—— 连续包月/季/年的收银台
+                //   只会出现 Card,所以标题里不能写 WeChat,否则用户选了发现没有微信会以为出错。
+                //   单月购买是一次性,微信可用,标题照旧带上。
+                title={isOnce ? i18nService.t('dodoCardTabWx') : i18nService.t('dodoCardTab')}
+                desc={!dodoEnabled ? i18nService.t('payUnavailable')
+                  : !dodoHasPlan(methodPlan) ? i18nService.t('payCardPeriodOff')
+                  : isOnce ? i18nService.t('payCardDescOnce') : i18nService.t('payCardDescAuto')}
+                badge={i18nService.t('payBadgeBest')}
+                disabled={!dodoEnabled || !dodoHasPlan(methodPlan)}
+                onClick={() => payWith('DODO', methodPlan)}
+              />
+              {/* 国内版(HIDE_WEB3)隐藏 USDT / BNB —— 代码保留不删,和 cn 官网一致只留银行卡 + 卡密。 */}
+              {!HIDE_WEB3 && (
+                <>
+                  <MethodRow
+                    icon={<ChainLogo chain="TRON" size={22} />}
+                    title="USDT · TRC20"
+                    desc={i18nService.t('payChainAuto')}
+                    onClick={() => payWith('TRON', methodPlan)}
+                  />
+                  <MethodRow
+                    icon={<ChainLogo chain="BSC" size={22} />}
+                    title="BNB · BSC"
+                    desc={i18nService.t('payChainAuto')}
+                    onClick={() => payWith('BSC', methodPlan)}
+                  />
+                </>
+              )}
+              <MethodRow
+                icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
+                title={i18nService.t('payShopTitle')}
+                desc={i18nService.t('payShopDescSub')}
+                onClick={() => payWith('SHOP', methodPlan)}
+              />
+            </div>
           </div>
-          <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">{i18nService.t('mpRedeemHint')}</div>
-          <div className="flex gap-2">
-            <input value={redeemInput} onChange={e => setRedeemInput(e.target.value)} placeholder={i18nService.t('mpRedeemPlaceholder')} className="flex-1 px-3 py-2 rounded-lg dark:bg-claude-darkBg bg-claude-bg border dark:border-claude-darkBorder border-claude-border text-sm dark:text-claude-darkText text-claude-text focus:border-primary outline-none" />
-            <button disabled={redeemBusy} onClick={submitRedeem} className="px-5 py-2 rounded-lg bg-primary text-black text-sm font-semibold disabled:opacity-50">{redeemBusy ? i18nService.t('mpRedeeming') : i18nService.t('mpRedeem')}</button>
-          </div>
-          {redeemMsg.text && <div className="mt-2 text-xs" style={{ color: redeemMsg.color }}>{redeemMsg.text}</div>}
-        </div>
+        </div>,
+        document.body,
       )}
 
-      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')}</p>
+      {/* ── 官方店铺(卡密)弹窗:去店铺按钮 + 兑换框同窗 ── */}
+      {shopOpen && createPortal(
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShopOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-base font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('mpShopModalTitle')}</div>
+              <button onClick={() => setShopOpen(false)} className="text-lg leading-none dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400">✕</button>
+            </div>
+            <div className="rounded-lg p-3 mb-4 text-xs leading-relaxed bg-primary/5 border border-primary/20 dark:text-claude-darkTextSecondary text-claude-textSecondary">
+              <div>{i18nService.t('mpShopStep1')}</div>
+              <div>{i18nService.t('mpShopStep2')}</div>
+              <div>{i18nService.t('mpShopStep3')}</div>
+            </div>
+            <button disabled={!shopUrl} onClick={openShop} className="w-full mb-4 py-2.5 rounded-lg text-sm font-bold text-black bg-primary hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all">
+              {shopUrl ? i18nService.t('mpShopOpen') : i18nService.t('mpShopMissing')}
+            </button>
+            <div className="text-xs font-semibold dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('mpHaveCode')}</div>
+            <div className="flex gap-2">
+              <input value={redeemInput} onChange={e => setRedeemInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !redeemBusy) submitRedeem(); }} placeholder={i18nService.t('mpRedeemPlaceholder')} maxLength={32} autoComplete="off" spellCheck={false} className="flex-1 px-3 py-2 rounded-lg dark:bg-claude-darkBg bg-claude-bg border dark:border-claude-darkBorder border-claude-border text-sm font-mono dark:text-claude-darkText text-claude-text uppercase placeholder:normal-case focus:border-primary outline-none" />
+              <button disabled={redeemBusy} onClick={submitRedeem} className="px-5 py-2 rounded-lg bg-primary text-black text-sm font-semibold disabled:opacity-50">{redeemBusy ? i18nService.t('mpRedeeming') : i18nService.t('mpRedeem')}</button>
+            </div>
+            {redeemMsg.text && <div className="mt-2 text-xs" style={{ color: redeemMsg.color }}>{redeemMsg.text}</div>}
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 };

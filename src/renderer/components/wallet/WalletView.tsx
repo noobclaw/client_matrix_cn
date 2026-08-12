@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi, PaymentInfo, ChainBlock, RedeemPackagesResponse } from '../../services/noobclawApi';
@@ -81,6 +82,15 @@ function formatCountdown(ms: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// 积分数 → "6.66M" 显示。⚠️ 截断而非四舍五入:$10 档实际是 6,666,666 积分,
+// toFixed(1) 会显示成 6.7M,用户到账后看到 6.66M 会以为少给。宁可显示得保守一点。
+// 整百万则不带小数(10000000 → "10M")。与官网 fmtCreditsM 同口径。
+function fmtCreditsM(n: number): string {
+  const m = (parseInt(String(n), 10) || 0) / 1e6;
+  const truncated = Math.floor(m * 100) / 100;
+  return (Number.isInteger(truncated) ? String(truncated) : truncated.toFixed(2)) + 'M';
+}
+
 function getStatusLabel(status: string): string {
   const map: Record<string, string> = {
     pending: i18nService.t('walletStatusPending'),
@@ -150,6 +160,31 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: num
     </svg>
   );
 };
+
+// 支付方式弹窗里的一行(图标 + 标题 + 副标题 + 可选角标)。禁用时置灰不可点。
+const MethodRow: React.FC<{
+  icon: React.ReactNode; title: string; desc: string; badge?: string;
+  disabled?: boolean; onClick: () => void;
+}> = ({ icon, title, desc, badge, disabled, onClick }) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={disabled ? undefined : onClick}
+    className={`w-full flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all ${disabled
+      ? 'opacity-40 cursor-not-allowed dark:border-claude-darkBorder border-claude-border'
+      : 'dark:border-claude-darkBorder border-claude-border hover:border-primary/60 hover:bg-primary/5 cursor-pointer'}`}
+  >
+    <span className="shrink-0">{icon}</span>
+    <span className="flex-1 min-w-0">
+      <span className="flex items-center gap-2">
+        <span className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{title}</span>
+        {badge && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-black">{badge}</span>}
+      </span>
+      <span className="block text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">{desc}</span>
+    </span>
+    <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">›</span>
+  </button>
+);
 
 // Get the active chain block + a list of packages for it from PaymentInfo,
 // falling back to legacy top-level fields when the backend predates the
@@ -235,7 +270,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // 链上充值 grid。
   // lazy-init 卡密档位:先用 localStorage 缓存秒出(对齐 USDT/BNB),后台 fetch 静默覆盖。
   const [redeemInfo, setRedeemInfo] = useState<RedeemPackagesResponse | null>(() => readCachedRedeemInfo());
-  // 国内版(HIDE_WEB3):默认直接进 CNY 卡密面板,链上充值(USDT/BNB)tab 整行隐藏。
+  // 国内版(HIDE_WEB3):默认直接进 CNY 卡密面板(拿到银行卡/微信通道后翻回美元档位卡片)。
+  //   链上充值(USDT/BNB)在国内版全程不露出 —— 选支付方式的弹窗里那两行也被 HIDE_WEB3 挡掉。
+  // 点档位卡片后弹的「选择支付方式」窗:非 null = 正在为这个美元档位选支付方式。
+  const [payPkg, setPayPkg] = useState<{ usd: number; tokens: number } | null>(null);
   const [cnySelected, setCnySelected] = useState(HIDE_WEB3);
   const [redeemCodeInput, setRedeemCodeInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
@@ -342,8 +380,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         setCnySelected(false);
       } else if (info?.chains?.WXPAY && (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW')) {
         setCurrentChain('WXPAY');
-        // 国内版 cnySelected 初始值是 HIDE_WEB3(默认卡密面板)—— 有微信通道时
-        // 切到微信面板作为默认(卡密仍是 tab 可选)。
+        // 国内版 cnySelected 初始值是 HIDE_WEB3(默认卡密面板)—— 有在线支付通道时
+        // 翻回美元档位卡片(卡密仍可从「选择支付方式」弹窗的官方店铺那一行进入)。
         setCnySelected(false);
       } else if (info?.chains?.TRON) {
         setCurrentChain('TRON');
@@ -592,10 +630,42 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     setLoading(false);
   };
 
+  // 档位统一按【美元】展示(对齐官网):取价优先 DODO(usd 字段)→ 退回 TRON(usdt,1:1 美元)
+  //   → 再退回微信档(usdt 也是美元)。⚠️ 绝不能退回 BSC 档位 —— 它是 BNB 单位,当美元用会错位。
+  //   选 BNB 时按实时汇率把美元换算成 BNB 数再下单(见 handlePayPackageWith;国内版不露该入口)。
+  const usdPackages: Array<{ usd: number; tokens: number }> = (() => {
+    const d = paymentInfo?.chains?.DODO;
+    if (d?.packages?.length) return d.packages.map(p => ({ usd: Number(p.usd), tokens: p.tokens }));
+    const t = paymentInfo?.chains?.TRON;
+    if (t?.packages?.length) return t.packages.map(p => ({ usd: Number(p.usdt), tokens: p.tokens }));
+    const w = paymentInfo?.chains?.WXPAY;
+    if (w?.packages?.length) return w.packages.map(p => ({ usd: Number(p.usdt), tokens: p.tokens }));
+    return [];
+  })();
+
+  // 弹窗里选定支付方式 → 分发下单。SHOP 不下单,只切到卡密面板(去店铺买 + 回来兑换)。
+  const handlePayPackageWith = (m: 'DODO' | 'TRON' | 'BSC' | 'SHOP', usd: number) => {
+    setPayPkg(null);
+    setError('');
+    if (m === 'SHOP') { setCnySelected(true); setRedeemMsg({ text: '', color: '' }); return; }
+    setCurrentChain(m);
+    if (m === 'BSC') {
+      // BNB 没有美元档 —— 按实时汇率把美元面值换成 BNB 数。下单后端仍按 BNB 计价,
+      //   积分由后端按同一口径换算,与其它渠道同档同量。
+      const bnbPrice = paymentInfo?.chains?.BSC?.bnbPriceUsd || paymentInfo?.bnbPriceUsd || 0;
+      if (!(bnbPrice > 0)) { setError(i18nService.t('payBnbRateFailed')); return; }
+      handleSelectPackage(Number((usd / bnbPrice).toFixed(6)), 'BSC');
+      return;
+    }
+    handleSelectPackage(usd, m);
+  };
+
   // 订阅下单 → 复用下方同一套支付步骤(QR/倒计时/轮询)。返回错误串给 MembershipPanel 展示,null=已进支付。
   const startSubscriptionPay = async (
     planCode: string,
-    period: 'month' | 'quarter' | 'half' | 'year',
+    // ⚠️ 'once'(单月购买)原样传后端 —— 后端对它有独立定价(price_usd_once,比连续包月贵)
+    //   并映射到 Dodo 的一次性 product。折算成 'month' 会少收钱且开成自动续费,性质完全错。
+    period: 'month' | 'quarter' | 'half' | 'year' | 'once',
     chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO',
   ): Promise<string | null> => {
     setError('');
@@ -610,6 +680,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       }
       const amountStr = chain === 'WXPAY'
         ? String(parseFloat(order.face_value_rmb ?? result.cnyAmount ?? 0))
+        : chain === 'DODO' ? String(parseFloat(order.usd_amount))
         : chain === 'TRON' ? String(parseFloat(order.usdt_amount)) : String(parseFloat(order.bnb_amount));
       setPendingOrderNo(order.order_no);
       setPendingAmount(amountStr);
@@ -1840,7 +1911,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <MembershipPanel onPay={startSubscriptionPay} wxpayEnabled={!!paymentInfo?.chains?.WXPAY} dodoEnabled={!!paymentInfo?.chains?.DODO} dodoPlans={paymentInfo?.chains?.DODO?.subscriptionPlans} />
+          <MembershipPanel onPay={startSubscriptionPay} dodoEnabled={!!paymentInfo?.chains?.DODO} dodoPlans={paymentInfo?.chains?.DODO?.subscriptionPlans} />
         </div>
         )}
 
@@ -1866,68 +1937,18 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
           {step === 'select' && (
             <>
-              {/* 支付方式 tabs。原本只在后端报 TRON 通道时渲染(BSC-only 部署看
-                  老单 grid)。现在 CNY 卡密通道(redeemInfo 非空)也会让这行露出,
-                  即使只有 BSC + CNY 两个选项。USDT/TRON 按产品决策排第一。
-                  cnySelected 标记当前是否在卡密面板,与 currentChain 正交。
-                  国内版(HIDE_WEB3):链上充值(USDT/BNB)tab 隐藏,但微信支付不是
-                  web3 —— 有 WXPAY 通道时露「微信支付 + CNY 卡密」两个 tab;没有
-                  WXPAY 则维持老行为(整行隐藏,直接卡密面板)。 */}
-              {(HIDE_WEB3
-                ? (!!paymentInfo?.chains?.WXPAY || !!paymentInfo?.chains?.DODO)
-                : (paymentInfo?.chains?.TRON || paymentInfo?.chains?.WXPAY || paymentInfo?.chains?.DODO || redeemInfo)) && (
-                <div className="mb-3 flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-                  {paymentInfo?.chains?.DODO && (
-                    <button
-                      onClick={() => { setCnySelected(false); setCurrentChain('DODO'); }}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'DODO' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
-                    >
-                      <ChainLogo chain="DODO" size={16} />
-                      {i18nService.t('dodoCardTabWx')}
-                    </button>
-                  )}
-                  {paymentInfo?.chains?.WXPAY && (
-                    <button
-                      onClick={() => { setCnySelected(false); setCurrentChain('WXPAY'); }}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'WXPAY' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
-                    >
-                      <ChainLogo chain="WXPAY" size={16} />
-                      {i18nService.t('wxpayTab')}
-                    </button>
-                  )}
-                  {!HIDE_WEB3 && paymentInfo?.chains?.TRON && (
-                    <button
-                      onClick={() => { setCnySelected(false); setCurrentChain('TRON'); }}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'TRON' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
-                    >
-                      <ChainLogo chain="TRON" size={16} />
-                      USDT · TRC20
-                    </button>
-                  )}
-                  {!HIDE_WEB3 && (
-                  <button
-                    onClick={() => { setCnySelected(false); setCurrentChain('BSC'); }}
-                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'BSC' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
-                  >
-                    <ChainLogo chain="BSC" size={16} />
-                    BNB · BSC
-                  </button>
-                  )}
-                  {redeemInfo && (
-                    <button
-                      onClick={() => { setCnySelected(true); setRedeemMsg({ text: '', color: '' }); }}
-                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${cnySelected ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
-                    >
-                      {i18nService.t('walletRedeemTab')}
-                    </button>
-                  )}
-                </div>
-              )}
               {cnySelected ? (
                 /* ─── CNY 卡密充值面板 ───
                    照搬主站 cn 站交互:档位卡片(去咸鱼买)→ 收到卡密填入下方框
                    → preview 确认面额 → redeem 核销,积分秒到账。 */
                 <>
+                  {/* 渠道 tab 行已下线 —— 卡密面板要自带一条回档位卡片的路 */}
+                  <button
+                    onClick={() => { setCnySelected(false); setRedeemMsg({ text: '', color: '' }); }}
+                    className="mb-3 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors"
+                  >
+                    ← {i18nService.t('walletBack')}
+                  </button>
                   {/* 卡密兑换置顶 */}
                   <div className="mb-4">
                     <p className="text-xs font-semibold dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('walletRedeemHaveCode')}</p>
@@ -1957,11 +1978,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     {(redeemInfo?.packages || []).map((pkg) => {
-                      const tokensM = (pkg.tokens / 1e6).toFixed(1);
+                      const tokensM = fmtCreditsM(pkg.tokens);
                       return (
                         <div key={`CNY-${pkg.usdt}`} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
                           <p className="font-bold dark:text-claude-darkText text-claude-text mb-1">¥{pkg.rmb}</p>
-                          <p className="text-xs text-primary font-medium mb-3">{tokensM}M {i18nService.t('walletRedeemCreditsUnit')}</p>
+                          <p className="text-xs text-primary font-medium mb-3">{tokensM} {i18nService.t('walletRedeemCreditsUnit')}</p>
                           <button
                             onClick={handleBuyOnXianyu}
                             className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold transition-all"
@@ -1981,36 +2002,27 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   </div>
                 </>
               ) : (
+              /* ─── 档位卡片(统一美元)───
+                 支付方式不在这里选 —— 点卡片后弹窗选(国内版:银行卡 / 官方店铺卡密)。 */
               <div className="grid grid-cols-3 gap-3">
-                {(() => {
-                  const block = chainBlockFor(paymentInfo, currentChain);
-                  const packages = block?.packages || [];
-                  if (!packages.length) {
-                    return (
-                      <div className="col-span-3 text-center dark:text-claude-darkTextSecondary text-claude-textSecondary text-sm py-4">
-                        {paymentInfo ? `${currentChain} channel unavailable` : i18nService.t('walletLoadingPackages')}
-                      </div>
-                    );
-                  }
-                  return packages.map((pkg: any) => {
-                    // WXPAY 的档位金额同样以 usdt 数下单(后端折人民币),卡面显示 ¥ label。
-                    const amount = currentChain === 'BSC' ? (pkg.bnb as number) : (pkg.usdt as number);
-                    const key = `${currentChain}-${amount}`;
-                    return (
-                      <div key={key} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
-                        <p className="font-bold dark:text-claude-darkText text-claude-text mb-1">{pkg.label}</p>
-                        <p className="text-xs text-primary font-medium mb-3">{pkg.tokensDisplay}</p>
-                        <button
-                          onClick={() => handleSelectPackage(amount, currentChain)}
-                          disabled={loading}
-                          className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold disabled:opacity-40 transition-all"
-                        >
-                          {i18nService.t('walletTopUp')}
-                        </button>
-                      </div>
-                    );
-                  });
-                })()}
+                {usdPackages.length === 0 ? (
+                  <div className="col-span-3 text-center dark:text-claude-darkTextSecondary text-claude-textSecondary text-sm py-4">
+                    {i18nService.t('walletLoadingPackages')}
+                  </div>
+                ) : usdPackages.map((pkg) => (
+                  <div key={`usd-${pkg.usd}`} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
+                    <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1 font-medium">${pkg.usd}</p>
+                    <p className="font-bold dark:text-claude-darkText text-claude-text mb-0.5">{fmtCreditsM(pkg.tokens)}</p>
+                    <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">{i18nService.t('walletRedeemCreditsUnit')}</p>
+                    <button
+                      onClick={() => setPayPkg({ usd: pkg.usd, tokens: pkg.tokens })}
+                      disabled={loading}
+                      className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold disabled:opacity-40 transition-all"
+                    >
+                      {i18nService.t('walletRedeemBuy')}
+                    </button>
+                  </div>
+                ))}
               </div>
               )}
             </>
@@ -2019,7 +2031,72 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         </div>
         )}
 
-        {/* 支付步骤 —— 订阅 / 购买积分 共用同一套(QR/倒计时/轮询/取消) */}
+        {/* ── 选择支付方式弹窗(点档位卡片后弹)──
+          顺序即推荐序:银行卡(推荐)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。
+          ⚠️ portal 到 body —— 合伙人金色卡片的 filter/glow 会成为 position:fixed 的包含块,
+             不 portal 会把全屏遮罩裁进卡片里(同 CnyWithdrawModal 那次的坑)。 */}
+      {payPkg && createPortal(
+        (() => {
+          const bnbPrice = paymentInfo?.chains?.BSC?.bnbPriceUsd || paymentInfo?.bnbPriceUsd || 0;
+          const bnbAmt = bnbPrice > 0 ? payPkg.usd / bnbPrice : 0;
+          return (
+            <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setPayPkg(null)}>
+              <div className="w-full max-w-md rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-base font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('payChooseMethod')}</div>
+                  <button onClick={() => setPayPkg(null)} className="text-lg leading-none dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400">✕</button>
+                </div>
+                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-4">
+                  {i18nService.t('walletTopupSummary').replace('{credits}', fmtCreditsM(payPkg.tokens)).replace('{usd}', String(payPkg.usd))}
+                </div>
+                <div className="space-y-2.5">
+                  <MethodRow
+                    icon={<ChainLogo chain="DODO" size={22} />}
+                    title={i18nService.t('dodoCardTabWx')}
+                    desc={paymentInfo?.chains?.DODO ? i18nService.t('payCardDescTopup') : i18nService.t('payUnavailable')}
+                    badge={i18nService.t('payBadgeBest')}
+                    disabled={!paymentInfo?.chains?.DODO}
+                    onClick={() => handlePayPackageWith('DODO', payPkg.usd)}
+                  />
+                  {/* 国内版(HIDE_WEB3)隐藏 USDT / BNB —— 代码保留不删,和 cn 官网一致只留银行卡 + 卡密。 */}
+                  {!HIDE_WEB3 && (
+                    <>
+                      <MethodRow
+                        icon={<ChainLogo chain="TRON" size={22} />}
+                        title="USDT · TRC20"
+                        desc={paymentInfo?.chains?.TRON
+                          ? i18nService.t('payUsdtSend').replace('{amt}', String(payPkg.usd))
+                          : i18nService.t('payUnavailable')}
+                        disabled={!paymentInfo?.chains?.TRON}
+                        onClick={() => handlePayPackageWith('TRON', payPkg.usd)}
+                      />
+                      <MethodRow
+                        icon={<ChainLogo chain="BSC" size={22} />}
+                        title="BNB · BSC"
+                        desc={bnbPrice > 0
+                          ? i18nService.t('payBnbApprox').replace('{amt}', bnbAmt.toFixed(4))
+                          : i18nService.t('payBnbRateLoading')}
+                        disabled={!(bnbPrice > 0)}
+                        onClick={() => handlePayPackageWith('BSC', payPkg.usd)}
+                      />
+                    </>
+                  )}
+                  <MethodRow
+                    icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
+                    title={i18nService.t('payShopTitle')}
+                    desc={redeemInfo ? i18nService.t('payShopDescTopup') : i18nService.t('payUnavailable')}
+                    disabled={!redeemInfo}
+                    onClick={() => handlePayPackageWith('SHOP', payPkg.usd)}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body,
+      )}
+
+      {/* 支付步骤 —— 订阅 / 购买积分 共用同一套(QR/倒计时/轮询/取消) */}
         {step === 'pay' && (
             <div className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
               {isExpired ? (
