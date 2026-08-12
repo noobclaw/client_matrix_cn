@@ -1444,8 +1444,14 @@ const IDENTITY_EXPR: Record<string, string> = {
   //   所以抖音号同时认 unique_id/short_id(蛇形)与 uniqueId/shortId(驼峰)、short_id 兼容带引号或纯数字;
   //   且 displayId 只在【本人昵称附近 ±1500 的块】里找(不全局乱抓推荐流里别人的号)。抓不到时回传 _dbg 本人块片段供定位。
   douyin: '(function(){try{var el=document.getElementById("RENDER_DATA");var d="";try{d=decodeURIComponent((el&&el.textContent)||"");}catch(e){d=(el&&el.textContent)||"";}var n=d.match(/"nickname":"([^"]{1,40})"/),u=d.match(/"uid":"(\\d{6,25})"/),a=d.match(/"avatar_thumb":\\{"uri":"[^"]*","url_list":\\["([^"]+)"/)||d.match(/"avatarUrl":"([^"]+)"/);var ni=n?d.indexOf(n[0]):-1;var blk=ni>=0?d.slice(Math.max(0,ni-1500),ni+1500):d;var s=blk.match(/"unique_id":"([^"]{1,40})"/)||blk.match(/"uniqueId":"([^"]{1,40})"/),s2=blk.match(/"short_id":"?(\\d{3,40})"?/)||blk.match(/"shortId":"?(\\d{3,40})"?/);var did=(s&&s[1])||(s2&&s2[1])||null;var dbg=did?null:blk.slice(0,600);return JSON.stringify({nickname:n&&n[1],uid:u&&u[1],displayId:did,avatar:a&&(a[1]||"").replace(/\\\\u002F/g,"/"),_dbg:dbg});}catch(e){return "{}";}})()',
-  // 小红书:/me 接口(edith 子域,带 cred 可跨子域)。nickname/小红书号(red_id)/uid(user_id)/头像。
-  xhs: '(async function(){try{var r=await fetch("https://edith.xiaohongshu.com/api/sns/web/v2/user/me",{credentials:"include"});var j=await r.json();var d=(j&&j.data)||{};if(d.guest)return "{}";return JSON.stringify({nickname:d.nickname,displayId:d.red_id,uid:d.user_id,avatar:d.images||d.imageb});}catch(e){return "{}";}})()',
+  // 小红书:裸 fetch /me 已要签名头 x-s/x-t,没签名会被当【游客】返回 guest:true → 登录着也读不到身份
+  //   (登录 probe 早已因此不信 guest 字段,身份读取 2026-08-12 补上同款修复,不然「连接成功但没昵称」)。三层:
+  //   ① fetch /me 只信【正向】guest:false+user_id(签名放开/放行时字段最全:nickname/red_id/user_id/images);
+  //   ② 页面 SSR 状态 __INITIAL_STATE__.user 里的本人对象 —— 只点名查 userInfo/self/loginUser/me 这几个 key
+  //      并解一层 Vue ref 包裹(_value/_rawValue),字段兼容驼峰/蛇形双写。⚠️ 绝不做全树盲扫:user 子树里可能
+  //      挂着「看过的别人主页」的用户对象,盲扫会把别人的号当成本人(见身份来源 reference 的血泪教训)。
+  //   ③ 都拿不到 → 回传 _dbg(guest 标志 + user 子树 key 列表)进日志,照真机补字段用。
+  xhs: '(async function(){var dbg="";function pick(o){if(!o||typeof o!=="object")return null;var w=o._value||o._rawValue;if(w&&typeof w==="object")o=w;var nick=o.nickname||o.nickName;var rid=o.redId||o.red_id;if(nick&&rid)return{nickname:nick,displayId:String(rid),uid:String(o.userId||o.user_id||""),avatar:o.images||o.imageb||o.avatar||null};return null;}try{var r=await fetch("https://edith.xiaohongshu.com/api/sns/web/v2/user/me",{credentials:"include"});var j=await r.json();var d=(j&&j.data)||{};if(d.guest===false&&d.user_id)return JSON.stringify({nickname:d.nickname,displayId:d.red_id,uid:d.user_id,avatar:d.images||d.imageb});dbg+="me.guest="+d.guest+";";}catch(e){dbg+="me.err;";}try{var st=window.__INITIAL_STATE__;var u=st&&st.user;if(u){var names=["userInfo","self","loginUser","me","userinfo"];for(var i=0;i<names.length;i++){var hit=pick(u[names[i]]);if(hit)return JSON.stringify(hit);}dbg+="user.keys="+Object.keys(u).slice(0,12).join(",");}else{dbg+="noInitialState";}}catch(e){dbg+="state.err";}return JSON.stringify({_dbg:dbg});})()',
   // B站:nav 接口最干净。uname/mid/face。
   bilibili: '(async function(){try{var r=await fetch("https://api.bilibili.com/x/web-interface/nav",{credentials:"include"});var j=await r.json();var d=(j&&j.data)||{};if(!d.isLogin)return "{}";var mid=String(d.mid||"");return JSON.stringify({nickname:d.uname,uid:mid,displayId:mid,avatar:(d.face||"").replace(/^http:/,"https:")});}catch(e){return "{}";}})()',
   // 推特X(真机实测 2026-06-22):本人 handle 从左侧导航 [data-testid="AppTabBar_Profile_Link"] 的 href 取
@@ -1589,11 +1595,11 @@ export async function kernelReadIdentity(accountId: string, platform: string): P
         }
       } catch { /* 读不到导航/导航失败 → 按当前页读,不阻塞 */ }
     }
+    let lastDbg: string | undefined;
     if (expr) {
       // ⚠️ 单次读在【登录刚成功】时常拿空:扫码连接首读时,抖音/小红书/B站等的 SSR(RENDER_DATA)/CSR 还没把
       //   本人信息渲染出来 → 读到空,要等用户手动「刷新信息」才出。改成轮询到读出再停(最多 ~12s):已经在上面
       //   selfUrl/navHint 分支轮询拿到的平台(快手/TikTok)这里第一次就 break、不增耗时;抖音等给它时间等渲染。
-      let lastDbg: string | undefined;
       for (let i = 0; i < 8; i++) {
         try {
           const o = JSON.parse((await kernelEval(accountId, expr)) || '{}');
@@ -1620,8 +1626,8 @@ export async function kernelReadIdentity(accountId: string, platform: string): P
     }
     // uid 兜底:用 cookie 里的 uid(getAllCookies 跨域)。
     if (!out.uid && cookieUid) out.uid = cookieUid;
-    // 读不到任何身份 → 记一条诊断(便于后续按真实结构补),不影响登录。
-    if (!out.nickname && !out.uid) coworkLog('INFO', 'matrix-identity', `identity empty for ${platform}`, {});
+    // 读不到任何身份 → 记一条诊断(带 expr 回传的 _dbg,便于后续按真实结构补),不影响登录。
+    if (!out.nickname && !out.uid) coworkLog('INFO', 'matrix-identity', `identity empty for ${platform}`, { dbg: (lastDbg || '').slice(0, 300) });
     return out;
   } catch { return {}; }
 }
