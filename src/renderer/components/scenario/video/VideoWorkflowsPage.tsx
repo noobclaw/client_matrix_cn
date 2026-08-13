@@ -1525,7 +1525,11 @@ function renderVideoLog(message: string): React.ReactNode {
   // 优先「NoobClaw 起一直吃到行尾」的锚定匹配(带路径的日志行都以路径收尾),
   // 匹配不上再退回老的「到空格为止」,双保险。
   const m = message.match(/((?:[A-Za-z]:[\\/]|[/\\])\S*?NoobClaw[/\\].*\S)\s*$/)
-    || message.match(/([/\\][^\s:：]*NoobClaw[/\\][^\s]*|[A-Za-z]:[\\/][^\s]*NoobClaw[\\/][^\s]*)/);
+    || message.match(/([/\\][^\s:：]*NoobClaw[/\\][^\s]*|[A-Za-z]:[\\/][^\s]*NoobClaw[\\/][^\s]*)/)
+    // 自定义输出目录不含 NoobClaw(如 D:\ceshi):Windows 只认「盘符+反斜杠」防把
+    // https:// 的 "s://" 误当盘符;mac 只认 /Users|/Volumes 开头。都锚定吃到行尾。
+    || message.match(/(?:^|[\s:：)）])([A-Za-z]:\\.*\S)\s*$/)
+    || message.match(/(?:^|[\s:：)）])(\/(?:Users|Volumes)\/.*\S)\s*$/);
   if (!m) return message;
   const p = m[1];
   const idx = message.indexOf(p);

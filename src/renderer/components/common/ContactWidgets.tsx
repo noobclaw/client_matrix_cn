@@ -33,8 +33,10 @@ export function useSiteContact(): SiteContact {
 }
 
 // ── 图标(与官网浮窗同一套 path)────────────────────────────────────
+const WECHAT_ICON = (<><path d="M8.7 3C4.9 3 1.8 5.6 1.8 8.8c0 1.8 1 3.5 2.6 4.6l-.7 2 2.3-1.2c.8.2 1.6.4 2.4.4h.6c-.1-.4-.2-.9-.2-1.3 0-3.2 3.1-5.8 6.9-5.8h.6C15.6 4.9 12.5 3 8.7 3zM6.4 7.6c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9zm4.6 0c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9z" /><path d="M22.2 13.3c0-2.7-2.7-4.9-6-4.9s-6 2.2-6 4.9 2.7 4.9 6 4.9c.7 0 1.4-.1 2-.3l1.9 1-.5-1.6c1.6-.9 2.6-2.3 2.6-4zm-8-1c-.4 0-.8-.3-.8-.8s.3-.8.8-.8.8.3.8.8-.4.8-.8.8zm4 0c-.4 0-.8-.3-.8-.8s.3-.8.8-.8.8.3.8.8-.4.8-.8.8z" /></>);
 const ICON_PATHS: Record<string, React.ReactNode> = {
-  wechat: (<><path d="M8.7 3C4.9 3 1.8 5.6 1.8 8.8c0 1.8 1 3.5 2.6 4.6l-.7 2 2.3-1.2c.8.2 1.6.4 2.4.4h.6c-.1-.4-.2-.9-.2-1.3 0-3.2 3.1-5.8 6.9-5.8h.6C15.6 4.9 12.5 3 8.7 3zM6.4 7.6c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9zm4.6 0c-.5 0-.9-.4-.9-.9s.4-.9.9-.9.9.4.9.9-.4.9-.9.9z" /><path d="M22.2 13.3c0-2.7-2.7-4.9-6-4.9s-6 2.2-6 4.9 2.7 4.9 6 4.9c.7 0 1.4-.1 2-.3l1.9 1-.5-1.6c1.6-.9 2.6-2.3 2.6-4zm-8-1c-.4 0-.8-.3-.8-.8s.3-.8.8-.8.8.3.8.8-.4.8-.8.8zm4 0c-.4 0-.8-.3-.8-.8s.3-.8.8-.8.8.3.8.8-.4.8-.8.8z" /></>),
+  wechat: WECHAT_ICON,
+  wechat_group: WECHAT_ICON,
   telegram: <path d="M21.9 4.3 18.7 19.4c-.2 1.1-.9 1.3-1.8.8l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1L19.1 5c.4-.4-.1-.6-.6-.2L6.1 12.6l-5-1.6c-1.1-.3-1.1-1 .2-1.5l19.5-7.5c.9-.3 1.7.2 1.4 1.6z" />,
   qq_service: <path d="M12 2C8.7 2 6.3 4.2 6.3 7.4c0 .8-.2 1.3-.7 2-.9 1.2-1.4 2.3-1.4 3.4 0 .6.3 1 .8 1 .4 0 .7-.2 1-.7.2.9.6 1.7 1.2 2.4-.8.4-1.4 1-1.4 1.7 0 1.2 1.7 2.1 4 2.4-.3.3-.5.7-.5 1.1 0 .8.8 1.3 2.7 1.3s2.7-.5 2.7-1.3c0-.4-.2-.8-.5-1.1 2.3-.3 4-1.2 4-2.4 0-.7-.6-1.3-1.4-1.7.6-.7 1-1.5 1.2-2.4.3.5.6.7 1 .7.5 0 .8-.4.8-1 0-1.1-.5-2.2-1.4-3.4-.5-.7-.7-1.2-.7-2C17.7 4.2 15.3 2 12 2z" />,
   qq_group: (<><circle cx="12" cy="7.5" r="3.2" /><path d="M12 12.2c-3 0-5.6 1.6-5.6 3.6V19h11.2v-3.2c0-2-2.6-3.6-5.6-3.6z" /><circle cx="4.6" cy="9.2" r="2.3" /><path d="M4.6 12.6c-1.9 0-3.9 1-4.1 2.5-.1.6.4 1.1 1 1.1h3.2v-.4c0-1.2.5-2.3 1.4-3.1-.5-.1-1-.1-1.5-.1z" /><circle cx="19.4" cy="9.2" r="2.3" /><path d="M19.4 12.6c-.5 0-1 0-1.5.1.9.8 1.4 1.9 1.4 3.1v.4h3.2c.6 0 1.1-.5 1-1.1-.2-1.5-2.2-2.5-4.1-2.5z" /></>),
@@ -45,10 +47,10 @@ export const ContactIcon: React.FC<{ id: string; size?: number }> = ({ id, size 
   <svg viewBox="0 0 24 24" fill="currentColor" width={size} height={size} aria-hidden="true">{ICON_PATHS[id]}</svg>
 );
 
-// 渲染顺序 + 文案 key(与官网浮窗一致:微信客服/Telegram/QQ客服/QQ群/邮箱)
-export const CONTACT_ORDER = ['wechat', 'telegram', 'qq_service', 'qq_group', 'email'] as const;
+// 渲染顺序 + 文案 key(与官网浮窗一致:微信客服/微信群聊/Telegram/QQ客服/QQ群/邮箱)
+export const CONTACT_ORDER = ['wechat', 'wechat_group', 'telegram', 'qq_service', 'qq_group', 'email'] as const;
 const LABEL_KEY: Record<string, string> = {
-  wechat: 'cuWechat', telegram: 'cuTelegram', qq_service: 'cuQqService', qq_group: 'cuQqGroup', email: 'cuEmail',
+  wechat: 'cuWechat', wechat_group: 'cuWechatGroup', telegram: 'cuTelegram', qq_service: 'cuQqService', qq_group: 'cuQqGroup', email: 'cuEmail',
 };
 export const contactLabel = (id: string) => i18nService.t(LABEL_KEY[id] || id);
 
