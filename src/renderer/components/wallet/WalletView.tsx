@@ -85,10 +85,13 @@ function formatCountdown(ms: number): string {
 // 积分数 → "6.66M" 显示。⚠️ 截断而非四舍五入:$10 档实际是 6,666,666 积分,
 // toFixed(1) 会显示成 6.7M,用户到账后看到 6.66M 会以为少给。宁可显示得保守一点。
 // 整百万则不带小数(10000000 → "10M")。与官网 fmtCreditsM 同口径。
-function fmtCreditsM(n: number): string {
+function fmtCreditsNum(n: number): string {
   const m = (parseInt(String(n), 10) || 0) / 1e6;
   const truncated = Math.floor(m * 100) / 100;
-  return (Number.isInteger(truncated) ? String(truncated) : truncated.toFixed(2)) + 'M';
+  return Number.isInteger(truncated) ? String(truncated) : truncated.toFixed(2);
+}
+function fmtCreditsM(n: number): string {
+  return fmtCreditsNum(n) + 'M';
 }
 
 function getStatusLabel(status: string): string {
@@ -480,7 +483,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       const credits = preview.credits ?? 0;
       // 订阅码:确认弹窗显示「开通 进阶版·年付」而非积分数。其它(充值码)走原文案。
       const isSubCode = preview.product_type === 'subscription';
-      const periodLabel: Record<string, string> = { month: i18nService.t('wvPeriodMonth'), quarter: i18nService.t('wvPeriodQuarter'), half: i18nService.t('wvPeriodHalf'), year: i18nService.t('wvPeriodYear') };
+      const periodLabel: Record<string, string> = { month: i18nService.t('wvPeriodMonth'), quarter: i18nService.t('wvPeriodQuarter'), half: i18nService.t('wvPeriodHalf'), year: i18nService.t('wvPeriodYear'), once: i18nService.t('mpPeriodOnce') };
       const confirmMessage = isSubCode
         ? i18nService.t('wvSubConfirmMsg', { plan: preview.plan_name || i18nService.t('wvMembership'), period: periodLabel[preview.plan_period || ''] || '', rmb: String(faceValue) })
         : i18nService.t('walletRedeemConfirmMsg', {
@@ -1005,7 +1008,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 // 微信支付订单:chain='WXPAY',bnb/usdt 都为 NULL — 必须先于卡密的
                 // 第 4 条兜底判掉,否则会被误标成「CNY 卡密」。
                 const isWxpay = String(order.chain || '').toUpperCase() === 'WXPAY';
-                const isRedeem = !isWxpay && (order.payment_method === 'redeem'
+                // 银行卡(Dodo)订单:chain='DODO',bnb/usdt 同样都为 NULL —— 必须和 WXPAY 一样
+                //   先于卡密的第 4 条兜底判掉,否则信用卡买的订阅/积分会被标成「CNY 卡密」。
+                const isDodo = String(order.chain || '').toUpperCase() === 'DODO';
+                const isRedeem = !isWxpay && !isDodo && (order.payment_method === 'redeem'
                   || order.kind === 'redeem'
                   || /^RD/i.test(orderNo)
                   || (order.bnb_amount == null && order.usdt_amount == null));
@@ -1025,7 +1031,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 // 订阅订单:展示「档位 · 时长」(plan_name 后端 join 下发、plan_period 本地映射标签),
                 // 并隐藏无意义的积分数(订阅订单 tokens_purchased 恒为 0)。总价仍走上面的金额显示(BNB/USDT/¥)。
                 const isSub = order.product_type === 'subscription';
-                const subPeriodLabel: Record<string, string> = { month: i18nService.t('wvPeriodMonth'), quarter: i18nService.t('wvPeriodQuarter'), half: i18nService.t('wvPeriodHalf'), year: i18nService.t('wvPeriodYear') };
+                const subPeriodLabel: Record<string, string> = { month: i18nService.t('wvPeriodMonth'), quarter: i18nService.t('wvPeriodQuarter'), half: i18nService.t('wvPeriodHalf'), year: i18nService.t('wvPeriodYear'), once: i18nService.t('mpPeriodOnce') };
                 // plan_name 后端 join 下发的是中文档名(基础版/进阶版…)→ 按当前界面语言映射(同 subPlanBadge 的 K 表);映射不到才原样。
                 const planK: Record<string, string> = { free: 'planTierFree', basic: 'planTierBasic', pro: 'planTierPro', max: 'planTierMax', '免费版': 'planTierFree', '基础版': 'planTierBasic', '进阶版': 'planTierPro', '旗舰版': 'planTierMax' };
                 const planRaw = order.plan_name || order.plan_code || '';
@@ -1046,6 +1052,12 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                               <ChainLogo chain="WXPAY" size={14} />
                               <span>¥{order.face_value_rmb != null ? Number(order.face_value_rmb).toFixed(2) : '—'}</span>
                             </>
+                          ) : isDodo ? (
+                            // 银行卡:Dodo 标 + 美元金额(链上金额字段对它没意义)
+                            <>
+                              <ChainLogo chain="DODO" size={14} />
+                              <span>${order.usd_amount != null ? Number(order.usd_amount).toFixed(2) : '—'}</span>
+                            </>
                           ) : isRedeem ? (
                             // CNY 卡密:🎟️ 图标 + 「CNY 卡密」标签 + 可选金额(¥xx)
                             <>
@@ -1063,7 +1075,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                           {isSub ? (
                             <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary font-normal"> · {subLabel}</span>
                           ) : (
-                            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary font-normal"> · {(order.tokens_purchased / 1_000_000).toFixed(1)}{i18nService.t('walletMTokenUnit')}</span>
+                            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary font-normal"> · {fmtCreditsNum(order.tokens_purchased)}{i18nService.t('walletMTokenUnit')}</span>
                           )}
                         </div>
                       </div>
