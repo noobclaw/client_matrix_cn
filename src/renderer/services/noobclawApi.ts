@@ -69,6 +69,12 @@ export interface PaymentInfo {
   noobPerDollar?: number;
   purchaseNoobPerDollarMin?: number;
   purchaseNoobPerDollarMax?: number;
+  /**
+   * 美元→人民币参考汇率。国内版拿它把美元标价折成「≈¥」显示。
+   * 顶层下发(不在 WXPAY 块里)—— 微信通道关掉后那块整块不下发,汇率会跟着没,
+   * 而国内版即便只用银行卡也仍要显示人民币参考价。
+   */
+  usdCnyRate?: number;
   // Optional — present when backend has the multi-chain TRON channel enabled.
   // TRON is keyed only when tron_treasury_address is set in system_config; if
   // missing, the client falls back to BSC-only behavior.

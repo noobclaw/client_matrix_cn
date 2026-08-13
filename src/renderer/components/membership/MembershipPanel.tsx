@@ -66,6 +66,17 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: num
 };
 
 // 弹窗里的一行支付方式(图标 + 标题 + 副标题 + 可选角标)。禁用时置灰不可点。
+
+// 美元标价旁的人民币参考价。
+//   ⚠️ 只能写「≈」—— 实际走银行卡按美元结算,落地人民币由发卡行按当日汇率定;
+//     usdCnyRate 只是后端 admin 里那个参考汇率(和卡密面值同一个旋钮)。
+//   拿不到汇率就整个不显示 —— 宁可不写,也不能写个错数字。
+function cnyRef(usd?: number | null, rate?: number | null): string {
+  const u = Number(usd), r = Number(rate);
+  if (!(r > 0) || !Number.isFinite(u) || u <= 0) return '';
+  return '≈ ¥' + Math.round(u * r);
+}
+
 const MethodRow: React.FC<{
   icon: React.ReactNode; title: string; desc: string; badge?: string;
   disabled?: boolean; onClick: () => void;
@@ -118,7 +129,9 @@ const MembershipPanel: React.FC<{
   dodoEnabled?: boolean;
   /** DODO 渠道真有 product 的订阅档,如 ['basic:month','basic:once'] —— 没有的档位银行卡那行置灰 */
   dodoPlans?: string[];
-}> = ({ onPay, dodoEnabled, dodoPlans }) => {
+  /** 美元→人民币参考汇率(后端 /payment/info 下发)。 */
+  usdCnyRate?: number;
+}> = ({ onPay, dodoEnabled, dodoPlans, usdCnyRate }) => {
   // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
   // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
@@ -308,6 +321,9 @@ const MembershipPanel: React.FC<{
                 {hasDiscount && <span className="text-xs line-through dark:text-claude-darkTextSecondary text-claude-textSecondary">{sym}{Math.round(origP)}</span>}
                 {!isFree && <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">/{periodLabel(period)}</span>}
               </div>
+              {!isFree && cnyRef(finalP, usdCnyRate) && (
+                <div className="mt-0.5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{cnyRef(finalP, usdCnyRate)}</div>
+              )}
               {savePerMo > 0.01 && (
                 <div className="mt-1 text-[11px] font-semibold text-primary">{i18nService.t('mpSaveVsOnce').replace('{n}', savePerMo.toFixed(1))}</div>
               )}
@@ -330,7 +346,7 @@ const MembershipPanel: React.FC<{
         })}
       </div>
 
-      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')}</p>
+      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')} {i18nService.t('cnyRefNote')}</p>
 
       {/* ── 支付方式弹窗:点套餐卡片后选怎么付 ──
           顺序即推荐序:银行卡(推荐,走 Dodo,连续订阅)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。

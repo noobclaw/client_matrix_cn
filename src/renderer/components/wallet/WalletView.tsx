@@ -162,6 +162,17 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: num
 };
 
 // 支付方式弹窗里的一行(图标 + 标题 + 副标题 + 可选角标)。禁用时置灰不可点。
+
+// 美元标价旁的人民币参考价。
+//   ⚠️ 只能写「≈」—— 实际走银行卡按美元结算,落地人民币由发卡行按当日汇率定;
+//     usdCnyRate 只是后端 admin 里那个参考汇率(和卡密面值同一个旋钮)。
+//   拿不到汇率就整个不显示 —— 宁可不写,也不能写个错数字。
+function cnyRef(usd?: number | null, rate?: number | null): string {
+  const u = Number(usd), r = Number(rate);
+  if (!(r > 0) || !Number.isFinite(u) || u <= 0) return '';
+  return '≈ ¥' + Math.round(u * r);
+}
+
 const MethodRow: React.FC<{
   icon: React.ReactNode; title: string; desc: string; badge?: string;
   disabled?: boolean; onClick: () => void;
@@ -1911,7 +1922,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <MembershipPanel onPay={startSubscriptionPay} dodoEnabled={!!paymentInfo?.chains?.DODO} dodoPlans={paymentInfo?.chains?.DODO?.subscriptionPlans} />
+          <MembershipPanel onPay={startSubscriptionPay} dodoEnabled={!!paymentInfo?.chains?.DODO} dodoPlans={paymentInfo?.chains?.DODO?.subscriptionPlans} usdCnyRate={paymentInfo?.usdCnyRate} />
         </div>
         )}
 
@@ -2012,6 +2023,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 ) : usdPackages.map((pkg) => (
                   <div key={`usd-${pkg.usd}`} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
                     <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1 font-medium">${pkg.usd}</p>
+                    {cnyRef(pkg.usd, paymentInfo?.usdCnyRate) && (
+                      <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{cnyRef(pkg.usd, paymentInfo?.usdCnyRate)}</p>
+                    )}
                     <p className="font-bold dark:text-claude-darkText text-claude-text mb-0.5">{fmtCreditsM(pkg.tokens)}</p>
                     <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">{i18nService.t('walletRedeemCreditsUnit')}</p>
                     <button
@@ -2027,7 +2041,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               )}
             </>
           )}
-          <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('wvPaidCreditsNote')}</p>
+          <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('wvPaidCreditsNote')} {i18nService.t('cnyRefNote')}</p>
         </div>
         )}
 
@@ -2048,6 +2062,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 </div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-4">
                   {i18nService.t('walletTopupSummary').replace('{credits}', fmtCreditsM(payPkg.tokens)).replace('{usd}', String(payPkg.usd))}
+                  {cnyRef(payPkg.usd, paymentInfo?.usdCnyRate) ? ` (${cnyRef(payPkg.usd, paymentInfo?.usdCnyRate)})` : ''}
                 </div>
                 <div className="space-y-2.5">
                   <MethodRow
