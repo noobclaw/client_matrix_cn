@@ -947,7 +947,9 @@ const formatTokenCount = (n: number): string => {
   if (!Number.isFinite(n) || n <= 0) return '0';
   if (n < 1000) return String(n);
   if (n < 1000 * 1000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
+  // 截断而非四舍五入,跟充值档位/订单记录同一口径(见 WalletView.fmtCreditsNum)。
+  const t = Math.floor((n / 1_000_000) * 100) / 100;
+  return `${Number.isInteger(t) ? t : t.toFixed(2)}M`;
 };
 
 const TokenUsageFooter: React.FC<{ metadata: CoworkMessage['metadata'] }> = ({ metadata }) => {
