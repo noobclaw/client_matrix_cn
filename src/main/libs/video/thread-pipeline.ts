@@ -493,7 +493,8 @@ async function composeThreadVideo(opts: {
   if (cards.length === 0) parts.push(`${baseIn}null${vEnd}`);
   if (opts.assPath) {
     // Windows 路径进 filter 要 / 分隔 + 冒号转义;整个文件名再包引号防空格。
-    const assEsc = opts.assPath.replace(/\\/g, '/').replace(/:/g, '\\:');
+    // 撇号也要转义(同 compose.escAssPath):路径可含用户目录名(如 D:\John's Videos),不转义引号会被提前闭合。
+    const assEsc = opts.assPath.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
     parts.push(`[vpre]subtitles=filename='${assEsc}'[vout]`);
   }
   if (burnSubs) {

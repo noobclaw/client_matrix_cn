@@ -119,7 +119,7 @@ export function setVideoOutputRoot(dir: string | null): { success: boolean; erro
   if (dir !== null) {
     const trimmed = String(dir).trim();
     if (!trimmed || !path.isAbsolute(trimmed)) {
-      return { success: false, error: '请选择一个有效的文件夹' };
+      return { success: false, error: '请选择一个有效的文件夹 / Please choose a valid folder' };
     }
     try {
       fs.mkdirSync(trimmed, { recursive: true });
@@ -127,7 +127,7 @@ export function setVideoOutputRoot(dir: string | null): { success: boolean; erro
       fs.writeFileSync(probe, 'ok');
       fs.rmSync(probe, { force: true });
     } catch (e: any) {
-      return { success: false, error: `该文件夹不可写:${e?.message || String(e)}` };
+      return { success: false, error: `该文件夹不可写 / Folder is not writable: ${e?.message || String(e)}` };
     }
     dir = trimmed;
   }
@@ -172,6 +172,8 @@ function sweepStaleTemp(base: string): void {
   lastSweep = now;
   try {
     for (const entry of fs.readdirSync(base)) {
+      // 只清自己家的(mkdtemp 前缀全是 noobclaw-*)——用户指的目录可能本来就有 .tmp,别删别人的东西
+      if (!/^noobclaw-/.test(entry)) continue;
       const p = path.join(base, entry);
       try {
         const st = fs.statSync(p);
