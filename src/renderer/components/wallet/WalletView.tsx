@@ -289,6 +289,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [redeemCodeInput, setRedeemCodeInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
   const [redeemBusy, setRedeemBusy] = useState(false);
+  // 「官方店铺(卡密)」= 独立弹窗(对齐官网 ucShowRedeemModal):去店铺按钮 + 兑换框同窗。
+  //   老交互是把整页换成内嵌卡密面板,跳转感重、买完回来找不到填码的地方。
+  //   ⚠️ 内嵌面板(cnySelected)保留不删 —— 国内版进页面默认就落在那个面板上,那条路径还活着,
+  //   只是不再从「选支付方式 → 官方店铺」这行进入。
+  const [shopOpen, setShopOpen] = useState(false);
   // v1.x: lazy-init profile from cache — without this, every nav into 我的充值
   // page would show no partner theming + no partner badge until /api/user/profile
   // round-trips finish, which user reported as "有时候连我是不是合伙人都加载
@@ -654,11 +659,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     return [];
   })();
 
-  // 弹窗里选定支付方式 → 分发下单。SHOP 不下单,只切到卡密面板(去店铺买 + 回来兑换)。
+  // 弹窗里选定支付方式 → 分发下单。SHOP 不下单,关掉本弹窗后再弹一层店铺弹窗(去店铺买 + 回来就地兑换)。
   const handlePayPackageWith = (m: 'DODO' | 'TRON' | 'BSC' | 'SHOP', usd: number) => {
     setPayPkg(null);
     setError('');
-    if (m === 'SHOP') { setCnySelected(true); setRedeemMsg({ text: '', color: '' }); return; }
+    // ⚠️ 别再 setCnySelected(true) —— 那是整页换成内嵌卡密面板的老交互,官网早已改成弹窗。
+    //   进窗前清空上一次的兑换提示,免得复用 redeemMsg 时把旧的红字/绿字带进新窗。
+    if (m === 'SHOP') { setRedeemMsg({ text: '', color: '' }); setShopOpen(true); return; }
     setCurrentChain(m);
     if (m === 'BSC') {
       // BNB 没有美元档 —— 按实时汇率把美元面值换成 BNB 数。下单后端仍按 BNB 计价,
@@ -1624,7 +1631,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           {i18nService.t('walletCopiedToClipboard')}
         </div>
       )}
-      {confirmDialogEl}
+      {/* 店铺弹窗开着时,确认面额的 confirmDialogEl 改挂到弹窗里(见下方 shopOpen portal)——
+          它是页面内 absolute z-50,会被 portal 到 body 的 z-[9998] 遮罩整片盖住,点了兑换像卡死。 */}
+      {!shopOpen && confirmDialogEl}
       <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
         {/* v6.x: 我的充值页顶部不再放 PartnerApplyCard — 用户反馈"充值中心顶部
@@ -2108,6 +2117,65 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             </div>
           );
         })(),
+        document.body,
+      )}
+
+      {/* ── 官方店铺(卡密)弹窗 ──
+          结构对齐官网 cn/index.html 的 ucShowRedeemModal:标题 + 三步说明 + 去店铺按钮
+          + 兑换框,买完回来就地填码,不用再翻页找入口。
+          ⚠️ portal 到 body —— 同上面的支付方式弹窗:合伙人金色卡片的 filter/glow 会成为
+             position:fixed 的包含块,不 portal 会把全屏遮罩裁进卡片里。 */}
+      {shopOpen && createPortal(
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShopOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-base font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('wvShopModalTitle')}</div>
+              <button onClick={() => setShopOpen(false)} className="text-lg leading-none dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400">✕</button>
+            </div>
+            <div className="rounded-lg p-3 mb-4 text-xs leading-relaxed bg-primary/5 border border-primary/20 dark:text-claude-darkTextSecondary text-claude-textSecondary">
+              <div>{i18nService.t('wvShopStep1')}</div>
+              <div>{i18nService.t('wvShopStep2')}</div>
+              <div>{i18nService.t('wvShopStep3')}</div>
+            </div>
+            {/* 店铺地址没配就禁用并改文案 —— 绝不跳写死/猜的地址(同 MembershipPanel)。 */}
+            <button
+              disabled={!(redeemInfo?.xianyu_shop_url || '').trim()}
+              onClick={handleBuyOnXianyu}
+              className="w-full mb-4 py-2.5 rounded-lg text-sm font-bold text-black bg-primary hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              {(redeemInfo?.xianyu_shop_url || '').trim() ? i18nService.t('mpShopOpen') : i18nService.t('mpShopMissing')}
+            </button>
+            <div className="text-xs font-semibold dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('wvHaveCode')}</div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={redeemCodeInput}
+                onChange={(e) => setRedeemCodeInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !redeemBusy) handleSubmitRedeem(); }}
+                placeholder="NOOB-XXXX-XXXX-XXXX-XXXX"
+                maxLength={32}
+                autoComplete="off"
+                spellCheck={false}
+                className="flex-1 px-3 py-2 rounded-lg dark:bg-claude-darkBg bg-white border dark:border-claude-darkBorder border-claude-border text-sm font-mono dark:text-claude-darkText text-claude-text uppercase placeholder:normal-case placeholder:text-claude-textSecondary/50 focus:outline-none focus:border-primary"
+              />
+              <button
+                onClick={handleSubmitRedeem}
+                disabled={redeemBusy}
+                className="px-4 py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-sm font-semibold disabled:opacity-40 transition-all shrink-0"
+              >
+                {redeemBusy ? i18nService.t('walletRedeemBusy') : i18nService.t('walletRedeemBtn')}
+              </button>
+            </div>
+            {redeemMsg.text && (
+              <p className="text-xs mt-2 leading-relaxed" style={{ color: redeemMsg.color }}>{redeemMsg.text}</p>
+            )}
+          </div>
+          {/* 确认面额弹窗挂在本层(fixed 之内)才盖得住遮罩;stopPropagation 防止点确认时
+              冒泡到外层把店铺弹窗一起关掉。 */}
+          {confirmDialog.visible && (
+            <div onClick={e => e.stopPropagation()}>{confirmDialogEl}</div>
+          )}
+        </div>,
         document.body,
       )}
 

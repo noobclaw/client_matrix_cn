@@ -188,8 +188,12 @@
 ::-webkit-scrollbar-thumb:hover { background: rgba(0,255,136,0.45); }
 
 /* ── Loading spinner ─────────────────────────────────────────────── */
-.dark .animate-spin {
-  border-top-color: var(--nc-green) !important;
+/* 给没自己指定顶边颜色的 spinner 补一个绿色缺口。
+   ⚠️ 必须排除 .border-t-transparent,也不能用 !important —— 否则会把
+   "border-2 border-primary border-t-transparent animate-spin" 这种写法的透明缺口
+   涂成绿色,整圈同色 → 转是在转,但看起来完全静止(等待支付/等待转账两个界面就是这么废的)。 */
+.dark .animate-spin:not(.border-t-transparent) {
+  border-top-color: var(--nc-green);
 }
 
 /* ── Logo gradient text ──────────────────────────────────────────── */
