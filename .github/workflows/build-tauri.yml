@@ -34,6 +34,11 @@ jobs:
             target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
+    # 没有这行时 job 用 GitHub 默认的 6 小时上限。2026-08-13 的 aarch64 构建里
+    # codesign 给 sidecar 签名时挂死(等 timestamp.apple.com 无响应,codesign 自身
+    # 没有超时),整整占了 5h52m 才被杀 —— 编译本身只要 4 分钟,全程正常 5~10 分钟。
+    # 45 分钟足够最慢的冷缓存全量编译,卡住时也能尽快失败好重试。
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
