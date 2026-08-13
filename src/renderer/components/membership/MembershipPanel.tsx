@@ -223,6 +223,10 @@ const MembershipPanel: React.FC<{
 
   const sorted = [...plans].sort((a, b) => a.sort_order - b.sort_order); // free 在前
   const isOnce = period === 'once';
+  // 连续包月只留银行卡:USDT/BNB/卡密都是一次性到账,给不了「连续」。用它们买连续包月
+  //   = $9.9 拿一个月还不续费,比单月购买 $12.9 更便宜 —— 白让 $3 又丢掉续费。
+  //   后端 /payment/create 有同名兜底(MONTH_CARD_ONLY),这里只是不给入口。
+  const isMonthAuto = period === 'month';
   // 银行卡可用性以后端下发的 subscriptionPlans 为准(它只列真有 product id 的档位,如 'pro:once')。
   //   列表为空(老后端)时不拦,交给后端拒。
   const dodoHasPlan = (planCode: string) => !dodoPlans?.length || dodoPlans.some(x => String(x) === `${planCode}:${period}`);
@@ -356,26 +360,38 @@ const MembershipPanel: React.FC<{
               {/* 国内版(HIDE_WEB3)隐藏 USDT / BNB —— 代码保留不删,和 cn 官网一致只留银行卡 + 卡密。 */}
               {!HIDE_WEB3 && (
                 <>
-                  <MethodRow
-                    icon={<ChainLogo chain="TRON" size={22} />}
-                    title="USDT · TRC20"
-                    desc={i18nService.t('payChainAuto')}
-                    onClick={() => payWith('TRON', methodPlan)}
-                  />
-                  <MethodRow
-                    icon={<ChainLogo chain="BSC" size={22} />}
-                    title="BNB · BSC"
-                    desc={i18nService.t('payChainAuto')}
-                    onClick={() => payWith('BSC', methodPlan)}
-                  />
+                  {!isMonthAuto && (
+                    <MethodRow
+                      icon={<ChainLogo chain="TRON" size={22} />}
+                      title="USDT · TRC20"
+                      desc={i18nService.t('payChainAuto')}
+                      onClick={() => payWith('TRON', methodPlan)}
+                    />
+                  )}
+                  {!isMonthAuto && (
+                    <MethodRow
+                      icon={<ChainLogo chain="BSC" size={22} />}
+                      title="BNB · BSC"
+                      desc={i18nService.t('payChainAuto')}
+                      onClick={() => payWith('BSC', methodPlan)}
+                    />
+                  )}
                 </>
               )}
-              <MethodRow
-                icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
-                title={i18nService.t('payShopTitle')}
-                desc={i18nService.t('payShopDescSub')}
-                onClick={() => payWith('SHOP', methodPlan)}
-              />
+              {!isMonthAuto && (
+                <MethodRow
+                  icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
+                  title={i18nService.t('payShopTitle')}
+                  desc={i18nService.t('payShopDescSub')}
+                  onClick={() => payWith('SHOP', methodPlan)}
+                />
+              )}
+              {/* 隐藏了三行就得说清楚为什么,否则拿了卡密/想用链上的用户会以为坏了。 */}
+              {isMonthAuto && (
+                <p className="pt-1 text-[11px] leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                  {i18nService.t('payMonthCardOnly')}
+                </p>
+              )}
             </div>
           </div>
         </div>,
