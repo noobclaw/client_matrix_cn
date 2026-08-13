@@ -4,7 +4,9 @@
  * 背景:成片原本写死在「文档\NoobClaw\视频创作」,Windows 上 Documents 默认在
  * C 盘 —— app 装在 D 盘的用户反馈"视频全落 C 盘"。这里把根目录做成可配置:
  *   · 配置存 settings.json 的 videoOutputRoot 键(userData 下,main / sidecar 两进程都读得到);
- *   · 没配置(或配置的目录建不出来,如 U 盘被拔)→ 回落默认 Documents 路径,绝不让出片失败;
+ *   · 没配置 → 默认跟安装盘走:Windows 装在非系统盘时用 <安装盘>\NoobClaw\视频创作,
+ *     否则维持历史默认 文档\NoobClaw\视频创作;配置的目录建不出来(如 U 盘被拔)同样
+ *     回落默认,绝不让出片失败;
  *   · 每次出片时现读现用(resolveOutputDirs 调用点),改完配置对下一次运行即时生效,无需重启。
  *
  * 同时提供 videoTempDir():合成期的重活临时目录(素材下载 / ffmpeg 分段)跟着
@@ -13,12 +15,46 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { getUserDataPath, getHomePath } from '../platformAdapter';
+import { getUserDataPath, getHomePath, isPackaged } from '../platformAdapter';
 
 const SETTINGS_KEY = 'videoOutputRoot';
 
-/** 默认输出根目录(历史行为):文档\NoobClaw\视频创作。 */
+/**
+ * Windows 且装在非系统盘时返回安装盘符(如 'D:'),否则 null。
+ * 用户特意把 app 装 D 盘就是不想占 C 盘,默认输出应该跟着走。
+ * dev(未打包)时 execPath 是 node/electron 的安装处,盘符无意义,不启用。
+ */
+function nonSystemInstallDrive(): string | null {
+  try {
+    if (process.platform !== 'win32') return null;
+    if (!isPackaged()) return null;
+    const m = /^([A-Za-z]:)/.exec(path.parse(process.execPath).root);
+    const drive = m ? m[1].toUpperCase() : null;
+    const sys = (process.env.SystemDrive || 'C:').toUpperCase();
+    return drive && drive !== sys ? drive : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 安装盘默认根(仅 Windows 非系统盘安装时有):<安装盘>\NoobClaw\视频创作。 */
+function driveDefaultRoot(): string | null {
+  const drive = nonSystemInstallDrive();
+  return drive ? path.join(`${drive}\\`, 'NoobClaw', '视频创作') : null;
+}
+
+/**
+ * 默认输出根目录:装在非系统盘 → <安装盘>\NoobClaw\视频创作(建不出来才退回);
+ * 其余(装 C 盘 / macOS / dev)维持历史行为 文档\NoobClaw\视频创作。
+ */
 export function defaultVideoOutputRoot(): string {
+  const driveDef = driveDefaultRoot();
+  if (driveDef) {
+    try {
+      fs.mkdirSync(driveDef, { recursive: true });
+      return driveDef;
+    } catch { /* 安装盘根目录建不了(权限异常)→ 退回 Documents */ }
+  }
   let docs: string;
   try {
     docs = require('electron').app.getPath('documents');
@@ -112,14 +148,14 @@ export function setVideoOutputRoot(dir: string | null): { success: boolean; erro
 }
 
 /**
- * 合成期临时目录基座:自定义了输出根 → <根>\.tmp(跟成片同盘,C 盘不吃合成峰值);
- * 未自定义 → 维持 os.tmpdir()(历史行为,系统会自己清)。
- * 自定义盘上的 .tmp 系统不会清,这里顺手扫掉 24h 前的残留(崩溃没走到 rmSync 的)。
+ * 合成期临时目录基座:输出根不在默认 Documents 时(用户自定义 / 安装盘默认)
+ * → <根>\.tmp,跟成片同盘,C 盘不吃合成峰值;否则维持 os.tmpdir()(系统会自己清)。
+ * 非系统盘上的 .tmp 系统不会清,这里顺手扫掉 24h 前的残留(崩溃没走到 rmSync 的)。
  */
 export function videoTempBase(): string {
-  const configured = getConfiguredVideoOutputRoot();
-  if (!configured) return os.tmpdir();
-  const base = path.join(configured, '.tmp');
+  const root = getConfiguredVideoOutputRoot() || driveDefaultRoot();
+  if (!root) return os.tmpdir();
+  const base = path.join(root, '.tmp');
   try {
     fs.mkdirSync(base, { recursive: true });
     sweepStaleTemp(base);
