@@ -518,6 +518,8 @@ export function createTauriElectronShim(): typeof window.electron {
       parseStoryboard: (args: unknown) => ipcInvoke('video:parseStoryboard', args).then((r: any) => r ?? { ok: false, error: 'ipc_error' }),
       previewVoice: (args: unknown) => ipcInvoke('video:previewVoice', args).then((r: any) => r ?? { ok: false, error: 'ipc_error' }),
       openFile: (filePath: string) => ipcInvoke('video:openFile', filePath),
+      getOutputDir: () => ipcInvoke('videoOutputDir:get').then((r: any) => r ?? { success: false }),
+      setOutputDir: (dir: string | null) => ipcInvoke('videoOutputDir:set', dir).then((r: any) => r ?? { success: false }),
       onProgress: (handler: (p: unknown) => void) => onSSE('video:progress', handler),
     },
 

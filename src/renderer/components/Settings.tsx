@@ -347,6 +347,32 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
   const initialLanguageRef = useRef<LanguageType>(i18nService.getLanguage());
   const didSaveRef = useRef(false);
 
+  // 视频成片输出目录(settings.json videoOutputRoot;默认 文档\NoobClaw\视频创作)
+  const [videoOutputDir, setVideoOutputDir] = useState('');
+  const [videoOutputDirCustom, setVideoOutputDirCustom] = useState(false);
+  useEffect(() => {
+    window.electron?.video?.getOutputDir?.()
+      .then((r) => {
+        if (r?.success && r.dir) { setVideoOutputDir(r.dir); setVideoOutputDirCustom(!!r.isCustom); }
+      })
+      .catch(() => {});
+  }, []);
+  const changeVideoOutputDir = async () => {
+    try {
+      const picked = await window.electron?.dialog?.selectDirectory?.();
+      if (!picked?.path) return; // 用户取消
+      const r = await window.electron?.video?.setOutputDir?.(picked.path);
+      if (r?.success && r.dir) { setVideoOutputDir(r.dir); setVideoOutputDirCustom(!!r.isCustom); }
+      else if (r?.error) setError(r.error);
+    } catch { /* dialog 不可用时静默 */ }
+  };
+  const resetVideoOutputDir = async () => {
+    try {
+      const r = await window.electron?.video?.setOutputDir?.(null);
+      if (r?.success && r.dir) { setVideoOutputDir(r.dir); setVideoOutputDirCustom(false); }
+    } catch { /* ignore */ }
+  };
+
   // Add state for active provider
   const [activeProvider, setActiveProvider] = useState<ProviderType>(getDefaultActiveProvider());
   const [showApiKey, setShowApiKey] = useState(false);
@@ -1622,6 +1648,40 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
                     { value: 'vi', label: 'Tiếng Việt' },
                   ]}
                 />
+              </div>
+            </div>
+
+            {/* Video output directory Section */}
+            <div data-section="video-output-dir">
+              <h4 className="text-sm font-medium dark:text-claude-darkText text-claude-text">
+                {i18nService.t('videoOutputDirTitle')}
+              </h4>
+              <p className="text-xs dark:text-claude-darkSecondaryText text-claude-secondaryText mt-1">
+                {i18nService.t('videoOutputDirDesc')}
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <div
+                  className="flex-1 min-w-0 px-3 py-1.5 rounded-lg text-xs border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-white dark:text-claude-darkText text-claude-text truncate"
+                  title={videoOutputDir}
+                >
+                  {videoOutputDir || '—'}
+                </div>
+                <button
+                  type="button"
+                  onClick={changeVideoOutputDir}
+                  className="px-2.5 py-1.5 text-xs rounded-lg dark:bg-gray-700 bg-gray-200 dark:text-gray-300 text-gray-600 hover:opacity-80 transition-opacity whitespace-nowrap"
+                >
+                  {i18nService.t('videoOutputDirChange')}
+                </button>
+                {videoOutputDirCustom && (
+                  <button
+                    type="button"
+                    onClick={resetVideoOutputDir}
+                    className="px-2.5 py-1.5 text-xs rounded-lg dark:bg-gray-700 bg-gray-200 dark:text-gray-300 text-gray-600 hover:opacity-80 transition-opacity whitespace-nowrap"
+                  >
+                    {i18nService.t('videoOutputDirReset')}
+                  </button>
+                )}
               </div>
             </div>
 

@@ -2292,6 +2292,26 @@ const server = http.createServer(async (req, res) => {
             }
           }
 
+          // ── 视频成片输出目录 (settings.json videoOutputRoot) ──
+          case 'videoOutputDir:get': {
+            try {
+              const { getVideoOutputRootInfo } = await import('./libs/video/outputRoot');
+              return writeJSON(res, 200, { success: true, ...getVideoOutputRootInfo() });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+          case 'videoOutputDir:set': {
+            try {
+              const { setVideoOutputRoot, getVideoOutputRootInfo } = await import('./libs/video/outputRoot');
+              const r = setVideoOutputRoot(args[0] == null ? null : String(args[0]));
+              if (!r.success) return writeJSON(res, 200, { success: false, error: r.error });
+              return writeJSON(res, 200, { success: true, ...getVideoOutputRootInfo() });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+
           // ── Tool permission policy (settings.json toolPermissions) ──
           case 'toolPolicy:get': {
             try {

@@ -2954,6 +2954,25 @@ if (!gotTheLock) {
       const media = scanLocalMediaFolder(String(dir || ''));
       return { videoCount: media.videos.length, imageCount: media.images.length };
     });
+    // 视频成片输出目录(settings.json videoOutputRoot;与 sidecar 的同名 invoke 等价)
+    ipcMain.handle('videoOutputDir:get', async () => {
+      try {
+        const { getVideoOutputRootInfo } = require('./libs/video/outputRoot');
+        return { success: true, ...getVideoOutputRootInfo() };
+      } catch (e: any) {
+        return { success: false, error: e?.message || String(e) };
+      }
+    });
+    ipcMain.handle('videoOutputDir:set', async (_e, dir: string | null) => {
+      try {
+        const { setVideoOutputRoot, getVideoOutputRootInfo } = require('./libs/video/outputRoot');
+        const r = setVideoOutputRoot(dir == null ? null : String(dir));
+        if (!r.success) return { success: false, error: r.error };
+        return { success: true, ...getVideoOutputRootInfo() };
+      } catch (e: any) {
+        return { success: false, error: e?.message || String(e) };
+      }
+    });
     // 配音试听:用选中的音色合成一句样例,回 data URL 给 <audio> 直接播。
     // ⚠️ 豆包音色走后端代理【按字符计费】,所以样例句必须短(十来个字),且不缓存到磁盘。
     //    Edge 音色免费。合成失败(网络/音色下线)回 { ok:false } 让 UI 显示原因,不抛。

@@ -24,6 +24,7 @@ import {
   ProgressTracker, resolveOutputDirs, outputFileName, throwIfAborted,
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
 } from './pipeline';
+import { videoTempBase } from './outputRoot';
 import { generateTemplateData, detectTemplateLang, type ContentLang } from './templateHtmlWriter';
 import { contentLangName } from './scriptWriter';
 import { getVideoConfig } from './videoConfig';
@@ -300,7 +301,7 @@ export async function runTemplatePipeline(
 
   const { taskDir, runDir: destDir } = resolveOutputDirs(input);
   tracker.setOutputDir(taskDir);
-  const tmpAudioDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-tpl-audio-'));
+  const tmpAudioDir = fs.mkdtempSync(path.join(videoTempBase(), 'noobclaw-tpl-audio-'));
   const narrationPath = path.join(tmpAudioDir, 'narration.mp3');
 
   // 平台基础费(预扣);失败时 refund。对齐 stock 模式定价口径,口径在 billing.chargeMode1Video。

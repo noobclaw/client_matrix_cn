@@ -16,7 +16,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { getHomePath } from '../platformAdapter';
+import { resolveVideoOutputRoot, videoTempBase } from './outputRoot';
 import { isFfmpegAvailable, setVideoAbortSignal, runFfmpeg, probeDuration } from './ffmpegRuntime';
 import {
   synthesize, synthesizeWhole, getLastTtsError, getVoiceFallbacks, isDoubaoVoice, voiceProviderLabel,
@@ -558,13 +558,8 @@ function getNextBatch(dayDir: string): number {
  *   一次批量出片(videoCount>1)只调一次 → N 条成片同落一个 <批次号>/,靠文件名 _N 后缀区分。
  */
 export function resolveOutputDirs(input?: { taskId?: string; taskTitle?: string }): { taskDir: string; runDir: string } {
-  let docs: string;
-  try {
-    docs = require('electron').app.getPath('documents');
-  } catch {
-    docs = path.join(getHomePath(), 'Documents');
-  }
-  const root = path.join(docs, 'NoobClaw', '视频创作');
+  // 根目录用户可在设置页改(默认仍是 文档\NoobClaw\视频创作),每次开跑现读现用。
+  const root = resolveVideoOutputRoot();
   let taskDir: string;
   let dayDir: string;
   if (input?.taskId) {
@@ -884,7 +879,7 @@ async function runVideoPipeline(
   let refundOnExit = false;
 
   // 临时素材目录(配音 + 下载的素材图)
-  const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-vid-assets-'));
+  const assetDir = fs.mkdtempSync(path.join(videoTempBase(), 'noobclaw-vid-assets-'));
 
   // 出片目录开跑即确定,emit 一次让详情页顶部立刻能显示「输出目录」。
   // taskDir = 任务总目录(详情页顶部稳定指向它);destDir = 本次运行 <日期>/<批次号>/(实际写成片)。

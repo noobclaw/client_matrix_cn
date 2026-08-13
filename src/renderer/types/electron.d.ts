@@ -572,6 +572,8 @@ interface IElectronAPI {
     resolveBgmPath: (token: string) => Promise<string>;
     prepareBgmPreview: (token: string) => Promise<string>;
     openFile: (filePath: string) => Promise<unknown>;
+    getOutputDir: () => Promise<{ success: boolean; dir?: string; isCustom?: boolean; defaultDir?: string; error?: string }>;
+    setOutputDir: (dir: string | null) => Promise<{ success: boolean; dir?: string; isCustom?: boolean; defaultDir?: string; error?: string }>;
     onProgress: (handler: (p: unknown) => void) => () => void;
   };
   appInfo: {

@@ -18,7 +18,6 @@
  */
 
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { isFfmpegAvailable, runFfmpeg, probeDuration, probeImageSize } from './ffmpegRuntime';
 import { resolveBgmPath } from './bgm';
@@ -27,6 +26,7 @@ import {
   ProgressTracker, resolveOutputDirs, outputFileName, throwIfAborted,
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
 } from './pipeline';
+import { videoTempBase } from './outputRoot';
 import { getVideoConfig, type VideoPipelineConfig } from './videoConfig';
 import { resolveHeadlessBrowser } from './htmlVideoRenderer';
 import {
@@ -565,7 +565,7 @@ export async function runThreadPipeline(
   tracker.setOutputDir(taskDir);
   tracker.setLogFile(path.join(runDir, '运行记录.md'));
 
-  const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-thread-assets-'));
+  const assetDir = fs.mkdtempSync(path.join(videoTempBase(), 'noobclaw-thread-assets-'));
   let chargeId: string | undefined;
   let refundOnExit = false;
   const session = new ThreadSession();

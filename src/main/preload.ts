@@ -125,6 +125,9 @@ contextBridge.exposeInMainWorld('electron', {
     prepareBgmPreview: (token: string) => ipcRenderer.invoke('video:prepareBgmPreview', token),
     /** Open a produced file with the OS default player. */
     openFile: (filePath: string) => ipcRenderer.invoke('video:openFile', filePath),
+    /** Get / set the video output root directory (settings.json videoOutputRoot). */
+    getOutputDir: () => ipcRenderer.invoke('videoOutputDir:get'),
+    setOutputDir: (dir: string | null) => ipcRenderer.invoke('videoOutputDir:set', dir),
     /** Subscribe to per-job progress events. Returns an unsubscribe fn. */
     onProgress: (callback: (progress: unknown) => void) => {
       const handler = (_event: unknown, progress: unknown) => callback(progress);

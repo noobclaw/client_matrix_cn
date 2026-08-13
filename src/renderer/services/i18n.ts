@@ -2700,6 +2700,10 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     aiAssistantAvatarReset: '恢复默认',
     aiAssistantAvatarTooLarge: '图片大小不能超过 2MB',
     aiAssistantSection: 'AI 助理个性化',
+    videoOutputDirTitle: '视频保存位置',
+    videoOutputDirDesc: '视频创作的成片与素材存档保存到此文件夹（C 盘空间不足时可改到其它盘，下一次生成即生效）',
+    videoOutputDirChange: '更改',
+    videoOutputDirReset: '恢复默认',
     useSystemProxy: '使用系统代理',
     useSystemProxyDescription: '开启后网络请求将跟随系统代理（保存后生效）',
 
@@ -6101,6 +6105,10 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     aiAssistantAvatarReset: 'Reset',
     aiAssistantAvatarTooLarge: 'Image must be smaller than 2MB',
     aiAssistantSection: 'AI Assistant Personalization',
+    videoOutputDirTitle: 'Video Save Location',
+    videoOutputDirDesc: 'Finished videos and downloaded material are saved to this folder (change it to another drive if C: is low on space; takes effect on the next run)',
+    videoOutputDirChange: 'Change',
+    videoOutputDirReset: 'Reset to Default',
     useSystemProxy: 'Use System Proxy',
     useSystemProxyDescription: 'When enabled, network requests follow system proxy settings (applies after Save)',
 
@@ -7401,6 +7409,10 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // General settings
     aiAssistantName: 'AI 助理名稱', aiAssistantNamePlaceholder: '請輸入 AI 助理名稱', aiAssistantNameDesc: '自訂您的 AI 助理名稱，最多30個字元', aiAssistantNameDefault: '恢復預設',
     aiAssistantAvatar: 'AI 助理頭像', aiAssistantAvatarDesc: '自訂 AI 助理頭像，圖片不超過 2MB', aiAssistantAvatarChange: '更換頭像', aiAssistantAvatarReset: '恢復預設', aiAssistantAvatarTooLarge: '圖片大小不能超過 2MB', aiAssistantSection: 'AI 助理個性化',
+    videoOutputDirTitle: '影片保存位置',
+    videoOutputDirDesc: '影片創作的成片與素材存檔保存到此資料夾（C 槽空間不足時可改到其它磁碟，下一次生成即生效）',
+    videoOutputDirChange: '更改',
+    videoOutputDirReset: '恢復預設',
     useSystemProxy: '使用系統代理', useSystemProxyDescription: '開啟後網路請求將跟隨系統代理（儲存後生效）',
     // Scheduled tasks
     scheduledTasks: 'AI定時任務', scheduledTasksTitle: '自建定時任務',

@@ -18,10 +18,10 @@
  */
 
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { runFfmpeg, probeDuration, probeImageSize } from './ffmpegRuntime';
 import { isPackaged, getResourcesPath, getUserDataPath } from '../platformAdapter';
+import { videoTempBase } from './outputRoot';
 
 const FPS = 30;
 /** 每段素材最长秒数(换镜节奏);上层不传时的默认值。 */
@@ -749,7 +749,7 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
   const maxClip = opts.maxClipSeconds && opts.maxClipSeconds > 0 ? opts.maxClipSeconds : DEFAULT_MAX_CLIP_SEC;
   const style: SubtitleStyle = opts.subtitle ?? { enabled: true, fontSize: 52, position: 'bottom' };
 
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-video-'));
+  const workDir = fs.mkdtempSync(path.join(videoTempBase(), 'noobclaw-video-'));
 
   // 字体拷进 workDir,filtergraph 里只用相对名(避开 C: 转义)。
   // 优先用户选中的字体(style.fontFile),其次内置思源黑体(任何机器中文都不豆腐),
@@ -973,7 +973,7 @@ export async function concatNativeClips(opts: {
   const clips = opts.clipPaths.filter((c) => c && fs.existsSync(c));
   if (clips.length === 0) throw new Error('没有可拼接的片段');
 
-  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-ainative-'));
+  const workDir = fs.mkdtempSync(path.join(videoTempBase(), 'noobclaw-ainative-'));
   try {
     const listPath = path.join(workDir, 'concat.txt');
     // ⚠️ 复用 concatLine,别自己再写一遍转义:第一版写成 `"'\''"`,而在 JS 里那是三个引号

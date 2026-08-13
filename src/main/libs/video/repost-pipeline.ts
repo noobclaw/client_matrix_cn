@@ -19,7 +19,6 @@
  */
 
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import { runFfmpeg, probeDuration, probeImageSize, probeVideoCodec, isFfmpegAvailable, getFfmpegPath } from './ffmpegRuntime';
@@ -39,6 +38,7 @@ import {
   ProgressTracker, resolveOutputDirs, throwIfAborted,
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
 } from './pipeline';
+import { videoTempBase } from './outputRoot';
 
 function apiBase(): string {
   return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
@@ -1175,7 +1175,7 @@ export async function runRepostPipeline(
   const { taskDir, runDir: destDir } = resolveOutputDirs(input);
   tracker.setOutputDir(taskDir);
   fs.mkdirSync(destDir, { recursive: true });
-  const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-repost-'));
+  const assetDir = fs.mkdtempSync(path.join(videoTempBase(), 'noobclaw-repost-'));
 
   const targetLang = String((input as any).repostTargetLang || input.scriptLang || 'zh').trim() || 'zh';
   const LANG_LABEL: Record<string, string> = {
