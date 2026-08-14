@@ -250,7 +250,7 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
       track: acc.track || '',
       persona: acc.persona || '',
       keywords: accKeywords,
-      daily_count: Math.max(1, Math.min(50, Number(cfg.dailyCount) || 1)),
+      daily_count: Math.max(1, Math.min(100, Number(cfg.dailyCount) || 1)),
       use_real_photos: !!cfg.useRealPhotos,
       // 本地图模式:直接带 base64 图组,orchestrator 优先用它(跳过搜图/生图,按张计费同网络图)。
       local_images: localImagePayload.length > 0 ? localImagePayload : undefined,

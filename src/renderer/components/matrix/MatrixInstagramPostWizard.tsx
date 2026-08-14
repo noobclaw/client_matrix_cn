@@ -308,8 +308,8 @@ const MatrixInstagramPostWizard: React.FC<Props> = ({ platformLabel, platform, a
             {/* 每号每轮发几条。runner 里循环,每条之间隔 10-60s(防同号短时间连发)。 */}
             <div className="mb-4">
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{T('每号每轮发布', 'Posts per account per round:')} <span className="text-pink-500 font-bold">{dailyCount}</span> {T('条', '')}</label>
-              <input type="range" min={1} max={10} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} className="w-full accent-pink-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>10</span></div>
+              <input type="range" min={1} max={100} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} className="w-full accent-pink-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>100</span></div>
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{T('发布方式', 'After generation')}</label>

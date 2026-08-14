@@ -143,7 +143,9 @@ const CAPTCHA_DETECT_EXPR = "(function(){try{"
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
-async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string): Promise<EngageItemResult> {
+// holdAfter=false:多条循环的中间轮 —— 外层已用引用计数吊着窗口(见 runBinancePostTask),
+// 这里不用再留 20s 检查期(窗口反正不关,留了纯属拖慢),也不真关窗(closeKernel 只把计数 -1)。
+async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string, holdAfter = true): Promise<EngageItemResult> {
   const acc = getAccount(accountId);
   const cfg = opts.config;
   const log = (m: string) => { try { opts.onLog?.(accountId, m); } catch { /* ignore */ } };
@@ -382,8 +384,9 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
   } finally {
     // 完成后留时间让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
     // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
-    const holdMs = inspectHoldMs(finished?.error);
-    if (!opts.signal?.aborted) {
+    // 多条循环的中间轮(holdAfter=false)两样都省:窗口由外层引用吊着不会关,检查期留到最后一轮。
+    const holdMs = holdAfter ? inspectHoldMs(finished?.error) : 0;
+    if (holdMs > 0 && !opts.signal?.aborted) {
       await new Promise<void>((resolve) => {
         const t = setTimeout(resolve, holdMs);
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
@@ -435,28 +438,61 @@ export async function runBinancePostTask(opts: BinancePostTaskOptions): Promise<
       items: opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'no_scenario(后端未部署?)' })),
     };
   }
-  // 每号每轮发几条(1-10,默认 1 = 老行为)。
+  // 每号每轮发几条(1-100,默认 1 = 老行为;上限原是 10,用户 2026-08-14 要求各平台放到 100)。
   // 🚨 循环放在【这里】而不是剧本里,是有意的:
   //   ① 剧本的 STEP 2 是线性流程、中间好几处 return,五份剧本又不同构(344~581 行),
   //      在里面套循环等于重构五条【真发布 + 真扣费】的链路,风险远大于收益;
   //   ② 选题去重本来就在客户端:ctx.newsUsage 背后是 newsUsageStore(按 scenarioId + 标题
   //      持久化),剧本每跑一次都会 markUsed → 重跑自然换选题,不用改剧本一行;
   //   ③ 每条之间隔 10-60s(同搬运的防连坐口径),避免同号短时间连发被平台盯上。
-  const perAcc = Math.max(1, Math.min(10, Number((opts.config as any)?.dailyCount) || 1));
+  const perAcc = Math.max(1, Math.min(100, Number((opts.config as any)?.dailyCount) || 1));
   coworkLog('INFO', 'binancePostRunner', `binance_post ${opts.platform} x${opts.accountIds.length} (${scenarioId}) perAcc=${perAcc}`);
   const items = await runPool(opts.accountIds, k, async (id) => {
     let last: EngageItemResult = { accountId: id, state: 'skipped', reason: 'no_run' };
-    for (let n = 0; n < perAcc; n++) {
-      if (opts.signal?.aborted) break;
-      if (n > 0) {
-        const gap = randInt(10000, 60000);
-        opts.onLog?.(id, `⏳ 距上一条发布间隔 ${Math.round(gap / 1000)}s…(本号第 ${n + 1}/${perAcc} 条)`);
-        await abortableSleep(gap, opts.signal);
-        if (opts.signal?.aborted) break;
+    // 🚨 多条时整轮吊住浏览器窗口:runOne 每轮结尾都 closeKernel(发完一条、休息期间窗口就被
+    //    关掉,下一条再冷启动 —— 用户 2026-08-14 实拍反馈)。这里用 skipLease 多拿一份引用计数
+    //    (不占互斥锁,与 runOne 里正常的 launch/close 配对互不干扰):循环内 closeKernel 只把
+    //    计数 2→1、不真关;整轮完(或异常/停止)finally 归还这份引用才关。拿不到就退回逐条
+    //    开关的老行为,不影响发帖。
+    let holdRef = false;
+    if (perAcc > 1) {
+      const acc = getAccount(id);
+      // 吊窗前先做 runOne 顶部同款校验:必被跳过的账号(平台不符/被禁/受限)或已点停止,
+      // 不白开一次冷启动(审计发现:原来只查了 acc 存在)。
+      const willSkip = !acc || acc.platform !== opts.platform || acc.status === 'banned' || acc.status === 'limited' || !!opts.signal?.aborted;
+      if (!willSkip && acc) {
+        try {
+          await launchKernel({
+            accountId: id, kernelPath: opts.kernelPath, kernelVersion: acc.kernelVersion,
+            userDataDir: acc.userDataDir, fingerprint: acc.fingerprint, proxy: acc.proxy,
+            label: accountBadgeLabel(acc),
+            groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
+            skipLease: true,
+          });
+          holdRef = true;
+        } catch { /* 启动失败:kernelPool 已自行回退计数,runOne 里会再报具体错 */ }
       }
-      last = await runOne(opts, pack, id);
-      // 中间几条也要上报,否则界面只看得到最后一条;最后一条由 runPool 统一上报,别重复。
-      if (n < perAcc - 1) { try { opts.onItem?.(last); } catch { /* ignore */ } }
+    }
+    try {
+      for (let n = 0; n < perAcc; n++) {
+        if (opts.signal?.aborted) break;
+        if (n > 0) {
+          const gap = randInt(10000, 60000);
+          opts.onLog?.(id, `⏳ 距上一条发布间隔 ${Math.round(gap / 1000)}s…(本号第 ${n + 1}/${perAcc} 条)`);
+          await abortableSleep(gap, opts.signal);
+          if (opts.signal?.aborted) break;
+        }
+        last = await runOne(opts, pack, id, n === perAcc - 1);
+        // 登录失效 / 账号被限 → 剩下几十条也必然同样收场,别再空转白等(往「能完成的事尽快完成」靠)。
+        if (last.state === 'skipped' && /login_expired|account_|platform_mismatch|no_local_images/.test(String(last.reason || ''))) {
+          opts.onLog?.(id, `⏭ 本号后续 ${perAcc - n - 1} 条跳过(${last.reason})`);
+          break;
+        }
+        // 中间几条也要上报,否则界面只看得到最后一条;最后一条由 runPool 统一上报,别重复。
+        if (n < perAcc - 1) { try { opts.onItem?.(last); } catch { /* ignore */ } }
+      }
+    } finally {
+      if (holdRef) { try { closeKernel(id, { skipLease: true }); } catch { /* ignore */ } }
     }
     return last;
   }, opts.onItem);

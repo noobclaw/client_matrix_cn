@@ -343,8 +343,8 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
             {/* 每号每轮搬几条。采集量 = 号数 × 本值;分发按轮次交替,同号两条之间隔 1~2 分钟。 */}
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzBnRepostPerAccPrefix')} <span className="text-amber-500 font-bold">{perAccountCount}</span> {i18nService.t('wzBnRepostPerAccSuffix')}</label>
-              <input type="range" min={1} max={10} value={perAccountCount} onChange={(e) => setPerAccountCount(Number(e.target.value))} disabled={saving} className="w-full accent-amber-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>10</span></div>
+              <input type="range" min={1} max={100} value={perAccountCount} onChange={(e) => setPerAccountCount(Number(e.target.value))} disabled={saving} className="w-full accent-amber-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>100</span></div>
             </div>
 
             <div>

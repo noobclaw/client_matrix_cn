@@ -441,8 +441,8 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
             {/* 每号每轮生成几篇。剧本侧本来就支持(洗牌抽题、优先不重复),这里只是把选择权还给用户。 */}
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgPerRoundPrefix')} <span className="text-emerald-500 font-bold">{dailyCount}</span> {i18nService.t('wzImgPerRoundSuffix')}</label>
-              <input type="range" min={1} max={20} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>20</span></div>
+              <input type="range" min={1} max={100} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
+              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>100</span></div>
             </div>
 
             <div>

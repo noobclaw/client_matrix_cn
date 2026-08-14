@@ -231,7 +231,7 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
       keywords: accKeywords,
       track: acc.track || '',
       persona: acc.persona || '',
-      daily_count: Math.max(1, Math.min(50, Number(cfg.dailyCount) || 1)),
+      daily_count: Math.max(1, Math.min(100, Number(cfg.dailyCount) || 1)),
       variants_per_post: 1,
       ai_image_style: cfg.aiImageStyle || 'ai_auto',
       local_images: localImagePayload.length > 0 ? localImagePayload : undefined,

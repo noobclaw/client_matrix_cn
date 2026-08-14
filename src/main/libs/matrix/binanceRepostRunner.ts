@@ -258,9 +258,13 @@ async function collectDouyinVideos(
     const j = Math.floor(Math.random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
-  const KW_CAP = Math.min(shuffled.length, 4);   // 每轮最多试几个词(同小红书:限搜索量、防风控)
+  // 🚨 采集预算必须随 want 走:每号条数上限放到 100 后,原来「≤4 词 × 每词 ≤20 条」的
+  //    结构上限只有 80 条,去重/文案过短/下载失败再打个折 —— 用户拉满滑条却只采到几十条,
+  //    跟 bilibili/kuaishou「每词固定 12 张跑不满」同一类病(2026-08-14 审计发现)。
+  //    词数按「每词 20 条」够 want 来算(封顶全部词);每词候选 20 保底、随人均需求放大。
+  const KW_CAP = Math.min(shuffled.length, Math.max(4, Math.ceil(want / 20)));
   // 每个词让 driver 多取几条当候选池 —— 筛掉搬过的之后才有得挑(同小红书 POOL_MULT)。
-  const poolWant = Math.min(Math.max(want * 3, 6), 20);
+  const poolWant = Math.min(Math.max(want * 3, 6), Math.max(20, Math.ceil(want * 1.5 / Math.max(1, KW_CAP))));
   log(`🎬 抖音采集 · 关键词 ${keywords.length} 个(本轮随机试 ≤${KW_CAP} 个)· 目标 ${want} 条`);
 
   /** 单个关键词:搜一遍 → 逐条筛(已搬过/文案过短/下载失败都跳)→ 累加到 out。 */
@@ -308,7 +312,9 @@ async function collectDouyinVideos(
     log('🧺 本轮没采到新素材(这些关键词的内容可能都搬过了),尝试衍生新关键词…');
     await deriveDouyinKeywords(srcAccId, shuffled, authToken, opts.signal, log);
   }
-  log(`🧺 采集完成:共 ${out.length} 条候选`);
+  // 采不满就明说差多少 —— 否则「目标 100 实采 30」在 UI 上只体现为发得少,查不出是采集端瓶颈。
+  if (out.length < want) log(`🧺 采集完成:目标 ${want} 条,实采 ${out.length} 条(去重/过滤后素材不够;可加关键词或降低每号条数)`);
+  else log(`🧺 采集完成:共 ${out.length} 条候选`);
   return out;
 }
 
@@ -901,7 +907,7 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
   // 每号每轮搬几条(1-10,默认 1 = 老行为)。老任务没有这个字段 → 仍是一号一条。
   //   ⚠️ 用新字段而不是复用 perRunCount:后者的语义是【本轮总条数】且被号数封顶,
   //   老任务里存的值按那个语义解释,直接改语义会让老任务的行为悄悄变掉。
-  const perAcc = Math.max(1, Math.min(10, Number(cfg.perAccountCount) || 1));
+  const perAcc = Math.max(1, Math.min(100, Number(cfg.perAccountCount) || 1));
   // 采集目标 = 号数 × 每号条数(老行为下 perAcc=1,等于原来的号数)。
   //   原来还额外 min(号数),那是因为「一个号只领一条」;现在一个号能领多条,这个封顶就不成立了。
   const postCount = Math.max(1, accIds.length * perAcc);
@@ -999,7 +1005,28 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
   }
 
   // ── 阶段B:分发(顺序执行,每条之间睡 10-60s 防连坐)──
+  // 🚨 只选 1 个号 + 每号多条时,轮次交错退化成【同号连发】:publishOne 每条结尾都关内核,
+  //    休息期间窗口被关、下一条再冷启动(用户 2026-08-14 在发帖任务实拍的同款问题)。
+  //    单号场景用 skipLease 多拿一份引用把窗口吊住整个分发阶段(多号交错时各号窗口本就轮换,
+  //    全吊着会同时挂一排浏览器,不吊)。同 binancePostRunner 的说明。
+  let repostHoldId = '';
+  if (accIds.length === 1 && plan.length > 1) {
+    const hAcc = getAccount(accIds[0]);
+    if (hAcc) {
+      try {
+        await launchKernel({
+          accountId: accIds[0], kernelPath: opts.kernelPath, kernelVersion: hAcc.kernelVersion,
+          userDataDir: hAcc.userDataDir, fingerprint: hAcc.fingerprint, proxy: hAcc.proxy,
+          label: accountBadgeLabel(hAcc),
+          groupTitle: matrixGroupTitle(opts.platform, opts.taskId),
+          skipLease: true,
+        });
+        repostHoldId = accIds[0];
+      } catch { /* 拿不到就退回逐条开关的老行为 */ }
+    }
+  }
   const items: EngageItemResult[] = preItems.slice();   // 先带上「没分到素材」的那些号
+  try {
   for (let i = 0; i < plan.length; i++) {
     if (opts.signal?.aborted) { items.push({ accountId: plan[i].accountId, state: 'skipped', reason: 'aborted' }); continue; }
     const candidate = plan[i].candidate;
@@ -1021,6 +1048,9 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
       opts.onLog?.(plan[i + 1].accountId, `⏳ 防连坐:距上一条发布间隔 ${Math.round(gap / 1000)}s…`);
       await new Promise<void>((resolve) => { const t = setTimeout(resolve, gap); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
     }
+  }
+  } finally {
+    if (repostHoldId) { try { closeKernel(repostHoldId, { skipLease: true }); } catch { /* ignore */ } }
   }
 
   return {
