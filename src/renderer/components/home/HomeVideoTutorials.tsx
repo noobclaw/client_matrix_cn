@@ -23,6 +23,15 @@ interface ManifestGroup { key: string; label: string; count: number; }
 
 const fmtDur = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+// 分类标签多语:清单里的 label 是同步脚本生成的中文(B 站内容),非中文界面按稳定的
+// group.key 走 i18n(hvVideoGroup_*);清单以后新增未知 key → t() 原样返回 key → 回落
+// 清单 label(顶多显示中文,标签不丢)。
+const groupLabel = (g: ManifestGroup): string => {
+  const k = `hvVideoGroup_${g.key}`;
+  const t = i18nService.t(k);
+  return t === k ? g.label : t;
+};
+
 const HomeVideoTutorials: React.FC = () => {
   const [videos, setVideos] = useState<ManifestVideo[]>([]);
   const [groups, setGroups] = useState<ManifestGroup[]>([]);
@@ -107,7 +116,7 @@ const HomeVideoTutorials: React.FC = () => {
                 : 'dark:bg-white/[0.03] bg-white dark:border-white/10 border-gray-200/80 dark:text-gray-300 text-gray-600 hover:border-claude-accent/50'
             }`}
           >
-            {g.label} ({g.count})
+            {groupLabel(g)} ({g.count})
           </button>
         ))}
       </div>
