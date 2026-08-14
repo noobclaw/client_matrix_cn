@@ -450,7 +450,9 @@ async function collectFromSource(
 
     const browserFn: any = (command: string, params?: any, timeout?: number) => matrixCmd(srcAccId, command, params, timeout);
     const ctx: any = {
-      task: { keywords, keyword: keywords[0], want },
+      // material 下发给采集剧本:collect_x 据此走视频模式(抓视频帖 + fetchTweetVideo 下 mp4)
+      // 或图文模式(老行为)。其它采集器忽略此字段(collect_tiktok 天生视频、collect_xhs 天生图文)。
+      task: { keywords, keyword: keywords[0], want, material: cfg.material || 'image' },
       config: collectPack?.config || {}, manifest: collectPack?.manifest || {},
       appLocale: 'zh',
       aborted: () => !!opts.signal?.aborted,
@@ -488,6 +490,82 @@ async function collectFromSource(
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
       }),
       waitForCaptchaCleared: makeWaitForCaptcha(srcAccId, log, opts.signal),
+      // X 视频下载(collect_x 视频模式用):Twitter Syndication API → 最高码率 mp4 → 落盘。
+      // 移植自老 client phaseRunner.fetchTweetVideo(生产已验证的机制):纯 HTTP,不碰页面 DOM。
+      // 3 次重试 + 指数退避打 API;下载 5 分钟总超时(header+body 全程覆盖),用户点停止立即中断。
+      fetchTweetVideo: async (tweetUrl: string) => {
+        try {
+          const m = String(tweetUrl || '').match(/(?:twitter|x)\.com\/[^/]+\/status\/(\d+)/i);
+          if (!m) return { ok: false, reason: 'invalid_tweet_url' };
+          const statusId = m[1];
+          let meta: any = null;
+          let lastErr = '';
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            if (opts.signal?.aborted) return { ok: false, reason: 'aborted' };
+            const token = Math.random().toString(36).slice(2, 14);
+            const apiCtl = new AbortController();
+            const apiTo = setTimeout(() => apiCtl.abort(), 8000);
+            const onAbort = () => apiCtl.abort();
+            try { opts.signal?.addEventListener('abort', onAbort, { once: true }); } catch { /* ignore */ }
+            try {
+              const resp = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`, {
+                method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', Accept: 'application/json' }, signal: apiCtl.signal,
+              });
+              clearTimeout(apiTo);
+              if (!resp.ok) {
+                lastErr = 'http_' + resp.status;
+                if ((resp.status >= 500 || resp.status === 429) && attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
+                return { ok: false, reason: 'syndication_' + lastErr };
+              }
+              meta = await resp.json().catch(() => null);
+              if (meta) break;
+              lastErr = 'json_parse_failed';
+            } catch (e: any) {
+              clearTimeout(apiTo);
+              if (opts.signal?.aborted) return { ok: false, reason: 'aborted' };
+              lastErr = String(e?.message || e).slice(0, 80);
+              if (attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
+              return { ok: false, reason: 'syndication_failed:' + lastErr };
+            } finally {
+              try { opts.signal?.removeEventListener('abort', onAbort); } catch { /* ignore */ }
+            }
+          }
+          if (!meta) return { ok: false, reason: 'syndication_no_meta:' + lastErr };
+          if (meta.__typename === 'TweetTombstone') return { ok: false, reason: 'tweet_unavailable' };
+          const mediaList: any[] = Array.isArray(meta.mediaDetails) ? meta.mediaDetails : [];
+          const videoMedia = mediaList.find((it: any) => it && it.type === 'video');
+          if (!videoMedia) return { ok: false, reason: 'no_video' };
+          const variants: Array<{ content_type: string; bitrate?: number; url: string }> = videoMedia.video_info?.variants || [];
+          const mp4s = variants.filter((v) => v && v.content_type === 'video/mp4' && typeof v.url === 'string')
+            .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          if (!mp4s.length) return { ok: false, reason: 'no_mp4_variant' };
+          const dlCtl = new AbortController();
+          const dlTo = setTimeout(() => dlCtl.abort(), 5 * 60 * 1000);
+          const onDlAbort = () => dlCtl.abort();
+          try { opts.signal?.addEventListener('abort', onDlAbort, { once: true }); } catch { /* ignore */ }
+          try {
+            const vResp = await fetch(mp4s[0].url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' }, signal: dlCtl.signal });
+            if (!vResp.ok) return { ok: false, reason: 'video_download_http_' + vResp.status };
+            const ab = await vResp.arrayBuffer();
+            const dir = path.join(matrixDir(), 'repost_src', 'x', srcAccId, '原文');
+            fs.mkdirSync(dir, { recursive: true });
+            const fp = path.join(dir, `源视频_${statusId}.mp4`);
+            fs.writeFileSync(fp, Buffer.from(ab));
+            return {
+              ok: true, path: fp, videoUrl: mp4s[0].url, size: ab.byteLength,
+              duration: Math.round((videoMedia.video_info?.duration_millis || 0) / 1000),
+            };
+          } catch (e: any) {
+            if (opts.signal?.aborted) return { ok: false, reason: 'aborted' };
+            return { ok: false, reason: 'video_download_failed:' + String(e?.message || e).slice(0, 80) };
+          } finally {
+            clearTimeout(dlTo);
+            try { opts.signal?.removeEventListener('abort', onDlAbort); } catch { /* ignore */ }
+          }
+        } catch (e: any) {
+          return { ok: false, reason: 'fetch_tweet_video_threw:' + String(e?.message || e).slice(0, 80) };
+        }
+      },
       log: (m: string) => coworkLog('INFO', 'repost-collect', m),
     };
 

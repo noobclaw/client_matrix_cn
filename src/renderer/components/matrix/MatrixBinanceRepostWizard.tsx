@@ -38,6 +38,9 @@ const SOURCE_BY_MATERIAL: Record<'image' | 'video', SrcOpt[]> = {
   video: [
     { id: 'douyin', label: '抖音', enabled: true },
     { id: 'tiktok', label: 'TikTok(须VPN)', enabled: true },
+    // X 视频:采集侧 collect_x 的视频模式 + runner 的 fetchTweetVideo(Syndication API 拿无水印
+    // 最高码率 mp4,老 client binance_from_x_repost 同款机制);发布侧走现成视频上传链路。
+    { id: 'x', label: 'X(须VPN)', enabled: true },
   ],
 };
 function firstEnabledSource(material: 'image' | 'video'): SrcOpt['id'] {
