@@ -174,17 +174,22 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                 <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
                   {isZh ? '🎣 核心引流语（选填）' : '🎣 Funnel phrase (optional)'}
                   <span className="text-xs text-gray-400 font-normal ml-1">
-                    {isZh ? `· 留空则回复不带引流尾巴` : `· Empty = no funnel tail`}
+                    {isZh ? `· 一行一条(最多 20 条),发送时随机选一条;留空则回复不带引流尾巴` : `· One per line (up to 20), one picked at random; empty = no funnel tail`}
                   </span>
                 </label>
                 <textarea
                   value={funnelPhrase}
-                  onChange={e => setFunnelPhrase(e.target.value.slice(0, FUNNEL_PHRASE_MAX))}
+                  onChange={e => {
+                    // 一行一条,最多 20 条 —— 超出的行截掉(与 MatrixFunnelConfig 同规则)
+                    const lines = e.target.value.split('\n');
+                    const capped = (lines.length > 20 ? lines.slice(0, 20) : lines).join('\n');
+                    setFunnelPhrase(capped.slice(0, FUNNEL_PHRASE_MAX));
+                  }}
                   placeholder={isZh
                     ? (isDouyin
-                        ? '比如：完整教程在我主页置顶视频，需要的可以去看\n或：私信我领西湖路线攻略'
-                        : '比如：详细攻略发在我主页置顶笔记里，需要的可以去看一下\n或：私我领西湖路书pdf')
-                    : 'e.g. Full guide in my pinned post — feel free to check.\nor: DM me for the West Lake route PDF.'}
+                        ? '一行一条，例如：\n完整教程在我主页置顶视频，需要的可以去看\n私信我领西湖路线攻略'
+                        : '一行一条，例如：\n详细攻略发在我主页置顶笔记里，需要的可以去看一下\n私我领西湖路书pdf')
+                    : 'One per line, e.g.\nFull guide in my pinned post — feel free to check.\nDM me for the West Lake route PDF.'}
                   rows={3}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[80px]"
                   disabled={saving}
