@@ -11,7 +11,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 
-export const FUNNEL_PHRASE_MAX = 200;
+export const FUNNEL_PHRASE_MAX = 1000; // 一行一条最多 20 条,放宽总字数
+export const FUNNEL_LINES_MAX = 20;
 export const FUNNEL_PROB_MIN = 1;
 export const FUNNEL_PROB_MAX = 100;
 export const FUNNEL_PROB_DEFAULT = 50;
@@ -171,9 +172,14 @@ const MatrixFunnelConfig: React.FC<Props> = ({ accounts, accent, perMode, setPer
           </label>
           <textarea
             value={editorValue.funnel_phrase}
-            onChange={(e) => setEditorValue({ ...editorValue, funnel_phrase: e.target.value.slice(0, FUNNEL_PHRASE_MAX) })}
+            onChange={(e) => {
+              // 一行一条,最多 FUNNEL_LINES_MAX 条 —— 超出的行直接截掉;总字数上限照旧
+              const lines = e.target.value.split('\n');
+              const capped = (lines.length > FUNNEL_LINES_MAX ? lines.slice(0, FUNNEL_LINES_MAX) : lines).join('\n');
+              setEditorValue({ ...editorValue, funnel_phrase: capped.slice(0, FUNNEL_PHRASE_MAX) });
+            }}
             placeholder={i18nService.t('wzEngageFunnelPhrasePlaceholder')}
-            rows={2}
+            rows={4}
             className={`w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[64px]`}
             disabled={disabled}
           />

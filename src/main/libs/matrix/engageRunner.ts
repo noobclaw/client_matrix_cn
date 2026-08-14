@@ -249,7 +249,9 @@ function makeAiCall(pack: any, authToken: string | undefined, report: (m: string
   // 兼容:老任务没有 funnel 字段 → funnel?.phrase 为空 → 整条逻辑跳过,行为完全不变。
   const maybeWeaveFunnel = async (baseComment: string): Promise<string> => {
     const base = String(baseComment || '').trim();
-    const phrase = String(funnel?.phrase || '').trim();
+    // 引流语支持一行一条(最多 20 条),每次融合随机选一条 —— 单条时行为与旧版完全一致
+    const funnelLines = String(funnel?.phrase || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean).slice(0, 20);
+    const phrase = funnelLines.length ? funnelLines[Math.floor(Math.random() * funnelLines.length)] : '';
     if (!base || !phrase) return baseComment;
     const prob = typeof funnel?.prob === 'number' ? funnel.prob : 0;
     if (prob <= 0) return baseComment;

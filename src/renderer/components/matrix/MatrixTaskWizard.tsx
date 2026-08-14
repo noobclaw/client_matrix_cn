@@ -15,7 +15,7 @@ const FOLLOW_HARDCAP = 100;
 const COMMENT_HARDCAP = 100;
 
 // 引流(评论时按概率把引流文案融进 AI 评论)。与 MatrixReplyFansWizard 同一套口径。
-const FUNNEL_PHRASE_MAX = 200;
+const FUNNEL_PHRASE_MAX = 1000;
 const FUNNEL_PROB_MIN = 1;
 const FUNNEL_PROB_MAX = 100;
 const FUNNEL_PROB_DEFAULT = 50;
