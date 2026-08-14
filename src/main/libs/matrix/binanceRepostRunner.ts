@@ -493,7 +493,7 @@ async function collectFromSource(
       // X 视频下载(collect_x 视频模式用):Twitter Syndication API → 最高码率 mp4 → 落盘。
       // 移植自老 client phaseRunner.fetchTweetVideo(生产已验证的机制):纯 HTTP,不碰页面 DOM。
       // 3 次重试 + 指数退避打 API;下载 5 分钟总超时(header+body 全程覆盖),用户点停止立即中断。
-      fetchTweetVideo: async (tweetUrl: string) => {
+      fetchTweetVideo: async (tweetUrl: string, limits?: { minDurationSec?: number; maxDurationSec?: number; maxBytes?: number }) => {
         try {
           const m = String(tweetUrl || '').match(/(?:twitter|x)\.com\/[^/]+\/status\/(\d+)/i);
           if (!m) return { ok: false, reason: 'invalid_tweet_url' };
@@ -535,6 +535,10 @@ async function collectFromSource(
           const mediaList: any[] = Array.isArray(meta.mediaDetails) ? meta.mediaDetails : [];
           const videoMedia = mediaList.find((it: any) => it && it.type === 'video');
           if (!videoMedia) return { ok: false, reason: 'no_video' };
+          // 时长闸在【下载前】按 API 元数据拦(采集剧本传 limits):太短的梗图片段/超长片都别白下。
+          const durSec = Math.round((videoMedia.video_info?.duration_millis || 0) / 1000);
+          if (durSec && limits?.minDurationSec && durSec < limits.minDurationSec) return { ok: false, reason: 'too_short:' + durSec + 's' };
+          if (durSec && limits?.maxDurationSec && durSec > limits.maxDurationSec) return { ok: false, reason: 'too_long:' + durSec + 's' };
           const variants: Array<{ content_type: string; bitrate?: number; url: string }> = videoMedia.video_info?.variants || [];
           const mp4s = variants.filter((v) => v && v.content_type === 'video/mp4' && typeof v.url === 'string')
             .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
@@ -546,7 +550,12 @@ async function collectFromSource(
           try {
             const vResp = await fetch(mp4s[0].url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' }, signal: dlCtl.signal });
             if (!vResp.ok) return { ok: false, reason: 'video_download_http_' + vResp.status };
+            // 体积闸:整片进内存,别让超大文件把进程吃爆(图片路径有 5MB 上限,视频给 300MB)。
+            const maxBytes = limits?.maxBytes || 300 * 1024 * 1024;
+            const clen = Number(vResp.headers.get('content-length')) || 0;
+            if (clen > maxBytes) return { ok: false, reason: 'video_too_large:' + Math.round(clen / 1048576) + 'MB' };
             const ab = await vResp.arrayBuffer();
+            if (ab.byteLength > maxBytes) return { ok: false, reason: 'video_too_large:' + Math.round(ab.byteLength / 1048576) + 'MB' };
             const dir = path.join(matrixDir(), 'repost_src', 'x', srcAccId, '原文');
             fs.mkdirSync(dir, { recursive: true });
             const fp = path.join(dir, `源视频_${statusId}.mp4`);

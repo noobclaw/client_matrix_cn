@@ -106,7 +106,8 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
   const [language, setLanguage] = useState<string>(br.language || 'mixed');
   const [autoPublish, setAutoPublish] = useState<boolean>(br.autoPublish !== false);
   // 每号每轮搬几条。老任务没存这个字段 → 按老行为 1 条显示;新建默认 3。
-  const [perAccountCount, setPerAccountCount] = useState<number>(Math.max(1, Math.min(10, Number(br.perAccountCount) || (br.sourcePlatform ? 1 : 3))));
+  // 钳位 10→100 与滑条 max 一致:原来编辑一个存了 50 条/号的任务会显示 10、再保存就静默降成 10。
+  const [perAccountCount, setPerAccountCount] = useState<number>(Math.max(1, Math.min(100, Number(br.perAccountCount) || (br.sourcePlatform ? 1 : 3))));
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
