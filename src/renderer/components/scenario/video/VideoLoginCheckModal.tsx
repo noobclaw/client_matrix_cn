@@ -8,9 +8,10 @@
  * 决策①(用户要求):必须【所有勾选平台都登录】才能保存 —— allReady 没全绿,底部
  * 「保存任务」按钮一直置灰(对齐币安任务 allReady gate 的严格度)。
  *
- * 检测复用现成 IPC(scenarioService):
+ * 检测顺序:cookie 批量为主(见 runCheck);cookie 判不了才退老 IPC 兜底:
  *   · 有创作者中心的(抖音/小红书/快手/B站)→ checkCreatorCenter(更准,能判断停在登录页)
- *   · 其余(TikTok/币安/推特/视频号/头条号)→ checkXhsLogin(主站/后台 tab 存在即视为登录)
+ *   · 其余(TikTok/视频号/头条号)→ checkXhsLogin(主站/后台 tab 存在即视为登录)
+ *   · 币安/推特例外:cookie 读成功且判 false = 权威未登录,【不退 tab 兜底】(见 COOKIE_FALSE_IS_FINAL)
  * 打开登录同理:有 creator 的 openCreatorCenter,其余 openXhsLogin。
  *
  * 3s 自动轮询,用户在打开的窗口里扫码 / 登录后无需手点「重新检测」就会自动转绿。
@@ -38,6 +39,16 @@ const PLATFORM_META: Record<string, { zh: string; en: string; emoji: string; url
 function metaOf(id: string) {
   return PLATFORM_META[id] || { zh: id, en: id, emoji: '🌐', url: '', creator: false };
 }
+
+/**
+ * cookie 判 false 即为【权威未登录】的平台:登录 cookie 名明确可靠(binance=p20t、x=auth_token),
+ * 且 cdp_cookies_get 走 Network.getCookies 连 HttpOnly 都读得到 —— 读成功却没有这个 cookie,
+ * 就是真没登录,【不退 tab 兜底】。
+ * 背景:tab 兜底只看「该平台 tab 在不在」,点「打开登录」把检查窗导航到币安广场后,
+ * 未登录页面也算 tab 在 → 误绿"已连接"(2026-06-15 896ac1a 把 cookie false 也放进兜底引入)。
+ * 字节系/微信系(douyin/toutiao/shipinhao 等)当初就是因怕 HttpOnly 读不到才加的兜底,维持原样。
+ */
+const COOKIE_FALSE_IS_FINAL = new Set(['binance', 'x']);
 
 /** 「主站模式」(取素材)用的主站 URL —— 抖音/TikTok 取材只需主站登录,不进创作者中心。 */
 const MAIN_SITE_URL: Record<string, string> = {
@@ -78,6 +89,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   // 一旦某平台确认登录过(变绿)就【粘住】绿:本次校验不再因 tab 导航走 / cookie 暂读不到而翻回红。
   //   登录态(cookie)是持久的,人登录着就行;真到发布时 runPublish 各平台还会再校验一次,不怕这里"宽松"。
   const confirmedRef = useRef<Set<string>>(new Set());
+  // 防重入:批量 cookie 读一次可能 10s+(12s 开窗 + 10s 读),4s 轮询会叠上一趟没跑完的 ——
+  //   迟到的旧结果(读的是登出前的 cookie)会把刚判定的权威未登录又刷回绿。跑着就跳过本 tick。
+  const runningRef = useRef(false);
 
   const checkOne = useCallback(async (id: string) => {
     const useCreator = metaOf(id).creator && !override.includes(id);
@@ -94,6 +108,8 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
 
   const runCheck = useCallback(async () => {
     if (list.length === 0) { setExtensionStatus('pass'); return; }
+    if (runningRef.current) return; // 上一趟还没跑完,跳过本 tick(防迟到旧结果覆盖新判定)
+    runningRef.current = true;
     setChecking(true);
     try {
       // 【cookie 批量为主】一次 CDP attach 把所有勾选平台的 cookie 全读出来,按【域名+名】逐平台判
@@ -106,7 +122,21 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       const cookiePass = await scenarioService.checkVideoLoginByCookieBatch(items);
       const results = await Promise.all(list.map((p) => {
         if (cookiePass[p] === true) return Promise.resolve({ id: p, st: { loggedIn: true } as { loggedIn: boolean; reason?: string } });
-        // cookie 没命中(false/null)—— 可能该平台 session 是 HttpOnly、扩展读不到 → 退【tab 兜底】:
+        // cookie 权威平台(binance/x)【完全不进 tab 兜底】—— 兜底在矩阵版是
+        //   checkXhsLogin 开头的 `if (MATRIX_EDITION) return {loggedIn:true}`(scenario.ts),
+        //   无条件说"已登录",连扩展断了都绿(审计 2026-07-31 查实,这才是矩阵版误绿的真根因)。
+        //   · false = 读成功且无登录 cookie → 权威未登录:红 + 解除粘住绿(cookie_definitive)
+        //   · null/undefined = 读不到(扩展断/CDP 抢占/超时)→ 红但【不解除】粘住绿:之前确认过
+        //     登录的靠 rescue 保持绿,瞬时读失败不闪红;从没绿过的显示红(宁可让用户多点一次
+        //     打开登录,不放一个验证不了的平台过关 —— allReady 闸门本来就是严格语义)。
+        if (COOKIE_FALSE_IS_FINAL.has(p)) {
+          const v = cookiePass[p];
+          return Promise.resolve({ id: p, st: {
+            loggedIn: false,
+            reason: v === false ? 'cookie_definitive' : 'cookie_unknown',
+          } as { loggedIn: boolean; reason?: string } });
+        }
+        // 其余平台 cookie 没命中(false/null)—— 可能该平台 session 是 HttpOnly、扩展读不到 → 退【tab 兜底】:
         //   看该平台的 tab 在不在线且已登录(用户在登录窗里开着的那个 tab 就算)。在 → 放过。
         return checkOne(p);
       }));
@@ -120,6 +150,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
           next[id] = 'pass';
         } else {
           next[id] = 'fail';
+          // cookie 权威 false:同时解除「粘住绿」—— 比如用户刚在检查窗里退出了该平台,
+          //   不能让早先的绿粘着盖住确凿的未登录。
+          if (st.reason === 'cookie_definitive') confirmedRef.current.delete(id);
         }
       }
       // 粘住绿:本次确认登录过的记下;之前确认过的即使这次没验到(tab 导航走/cookie 暂读不到)也保持绿。
@@ -131,6 +164,7 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       setExtensionStatus(extConnected ? 'pass' : 'fail');
       setPlatformStatus(next);
     } finally {
+      runningRef.current = false;
       setChecking(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
