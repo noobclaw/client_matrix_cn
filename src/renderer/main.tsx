@@ -1,9 +1,13 @@
 import { initTauriShim } from './tauriShim';
+import { installRangeDragFix } from './utils/rangeDragFix';
 
 // Initialize Tauri shim BEFORE any React code runs.
 // In Tauri mode, this creates a window.electron compatible API using HTTP+SSE.
 // In Electron mode, this is a no-op (window.electron already exists from preload).
 initTauriShim();
+
+// Windows(WebView2) 下原生 range 滑杆拖拽失效的全局兜底(详见 utils/rangeDragFix.ts)
+installRangeDragFix();
 
 // ── DevTools / refresh / right-click suppression ──────────────────────
 // In production (Vite PROD bundles only — dev keeps everything for
