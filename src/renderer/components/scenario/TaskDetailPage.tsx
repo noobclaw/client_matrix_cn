@@ -220,6 +220,10 @@ const replyStepNames = (center: string): string[] =>
   [i18nService.t('tdSnReplyFactory0').replace('{center}', center), i18nService.t('tdSnReplyFactory1'), i18nService.t('tdSnReplyFactory2')];
 const videoDownloadStepNames = (name: string): string[] =>
   [i18nService.t('tdSnVdFactory0').replace('{name}', name), i18nService.t('tdSnVdFactory1')];
+// 定向获客 3 步(对齐 tiktok_lead_engage orchestrator 的 stepStart 1/2/3)。仅 TikTok 用,内联中英。
+const LEAD_ENGAGE_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
+  ? ['采集同行的潜在客户', '逐个触达(点赞 / 评论 / 关注)', '更新名单并生成报告']
+  : ['Collect leads from competitors', 'Reach out (like / comment / follow)', 'Update roster & report']);
 
 interface Props {
   task: Task;
@@ -320,6 +324,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'xhs_video_download') return STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH;
     if (sid === 'douyin_video_download') return STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH;
     if (sid === 'tiktok_video_download') return STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH;
+    if (sid === 'tiktok_lead_engage') return LEAD_ENGAGE_STEP_NAMES();
     // 快手 / 哔哩哔哩 流程镜像抖音,但步骤名按各自平台名生成(纯展示,scenario.id 独立),
     // 不再复用抖音常量,避免「抖音」字样串台到别的平台页。
     if (sid === 'kuaishou_auto_engage') return engageStepNames(i18nService.t('tdKuaishou'), i18nService.t('tdActsLikeFollowComment'));
@@ -750,6 +755,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'xhs_reply_fans_comment')         return { icon: '💌', label: i18nService.t('tdTypeXhsReplyFans'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'xhs_video_download')             return { icon: '⬇️', label: i18nService.t('tdTypeXhsVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'douyin_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeDouyinVideoDownload'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'tiktok_lead_engage')             return { icon: '🎯', label: i18nService.currentLanguage === 'zh' ? 'TikTok 定向获客' : 'TikTok Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: i18nService.t('tdTypeKuaishouAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: i18nService.t('tdTypeKuaishouVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };

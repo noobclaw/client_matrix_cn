@@ -517,6 +517,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', k: 'scnBnRepostTt', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'binance_from_x_link')          return { icon: '🔗', k: 'scnBnFromXLink', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 if (sid === 'youtube_auto_engage')          return { icon: '📺', k: 'scnYtEngage', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
+                if (sid === 'tiktok_lead_engage')           return { icon: '🎯', label: i18nService.currentLanguage === 'zh' ? 'TikTok 定向获客' : 'TikTok Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'tiktok_auto_engage')           return { icon: '🎵', k: 'scnTtEngage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'facebook_auto_engage')         return { icon: '👥', k: 'scnFbEngage', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
                 if (sid === 'reddit_auto_engage')           return { icon: '🟠', k: 'scnRdEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
@@ -569,10 +570,14 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if ((plat as any) === 'toutiao')  return { icon: '📰', k: 'scnToutiaoTask', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
                 return { icon: '🔥', k: 'scnXhsViral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
-              // 徽章文案:交易所广场那条带 prefixKey,拼成「平台 · 动作」;其余沿用单 key。
-              const typeLabelText = (typeLabel as any).prefixKey
-                ? `${i18nService.t((typeLabel as any).prefixKey)} · ${i18nService.t(typeLabel.k)}`
-                : i18nService.t(typeLabel.k);
+              // 徽章文案:交易所广场那条带 prefixKey,拼成「平台 · 动作」;定向获客那条直接给 label
+              // (内联中英,不占 i18n key);其余沿用单 key。
+              const typeLabelText = (() => {
+                const tl = typeLabel as any;
+                if (tl.prefixKey) return `${i18nService.t(tl.prefixKey)} · ${i18nService.t(tl.k)}`;
+                if (tl.label) return String(tl.label);
+                return i18nService.t(tl.k);
+              })();
               // Track / display name
               const track = TRACK_META[task.track];
               const subTitle = (() => {

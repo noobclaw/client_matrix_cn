@@ -10,7 +10,7 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { nextRunAt } from './matrixSchedule';
-import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
+import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, LeadEngageConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
 
 /** 任务启用且非 once 才排下次运行;否则清空(手动触发)。 */
 function planned(t: { enabled: boolean; frequency: MatrixTaskFrequency }, fromTs: number, isFirst: boolean): number | undefined {
@@ -81,6 +81,7 @@ export interface SaveTaskInput {
   redditPost?: RedditPostConfig;   // reddit_post 用:Reddit 自动发帖配置(含数据源 + subreddit)
   instagramPost?: InstagramPostConfig; // instagram_post 用:Instagram 自动发帖配置(含数据源,图必带)
   binanceRepost?: BinanceRepostConfig; // binance_repost 用:币安广场批量搬运配置
+  leadEngage?: LeadEngageConfig;   // lead_engage 用:定向获客配置
   urls?: string[];                 // video_download 用:待下载视频链接清单
   concurrency?: number;
   frequency: MatrixTaskFrequency;
@@ -115,6 +116,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       redditPost: input.redditPost ?? tasks[i].redditPost,
       instagramPost: input.instagramPost ?? tasks[i].instagramPost,
       binanceRepost: input.binanceRepost ?? tasks[i].binanceRepost,
+      leadEngage: input.leadEngage ?? tasks[i].leadEngage,
       urls: input.urls ?? tasks[i].urls,
       concurrency: input.concurrency,
       frequency: input.frequency,
@@ -146,6 +148,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     redditPost: input.redditPost,
     instagramPost: input.instagramPost,
     binanceRepost: input.binanceRepost,
+    leadEngage: input.leadEngage,
     urls: input.urls,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',

@@ -222,6 +222,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const isRedditPost = t?.type === 'reddit_post';
   const isInstagramPost = t?.type === 'instagram_post';
   const isRepost = t?.type === 'binance_repost';
+  const isLead = t?.type === 'lead_engage';
   const fn = t?.funnel || {};
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
   return {
@@ -233,8 +234,10 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     //   不在客户端注册表里,scenario_id 映射不到)。之前没带 → 过滤后所有任务全部隐身(用户实测)。
     platform: t.platform,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
-    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
-    track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : 'matrix',
+    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : isLead ? `${t.platform}_lead_engage` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
+    track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : isLead ? 'lead_engage' : 'matrix',
+    // 定向获客配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
+    lead_engage: isLead ? t.leadEngage : undefined,
     // image_text / viral_rewrite / x_post / binance_post / facebook_post / reddit_post / instagram_post / binance_repost 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     imageText: isImageText ? t.imageText : undefined,
     viralRewrite: isViral ? t.viralRewrite : undefined,
@@ -305,6 +308,23 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       },
       // 各账号独立引流语写回(undefined 时 taskStore 保留旧值,不误清)。
       funnelByAccount: input.funnel_by_account,
+      concurrency: accountIds.length,
+      frequency: input.run_interval || 'daily_random',
+      enabled: input.enabled !== false,
+    };
+  }
+  // 定向获客任务(scenario_id 以 _lead_engage 结尾):保持 type='lead_engage' + 透传 leadEngage,
+  // 否则经 updateTask(如 MyTasksPage 改启用/删除)兜底会被改成 engage、获客配置全丢。
+  if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_lead_engage')) {
+    const lPlatform = input.platform || String(input.scenario_id).replace(/_lead_engage$/, '') || 'tiktok';
+    return {
+      id,
+      platform: lPlatform,
+      type: 'lead_engage',
+      name: input.name || (accountIds.length ? `TikTok 定向获客 · ${accountIds.length} 个号` : 'TikTok 定向获客'),
+      accountIds,
+      quota: {},
+      leadEngage: input.lead_engage,   // undefined 时 taskStore 保留旧值,不误清
       concurrency: accountIds.length,
       frequency: input.run_interval || 'daily_random',
       enabled: input.enabled !== false,

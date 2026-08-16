@@ -264,7 +264,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   if (!task) return { ok: false, error: 'task_not_found' };
   // engage(互动涨粉)+ reply_fan(自动回复粉丝评论)都由 engageRunner 跑(共用内核/登录/进度链路,
   // 仅剧本与 task 字段不同)。其它类型未支持。
-  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post') return { ok: false, error: 'unsupported_task_type' };
+  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post' && task.type !== 'lead_engage') return { ok: false, error: 'unsupported_task_type' };
   const platform = task.platform;
   // 并发上限由服务端下发,顺手刷一下 —— 【不等它】:拉一次最多要 8s(网络慢就吃满超时),
   //   await 在这儿等于每 10 分钟就有一次点「运行」要干等几秒才动静,而这个值只是微调,
@@ -489,6 +489,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
       : runEngageTask({
           platform: task.platform, taskId: task.id, accountIds: runIds, quota: task.quota, concurrency: task.concurrency, kernelPath, signal: abort.signal,
           taskType: task.type as any,
+          // 定向获客:把任务级配置透传给 runner(runner 再铺进 orchestrator 的 ctx.task)。
+          leadEngage: task.type === 'lead_engage' ? task.leadEngage : undefined,
           scenarioId: isReplyFan ? `${task.platform}_reply_fans_comment` : isVideoDownload ? `${task.platform}_video_download` : undefined,
           // 引流尾巴配置:reply_fan(回复粉丝)+ engage(互动评论)都带上。
           // engage 由客户端 makeAiCall 对 comment_composer 输出按概率融入;reply_fan 走后端剧本。

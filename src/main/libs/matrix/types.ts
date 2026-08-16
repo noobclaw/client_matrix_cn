@@ -289,7 +289,25 @@ export interface BinanceRepostConfig {
 // 自动发推 = x_post(N 个号各自按身份 AI 原创一条推文 + 可选配图 → 发到各自时间线,仅推特);
 // 币安广场自动发帖 = binance_post(N 个号各自抓 web3 资讯 AI 原创一条币安广场图文 + 可选配图 → 发币安广场,仅币安);
 // 币安广场批量搬运 = binance_repost(1 个采集号从源平台搜+下 N 条 → N 个币安号各领一条 AI 仿写 + 配图 → 发币安广场)。
-export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post';
+export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage';
+
+/**
+ * 定向获客(tiktok_lead_engage 剧本)配置。两段式:采集同行评论者当潜客名单(长期账本)→
+ * 逐个触达点赞/评论/关注。字段直接对应 orchestrator 读的 ctx.task.*(engageRunner 注入时铺平)。
+ */
+export interface LeadEngageConfig {
+  mode: 'accounts' | 'keywords';      // 精准获客(填同行号)/ 关键词获客(赛道搜)
+  seedAccounts: string[];             // accounts 模式:同行 TikTok handle,最多 50
+  keywords: string[];                 // keywords 模式:赛道关键词
+  maxLeads: number;                   // 单次【新增】获客上限 1-100
+  likesPerLead: number;               // 每客户单次点赞条数 1-10
+  commentsPerLead: number;            // 每客户单次评论条数 1-10
+  leadsPerRun: number;                // 单次运行最多触达多少人(新旧客轮转)
+  doLike: boolean;
+  doComment: boolean;
+  doFollow: boolean;                  // 关注固定终身一次
+  commentPrompt?: string;             // 评论口味提示词(复用 comment_composer)
+}
 // 频率枚举对齐老客户端 DouyinConfigWizard(便于复用频率算法/文案)。
 export type MatrixTaskFrequency = 'once' | '30min' | '1h' | '3h' | '6h' | 'daily_random';
 
@@ -317,6 +335,7 @@ export interface MatrixTask {
   redditPost?: RedditPostConfig;   // 仅 reddit_post 用:Reddit 自动发帖配置(含数据源 + subreddit)
   instagramPost?: InstagramPostConfig; // 仅 instagram_post 用:Instagram 自动发帖配置(含数据源,图必带)
   binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
+  leadEngage?: LeadEngageConfig;   // 仅 lead_engage 用:定向获客配置
   urls?: string[];                 // 仅 video_download 用:用户粘贴的待下载视频链接清单
   concurrency?: number;            // 同时开窗数(video_download 固定 1,单账号顺序下载)
   frequency: MatrixTaskFrequency;  // 运行频率

@@ -97,7 +97,22 @@ export interface EngageTaskOptions {
   // 任务类型:'engage'=互动涨粉(点赞/评论/关注,按关键词搜);'reply_fan'=自动回复粉丝评论
   // (抖音创作者中心评论管理,不需关键词、无配额、有引流尾巴);'video_download'=视频无水印下载
   // (单账号,粘贴多个链接逐个下载,不需关键词、无配额)。缺省 'engage' 兼容旧调用。
-  taskType?: 'engage' | 'reply_fan' | 'video_download';
+  taskType?: 'engage' | 'reply_fan' | 'video_download' | 'lead_engage';
+  // 定向获客(lead_engage)配置。任务级(对所有执行账号相同):种子号/关键词/名额等由向导填,
+  // 注入到 orchestrator 读的 ctx.task.mode/seed_accounts/max_leads/... 顶层字段。
+  leadEngage?: {
+    mode?: 'accounts' | 'keywords';
+    seedAccounts?: string[];
+    keywords?: string[];
+    maxLeads?: number;
+    likesPerLead?: number;
+    commentsPerLead?: number;
+    leadsPerRun?: number;
+    doLike?: boolean;
+    doComment?: boolean;
+    doFollow?: boolean;
+    commentPrompt?: string;
+  };
   // 刷剧模式(仅抖音 engage):'binge'=无视关键词,在账号自己的推荐流里沉浸式刷视频互动。
   // 关键词为空时后端剧本也会自动进入 binge(兜底),此字段是向导显式开关的透传。
   engageMode?: 'search' | 'binge';
@@ -325,7 +340,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   // 币安广场是 feed 互动(刷广场帖、按内置 CRYPTO 规则筛,不按关键词搜),不需要用户配关键词;
   //   reply_fan(回复粉丝评论)对象是自己作品下的粉丝评论,也不按关键词搜 → 同样豁免。
   //   其它平台(抖音/小红书等按关键词搜的互动)才要。漏掉豁免 → 账号没关键词被静默拦掉、无日志。
-  const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.platform !== 'binance';
+  // lead_engage(定向获客)自己处理来源(accounts 模式用种子号、keywords 模式用任务关键词),
+  //   不读账号级 acc.keywords → 豁免这里的关键词守卫,否则账号没配关键词会被静默跳过。
+  const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.platform !== 'binance';
   // 抖音/快手/TikTok 互动支持「刷剧模式」(binge):显式开启 or 关键词为空时,后端剧本走推荐流沉浸式互动,不需要关键词。
   const bingeCapable = ['douyin', 'kuaishou', 'tiktok'].includes(opts.platform) && (opts.taskType === 'engage' || !opts.taskType);
   if (needsKeywords && (!acc.keywords || acc.keywords.length === 0)) {
@@ -440,6 +457,23 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       engage_mode: opts.engageMode || (opts.quota as any)?.engage_mode || '',
     };
 
+    // 定向获客:把任务级配置铺进 task 顶层(tiktok_lead_engage orchestrator 读这些)。
+    //   comment_prompt 覆盖上面的 acc.persona —— 获客卡有自己的评论口味输入,不复用账号人设。
+    if (opts.taskType === 'lead_engage' && opts.leadEngage) {
+      const le = opts.leadEngage;
+      task.mode = le.mode || 'accounts';
+      task.seed_accounts = Array.isArray(le.seedAccounts) ? le.seedAccounts : [];
+      task.keywords = Array.isArray(le.keywords) ? le.keywords : [];
+      task.max_leads = le.maxLeads;
+      task.likes_per_lead = le.likesPerLead;
+      task.comments_per_lead = le.commentsPerLead;
+      task.leads_per_run = le.leadsPerRun;
+      task.lead_do_like = le.doLike !== false;
+      task.lead_do_comment = le.doComment !== false;
+      task.lead_do_follow = le.doFollow !== false;
+      if (le.commentPrompt) task.comment_prompt = le.commentPrompt;
+    }
+
     // 写评论等 AI 调用的扣费也累进「本次消耗」(与动作按次扣费相加,二者是不同的账,不重复)。
     const aiCall = makeAiCall(pack, authToken, log, (credits: number, usd: number) => {
       chargedCredits += credits; chargedUsd += usd;
@@ -528,6 +562,37 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
           return { ok: true, path: filePath, dir };
         } catch (err: any) {
           coworkLog('WARN', 'engage', `[${accountId}] writeReport failed: ${String(err?.message || err)}`);
+          return { ok: false, reason: String(err?.message || err) };
+        }
+      },
+      // 跨运行持久状态(lead_engage 等剧本用):按【平台+账号+名字】读写一份 JSON。
+      // engageHistory 只有布尔 has/remember 没法枚举,writeReport 只写不读 —— 长期增长的
+      // 「潜客名单账本」这类需要读回来的状态走这对接口。落在 <matrixDir>/state/<平台>/<accountId>/<name>.json。
+      readState: (name: string) => {
+        try {
+          const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
+          const safeName = String(name || 'state').replace(/[\\/:*?"<>|]/g, '_').slice(0, 100);
+          const filePath = path.join(base, 'state', opts.platform || acc.platform || 'unknown', accountId, safeName + '.json');
+          return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        } catch { return null; }
+      },
+      writeState: (name: string, obj: unknown) => {
+        try {
+          const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
+          const dir = path.join(base, 'state', opts.platform || acc.platform || 'unknown', accountId);
+          fs.mkdirSync(dir, { recursive: true });
+          const safeName = String(name || 'state').replace(/[\\/:*?"<>|]/g, '_').slice(0, 100);
+          const filePath = path.join(dir, safeName + '.json');
+          // ⚠️ 必须原子落盘(临时文件 + rename):这份账本承载「新潜客只计费一次」的去重语义,
+          //   裸 writeFileSync 若在写入中途崩溃/断电会留下截断的半截 JSON → 下次 readState
+          //   parse 失败返回 null → 剧本按空账本重来 → 已收录的潜客被当新客【重复采集 + 重复扣费】。
+          //   同目录 rename 在同一文件系统上是原子的(taskStore.persist 也是这个写法)。
+          const tmp = filePath + '.tmp';
+          fs.writeFileSync(tmp, JSON.stringify(obj), 'utf8');
+          fs.renameSync(tmp, filePath);
+          return { ok: true, path: filePath };
+        } catch (err: any) {
+          coworkLog('WARN', 'engage', `[${accountId}] writeState failed: ${String(err?.message || err)}`);
           return { ok: false, reason: String(err?.message || err) };
         }
       },
@@ -673,7 +738,10 @@ export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageRepo
   // 别的都是 `<平台>_auto_engage`。漏了币安这个特例会取不到剧本 → 指纹浏览器都不唤起、无日志。
   const ENGAGE_SCENARIO_ID: Record<string, string> = { binance: 'binance_square_auto_engage' };
   // reply_fan 等非互动任务显式传 scenarioId(如 douyin_reply_fans_comment);engage 按平台推。
-  const scenarioId = opts.scenarioId || ENGAGE_SCENARIO_ID[opts.platform] || `${opts.platform}_auto_engage`;
+  // 定向获客固定用 tiktok_lead_engage(目前只 TikTok 有这张卡)。
+  const scenarioId = opts.scenarioId
+    || (opts.taskType === 'lead_engage' ? `${opts.platform}_lead_engage` : '')
+    || ENGAGE_SCENARIO_ID[opts.platform] || `${opts.platform}_auto_engage`;
   const pack = await fetchEngagePack(scenarioId);
   if (!pack || !pack.orchestrator) {
     // ⚠️ 必须发日志+item 再返回:这条路以前【静默】返回 → UI 永远停在「已加入运行队列…」装死

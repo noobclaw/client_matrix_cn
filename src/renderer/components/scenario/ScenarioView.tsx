@@ -42,6 +42,7 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { HIDE_EXCHANGE_SQUARES } from '../../buildFlags';
 import MatrixTaskWizard, { type WizardAccount } from '../matrix/MatrixTaskWizard';
 import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
+import MatrixLeadEngageWizard from '../matrix/MatrixLeadEngageWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
 import MatrixImageTextWizard, { type ImageTextWizardSave } from '../matrix/MatrixImageTextWizard';
 import MatrixTweetPostWizard, { type TweetPostWizardSave } from '../matrix/MatrixTweetPostWizard';
@@ -80,6 +81,8 @@ const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou'
 // 抖音(creator.douyin.com 创作者中心「评论管理」集中回复,登录 cookie 挂父域 .douyin.com,主站登录态即覆盖
 // 创作者中心,取主站号即可,无 loginScope;后端剧本 douyin_reply_fans_comment 已就位)。
 const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'toutiao', 'shipinhao']);
+// 定向获客目前只有 TikTok(唯一有 tiktok_lead_engage 剧本 + 已真机验证评论抓取的平台)。
+const MATRIX_LEAD_PLATFORMS = new Set<PlatformId>(['tiktok']);
 // 后端 backend/matrix/scenarios 有 <platform>_video_download「视频无水印下载」剧本的平台(单账号工具任务)。
 // 抖音(页面 fetch wrapper 签名拿 detail)/快手(读 <video> src)/哔哩哔哩(playurl html5 单文件 mp4)/
 // TikTok(SSR __UNIVERSAL_DATA__ + 多级 fallback,须 VPN 真机)。都走【主站】登录态,取主站号。
@@ -294,6 +297,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixReplyAccounts, setMatrixReplyAccounts] = useState<WizardAccount[]>([]);
   const [matrixReplyAccountsLoading, setMatrixReplyAccountsLoading] = useState(false);
   const [matrixReplyTask, setMatrixReplyTask] = useState<any | null>(null); // 编辑时回填(账号/引流/频率);新建 null
+  // 定向获客(lead_engage)向导 state —— 独立于互动/回复,字段不共用。
+  const [matrixLeadPlatform, setMatrixLeadPlatform] = useState<string | null>(null);
+  const [matrixLeadAccounts, setMatrixLeadAccounts] = useState<WizardAccount[]>([]);
+  const [matrixLeadAccountsLoading, setMatrixLeadAccountsLoading] = useState(false);
+  const [matrixLeadTask, setMatrixLeadTask] = useState<any | null>(null);
   // 「视频无水印下载」向导(单账号工具任务:选 1 个号 + 粘贴链接)。
   const [matrixDownloadPlatform, setMatrixDownloadPlatform] = useState<string | null>(null);
   const [matrixDownloadAccounts, setMatrixDownloadAccounts] = useState<WizardAccount[]>([]);
@@ -521,6 +529,59 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixReplyTask(null);
     await refreshAll();
     // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
+  };
+  // 定向获客向导:执行账号取【主站】TikTok 号(与互动一致,排除创作者中心登录态)。
+  const leadAccountFilter = (a: any, plat: string) => a.platform === plat && (a.loginScope || 'main') === 'main';
+  const openMatrixLeadWizard = async (platform: string) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (await hasDupTask(platform, 'lead_engage', '定向获客')) return;
+    setMatrixLeadAccounts([]);
+    setMatrixLeadAccountsLoading(true);
+    setMatrixLeadTask(null);
+    setMatrixLeadPlatform(platform);
+    void ensureMatrixKernel();
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixLeadAccounts(accs.filter((a) => leadAccountFilter(a, platform)).map(mapWizardAccount));
+    } catch { setMatrixLeadAccounts([]); }
+    finally { setMatrixLeadAccountsLoading(false); }
+  };
+  const openMatrixLeadWizardEdit = async (task: any) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    const plat = (task?.platform as string) || currentPlatform || 'tiktok';
+    setMatrixLeadAccounts([]);
+    setMatrixLeadAccountsLoading(true);
+    // leadEngage 配置整体透传给向导回填(mxTaskToScenario 已把它拍平到 task.lead_engage)。
+    setMatrixLeadTask({
+      id: task.id,
+      name: task.name,
+      accountIds: task.account_ids || [],
+      leadEngage: (task as any).lead_engage || undefined,
+      frequency: task.run_interval,
+    });
+    setMatrixLeadPlatform(plat);
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixLeadAccounts(accs.filter((a) => leadAccountFilter(a, plat)).map(mapWizardAccount));
+    } catch { setMatrixLeadAccounts([]); }
+    finally { setMatrixLeadAccountsLoading(false); }
+  };
+  const saveMatrixLeadTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; leadEngage: any }) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
+    const m = (window as any).electron?.matrix;
+    const r = await m?.saveTask?.({ id: matrixLeadTask?.id, platform: matrixLeadPlatform, type: 'lead_engage', name: input.name, accountIds: input.accountIds, leadEngage: input.leadEngage, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) {
+      if (r?.error === 'duplicate_type') { const dp = matrixLeadPlatform; setMatrixLeadPlatform(null); setMatrixLeadTask(null); setDupNotice({ platform: dp as string, label: '定向获客' }); return; }
+      throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
+    }
+    const wasEdit = !!matrixLeadTask?.id;
+    const plat = matrixLeadPlatform;
+    setMatrixLeadPlatform(null);
+    setMatrixLeadTask(null);
+    await refreshAll();
     if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「视频无水印下载」向导(单账号):账号取主站 scope(同 replyAccountFilter,douyin 走主站登录态)。
@@ -1474,7 +1535,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -1637,6 +1698,36 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               >
                 {i18nService.t('svHasTasks')}
               </button>
+              </div>
+            </div>
+          )}
+          {/* 定向获客(仅 TikTok)—— 采集同行评论者当潜客名单 → 逐个触达点赞/评论/关注。独立卡片。 */}
+          {MATRIX_LEAD_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> {i18nService.currentLanguage === 'zh' ? '精准获客' : 'Lead Finder'}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">🎯 {platLabel} · {i18nService.currentLanguage === 'zh' ? '定向获客' : 'Lead Finder'}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                {i18nService.currentLanguage === 'zh'
+                  ? <>采集<strong>同行作品评论区</strong>里的潜在客户,去重存成本地名单,再逐个去他们主页点赞 / 评论 / 关注,把人引回来看你。</>
+                  : <>Harvests potential customers from <strong>competitors' comment sections</strong>, dedupes them into a local roster, then likes / comments / follows on each to pull them back to you.</>}
+              </div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+                <button
+                  type="button"
+                  onClick={() => openMatrixLeadWizard(currentPlatform)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500 text-white text-sm font-bold hover:bg-cyan-600 shadow-sm shadow-cyan-500/25 transition-all active:scale-95"
+                >
+                  🎯 {i18nService.currentLanguage === 'zh' ? '开始获客' : 'Start'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                  className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                >
+                  {i18nService.t('svHasTasks')}
+                </button>
               </div>
             </div>
           )}
@@ -2542,6 +2633,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               initialTask={matrixReplyTask}
               onCancel={() => { setMatrixReplyPlatform(null); setMatrixReplyTask(null); }}
               onSave={saveMatrixReplyFanTask}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 矩阵号定向获客向导(选执行账号 + 获客模式/来源 + 触达配置 + 频率) */}
+      {matrixLeadPlatform && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <MatrixLeadEngageWizard
+              platformLabel={matrixLeadPlatform === 'tiktok' ? 'TikTok' : String(matrixLeadPlatform)}
+              platform={matrixLeadPlatform}
+              accounts={matrixLeadAccounts}
+              accountsLoading={matrixLeadAccountsLoading}
+              initialTask={matrixLeadTask}
+              onCancel={() => { setMatrixLeadPlatform(null); setMatrixLeadTask(null); }}
+              onSave={saveMatrixLeadTask}
             />
           </div>
         </div>
