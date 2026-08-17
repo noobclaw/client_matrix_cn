@@ -1,20 +1,29 @@
 /**
  * MatrixLeadEngageWizard — TikTok「定向获客」向导(独立卡片,不与互动涨粉/回复粉丝串)。
  *
- * 对应后端 tiktok_lead_engage 剧本。两段式:采集同行评论者当潜客名单 → 逐个触达点赞/评论/关注。
- * 4 步:① 选执行账号(自己的 TikTok 号) ② 获客模式+来源+单次新增名额 ③ 触达配置(每客户赞/评条数、
- * 单次触达人数、动作开关、评论口味) ④ 频率+条款+创建。
+ * 对应后端 tiktok_lead_engage 剧本。6 步(2026-08-17 按用户要求拆分):
+ *   1 选执行账号
+ *   2 获客模式 + 来源(精准=填同行账号;关键词=跟随账号自己的关键词,不在这里填)
+ *   3 数量(本次获取潜客上限 / 本次最多互动多少潜客)
+ *   4 点赞 + 关注
+ *   5 评论(条数 + 引流语:共用或各账号各自,一行一条最多 20,带概率)
+ *   6 频率 + 条款
  *
- * 复用铁律:账号行照 MatrixReplyFansWizard fork;不复用其配额/引流字段。主色 cyan,与 TikTok 卡一致。
+ * 复用铁律:账号行照 MatrixReplyFansWizard fork;引流语直接复用 MatrixFunnelConfig
+ * (它本就支持一行一条 ≤20 + 概率 + 共用/各账号双模式)。主色 cyan,与 TikTok 卡一致。
  * 文案内联中英(仅 TikTok 卡使用),不新增 i18n key。
  */
 
 import React, { useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import MatrixFunnelConfig, {
+  countUnconfigured, FUNNEL_PHRASE_MAX, FUNNEL_PROB_DEFAULT,
+  type FunnelValue,
+} from './MatrixFunnelConfig';
 
 export interface LeadWizardAccount {
   id: string; displayName: string; status: string;
-  group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string;
+  keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string;
 }
 
 export interface LeadEngageInput {
@@ -44,6 +53,8 @@ interface Props {
     concurrency: number;
     frequency: string;
     leadEngage: LeadEngageInput;
+    funnel: FunnelValue;
+    funnelByAccount: Record<string, FunnelValue> | null;
   }) => Promise<void> | void;
 }
 
@@ -69,11 +80,12 @@ const parseSeedLines = (text: string): string[] => {
 
 const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const zh = i18nService.currentLanguage === 'zh';
+  const t = (a: string, b: string) => (zh ? a : b);
   const editing = !!initialTask;
   const le: Partial<LeadEngageInput> = initialTask?.leadEngage || {};
 
   const [step, setStep] = useState<number>(1);
-  const TOTAL_STEPS = 4;
+  const TOTAL_STEPS = 6;
 
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialTask?.accountIds) return new Set<string>(initialTask.accountIds);
@@ -83,16 +95,20 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const [mode, setMode] = useState<'accounts' | 'keywords'>(le.mode === 'keywords' ? 'keywords' : 'accounts');
   const [seedText, setSeedText] = useState<string>(Array.isArray(le.seedAccounts) ? le.seedAccounts.map((h) => '@' + h).join('\n') : '');
-  const [keywordText, setKeywordText] = useState<string>(Array.isArray(le.keywords) ? le.keywords.join('\n') : '');
-  const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 20);
 
+  const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 20);
+  const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20);
   const [likesPerLead, setLikesPerLead] = useState<number>(typeof le.likesPerLead === 'number' ? le.likesPerLead : 3);
   const [commentsPerLead, setCommentsPerLead] = useState<number>(typeof le.commentsPerLead === 'number' ? le.commentsPerLead : 1);
-  const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20);
-  const [doLike, setDoLike] = useState<boolean>(le.doLike !== false);
-  const [doComment, setDoComment] = useState<boolean>(le.doComment !== false);
-  const [doFollow, setDoFollow] = useState<boolean>(le.doFollow !== false);
-  const [commentPrompt, setCommentPrompt] = useState<string>(le.commentPrompt || '用一句自然短评，口语化，不要拍马屁，不要超过 30 字 / 20 词；语言匹配视频与评论区的主语言。');
+
+  // 引流语(评论时按概率融进 AI 评论)。与互动涨粉同一套口径,直接复用 MatrixFunnelConfig。
+  const [funnelPerMode, setFunnelPerMode] = useState<boolean>(!!initialTask?.funnelByAccount && Object.keys(initialTask.funnelByAccount).length > 0);
+  const [funnelPhrase, setFunnelPhrase] = useState<string>(initialTask?.funnel?.funnel_phrase || '');
+  const [funnelProb, setFunnelProb] = useState<number>(
+    typeof initialTask?.funnel?.funnel_probability === 'number' && initialTask.funnel.funnel_probability > 0
+      ? initialTask.funnel.funnel_probability : FUNNEL_PROB_DEFAULT);
+  const [funnelPerMap, setFunnelPerMap] = useState<Record<string, FunnelValue>>(initialTask?.funnelByAccount || {});
+  const [funnelUnsetConfirm, setFunnelUnsetConfirm] = useState<number | null>(null);
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
@@ -100,32 +116,57 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const seedList = useMemo(() => parseSeedLines(seedText), [seedText]);
-  const keywordList = useMemo(() => keywordText.split('\n').map((k) => k.trim()).filter(Boolean), [keywordText]);
-
-  const t = (a: string, b: string) => (zh ? a : b);
+  const selectedAccounts = accounts.filter((a) => selected.has(a.id));
+  // 关键词模式下真正会用到的词 = 各账号自己配的关键词(与互动涨粉一致)。
+  const acctsWithoutKw = selectedAccounts.filter((a) => !(a.keywords && a.keywords.length));
+  const funnelAccounts = selectedAccounts.map((a) => ({
+    id: a.id, title: a.nickname || a.displayName, group: a.group,
+    platformName: platformLabel, avatar: a.avatar,
+  }));
 
   const canAdvance: Record<number, { ok: boolean; reason?: string }> = {
     1: { ok: selected.size >= 1, reason: t('请至少选择一个执行账号', 'Select at least one account') },
     2: mode === 'accounts'
       ? (seedList.length >= 1 ? { ok: true } : { ok: false, reason: t('请至少填写一个同行 TikTok 账号', 'Add at least one competitor account') })
-      : (keywordList.length >= 1 ? { ok: true } : { ok: false, reason: t('请至少填写一个赛道关键词', 'Add at least one keyword') }),
-    3: (doLike || doComment || doFollow) ? { ok: true } : { ok: false, reason: t('请至少开启一种触达动作', 'Enable at least one action') },
-    4: termsAccepted ? { ok: true } : { ok: false, reason: t('请先同意条款', 'Please accept the terms') },
+      : (acctsWithoutKw.length < selectedAccounts.length
+        ? { ok: true }
+        : { ok: false, reason: t('所选账号都没有配关键词 —— 请先去「我的矩阵账号」给账号设置关键词', 'None of the selected accounts has keywords - set them in My Accounts first') }),
+    3: { ok: true },
+    4: { ok: true },
+    5: { ok: true },
+    6: termsAccepted ? { ok: true } : { ok: false, reason: t('请先同意条款', 'Please accept the terms') },
   };
 
   const next = () => {
     const c = canAdvance[step];
     if (!c.ok) { setSaveError(c.reason || ''); return; }
+    // 各账号引流模式下有账号没配 → 先弹确认(与互动涨粉同款)
+    if (step === 5 && funnelPerMode) {
+      const un = countUnconfigured(funnelAccounts, funnelPerMap);
+      if (un > 0 && funnelUnsetConfirm === null) { setFunnelUnsetConfirm(un); return; }
+    }
     setSaveError(null);
+    setFunnelUnsetConfirm(null);
     setStep((s) => Math.min(TOTAL_STEPS, s + 1));
   };
-  const back = () => { setSaveError(null); setStep((s) => Math.max(1, s - 1)); };
+  const back = () => { setSaveError(null); setFunnelUnsetConfirm(null); setStep((s) => Math.max(1, s - 1)); };
+
+  const cleanPerMap = () => {
+    const out: Record<string, FunnelValue> = {};
+    for (const id of selected) {
+      const v = funnelPerMap[id];
+      const ph = (v?.funnel_phrase || '').trim();
+      if (ph) out[id] = { funnel_phrase: ph, funnel_probability: v.funnel_probability };
+    }
+    return out;
+  };
 
   const handleSave = async () => {
     if (saving) return;
-    for (let s = 1; s <= 4; s++) { if (!canAdvance[s].ok) { setStep(s); setSaveError(canAdvance[s].reason || ''); return; } }
+    for (let s = 1; s <= TOTAL_STEPS; s++) { if (!canAdvance[s].ok) { setStep(s); setSaveError(canAdvance[s].reason || ''); return; } }
     setSaving(true);
     try {
+      const hasShared = funnelPhrase.trim().length > 0;
       await onSave({
         name: initialTask?.name || t(`TikTok 定向获客 · ${selected.size} 个账号`, `TikTok Lead Finder · ${selected.size} accounts`),
         accountIds: [...selected],
@@ -134,14 +175,18 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         leadEngage: {
           mode,
           seedAccounts: mode === 'accounts' ? seedList : [],
-          keywords: mode === 'keywords' ? keywordList : [],
+          keywords: [],                       // 关键词跟随账号设置,不在任务里存
           maxLeads: clampInt(maxLeads, 1, 100),
           likesPerLead: clampInt(likesPerLead, 1, 10),
           commentsPerLead: clampInt(commentsPerLead, 1, 10),
           leadsPerRun: clampInt(leadsPerRun, 1, 100),
-          doLike, doComment, doFollow,
-          commentPrompt: commentPrompt.trim(),
+          doLike: true, doComment: true, doFollow: true,
+          commentPrompt: '',                  // 评论口味不再让用户填,用剧本默认
         },
+        funnel: (!funnelPerMode && hasShared)
+          ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb }
+          : { funnel_phrase: '', funnel_probability: 0 },
+        funnelByAccount: funnelPerMode ? cleanPerMap() : null,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || t('保存失败', 'Save failed'));
@@ -150,7 +195,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const intervalLabel = useMemo(() => {
     const m: Record<string, string> = {
-      once: t('仅运行一次', 'Once'), '30min': t('每 30 分钟', 'Every 30 min'), '1h': t('每小时', 'Hourly'),
+      once: t('仅运行一次', 'Once'), '1h': t('每小时', 'Hourly'),
       '3h': t('每 3 小时', 'Every 3h'), '6h': t('每 6 小时', 'Every 6h'), daily_random: t('每天随机时段', 'Daily (random time)'),
     };
     return m[runInterval] || runInterval;
@@ -158,10 +203,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   }, [runInterval, zh]);
 
   const numRow = (label: string, hint: string, val: number, set: (n: number) => void, lo: number, hi: number) => (
-    <div className="flex items-center justify-between gap-3 py-2">
+    <div className="flex items-center justify-between gap-3 py-2.5">
       <div className="min-w-0">
         <div className="text-sm font-medium dark:text-gray-200">{label}</div>
-        <div className="text-[11px] text-gray-400">{hint}</div>
+        <div className="text-[11px] text-gray-400 leading-snug">{hint}</div>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <button type="button" onClick={() => set(clampInt(val - 1, lo, hi))} className="w-7 h-7 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-cyan-500">−</button>
@@ -200,6 +245,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               {accounts.map((a) => {
                 const ready = a.status !== 'login_required' && a.status !== 'banned';
                 const title = a.nickname || a.displayName;
+                const kwN = (a.keywords || []).length;
                 return (
                   <label key={a.id} className={`flex items-center gap-2.5 text-sm px-3 py-2 ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
                     <input type="checkbox" checked={selected.has(a.id)} onChange={() => ready && toggle(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-cyan-500 shrink-0" />
@@ -210,6 +256,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                       <span className="font-medium truncate dark:text-white">{title}</span>
                       {a.displayId && <span className="ml-1.5 text-[11px] text-gray-500 dark:text-gray-400">@{a.displayId}</span>}
                       {!ready && <span className="ml-1.5 text-[11px] text-amber-500">{a.status === 'banned' ? t('已封禁', 'banned') : t('需重新登录', 'disconnected')}</span>}
+                      <div className="text-[11px] text-gray-400">{kwN ? t(`关键词 ${kwN} 个`, `${kwN} keywords`) : t('未配关键词', 'no keywords')}</div>
                     </div>
                   </label>
                 );
@@ -218,7 +265,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           </>
         )}
 
-        {/* STEP 2 · 获客模式 + 来源 + 名额 */}
+        {/* STEP 2 · 获客模式 + 来源 */}
         {step === 2 && (
           <>
             <div className="grid grid-cols-2 gap-2.5">
@@ -237,63 +284,95 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                 <div className="text-sm font-medium dark:text-gray-200 mb-1">{t('同行 TikTok 账号', 'Competitor accounts')}
                   <span className="text-xs text-gray-400 font-normal ml-1">{t(`一行一个,最多 ${MAX_SEED} 个 · 已识别 ${seedList.length} 个`, `one per line, max ${MAX_SEED} · ${seedList.length} parsed`)}</span>
                 </div>
-                <textarea value={seedText} onChange={(e) => setSeedText(e.target.value)} rows={6} placeholder={'@competitor1\n@competitor2\nhttps://www.tiktok.com/@competitor3'}
+                <textarea value={seedText} onChange={(e) => setSeedText(e.target.value)} rows={8} placeholder={'@competitor1\n@competitor2\nhttps://www.tiktok.com/@competitor3'}
                   className="w-full text-sm p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white font-mono leading-relaxed" />
               </div>
             ) : (
-              <div>
-                <div className="text-sm font-medium dark:text-gray-200 mb-1">{t('赛道关键词', 'Niche keywords')}
-                  <span className="text-xs text-gray-400 font-normal ml-1">{t(`一行一个 · 已识别 ${keywordList.length} 个`, `one per line · ${keywordList.length} parsed`)}</span>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
+                <div className="text-sm font-medium dark:text-gray-200">{t('赛道关键词', 'Niche keywords')}</div>
+                <div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                  {t('关键词跟随每个账号自己的设置,不在这里单独填 —— 要改请去「我的矩阵账号」编辑该账号的关键词。',
+                     'Keywords follow each account\'s own settings rather than being entered here - edit them in My Accounts to change.')}
                 </div>
-                <textarea value={keywordText} onChange={(e) => setKeywordText(e.target.value)} rows={6} placeholder={t('美食探店\n家常菜教程\n烘焙', 'street food\nhome cooking\nbaking')}
-                  className="w-full text-sm p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white leading-relaxed" />
+                <div className="space-y-1.5">
+                  {selectedAccounts.map((a) => {
+                    const kws = a.keywords || [];
+                    return (
+                      <div key={a.id} className="flex items-start gap-2 text-[12px]">
+                        <span className="shrink-0 dark:text-gray-300">{a.nickname || a.displayName}</span>
+                        <span className={kws.length ? 'text-gray-500 dark:text-gray-400' : 'text-amber-500'}>
+                          {kws.length ? kws.slice(0, 8).join('、') + (kws.length > 8 ? ` …(${kws.length})` : '') : t('未配关键词,本轮会跳过', 'no keywords - will be skipped')}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
+                  className="text-xs text-cyan-500 underline">{t('去「我的矩阵账号」修改关键词', 'Edit keywords in My Accounts')}</button>
               </div>
             )}
-
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3">
-              {numRow(t('单次新增获客上限', 'New leads per run'), t('本次最多收录多少个【新】潜客(本地已有的不重复收)', 'Max NEW leads to collect this run (dedup vs local roster)'), maxLeads, setMaxLeads, 1, 100)}
-            </div>
           </>
         )}
 
-        {/* STEP 3 · 触达配置 */}
+        {/* STEP 3 · 数量 */}
         {step === 3 && (
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
+            {numRow(t('本次获取潜客上限', 'New leads per run'), t('（本地已有的不重复收）', '(dedup against the local roster)'), maxLeads, setMaxLeads, 1, 100)}
+            {numRow(t('本次最多互动多少潜客', 'Leads to engage per run'), t('新客优先,老客轮转,轮不到的下次接着', 'New leads first, then rotate through existing ones'), leadsPerRun, setLeadsPerRun, 1, 100)}
+          </div>
+        )}
+
+        {/* STEP 4 · 点赞 + 关注 */}
+        {step === 4 && (
           <>
             <div className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-              {t('拿到名单后,逐个打开潜客主页,挑他【还没互动过】的作品做以下动作。第二次运行会自动换新作品,形成长期互动。',
-                 'For each lead, opens their profile and acts on videos not touched before. Re-runs rotate to fresh videos for long-term touch.')}
+              {t('逐个打开潜客主页,挑他【还没互动过】的作品做动作。第二次运行会自动换新作品,形成长期互动。',
+                 'Opens each lead\'s profile and acts on videos not touched before; re-runs rotate to fresh ones.')}
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
-              <label className="flex items-center justify-between py-2.5 cursor-pointer">
-                <span className="text-sm dark:text-gray-200">👍 {t('点赞', 'Like')}</span>
-                <input type="checkbox" checked={doLike} onChange={(e) => setDoLike(e.target.checked)} className="h-4 w-4 accent-cyan-500" />
-              </label>
-              {doLike && numRow(t('每个客户点赞条数', 'Likes per lead'), t('单次运行给每人点赞几条作品(1-10)', 'Videos to like per lead per run (1-10)'), likesPerLead, setLikesPerLead, 1, 10)}
-              <label className="flex items-center justify-between py-2.5 cursor-pointer">
-                <span className="text-sm dark:text-gray-200">💬 {t('评论', 'Comment')}</span>
-                <input type="checkbox" checked={doComment} onChange={(e) => setDoComment(e.target.checked)} className="h-4 w-4 accent-cyan-500" />
-              </label>
-              {doComment && numRow(t('每个客户评论条数', 'Comments per lead'), t('单次运行给每人评论几条作品(1-10),评论由 AI 生成', 'AI comments per lead per run (1-10)'), commentsPerLead, setCommentsPerLead, 1, 10)}
-              <label className="flex items-center justify-between py-2.5 cursor-pointer">
-                <span className="text-sm dark:text-gray-200">➕ {t('关注(每人终身一次)', 'Follow (once per lead)')}</span>
-                <input type="checkbox" checked={doFollow} onChange={(e) => setDoFollow(e.target.checked)} className="h-4 w-4 accent-cyan-500" />
-              </label>
+              {numRow(t('👍 每个潜客点赞条数', '👍 Likes per lead'), t('单次运行给每人点赞几条作品', 'Videos to like per lead per run'), likesPerLead, setLikesPerLead, 1, 10)}
+              <div className="py-2.5">
+                <div className="text-sm font-medium dark:text-gray-200">{t('➕ 关注', '➕ Follow')}</div>
+                <div className="text-[11px] text-gray-400 leading-snug">{t('每个潜客终身只关注一次,已关注过的不再重复', 'Each lead is followed once, ever')}</div>
+              </div>
             </div>
+          </>
+        )}
+
+        {/* STEP 5 · 评论 + 引流语 */}
+        {step === 5 && (
+          <>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3">
-              {numRow(t('单次触达人数', 'Leads per run'), t('本次最多触达多少人(新客优先,老客轮转,轮不到的下次接着)', 'Max leads to reach this run (new first, then rotate)'), leadsPerRun, setLeadsPerRun, 1, 100)}
+              {numRow(t('💬 每个潜客评论条数', '💬 Comments per lead'), t('评论由 AI 按作品内容生成', 'Comments are AI-generated from the video'), commentsPerLead, setCommentsPerLead, 1, 10)}
             </div>
-            {doComment && (
-              <div>
-                <div className="text-sm font-medium dark:text-gray-200 mb-1">{t('评论口味(AI 提示词)', 'Comment style (AI prompt)')}</div>
-                <textarea value={commentPrompt} onChange={(e) => setCommentPrompt(e.target.value)} rows={3}
-                  className="w-full text-sm p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white leading-relaxed" />
+            <MatrixFunnelConfig
+              accounts={funnelAccounts}
+              accent="fuchsia"
+              perMode={funnelPerMode}
+              setPerMode={setFunnelPerMode}
+              shared={{ funnel_phrase: funnelPhrase, funnel_probability: funnelProb }}
+              setShared={(v) => { setFunnelPhrase(v.funnel_phrase.slice(0, FUNNEL_PHRASE_MAX)); setFunnelProb(v.funnel_probability); }}
+              perMap={funnelPerMap}
+              setPerMap={setFunnelPerMap}
+              disabled={saving}
+            />
+            {funnelUnsetConfirm !== null && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+                <div className="dark:text-gray-200 mb-2">
+                  {t(`还有 ${funnelUnsetConfirm} 个账号没配引流语,它们的评论将不带引流。继续?`,
+                     `${funnelUnsetConfirm} account(s) have no phrase; their comments will carry none. Continue?`)}
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={() => setFunnelUnsetConfirm(null)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700">{t('回去配置', 'Go back')}</button>
+                  <button type="button" onClick={() => { setFunnelUnsetConfirm(null); setStep((s) => Math.min(TOTAL_STEPS, s + 1)); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white">{t('继续', 'Continue')}</button>
+                </div>
               </div>
             )}
           </>
         )}
 
-        {/* STEP 4 · 频率 + 条款 */}
-        {step === 4 && (
+        {/* STEP 6 · 频率 + 条款 */}
+        {step === 6 && (
           <>
             <div>
               <div className="text-sm font-medium dark:text-gray-200 mb-2">{t('运行频率', 'Frequency')}</div>
@@ -308,10 +387,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 text-sm space-y-1.5 dark:text-gray-300">
               <div className="flex justify-between"><span className="text-gray-500">{t('执行账号', 'Accounts')}</span><span>{selected.size}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t(`关键词 · ${keywordList.length} 个`, `Keyword · ${keywordList.length}`)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('单次新增名额', 'New leads')}</span><span>{clampInt(maxLeads, 1, 100)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('每客户', 'Per lead')}</span><span>{[doLike && `👍${clampInt(likesPerLead, 1, 10)}`, doComment && `💬${clampInt(commentsPerLead, 1, 10)}`, doFollow && '➕1'].filter(Boolean).join(' · ') || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('单次触达人数', 'Leads/run')}</span><span>{clampInt(leadsPerRun, 1, 100)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('本次获取潜客上限', 'New leads')}</span><span>{clampInt(maxLeads, 1, 100)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 100)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('每个潜客', 'Per lead')}</span><span>{`👍${clampInt(likesPerLead, 1, 10)} · 💬${clampInt(commentsPerLead, 1, 10)} · ➕1`}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('评论引流', 'Funnel')}</span><span>{funnelPerMode ? t(`各账号各自(${funnelAccounts.length - countUnconfigured(funnelAccounts, funnelPerMap)}/${funnelAccounts.length} 已配)`, `per account`) : (funnelPhrase.trim() ? t(`共用 · ${funnelProb}%`, `shared · ${funnelProb}%`) : t('未配置', 'none'))}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('频率', 'Frequency')}</span><span>{intervalLabel}</span></div>
             </div>
             <label className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">

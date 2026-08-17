@@ -559,6 +559,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       name: task.name,
       accountIds: task.account_ids || [],
       leadEngage: (task as any).lead_engage || undefined,
+      // 引流语回填(共用 + 各账号);漏带会让编辑时显示成未配置,保存后把已配的洗掉。
+      funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },
+      funnelByAccount: (task as any).funnel_by_account || undefined,
       frequency: task.run_interval,
     });
     setMatrixLeadPlatform(plat);
@@ -569,10 +572,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     } catch { setMatrixLeadAccounts([]); }
     finally { setMatrixLeadAccountsLoading(false); }
   };
-  const saveMatrixLeadTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; leadEngage: any }) => {
+  const saveMatrixLeadTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; leadEngage: any; funnel?: any; funnelByAccount?: any }) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
-    const r = await m?.saveTask?.({ id: matrixLeadTask?.id, platform: matrixLeadPlatform, type: 'lead_engage', name: input.name, accountIds: input.accountIds, leadEngage: input.leadEngage, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    // 引流语走既有的 funnel / funnelByAccount 通道 —— engageRunner 的 makeAiCall 会按概率
+    //   把它融进 comment_composer 出来的评论,与互动涨粉同一条链路,无需后端改动。
+    const r = await m?.saveTask?.({ id: matrixLeadTask?.id, platform: matrixLeadPlatform, type: 'lead_engage', name: input.name, accountIds: input.accountIds, leadEngage: input.leadEngage, funnel: input.funnel, funnelByAccount: input.funnelByAccount, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixLeadPlatform; setMatrixLeadPlatform(null); setMatrixLeadTask(null); setDupNotice({ platform: dp as string, label: '定向获客' }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');

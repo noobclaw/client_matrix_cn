@@ -463,7 +463,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       const le = opts.leadEngage;
       task.mode = le.mode || 'accounts';
       task.seed_accounts = Array.isArray(le.seedAccounts) ? le.seedAccounts : [];
-      task.keywords = Array.isArray(le.keywords) ? le.keywords : [];
+      // 关键词模式跟随【账号自己的关键词】(与互动涨粉一致,用户要改就去改账号)。
+      //   所以只有向导显式传了词才覆盖,否则保留上面 effectiveKeywords(acc) 的结果 ——
+      //   直接赋空数组会把账号关键词冲掉,关键词模式就没词可搜了。
+      if (Array.isArray(le.keywords) && le.keywords.length) task.keywords = le.keywords;
       task.max_leads = le.maxLeads;
       task.likes_per_lead = le.likesPerLead;
       task.comments_per_lead = le.commentsPerLead;
