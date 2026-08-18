@@ -193,10 +193,15 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           // 关键词跟随账号设置,向导不再提供输入;但老任务里存过的任务级词要原样保留(同上,整体替换)。
           keywords: Array.isArray(le.keywords) ? le.keywords : [],
           maxLeads: clampInt(maxLeads, 1, 100),
-          likesPerLead: clampInt(likesPerLead, 1, 10),
-          commentsPerLead: clampInt(commentsPerLead, 1, 10),
+          // 条数 0 = 关闭该动作(开关行已按用户要求删掉,用数量本身表达开关)。
+          //   do* 必须跟着算,否则剧本读到 doLike=true 仍会去点 —— 条数为 0 时
+          //   剧本内部 nLikeLead 也会是 0,两边一致才不会出现「设了 0 还照做」。
+          likesPerLead: Math.max(1, clampInt(likesPerLead, 0, 10)),
+          commentsPerLead: Math.max(1, clampInt(commentsPerLead, 0, 10)),
           leadsPerRun: clampInt(leadsPerRun, 1, 100),
-          doLike: true, doComment: true, doFollow: true,
+          doLike: clampInt(likesPerLead, 0, 10) > 0,
+          doComment: clampInt(commentsPerLead, 0, 10) > 0,
+          doFollow: true,
           // ⚠️ taskStore 对 leadEngage 是整体替换(`input.leadEngage ?? 旧值`),不是逐字段合并。
           //   这两项已经从向导里去掉了,若硬写空,老任务只要被打开编辑一次(哪怕只改频率)
           //   就会把之前存过的任务级关键词/评论口味永久抹掉 —— 所以原样带回。
@@ -349,7 +354,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                  'Opens each lead\'s profile and acts on videos not touched before; re-runs rotate to fresh ones.')}
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
-              {numRow(t('👍 每个潜客点赞条数', '👍 Likes per lead'), t('单次运行给每人点赞几条作品', 'Videos to like per lead per run'), likesPerLead, setLikesPerLead, 1, 10)}
+              {numRow(t('👍 每个潜客点赞条数', '👍 Likes per lead'), t('单次运行给每人点赞几条作品 · 设为 0 = 不点赞', 'Videos to like per lead per run · 0 disables liking'), likesPerLead, setLikesPerLead, 0, 10)}
               <div className="py-2.5">
                 <div className="text-sm font-medium dark:text-gray-200">{t('➕ 关注', '➕ Follow')}</div>
                 <div className="text-[11px] text-gray-400 leading-snug">{t('每个潜客终身只关注一次,已关注过的不再重复', 'Each lead is followed once, ever')}</div>
@@ -362,7 +367,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {step === 5 && (
           <>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3">
-              {numRow(t('💬 每个潜客评论条数', '💬 Comments per lead'), t('评论由 AI 按作品内容生成', 'Comments are AI-generated from the video'), commentsPerLead, setCommentsPerLead, 1, 10)}
+              {numRow(t('💬 每个潜客评论条数', '💬 Comments per lead'), t('评论由 AI 按作品内容生成(会产生 AI 费用) · 设为 0 = 不评论', 'AI-generated from the video (incurs AI cost) · 0 disables commenting'), commentsPerLead, setCommentsPerLead, 0, 10)}
             </div>
             <MatrixFunnelConfig
               accounts={funnelAccounts}
@@ -408,7 +413,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次获取潜客上限', 'New leads')}</span><span>{clampInt(maxLeads, 1, 100)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 100)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('每个潜客', 'Per lead')}</span><span>{`👍${clampInt(likesPerLead, 1, 10)} · 💬${clampInt(commentsPerLead, 1, 10)} · ➕1`}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('每个潜客', 'Per lead')}</span><span>{[clampInt(likesPerLead,0,10)>0?`👍${clampInt(likesPerLead,0,10)}`:null, clampInt(commentsPerLead,0,10)>0?`💬${clampInt(commentsPerLead,0,10)}`:null, '➕1'].filter(Boolean).join(' · ')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('评论引流', 'Funnel')}</span><span>{funnelPerMode ? t(`各账号各自(${funnelAccounts.length - countUnconfigured(funnelAccounts, funnelPerMap)}/${funnelAccounts.length} 已配)`, `per account`) : (funnelPhrase.trim() ? t(`共用 · ${funnelProb}%`, `shared · ${funnelProb}%`) : t('未配置', 'none'))}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('频率', 'Frequency')}</span><span>{intervalLabel}</span></div>
             </div>
