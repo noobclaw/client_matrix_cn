@@ -17,14 +17,24 @@
 import React, { useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import MatrixFunnelConfig, {
-  countUnconfigured, FUNNEL_PHRASE_MAX, FUNNEL_PROB_DEFAULT,
+  FunnelUnsetConfirm, countUnconfigured, FUNNEL_PHRASE_MAX, FUNNEL_PROB_DEFAULT,
   type FunnelValue,
 } from './MatrixFunnelConfig';
 
 export interface LeadWizardAccount {
   id: string; displayName: string; status: string;
-  keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string;
+  keywords?: string[]; derivedKeywords?: string[];
+  group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string;
 }
+
+// 与运行时 effectiveKeywords(accountManager) 同口径:原始词 + AI 衍生词。
+//   只看 acc.keywords 会把「只有衍生词」的账号误判成未配关键词。
+const kwOf = (a: LeadWizardAccount): string[] => {
+  const seen = new Set<string>();
+  return [...(a.keywords || []), ...(a.derivedKeywords || [])]
+    .map((k) => String(k || '').trim())
+    .filter((k) => k && !seen.has(k) && seen.add(k));
+};
 
 export interface LeadEngageInput {
   mode: 'accounts' | 'keywords';
@@ -118,7 +128,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const seedList = useMemo(() => parseSeedLines(seedText), [seedText]);
   const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 关键词模式下真正会用到的词 = 各账号自己配的关键词(与互动涨粉一致)。
-  const acctsWithoutKw = selectedAccounts.filter((a) => !(a.keywords && a.keywords.length));
+  const acctsWithoutKw = selectedAccounts.filter((a) => kwOf(a).length === 0);
   const funnelAccounts = selectedAccounts.map((a) => ({
     id: a.id, title: a.nickname || a.displayName, group: a.group,
     platformName: platformLabel, avatar: a.avatar,
@@ -128,7 +138,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     1: { ok: selected.size >= 1, reason: t('请至少选择一个执行账号', 'Select at least one account') },
     2: mode === 'accounts'
       ? (seedList.length >= 1 ? { ok: true } : { ok: false, reason: t('请至少填写一个同行 TikTok 账号', 'Add at least one competitor account') })
-      : (acctsWithoutKw.length < selectedAccounts.length
+      // ⚠️ 账号是弹窗开了之后【异步】填进来的(编辑任务 + sidecar 忙时要等几秒,listAccounts
+      //   失败还会一直是空)。此时 selectedAccounts 为空 → `0 < 0` 恒 false → 这一步被判死,
+      //   用户看到「所选账号都没配关键词」且永远过不去。账号没到位时先放行,别拿未知当错误。
+      : (selectedAccounts.length === 0 || acctsWithoutKw.length < selectedAccounts.length
         ? { ok: true }
         : { ok: false, reason: t('所选账号都没有配关键词 —— 请先去「我的矩阵账号」给账号设置关键词', 'None of the selected accounts has keywords - set them in My Accounts first') }),
     3: { ok: true },
@@ -140,10 +153,12 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const next = () => {
     const c = canAdvance[step];
     if (!c.ok) { setSaveError(c.reason || ''); return; }
-    // 各账号引流模式下有账号没配 → 先弹确认(与互动涨粉同款)
+    // 各账号引流模式下有账号没配 → 先弹确认(与互动涨粉同款)。
+    //   ⚠️ 不能加 `&& funnelUnsetConfirm === null` —— 那样第二次点「下一步」就直接放行了,
+    //   等于确认形同虚设。浮层自己的「继续」按钮才是唯一的放行入口。
     if (step === 5 && funnelPerMode) {
       const un = countUnconfigured(funnelAccounts, funnelPerMap);
-      if (un > 0 && funnelUnsetConfirm === null) { setFunnelUnsetConfirm(un); return; }
+      if (un > 0) { setFunnelUnsetConfirm(un); return; }
     }
     setSaveError(null);
     setFunnelUnsetConfirm(null);
@@ -175,13 +190,17 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         leadEngage: {
           mode,
           seedAccounts: mode === 'accounts' ? seedList : [],
-          keywords: [],                       // 关键词跟随账号设置,不在任务里存
+          // 关键词跟随账号设置,向导不再提供输入;但老任务里存过的任务级词要原样保留(同上,整体替换)。
+          keywords: Array.isArray(le.keywords) ? le.keywords : [],
           maxLeads: clampInt(maxLeads, 1, 100),
           likesPerLead: clampInt(likesPerLead, 1, 10),
           commentsPerLead: clampInt(commentsPerLead, 1, 10),
           leadsPerRun: clampInt(leadsPerRun, 1, 100),
           doLike: true, doComment: true, doFollow: true,
-          commentPrompt: '',                  // 评论口味不再让用户填,用剧本默认
+          // ⚠️ taskStore 对 leadEngage 是整体替换(`input.leadEngage ?? 旧值`),不是逐字段合并。
+          //   这两项已经从向导里去掉了,若硬写空,老任务只要被打开编辑一次(哪怕只改频率)
+          //   就会把之前存过的任务级关键词/评论口味永久抹掉 —— 所以原样带回。
+          commentPrompt: le.commentPrompt || '',
         },
         funnel: (!funnelPerMode && hasShared)
           ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb }
@@ -245,7 +264,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               {accounts.map((a) => {
                 const ready = a.status !== 'login_required' && a.status !== 'banned';
                 const title = a.nickname || a.displayName;
-                const kwN = (a.keywords || []).length;
+                const kwN = kwOf(a).length;
                 return (
                   <label key={a.id} className={`flex items-center gap-2.5 text-sm px-3 py-2 ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
                     <input type="checkbox" checked={selected.has(a.id)} onChange={() => ready && toggle(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-cyan-500 shrink-0" />
@@ -296,12 +315,12 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                 </div>
                 <div className="space-y-1.5">
                   {selectedAccounts.map((a) => {
-                    const kws = a.keywords || [];
+                    const kws = kwOf(a);
                     return (
                       <div key={a.id} className="flex items-start gap-2 text-[12px]">
                         <span className="shrink-0 dark:text-gray-300">{a.nickname || a.displayName}</span>
                         <span className={kws.length ? 'text-gray-500 dark:text-gray-400' : 'text-amber-500'}>
-                          {kws.length ? kws.slice(0, 8).join('、') + (kws.length > 8 ? ` …(${kws.length})` : '') : t('未配关键词,本轮会跳过', 'no keywords - will be skipped')}
+                          {kws.length ? kws.slice(0, 8).join('、') + (kws.length > 8 ? ` …(${kws.length})` : '') : t('未配关键词 —— 该号本轮会失败', 'no keywords - this account will fail')}
                         </span>
                       </div>
                     );
@@ -356,17 +375,16 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               setPerMap={setFunnelPerMap}
               disabled={saving}
             />
+            {/* 未配置确认用【共用的 fixed 浮层】,不能内联在滚动内容末尾 ——
+                第 5 步内容(评论条数 + 整个引流配置)很长,内联的确认块会落在折叠线以下,
+                用户点「下一步」看着像没反应(与 MatrixTaskWizard / MatrixReplyFansWizard 对齐)。 */}
             {funnelUnsetConfirm !== null && (
-              <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-                <div className="dark:text-gray-200 mb-2">
-                  {t(`还有 ${funnelUnsetConfirm} 个账号没配引流语,它们的评论将不带引流。继续?`,
-                     `${funnelUnsetConfirm} account(s) have no phrase; their comments will carry none. Continue?`)}
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <button type="button" onClick={() => setFunnelUnsetConfirm(null)} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700">{t('回去配置', 'Go back')}</button>
-                  <button type="button" onClick={() => { setFunnelUnsetConfirm(null); setStep((s) => Math.min(TOTAL_STEPS, s + 1)); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white">{t('继续', 'Continue')}</button>
-                </div>
-              </div>
+              <FunnelUnsetConfirm
+                count={funnelUnsetConfirm}
+                accent="fuchsia"
+                onBack={() => setFunnelUnsetConfirm(null)}
+                onContinue={() => { setFunnelUnsetConfirm(null); setStep((s) => Math.min(TOTAL_STEPS, s + 1)); }}
+              />
             )}
           </>
         )}

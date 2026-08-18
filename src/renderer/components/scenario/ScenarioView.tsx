@@ -544,7 +544,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     try {
       const r = await (window as any).electron?.matrix?.listAccounts?.();
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
-      setMatrixLeadAccounts(accs.filter((a) => leadAccountFilter(a, platform)).map(mapWizardAccount));
+      setMatrixLeadAccounts(accs.filter((a) => leadAccountFilter(a, platform)).map((a) => ({ ...mapWizardAccount(a), derivedKeywords: a.derivedKeywords })));
     } catch { setMatrixLeadAccounts([]); }
     finally { setMatrixLeadAccountsLoading(false); }
   };
@@ -568,7 +568,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     try {
       const r = await (window as any).electron?.matrix?.listAccounts?.();
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
-      setMatrixLeadAccounts(accs.filter((a) => leadAccountFilter(a, plat)).map(mapWizardAccount));
+      setMatrixLeadAccounts(accs.filter((a) => leadAccountFilter(a, plat)).map((a) => ({ ...mapWizardAccount(a), derivedKeywords: a.derivedKeywords })));
     } catch { setMatrixLeadAccounts([]); }
     finally { setMatrixLeadAccountsLoading(false); }
   };
