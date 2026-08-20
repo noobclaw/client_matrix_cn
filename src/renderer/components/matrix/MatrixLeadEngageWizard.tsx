@@ -73,15 +73,47 @@ const clampInt = (v: number, lo: number, hi: number): number => {
   const n = Math.round(Number.isFinite(v) ? v : lo);
   return Math.min(hi, Math.max(lo, n));
 };
-// 一行一个,接受 @x / x / 完整链接 三种填法。
-const parseSeedLines = (text: string): string[] => {
+
+// 各平台「同行账号」的写法差别很大:TikTok/抖音是 @handle,小红书/B站/快手主页是 id 段。
+//   统一策略:把用户粘的主页链接剥成【平台自己的主页标识】,剧本再按各自规则拼回主页 URL。
+//   allow 决定剥完之后保留哪些字符 —— 小红书 uid 是 24 位十六进制、B站是纯数字 uid。
+const SEED_SPEC: Record<string, { host: RegExp; strip: RegExp; allow: RegExp; hint: string; ph: string }> = {
+  tiktok: {
+    host: /^https?:\/\/(www\.)?tiktok\.com\//i, strip: /^@/, allow: /[^a-z0-9._]/g,
+    hint: '@账号名 或 主页链接', ph: '@competitor1\n@competitor2\nhttps://www.tiktok.com/@competitor3',
+  },
+  douyin: {
+    host: /^https?:\/\/(www\.)?douyin\.com\/(user\/)?/i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
+    hint: '抖音号 或 主页链接', ph: 'https://www.douyin.com/user/MS4wLjABAAAA...\nMS4wLjABAAAA...',
+  },
+  xhs: {
+    host: /^https?:\/\/(www\.)?xiaohongshu\.com\/user\/profile\//i, strip: /^@/, allow: /[^a-zA-Z0-9]/g,
+    hint: '小红书主页链接(含 24 位 uid)', ph: 'https://www.xiaohongshu.com/user/profile/5f3a...\n5f3a...',
+  },
+  kuaishou: {
+    host: /^https?:\/\/(www\.)?kuaishou\.com\/profile\//i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
+    hint: '快手主页链接 或 用户 id', ph: 'https://www.kuaishou.com/profile/3xabc...\n3xabc...',
+  },
+  bilibili: {
+    host: /^https?:\/\/space\.bilibili\.com\//i, strip: /^(uid:?)/i, allow: /[^0-9]/g,
+    hint: 'B站空间链接 或 UID(纯数字)', ph: 'https://space.bilibili.com/12345678\n12345678',
+  },
+};
+const specOf = (p?: string) => SEED_SPEC[String(p || 'tiktok')] || SEED_SPEC.tiktok;
+
+// 一行一个,接受 @x / x / 完整主页链接 三种填法(按平台规则归一)。
+const parseSeedLines = (text: string, platform?: string): string[] => {
+  const sp = specOf(platform);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of text.split('\n')) {
     let s = raw.trim();
     if (!s) continue;
-    s = s.replace(/^https?:\/\/(www\.)?tiktok\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '').toLowerCase();
-    s = s.replace(/[^a-z0-9._]/g, '');
+    s = s.replace(sp.host, '').replace(sp.strip, '').replace(/[/?#].*$/, '');
+    // ⚠️ 必须【先小写再过滤】:TikTok 的 allow 是 /[^a-z0-9._]/g,顺序反了会把大写字母
+    //   当非法字符删掉(实测 "@JiaXch" → "iach")。抖音 sec_uid 大小写敏感,绝不能小写化。
+    if (platform === 'tiktok') s = s.toLowerCase();
+    s = s.replace(sp.allow, '');
     if (s && !seen.has(s)) { seen.add(s); out.push(s); }
     if (out.length >= MAX_SEED) break;
   }
@@ -104,7 +136,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const [mode, setMode] = useState<'accounts' | 'keywords'>(le.mode === 'keywords' ? 'keywords' : 'accounts');
-  const [seedText, setSeedText] = useState<string>(Array.isArray(le.seedAccounts) ? le.seedAccounts.map((h) => '@' + h).join('\n') : '');
+  // 回填:只有 @handle 制的平台(TikTok/抖音)加 @ 前缀;小红书/B站/快手存的是 id,加了反而错。
+  const [seedText, setSeedText] = useState<string>(
+    Array.isArray(le.seedAccounts)
+      ? le.seedAccounts.map((h) => ((platform === 'tiktok' || platform === 'douyin') ? '@' + h : h)).join('\n')
+      : '');
 
   const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 20);
   const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20);
@@ -125,7 +161,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const seedList = useMemo(() => parseSeedLines(seedText), [seedText]);
+  const seedList = useMemo(() => parseSeedLines(seedText, platform), [seedText, platform]);
   const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 关键词模式下真正会用到的词 = 各账号自己配的关键词(与互动涨粉一致)。
   const acctsWithoutKw = selectedAccounts.filter((a) => kwOf(a).length === 0);
@@ -137,7 +173,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const canAdvance: Record<number, { ok: boolean; reason?: string }> = {
     1: { ok: selected.size >= 1, reason: t('请至少选择一个执行账号', 'Select at least one account') },
     2: mode === 'accounts'
-      ? (seedList.length >= 1 ? { ok: true } : { ok: false, reason: t('请至少填写一个同行 TikTok 账号', 'Add at least one competitor account') })
+      ? (seedList.length >= 1 ? { ok: true } : { ok: false, reason: t(`请至少填写一个同行${platformLabel}账号`, 'Add at least one competitor account') })
       // ⚠️ 账号是弹窗开了之后【异步】填进来的(编辑任务 + sidecar 忙时要等几秒,listAccounts
       //   失败还会一直是空)。此时 selectedAccounts 为空 → `0 < 0` 恒 false → 这一步被判死,
       //   用户看到「所选账号都没配关键词」且永远过不去。账号没到位时先放行,别拿未知当错误。
@@ -183,7 +219,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     try {
       const hasShared = funnelPhrase.trim().length > 0;
       await onSave({
-        name: initialTask?.name || t(`TikTok 定向获客 · ${selected.size} 个账号`, `TikTok Lead Finder · ${selected.size} accounts`),
+        name: initialTask?.name || t(`${platformLabel} 定向获客 · ${selected.size} 个账号`, `${platformLabel} Lead Finder · ${selected.size} accounts`),
         accountIds: [...selected],
         concurrency: selected.size,
         frequency: runInterval,
@@ -256,13 +292,13 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {step === 1 && (
           <>
             <div className="text-sm font-medium dark:text-gray-200">{t('选择执行账号', 'Select accounts')}
-              <span className="text-xs text-gray-400 font-normal ml-1">{t(`用这些自己的 TikTok 号去获客(已选 ${selected.size} 个)`, `Your own TikTok accounts to run the outreach (${selected.size} selected)`)}</span>
+              <span className="text-xs text-gray-400 font-normal ml-1">{t(`用这些自己的${platformLabel}号去获客(已选 ${selected.size} 个)`, `Your own ${platformLabel} accounts to run the outreach (${selected.size} selected)`)}</span>
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 max-h-72 overflow-y-auto">
               {accountsLoading && accounts.length === 0 && <div className="px-3 py-6 text-center text-sm text-gray-400">{t('账号加载中…', 'Loading accounts…')}</div>}
               {!accountsLoading && accounts.length === 0 && (
                 <div className="px-3 py-6 text-center text-sm text-gray-400">
-                  {t('还没有已登录的 TikTok 账号', 'No linked TikTok accounts yet')}
+                  {t(`还没有已登录的${platformLabel}账号`, `No linked ${platformLabel} accounts yet`)}
                   <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }} className="ml-2 text-cyan-500 underline">{t('去添加', 'Add one')}</button>
                 </div>
               )}
@@ -305,10 +341,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
             {mode === 'accounts' ? (
               <div>
-                <div className="text-sm font-medium dark:text-gray-200 mb-1">{t('同行 TikTok 账号', 'Competitor accounts')}
-                  <span className="text-xs text-gray-400 font-normal ml-1">{t(`一行一个,最多 ${MAX_SEED} 个 · 已识别 ${seedList.length} 个`, `one per line, max ${MAX_SEED} · ${seedList.length} parsed`)}</span>
+                <div className="text-sm font-medium dark:text-gray-200 mb-1">{t(`同行${platformLabel}账号`, 'Competitor accounts')}
+                  <span className="text-xs text-gray-400 font-normal ml-1">{t(`${specOf(platform).hint} · 一行一个,最多 ${MAX_SEED} 个 · 已识别 ${seedList.length} 个`, `one per line, max ${MAX_SEED} · ${seedList.length} parsed`)}</span>
                 </div>
-                <textarea value={seedText} onChange={(e) => setSeedText(e.target.value)} rows={8} placeholder={'@competitor1\n@competitor2\nhttps://www.tiktok.com/@competitor3'}
+                <textarea value={seedText} onChange={(e) => setSeedText(e.target.value)} rows={8} placeholder={specOf(platform).ph}
                   className="w-full text-sm p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white font-mono leading-relaxed" />
               </div>
             ) : (

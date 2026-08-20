@@ -81,8 +81,9 @@ const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou'
 // 抖音(creator.douyin.com 创作者中心「评论管理」集中回复,登录 cookie 挂父域 .douyin.com,主站登录态即覆盖
 // 创作者中心,取主站号即可,无 loginScope;后端剧本 douyin_reply_fans_comment 已就位)。
 const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'toutiao', 'shipinhao']);
-// 定向获客目前只有 TikTok(唯一有 tiktok_lead_engage 剧本 + 已真机验证评论抓取的平台)。
-const MATRIX_LEAD_PLATFORMS = new Set<PlatformId>(['tiktok']);
+// 定向获客:有 <平台>_lead_engage 剧本的平台。每个平台一张独立卡片、独立任务(type='lead_engage'
+//   按平台各存一条)、独立向导与详情 —— 与互动涨粉/回复粉丝互不影响。
+const MATRIX_LEAD_PLATFORMS = new Set<PlatformId>(['tiktok', 'douyin', 'xhs', 'kuaishou', 'bilibili']);
 // 后端 backend/matrix/scenarios 有 <platform>_video_download「视频无水印下载」剧本的平台(单账号工具任务)。
 // 抖音(页面 fetch wrapper 签名拿 detail)/快手(读 <video> src)/哔哩哔哩(playurl html5 单文件 mp4)/
 // TikTok(SSR __UNIVERSAL_DATA__ + 多级 fallback,须 VPN 真机)。都走【主站】登录态,取主站号。
@@ -531,7 +532,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
     if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
-  // 定向获客向导:执行账号取【主站】TikTok 号(与互动一致,排除创作者中心登录态)。
+  // 定向获客向导:执行账号取【主站】号(与互动一致,排除快手创作者中心那种发布端登录态)。
   const leadAccountFilter = (a: any, plat: string) => a.platform === plat && (a.loginScope || 'main') === 'main';
   const openMatrixLeadWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
@@ -1706,7 +1707,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {/* 定向获客(仅 TikTok)—— 采集同行评论者当潜客名单 → 逐个触达点赞/评论/关注。独立卡片。 */}
+          {/* 定向获客 —— 采集同行评论区里的人当潜客名单 → 逐个触达点赞/评论/关注。每平台独立卡片。 */}
           {MATRIX_LEAD_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400 mb-2">
@@ -2648,7 +2649,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <MatrixLeadEngageWizard
-              platformLabel={matrixLeadPlatform === 'tiktok' ? 'TikTok' : String(matrixLeadPlatform)}
+              platformLabel={(() => {
+                const p = matrixLeadPlatform;
+                return p === 'tiktok' ? 'TikTok' : p === 'douyin' ? '抖音' : p === 'xhs' ? '小红书'
+                  : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : String(p);
+              })()}
               platform={matrixLeadPlatform}
               accounts={matrixLeadAccounts}
               accountsLoading={matrixLeadAccountsLoading}
