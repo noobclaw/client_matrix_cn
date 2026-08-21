@@ -755,7 +755,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'xhs_reply_fans_comment')         return { icon: '💌', label: i18nService.t('tdTypeXhsReplyFans'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'xhs_video_download')             return { icon: '⬇️', label: i18nService.t('tdTypeXhsVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'douyin_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeDouyinVideoDownload'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if (sid === 'tiktok_lead_engage')             return { icon: '🎯', label: i18nService.currentLanguage === 'zh' ? 'TikTok 定向获客' : 'TikTok Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    // 定向获客(5 平台)。必须逐个列出:掉到下面的 fallback 会被按平台错标成
+    //   「抖音创作」之类(用户 2026-08-21 实测抖音获客任务的徽章就是这么错的)。
+    if (/_lead_engage$/.test(sid)) {
+      var leadZh = i18nService.currentLanguage === 'zh';
+      if (sid === 'tiktok_lead_engage')   return { icon: '🎯', label: leadZh ? 'TikTok 定向获客' : 'TikTok Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (sid === 'douyin_lead_engage')   return { icon: '🎯', label: leadZh ? '抖音 定向获客' : 'Douyin Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (sid === 'xhs_lead_engage')      return { icon: '🎯', label: leadZh ? '小红书 定向获客' : 'Xiaohongshu Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (sid === 'kuaishou_lead_engage') return { icon: '🎯', label: leadZh ? '快手 定向获客' : 'Kuaishou Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (sid === 'bilibili_lead_engage') return { icon: '🎯', label: leadZh ? '哔哩哔哩 定向获客' : 'Bilibili Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      return { icon: '🎯', label: leadZh ? '定向获客' : 'Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    }
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: i18nService.t('tdTypeKuaishouAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: i18nService.t('tdTypeKuaishouVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
@@ -1713,7 +1723,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         // 只有 auto_reply 场景没有这个概念(回复永远直接发)。
         // ⚠️ 文案按平台区分 —— "草稿箱"只适用 XHS(XHS 独有的"上传到小红书草稿箱"模型);
         // 推特/币安是"直接发到平台"模型,label 要写"发布到 推特/币安广场"。
-        const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask;
+        // 定向获客跟回复粉丝一样【没有草稿/发布这个概念】—— 它只做点赞/评论/关注。
+        //   不排掉的话会显示「🚀 自动发布到 X」,而 scenario 解析不到时 platformLabelForTask
+        //   还会退化成小红书,于是抖音的获客任务上挂出「自动发布到小红书」(用户 2026-08-21 实测)。
+        const isLeadEngageTask = /_lead_engage$/.test(scenario?.id || '')
+          || (scenario?.workflow_type as any) === 'lead_engage';
+        const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask && !isLeadEngageTask;
         const isXhsViral = scenario?.platform === 'xhs';
         const autoUploadLabel = isXhsViral
           ? i18nService.t('tdAutoUploadDrafts')
