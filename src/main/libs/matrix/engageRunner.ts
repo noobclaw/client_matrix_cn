@@ -139,7 +139,9 @@ export interface EngageItemResult {
   state: 'success' | 'failed' | 'skipped';
   // like/follow/comment 是互动涨粉的维度;post(图文创作发帖数)/download(视频下载条数)是
   // 别的任务类型各自的完成维度,可选。各任务只填自己有的那个。
-  counts?: { like: number; follow: number; comment: number; post?: number; download?: number };
+  counts?: { like: number; follow: number; comment: number; post?: number; download?: number;
+    // 定向获客专用:本次新增潜客数 / 本次触达潜客数。
+    lead_new?: number; lead_engaged?: number };
   // 该号本次累计实际扣费(积分 + 美元)。每条互动动作扣费后累加,用于「本次/累计消耗」。
   chargedCredits?: number;
   chargedUsd?: number;
@@ -359,7 +361,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
 
   // 计数键必须覆盖所有 driver 会调 addActionCount 的动作,否则被下面的 `type in counts` 白名单丢弃。
   // 全集(grep backend/matrix/scenarios):like/follow/comment/download/post/note。漏 download → 视频下载记录恒 0。
-  const counts = { like: 0, follow: 0, comment: 0, download: 0, post: 0, note: 0 };
+  //   定向获客另加两维:lead_new = 本次新收录的潜客数、lead_engaged = 本次触达过的潜客数。
+  //   任务详情页要在点赞/关注/评论上方单独展示这两个数(本次/上次/累计)。
+  const counts = { like: 0, follow: 0, comment: 0, download: 0, post: 0, note: 0, lead_new: 0, lead_engaged: 0 };
   let chargedCredits = 0; // 该号本次累计扣费(积分),每笔互动动作扣费后累加
   let chargedUsd = 0;     // 同上,美元(后端按 token_price_per_million 算好)
   const history = engageHistoryFor(accountId);

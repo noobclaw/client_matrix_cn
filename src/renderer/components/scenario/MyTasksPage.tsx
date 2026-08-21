@@ -517,7 +517,20 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', k: 'scnBnRepostTt', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'binance_from_x_link')          return { icon: '🔗', k: 'scnBnFromXLink', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 if (sid === 'youtube_auto_engage')          return { icon: '📺', k: 'scnYtEngage', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
-                if (sid === 'tiktok_lead_engage')           return { icon: '🎯', label: i18nService.currentLanguage === 'zh' ? 'TikTok 定向获客' : 'TikTok Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                // 定向获客(5 平台)。必须逐个列出 —— 只写 TikTok 的话,另外四家会掉到
+                //   下面按平台的 fallback,被标成「抖音任务」之类(用户 2026-08-21 实测)。
+                if (/_lead_engage$/.test(sid)) {
+                  const leadZh = i18nService.currentLanguage === 'zh';
+                  const leadName: Record<string, [string, string]> = {
+                    tiktok_lead_engage: ['TikTok 定向获客', 'TikTok Lead Finder'],
+                    douyin_lead_engage: ['抖音 定向获客', 'Douyin Lead Finder'],
+                    xhs_lead_engage: ['小红书 定向获客', 'Xiaohongshu Lead Finder'],
+                    kuaishou_lead_engage: ['快手 定向获客', 'Kuaishou Lead Finder'],
+                    bilibili_lead_engage: ['哔哩哔哩 定向获客', 'Bilibili Lead Finder'],
+                  };
+                  const pair = leadName[sid] || ['定向获客', 'Lead Finder'];
+                  return { icon: '🎯', label: leadZh ? pair[0] : pair[1], color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                }
                 if (sid === 'tiktok_auto_engage')           return { icon: '🎵', k: 'scnTtEngage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'facebook_auto_engage')         return { icon: '👥', k: 'scnFbEngage', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
                 if (sid === 'reddit_auto_engage')           return { icon: '🟠', k: 'scnRdEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };

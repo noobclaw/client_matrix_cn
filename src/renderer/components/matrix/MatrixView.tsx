@@ -20,7 +20,11 @@ type AccountStatus = 'idle' | 'running' | 'login_required' | 'limited' | 'banned
 interface MatrixAccount {
   id: string; platform: string; displayName: string; group?: string; persona?: string; status: AccountStatus;
   proxy?: { protocol?: string; host: string; port: number; username?: string; password?: string; geo?: string; geoCountry?: string; geoCountryCode?: string; geoCity?: string; health?: string };
-  keywords?: string[]; kernelVersion?: string; nickname?: string; displayId?: string; avatar?: string; boundUid?: string;
+  keywords?: string[];
+  // AI 跑任务时衍生的词(存在独立池,与用户手填的 keywords 分开)。
+  //   界面显示/编辑都要合并它,否则用户看到的数量和任务实际用的对不上。
+  derivedKeywords?: string[];
+  kernelVersion?: string; nickname?: string; displayId?: string; avatar?: string; boundUid?: string;
   // 内容语言(赛道名/人设/关键词按哪种语言预填 + 卡片赛道名按哪种显示)。缺省=按界面语言。group 始终存中文规范名(供 main 侧 trackIdFromGroup 匹配),显示层按此再本地化。
   contentLang?: 'zh' | 'en';
   loginScope?: 'main' | 'creator';   // 仅快手:主站 / 创作者中心
@@ -38,6 +42,13 @@ interface RunRecord { id: string; taskId: string; taskName: string; platform: st
 interface ItemResult { accountId: string; state: 'success' | 'failed' | 'skipped'; reason?: string; counts?: { like: number; follow: number; comment: number } }
 
 function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).map((x) => x.trim()).filter(Boolean); }
+// 原始词 + AI 衍生词合并去重(与 main 侧 accountManager.effectiveKeywords 同口径)。
+function mergeKw(base?: string[], derived?: string[]): string[] {
+  const seen = new Set<string>();
+  return [...(base || []), ...(derived || [])]
+    .map((k) => String(k || '').trim())
+    .filter((k) => k && !seen.has(k) && seen.add(k));
+}
 
 // 平台顺序【必须与任务页 ScenarioView 的 MATRIX_TAB_ORDER 完全一致】(去掉那边的 'video')。
 // ⚠️ 两处曾经漂移:这里末尾是 instagram/facebook/reddit,任务页却是 facebook/reddit/instagram,
@@ -518,7 +529,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     if (p) { setNewKeywords(trackKeywords(p, cl).join(' ')); setNewPersona(trackPersona(p, cl)); }
   };
   // 编辑现有号:内容语言取账号已存的;存量号(建于此功能之前)无此字段 → 视为 'zh'(其赛道名/人设/关键词本就是中文),不按界面语言,避免「显示英文名但内容是中文」的错位。
-  const openEdit = (a: MatrixAccount) => { if (!requireLogin()) return; setEditId(a.id); setNewName(a.displayName); setNewGroup(a.group || ''); setNewPersona(a.persona || ''); setNewKeywords((a.keywords || []).join(' ')); setNewContentLang((a.contentLang as ContentLang) || 'zh'); setNewScope((a.loginScope as 'main' | 'creator') || 'main'); setTrackOpen(false); setNotice(''); setShowAdd(true); };
+  // 编辑时把【AI 衍生词】一并回填进输入框。任务跑起来用的是 effectiveKeywords =
+  //   原始 keywords + derivedKeywords,而这里原来只显示原始词 —— 用户填 9 个、
+  //   任务日志却说 19 个,多出来的在界面上看不见也删不掉(2026-08-21 用户反馈)。
+  //   合并显示后「所见即所用」;保存时会把整个列表写回 keywords 并清空衍生池(见 saveAccount),
+  //   所以用户删掉的词不会再被合并回来。
+  const openEdit = (a: MatrixAccount) => { if (!requireLogin()) return; setEditId(a.id); setNewName(a.displayName); setNewGroup(a.group || ''); setNewPersona(a.persona || ''); setNewKeywords(mergeKw(a.keywords, a.derivedKeywords).join(' ')); setNewContentLang((a.contentLang as ContentLang) || 'zh'); setNewScope((a.loginScope as 'main' | 'creator') || 'main'); setTrackOpen(false); setNotice(''); setShowAdd(true); };
   // 账号卡赛道名显示:group 存的是中文规范名 → 按账号内容语言本地化(找到预设则取对应语言名;找不到/自定义则原样)。存量号无 contentLang 视为 zh。
   const groupLabel = (a: MatrixAccount): string => {
     if (!a.group) return '';
@@ -972,7 +988,14 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     <div className="text-xs space-y-0.5">
                       <div className="text-gray-500 dark:text-gray-400 truncate">🎯 {i18nService.t('mvTrackLabel')}{a.group ? <span className="text-gray-700 dark:text-gray-300">{groupLabel(a)}</span> : <span className="text-amber-500">{i18nService.t('mvNotSet')}</span>}</div>
                       <div className="text-gray-500 dark:text-gray-400 truncate">🎭 {i18nService.t('mvPersonaLabel')}{a.persona ? <span className="text-gray-700 dark:text-gray-300">{a.persona}</span> : <span className="text-amber-500">{i18nService.t('mvNotSet')}</span>}</div>
-                      <div className="text-gray-500 dark:text-gray-400 truncate">🏷️ {i18nService.t('mvKeywordsLabel')}{a.keywords && a.keywords.length ? <span className="text-gray-700 dark:text-gray-300">{a.keywords.join(' · ')}</span> : <span className="text-amber-500">{i18nService.t('mvNotConfiguredEngage')}</span>}</div>
+                      {/* 卡片也显示【合并后】的词(原始 + AI 衍生),与任务实际使用的 effectiveKeywords 同口径。
+                          只显示原始词的话,卡片说 9 个、任务日志说 19 个,用户对不上账。 */}
+                      {(() => {
+                        const kwAll = mergeKw(a.keywords, a.derivedKeywords);
+                        return (
+                          <div className="text-gray-500 dark:text-gray-400 truncate">🏷️ {i18nService.t('mvKeywordsLabel')}{kwAll.length ? <span className="text-gray-700 dark:text-gray-300">{kwAll.join(' · ')}</span> : <span className="text-amber-500">{i18nService.t('mvNotConfiguredEngage')}</span>}</div>
+                        );
+                      })()}
                     </div>
                     {/* 右侧可点击按钮:全色按钮 */}
                     <div className="flex items-center gap-2 flex-wrap pt-1 mt-auto">

@@ -233,7 +233,9 @@ interface MatrixLiveProgress {
   status: 'running' | 'done' | 'error';
   startedAt: number;
   targets: { like: number; follow: number; comment: number };
-  done: { like: number; follow: number; comment: number };
+  // 定向获客还会上报 lead_new / lead_engaged(见 engageRunner 的 counts 白名单),
+  //   所以这里不能只写死三个动作 —— 写死的话实时进度里拿不到潜客数,详情页「本次」恒 0。
+  done: { like: number; follow: number; comment: number; [k: string]: number };
   // 本次运行累计扣费(各账号实际扣费之和):credits=积分(钱包真实扣的),usd=按 token_price_per_million 算好的美元。
   cost: { credits: number; usd: number };
   perAccountTargets: Record<string, { like: number; follow: number; comment: number }>;
@@ -407,6 +409,9 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
         const costSum = { credits: 0, usd: 0 };
         for (const it of collected.values()) {
           sum.like += it.counts?.like || 0; sum.follow += it.counts?.follow || 0; sum.comment += it.counts?.comment || 0;
+          // 定向获客的两维也要进实时进度,否则详情页的「本次获得/互动潜客」永远是 0。
+          (sum as any).lead_new = ((sum as any).lead_new || 0) + (it.counts?.lead_new || 0);
+          (sum as any).lead_engaged = ((sum as any).lead_engaged || 0) + (it.counts?.lead_engaged || 0);
           costSum.credits += it.chargedCredits || 0; costSum.usd += it.chargedUsd || 0;
         }
         live.done = sum;
@@ -513,6 +518,12 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
         // 不污染 engage(否则累计/上次完成会多出 📤0/⬇️0)。
         if (isImageText || isTweetPost || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost || isBinanceRepost) totals.post = items.reduce((s, it: any) => s + (it.counts?.post || 0), 0);
         if (isVideoDownload) totals.download = items.reduce((s, it: any) => s + (it.counts?.download || 0), 0);
+        // 定向获客:除了赞/关注/评论,还要单独统计「获得潜客」和「互动潜客」两个维度。
+        //   只给 lead_engage 加键,不污染别的任务类型(否则它们的累计里会多出两个 0)。
+        if (task.type === 'lead_engage') {
+          totals.lead_new = items.reduce((s, it: any) => s + (it.counts?.lead_new || 0), 0);
+          totals.lead_engaged = items.reduce((s, it: any) => s + (it.counts?.lead_engaged || 0), 0);
+        }
         const cost = items.reduce((acc, it: any) => ({ credits: acc.credits + (it.chargedCredits || 0), usd: acc.usd + (it.chargedUsd || 0) }), { credits: 0, usd: 0 });
         addRun({ taskId: task.id, taskName: task.name, platform: task.platform, type: task.type, startedAt, finishedAt: Date.now(), success: report?.success ?? 0, failed: report?.failed ?? 0, skipped: report?.skipped ?? 0, totals, cost, items });
       } catch (e) { coworkLog('WARN', 'sidecar-server', 'addRun failed', { err: String(e) }); }

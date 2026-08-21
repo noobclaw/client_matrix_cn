@@ -311,7 +311,15 @@ export function updateAccountMeta(id: string, patch: { displayName?: string; gro
   if (patch.displayName !== undefined) a.displayName = patch.displayName;
   if (patch.group !== undefined) a.group = patch.group;
   if (patch.persona !== undefined) a.persona = patch.persona;
-  if (patch.keywords !== undefined) a.keywords = (patch.keywords || []).filter(Boolean);
+  // 用户在账号编辑框保存关键词时,输入框里【已经包含了 AI 衍生词】(编辑时合并回填,
+  //   见 MatrixView.openEdit)。所以这份列表就是用户认可的全集 —— 必须同时清空衍生池,
+  //   否则用户删掉的衍生词会在下次 effectiveKeywords 合并时原样回来,删了等于没删
+  //   (用户 2026-08-21 反馈「填 9 个却跑 19 个」正是这个池子造成的)。
+  //   之后任务再衍生新词会重新往空池里追加,行为不变。
+  if (patch.keywords !== undefined) {
+    a.keywords = (patch.keywords || []).filter(Boolean);
+    a.derivedKeywords = [];
+  }
   if (patch.track !== undefined) a.track = patch.track;
   if (patch.contentLang !== undefined) a.contentLang = patch.contentLang === 'en' ? 'en' : 'zh';
   persist();

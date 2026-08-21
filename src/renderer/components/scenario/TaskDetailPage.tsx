@@ -1599,6 +1599,40 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 
       {/* 矩阵号:各账号独立进度已移到「当前运行明细」上方做成账号 tab(见下方),不再在此单独成块。 */}
 
+      {/* 定向获客专属:潜客两维(获得 / 互动)按 本次·上次·累计 三档展示,放在
+          点赞/关注/评论那组统计的【上方】—— 这是这张卡真正的产出,比动作数更重要。
+          数据来自剧本 ctx.addActionCount('lead_new'|'lead_engaged'),与动作同一条通道。 */}
+      {(() => {
+        const isLead = /_lead_engage$/.test(scenario?.id || '')
+          || (scenario?.workflow_type as any) === 'lead_engage';
+        if (!isLead) return null;
+        const zhLead = i18nService.currentLanguage === 'zh';
+        const cum: any = stats?.cumulative_action_counts || {};
+        const last: any = stats?.last_run_action_counts || {};
+        const live: any = (progress as any)?.action_progress || {};
+        // 本次 = 正在跑/刚跑完这次的实时计数;没有实时数据时回落上次,避免空着。
+        const curNew = Number(live.lead_new?.done ?? live.lead_new ?? last.lead_new ?? 0) || 0;
+        const curEng = Number(live.lead_engaged?.done ?? live.lead_engaged ?? last.lead_engaged ?? 0) || 0;
+        const cell = (label: string, a: number, b: number, c: number) => (
+          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-3">
+            <div className="text-xs text-cyan-600 dark:text-cyan-400 mb-1.5">{label}</div>
+            <div className="flex items-baseline gap-3 text-sm dark:text-gray-200">
+              <span><span className="text-gray-500 text-xs">{zhLead ? '本次 ' : 'now '}</span><b className="text-base">{a}</b></span>
+              <span><span className="text-gray-500 text-xs">{zhLead ? '上次 ' : 'prev '}</span><b>{b}</b></span>
+              <span><span className="text-gray-500 text-xs">{zhLead ? '累计 ' : 'total '}</span><b>{c}</b></span>
+            </div>
+          </div>
+        );
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            {cell(zhLead ? '📇 获得潜客数' : '📇 Leads collected',
+              curNew, Number(last.lead_new || 0), Number(cum.lead_new || 0))}
+            {cell(zhLead ? '🤝 互动潜客数' : '🤝 Leads engaged',
+              curEng, Number(last.lead_engaged || 0), Number(cum.lead_engaged || 0))}
+          </div>
+        );
+      })()}
+
       {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
            so the "下次运行" stat is meaningless; show only the first five.
            v5.x+: 6-card case used to be `lg:grid-cols-5` which produced a
