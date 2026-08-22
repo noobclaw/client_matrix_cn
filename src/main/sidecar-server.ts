@@ -240,7 +240,7 @@ interface MatrixLiveProgress {
   cost: { credits: number; usd: number };
   perAccountTargets: Record<string, { like: number; follow: number; comment: number }>;
   // 每个账号独立进度(详情页可切换查看):各号目标/完成/状态/日志/扣费互不影响。
-  perAccount: Record<string, { displayName: string; status: string; targets: { like: number; follow: number; comment: number }; done: { like: number; follow: number; comment: number }; cost: { credits: number; usd: number }; logs: Array<{ ts: number; msg: string }> }>;
+  perAccount: Record<string, { displayName: string; status: string; targets: { like: number; follow: number; comment: number; [k: string]: number }; done: { like: number; follow: number; comment: number; [k: string]: number }; cost: { credits: number; usd: number }; logs: Array<{ ts: number; msg: string }> }>;
   logs: Array<{ ts: number; accountId: string; msg: string }>;
   error?: string;
 }
@@ -418,7 +418,13 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
         live.cost = costSum;
         const pa = live.perAccount[item.accountId];
         if (pa) {
-          if (item.counts) pa.done = { like: item.counts.like || 0, follow: item.counts.follow || 0, comment: item.counts.comment || 0 };
+          // 定向获客的两维也要落到【每个账号】的进度里 —— 上面的 live.done 是各账号求和,
+          //   逐号那栏漏带的话,多账号跑获客时看不出是哪个号采到/触达了多少人。
+          if (item.counts) pa.done = {
+            like: item.counts.like || 0, follow: item.counts.follow || 0, comment: item.counts.comment || 0,
+            lead_new: (item.counts as any).lead_new || 0,
+            lead_engaged: (item.counts as any).lead_engaged || 0,
+          };
           pa.cost = { credits: item.chargedCredits || 0, usd: item.chargedUsd || 0 };
         }
         broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts, chargedCredits: item.chargedCredits, chargedUsd: item.chargedUsd, taskId: task.id });

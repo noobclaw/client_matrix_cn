@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES } from '../../services/imageStyles';
+import { NumBox } from '../matrix/NumberStepper';
 
 interface Props {
   scenario: Scenario;
@@ -317,36 +318,19 @@ export const XhsImageTextWizard: React.FC<Props> = ({
                   })}
                 </div>
               </div>
-
-              {/* 两个 slider 并排:每次生成几篇 + 每篇配图张数 */}
+              {/* 每次生成几篇 + 每篇配图张数 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? `每次生成 ${dailyCount} 篇` : `Posts per run: ${dailyCount}`}
+                    {isZh ? '每次生成几篇' : 'Posts per run'}
                   </label>
-                  <input
-                    type="range"
-                    min={DAILY_COUNT_MIN}
-                    max={DAILY_COUNT_MAX}
-                    value={dailyCount}
-                    onChange={e => setDailyCount(parseInt(e.target.value, 10))}
-                    disabled={saving}
-                    className="w-full accent-rose-500"
-                  />
+                  <NumBox value={dailyCount} onChange={setDailyCount} min={DAILY_COUNT_MIN} max={DAILY_COUNT_MAX} disabled={saving} accent="rose" />
                 </div>
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? `每篇配 ${realPhotoCount} 张图` : `${realPhotoCount} images per post`}
+                    {isZh ? '每篇配几张图' : 'Images per post'}
                   </label>
-                  <input
-                    type="range"
-                    min={REAL_PHOTO_MIN}
-                    max={REAL_PHOTO_MAX}
-                    value={realPhotoCount}
-                    onChange={e => setRealPhotoCount(parseInt(e.target.value, 10))}
-                    disabled={saving}
-                    className="w-full accent-rose-500"
-                  />
+                  <NumBox value={realPhotoCount} onChange={setRealPhotoCount} min={REAL_PHOTO_MIN} max={REAL_PHOTO_MAX} disabled={saving} accent="rose" />
                 </div>
               </div>
 

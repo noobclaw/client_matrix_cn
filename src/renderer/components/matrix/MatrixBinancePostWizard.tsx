@@ -18,6 +18,7 @@ import { i18nService } from '../../services/i18n';
 import Web3NewsSourcesPreview from './Web3NewsSourcesPreview';
 import { POST_LANGS, postLangLabel } from './postLangs';
 import MatrixLocalImagePicker from './MatrixLocalImagePicker';
+import { NumBox } from './NumberStepper';
 
 type WizardStep = 1 | 2 | 3 | 4;
 const TOTAL_STEPS = 4;
@@ -231,9 +232,8 @@ const MatrixBinancePostWizard: React.FC<Props> = ({ platformLabel, platform, acc
 
             {/* 每号每轮发几条。runner 里循环,每条之间隔 10-60s(防同号短时间连发)。 */}
             <div className="mb-4">
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzPostPerAccPrefix')} <span className="text-amber-500 font-bold">{dailyCount}</span> {i18nService.t('wzPostPerAccSuffix')}</label>
-              <input type="range" min={1} max={100} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} className="w-full accent-amber-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>100</span></div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzPostPerAccPrefix')}</label>
+              <NumBox value={dailyCount} onChange={setDailyCount} min={1} max={100} accent="amber" suffix={i18nService.t('wzPostPerAccSuffix')} />
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{i18nService.t('wzBnPostAfterGenLabel')}</label>

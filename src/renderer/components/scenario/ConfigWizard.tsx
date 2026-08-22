@@ -16,6 +16,7 @@ import { DouyinConfigWizard } from './DouyinConfigWizard';
 import { DouyinImageTextWizard } from './DouyinImageTextWizard';
 import { XhsImageTextWizard } from './XhsImageTextWizard';
 import { XhsReplyFansCommentWizard } from './XhsReplyFansCommentWizard';
+import { NumBox, NumMinMax } from '../matrix/NumberStepper';
 
 // ── Track presets ──
 type TrackPreset = {
@@ -1585,22 +1586,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '小时' : 'Hour'}</span>
                           <span className="text-sm font-mono dark:text-white">{String(hour).padStart(2, '0')}</span>
                         </div>
-                        <input
-                          type="range" min={0} max={23} value={hour}
-                          onChange={e => setHour(parseInt(e.target.value, 10))}
-                          className="w-full accent-green-500 cursor-pointer"
-                        />
+                        <NumBox value={hour} onChange={setHour} min={0} max={23} accent="green" className="w-14" />
                       </div>
                       <div>
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '分钟' : 'Minute'}</span>
                           <span className="text-sm font-mono dark:text-white">{String(minute).padStart(2, '0')}</span>
                         </div>
-                        <input
-                          type="range" min={0} max={45} step={15} value={minute}
-                          onChange={e => setMin(parseInt(e.target.value, 10))}
-                          className="w-full accent-green-500 cursor-pointer"
-                        />
+                        <NumBox value={minute} onChange={setMin} min={0} max={59} step={5} accent="green" className="w-14" />
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
@@ -1623,28 +1616,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       ? `每次运行${isXPostCreator ? '发推' : '发帖'}条数(1-${POST_COUNT_HARDCAP})`
                       : `${isXPostCreator ? 'Tweets' : 'Posts'} per run (1-${POST_COUNT_HARDCAP})`}
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                        {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{postCountMin}</span>
-                      </div>
-                      <input
-                        type="range" min={1} max={POST_COUNT_HARDCAP} value={postCountMin}
-                        onChange={e => setPostCountMin(parseInt(e.target.value, 10))}
-                        className="w-full"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                        {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{postCountMax}</span>
-                      </div>
-                      <input
-                        type="range" min={1} max={POST_COUNT_HARDCAP} value={postCountMax}
-                        onChange={e => setPostCountMax(parseInt(e.target.value, 10))}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
+                  <NumMinMax
+                    min={postCountMin} max={postCountMax} setMin={setPostCountMin} setMax={setPostCountMax} lo={1} hi={POST_COUNT_HARDCAP}
+                    minLabel={isZh ? '最少' : 'Min'} maxLabel={isZh ? '最多' : 'Max'} accent="sky"
+                  />
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh
                       ? `${postCountMin}-${postCountMax} 条 / 次 · 间隔 5-15 分钟 · 新号建议 1-10 起步`
@@ -1659,12 +1634,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh ? '每次运行采集爆款数量' : 'Articles per scheduled run'}
                   </label>
                   <div className="flex items-center gap-3">
-                    <input
-                      type="range" min={1} max={dailyHardCap} value={dailyCount}
-                      onChange={e => setDailyCount(parseInt(e.target.value, 10))}
-                      className="flex-1"
-                    />
-                    <div className="w-12 text-center font-semibold text-green-500">{dailyCount}</div>
+                    <NumBox value={dailyCount} onChange={setDailyCount} min={1} max={dailyHardCap} accent="green" />
                   </div>
                 </div>
               )}
@@ -1680,28 +1650,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '每次运行回复文章数（随机区间）' : 'Articles per run (random range)'}
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                        {isZh ? '最少' : 'Min'}: <span className="font-semibold text-cyan-500">{xhsReplyMin}</span>
-                      </div>
-                      <input
-                        type="range" min={1} max={XHS_REPLY_HARDCAP} value={xhsReplyMin}
-                        onChange={e => setXhsReplyMin(parseInt(e.target.value, 10))}
-                        className="w-full"
-                      />
-                    </div>
-                    <div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                        {isZh ? '最多' : 'Max'}: <span className="font-semibold text-cyan-500">{xhsReplyMax}</span>
-                      </div>
-                      <input
-                        type="range" min={1} max={XHS_REPLY_HARDCAP} value={xhsReplyMax}
-                        onChange={e => setXhsReplyMax(parseInt(e.target.value, 10))}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
+                  <NumMinMax
+                    min={xhsReplyMin} max={xhsReplyMax} setMin={setXhsReplyMin} setMax={setXhsReplyMax} lo={1} hi={XHS_REPLY_HARDCAP}
+                    minLabel={isZh ? '最少' : 'Min'} maxLabel={isZh ? '最多' : 'Max'} accent="cyan"
+                  />
                   <div className="text-[11px] text-gray-400 mt-2 leading-relaxed">
                     {isZh
                       ? `每次运行随机回复 ${xhsReplyMin}-${xhsReplyMax} 篇文章（1-${XHS_REPLY_HARDCAP}）。每篇 1 文章评论 + 0~1 用户回复（50% 几率回复 Top1 高赞评论）。评论间隔 30-80 秒，文章间隔 60-200 秒。`
@@ -1724,28 +1676,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                       {isZh ? '每次运行关注数量（随机区间）' : 'Follow count per run (random range)'}
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{followMin}</span>
-                        </div>
-                        <input
-                          type="range" min={0} max={FOLLOW_HARDCAP} value={followMin}
-                          onChange={e => setFollowMin(parseInt(e.target.value, 10))}
-                          className="w-full"
-                        />
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{followMax}</span>
-                        </div>
-                        <input
-                          type="range" min={0} max={FOLLOW_HARDCAP} value={followMax}
-                          onChange={e => setFollowMax(parseInt(e.target.value, 10))}
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
+                    <NumMinMax
+                      min={followMin} max={followMax} setMin={setFollowMin} setMax={setFollowMax} lo={0} hi={FOLLOW_HARDCAP}
+                      minLabel={isZh ? '最少' : 'Min'} maxLabel={isZh ? '最多' : 'Max'} accent="sky"
+                    />
                     <div className="text-[11px] text-gray-400 mt-1">
                       {isZh
                         ? `每次运行随机关注 ${followMin}-${followMax} 个 KOL（0-${FOLLOW_HARDCAP}，越大封号风险越高）`
@@ -1760,28 +1694,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '每次运行评论数量（随机区间）' : 'Reply count per run (random range)'}
                       </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                            {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{replyMin}</span>
-                          </div>
-                          <input
-                            type="range" min={0} max={REPLY_HARDCAP} value={replyMin}
-                            onChange={e => setReplyMin(parseInt(e.target.value, 10))}
-                            className="w-full"
-                          />
-                        </div>
-                        <div>
-                          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                            {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{replyMax}</span>
-                          </div>
-                          <input
-                            type="range" min={0} max={REPLY_HARDCAP} value={replyMax}
-                            onChange={e => setReplyMax(parseInt(e.target.value, 10))}
-                            className="w-full"
-                          />
-                        </div>
-                      </div>
+                      <NumMinMax
+                        min={replyMin} max={replyMax} setMin={setReplyMin} setMax={setReplyMax} lo={0} hi={REPLY_HARDCAP}
+                        minLabel={isZh ? '最少' : 'Min'} maxLabel={isZh ? '最多' : 'Max'} accent="sky"
+                      />
                       <div className="text-[11px] text-gray-400 mt-1">
                         {isZh
                           ? `每次运行随机评论 ${replyMin}-${replyMax} 条（0-${REPLY_HARDCAP}，越大封号风险越高）`
@@ -1795,28 +1711,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                       {isZh ? '每次运行点赞数量（随机区间）' : 'Like count per run (random range)'}
                     </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{likeMin}</span>
-                        </div>
-                        <input
-                          type="range" min={0} max={LIKE_HARDCAP} value={likeMin}
-                          onChange={e => setLikeMin(parseInt(e.target.value, 10))}
-                          className="w-full"
-                        />
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{likeMax}</span>
-                        </div>
-                        <input
-                          type="range" min={0} max={LIKE_HARDCAP} value={likeMax}
-                          onChange={e => setLikeMax(parseInt(e.target.value, 10))}
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
+                    <NumMinMax
+                      min={likeMin} max={likeMax} setMin={setLikeMin} setMax={setLikeMax} lo={0} hi={LIKE_HARDCAP}
+                      minLabel={isZh ? '最少' : 'Min'} maxLabel={isZh ? '最多' : 'Max'} accent="sky"
+                    />
                     <div className="text-[11px] text-gray-400 mt-1">
                       {isZh
                         ? `每次运行随机点赞 ${likeMin}-${likeMax} 条（0-${LIKE_HARDCAP}，0 = 不点赞）`
@@ -1860,12 +1758,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh ? '每条生成仿写版本数' : 'Rewrites per article'}
                   </label>
                   <div className="flex items-center gap-3">
-                    <input
-                      type="range" min={1} max={5} value={variants}
-                      onChange={e => setVariants(parseInt(e.target.value, 10))}
-                      className="flex-1"
-                    />
-                    <div className="w-12 text-center font-semibold text-green-500">{variants}</div>
+                    <NumBox value={variants} onChange={setVariants} min={1} max={5} accent="green" />
                   </div>
                 </div>
               )}

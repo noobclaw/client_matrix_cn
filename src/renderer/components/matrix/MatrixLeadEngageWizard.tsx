@@ -20,6 +20,7 @@ import MatrixFunnelConfig, {
   FunnelUnsetConfirm, countUnconfigured, FUNNEL_PHRASE_MAX, FUNNEL_PROB_DEFAULT,
   type FunnelValue,
 } from './MatrixFunnelConfig';
+import { NumRow } from './NumberStepper';
 
 export interface LeadWizardAccount {
   id: string; displayName: string; status: string;
@@ -41,8 +42,11 @@ export interface LeadEngageInput {
   seedAccounts: string[];
   keywords: string[];
   maxLeads: number;
-  likesPerLead: number;
-  commentsPerLead: number;
+  // 本次总量上限(2026-08-21 改定):不再是「每人几条」,每人分到多少由剧本按
+  //   「总量 ÷ 实际触达人数」算 —— 优先保证互动人数。
+  maxLikes: number;      // 1-500
+  maxFollows: number;    // 1-100
+  maxComments: number;   // 1-100
   leadsPerRun: number;
   doLike: boolean;
   doComment: boolean;
@@ -144,8 +148,9 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 20);
   const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20);
-  const [likesPerLead, setLikesPerLead] = useState<number>(typeof le.likesPerLead === 'number' ? le.likesPerLead : 3);
-  const [commentsPerLead, setCommentsPerLead] = useState<number>(typeof le.commentsPerLead === 'number' ? le.commentsPerLead : 1);
+  const [maxLikes, setMaxLikes] = useState<number>(typeof le.maxLikes === 'number' ? le.maxLikes : 60);
+  const [maxFollows, setMaxFollows] = useState<number>(typeof le.maxFollows === 'number' ? le.maxFollows : 20);
+  const [maxComments, setMaxComments] = useState<number>(typeof le.maxComments === 'number' ? le.maxComments : 20);
 
   // 引流语(评论时按概率融进 AI 评论)。与互动涨粉同一套口径,直接复用 MatrixFunnelConfig。
   const [funnelPerMode, setFunnelPerMode] = useState<boolean>(!!initialTask?.funnelByAccount && Object.keys(initialTask.funnelByAccount).length > 0);
@@ -161,6 +166,12 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // 把总量按「实际互动人数」平摊,给用户一个直观预期(与剧本 STEP2 的 ceil 口径一致)。
+  const perLead = (total: number) => {
+    const reach = Math.max(1, clampInt(leadsPerRun, 1, 100));
+    const n = clampInt(total, 0, 500);
+    return n > 0 ? Math.max(1, Math.ceil(n / reach)) : 0;
+  };
   const seedList = useMemo(() => parseSeedLines(seedText, platform), [seedText, platform]);
   const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 关键词模式下真正会用到的词 = 各账号自己配的关键词(与互动涨粉一致)。
@@ -182,7 +193,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         : { ok: false, reason: t('所选账号都没有配关键词 —— 请先去「我的矩阵账号」给账号设置关键词', 'None of the selected accounts has keywords - set them in My Accounts first') }),
     3: { ok: true },
     4: { ok: true },
-    5: { ok: true },
+    // 点赞/关注/评论三个总量都填 0 = 采完潜客后挨个打开主页干等、什么也不做(采集那步照样跑)。
+    //   这肯定不是用户想要的,拦在第 5 步(评论数是最后一个填的)。
+    5: (clampInt(maxLikes, 0, 500) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 100)) > 0
+      ? { ok: true }
+      : { ok: false, reason: t('点赞 / 关注 / 评论至少要开一项,否则获取到潜客后什么也不会做', 'Enable at least one of like / follow / comment — otherwise nothing happens after leads are collected') },
     6: termsAccepted ? { ok: true } : { ok: false, reason: t('请先同意条款', 'Please accept the terms') },
   };
 
@@ -232,12 +247,14 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           // 条数 0 = 关闭该动作(开关行已按用户要求删掉,用数量本身表达开关)。
           //   do* 必须跟着算,否则剧本读到 doLike=true 仍会去点 —— 条数为 0 时
           //   剧本内部 nLikeLead 也会是 0,两边一致才不会出现「设了 0 还照做」。
-          likesPerLead: Math.max(1, clampInt(likesPerLead, 0, 10)),
-          commentsPerLead: Math.max(1, clampInt(commentsPerLead, 0, 10)),
+          maxLikes: clampInt(maxLikes, 0, 500),
+          maxFollows: clampInt(maxFollows, 0, 100),
+          maxComments: clampInt(maxComments, 0, 100),
           leadsPerRun: clampInt(leadsPerRun, 1, 100),
-          doLike: clampInt(likesPerLead, 0, 10) > 0,
-          doComment: clampInt(commentsPerLead, 0, 10) > 0,
-          doFollow: true,
+          // 总量为 0 = 关闭该动作(向导没有单独的开关行,用数量本身表达)。
+          doLike: clampInt(maxLikes, 0, 500) > 0,
+          doComment: clampInt(maxComments, 0, 100) > 0,
+          doFollow: clampInt(maxFollows, 0, 100) > 0,
           // ⚠️ taskStore 对 leadEngage 是整体替换(`input.leadEngage ?? 旧值`),不是逐字段合并。
           //   这两项已经从向导里去掉了,若硬写空,老任务只要被打开编辑一次(哪怕只改频率)
           //   就会把之前存过的任务级关键词/评论口味永久抹掉 —— 所以原样带回。
@@ -262,19 +279,12 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runInterval, zh]);
 
+  // 走共用的 NumRow。之前这里是本地写的 <input type="number">,配 clampInt 有个「删不空」的坑:
+  //   把 60 整个删掉的瞬间 parseInt('')=NaN → 立刻被夹成 lo,用户想改成 50 得先经历「变成 1」;
+  //   而 max_likes 的 lo=0,删空就等于静默把点赞关掉(doLike 跟着变 false)。NumRow 用 draft
+  //   字符串扛住中间态、失焦才夹取,没这个问题。
   const numRow = (label: string, hint: string, val: number, set: (n: number) => void, lo: number, hi: number) => (
-    <div className="flex items-center justify-between gap-3 py-2.5">
-      <div className="min-w-0">
-        <div className="text-sm font-medium dark:text-gray-200">{label}</div>
-        <div className="text-[11px] text-gray-400 leading-snug">{hint}</div>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button type="button" onClick={() => set(clampInt(val - 1, lo, hi))} className="w-7 h-7 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-cyan-500">−</button>
-        <input type="number" value={val} min={lo} max={hi} onChange={(e) => set(clampInt(parseInt(e.target.value, 10), lo, hi))}
-          className="w-16 text-center text-sm py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white" />
-        <button type="button" onClick={() => set(clampInt(val + 1, lo, hi))} className="w-7 h-7 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-cyan-500">+</button>
-      </div>
-    </div>
+    <NumRow label={label} hint={hint} value={val} onChange={set} min={lo} max={hi} disabled={saving} accent="cyan" />
   );
 
   return (
@@ -390,11 +400,14 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                  'Opens each lead\'s profile and acts on videos not touched before; re-runs rotate to fresh ones.')}
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
-              {numRow(t('👍 每个潜客点赞条数', '👍 Likes per lead'), t('单次运行给每人点赞几条作品 · 设为 0 = 不点赞', 'Videos to like per lead per run · 0 disables liking'), likesPerLead, setLikesPerLead, 0, 10)}
-              <div className="py-2.5">
-                <div className="text-sm font-medium dark:text-gray-200">{t('➕ 关注', '➕ Follow')}</div>
-                <div className="text-[11px] text-gray-400 leading-snug">{t('每个潜客终身只关注一次,已关注过的不再重复', 'Each lead is followed once, ever')}</div>
-              </div>
+              {numRow(t('👍 本次点赞最大数量', '👍 Total likes this run'),
+                t(`总量,按实际互动人数平摊 · 每人约 ${perLead(maxLikes)} 条 · 设为 0 = 不点赞`,
+                  `Total, spread across the leads reached (~${perLead(maxLikes)} each) · 0 disables liking`),
+                maxLikes, setMaxLikes, 0, 500)}
+              {numRow(t('➕ 本次关注最大数量', '➕ Total follows this run'),
+                t('每个潜客终身只关注一次,已关注过的不再重复 · 设为 0 = 不关注',
+                  'Each lead is followed once ever · 0 disables following'),
+                maxFollows, setMaxFollows, 0, 100)}
             </div>
           </>
         )}
@@ -403,7 +416,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {step === 5 && (
           <>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3">
-              {numRow(t('💬 每个潜客评论条数', '💬 Comments per lead'), t('评论由 AI 按作品内容生成(会产生 AI 费用) · 设为 0 = 不评论', 'AI-generated from the video (incurs AI cost) · 0 disables commenting'), commentsPerLead, setCommentsPerLead, 0, 10)}
+              {numRow(t('💬 本次评论最大数量', '💬 Total comments this run'),
+                t(`总量,按实际互动人数平摊 · 每人约 ${perLead(maxComments)} 条 · 评论由 AI 生成(有 AI 费用) · 设为 0 = 不评论`,
+                  `Total, spread across the leads reached (~${perLead(maxComments)} each) · AI-generated (incurs AI cost) · 0 disables commenting`),
+                maxComments, setMaxComments, 0, 100)}
             </div>
             <MatrixFunnelConfig
               accounts={funnelAccounts}
@@ -449,7 +465,16 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次获取潜客上限', 'New leads')}</span><span>{clampInt(maxLeads, 1, 100)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 100)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('每个潜客', 'Per lead')}</span><span>{[clampInt(likesPerLead,0,10)>0?`👍${clampInt(likesPerLead,0,10)}`:null, clampInt(commentsPerLead,0,10)>0?`💬${clampInt(commentsPerLead,0,10)}`:null, '➕1'].filter(Boolean).join(' · ')}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('本次总量', 'Totals')}</span><span>{[
+                clampInt(maxLikes,0,500) > 0 ? `👍${clampInt(maxLikes,0,500)}` : null,
+                clampInt(maxComments,0,100) > 0 ? `💬${clampInt(maxComments,0,100)}` : null,
+                clampInt(maxFollows,0,100) > 0 ? `➕${clampInt(maxFollows,0,100)}` : null,
+              ].filter(Boolean).join(' · ') || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('平摊到每人', 'Per lead')}</span><span>{[
+                perLead(maxLikes) > 0 ? `👍≈${perLead(maxLikes)}` : null,
+                perLead(maxComments) > 0 ? `💬≈${perLead(maxComments)}` : null,
+                clampInt(maxFollows,0,100) > 0 ? '➕1' : null,
+              ].filter(Boolean).join(' · ') || '—'}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('评论引流', 'Funnel')}</span><span>{funnelPerMode ? t(`各账号各自(${funnelAccounts.length - countUnconfigured(funnelAccounts, funnelPerMap)}/${funnelAccounts.length} 已配)`, `per account`) : (funnelPhrase.trim() ? t(`共用 · ${funnelProb}%`, `shared · ${funnelProb}%`) : t('未配置', 'none'))}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('频率', 'Frequency')}</span><span>{intervalLabel}</span></div>
             </div>

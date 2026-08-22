@@ -11,6 +11,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
+import { NumBox } from '../matrix/NumberStepper';
 
 interface Props {
   scenario: Scenario;
@@ -199,7 +200,7 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* 引流概率 slider */}
+              {/* 引流概率 */}
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh
@@ -211,14 +212,15 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                       : (isZh ? '· 引流语未填,概率失效' : '· Funnel empty, probability disabled')}
                   </span>
                 </label>
-                <input
-                  type="range"
+                <NumBox
+                  value={funnelProb}
+                  onChange={setFunnelProb}
                   min={FUNNEL_PROB_MIN}
                   max={FUNNEL_PROB_MAX}
-                  value={funnelProb}
-                  onChange={e => setFunnelProb(parseInt(e.target.value, 10))}
+                  step={5}
                   disabled={saving || !hasFunnel}
-                  className="w-full accent-fuchsia-500 disabled:opacity-40"
+                  accent="fuchsia"
+                  suffix="%"
                 />
               </div>
             </>

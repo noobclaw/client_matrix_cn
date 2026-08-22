@@ -1844,6 +1844,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             const word = sid === 'x_post' ? i18nService.t('tdTweetWord') : i18nService.t('tdPostWord');
                             return <span className="text-gray-400 font-sans">{POST_ICON[sid] || '📤'} {word}</span>;
                           }
+                          // 定向获客:逐号也要看得到自己采到/触达了多少人(上面那栏是各号求和)。
+                          if (/_lead_engage$/.test(sid)) {
+                            return <>📇 {(ap as any).lead_new?.done ?? 0} · 🤝 {(ap as any).lead_engaged?.done ?? 0} · 👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
+                          }
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
                       </div>

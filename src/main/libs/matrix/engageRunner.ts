@@ -105,8 +105,9 @@ export interface EngageTaskOptions {
     seedAccounts?: string[];
     keywords?: string[];
     maxLeads?: number;
-    likesPerLead?: number;
-    commentsPerLead?: number;
+    maxLikes?: number;
+    maxFollows?: number;
+    maxComments?: number;
     leadsPerRun?: number;
     doLike?: boolean;
     doComment?: boolean;
@@ -472,8 +473,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       //   直接赋空数组会把账号关键词冲掉,关键词模式就没词可搜了。
       if (Array.isArray(le.keywords) && le.keywords.length) task.keywords = le.keywords;
       task.max_leads = le.maxLeads;
-      task.likes_per_lead = le.likesPerLead;
-      task.comments_per_lead = le.commentsPerLead;
+      // 总量口径:每人分到多少由剧本按「总量 / 实际触达人数」算(优先保证互动人数)。
+      task.max_likes = le.maxLikes;
+      task.max_follows = le.maxFollows;
+      task.max_comments = le.maxComments;
       task.leads_per_run = le.leadsPerRun;
       task.lead_do_like = le.doLike !== false;
       task.lead_do_comment = le.doComment !== false;

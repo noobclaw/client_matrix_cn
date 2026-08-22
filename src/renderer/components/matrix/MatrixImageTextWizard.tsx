@@ -16,6 +16,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
 import { POST_SOURCE_OPTIONS, PostSourceSel, defaultSourceIdsFor, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
+import { NumBox } from './NumberStepper';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -432,17 +433,15 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
             {imageSource !== 'local' && (
               <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgImageCountLabel')} <span className="text-emerald-500 font-bold">{imageCount}</span><span className="text-xs text-gray-400 font-normal ml-2">· {i18nService.t('wzImgImageCountHint')}</span></label>
-                <input type="range" min={2} max={6} value={imageCount} onChange={(e) => setImageCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
-                <div className="flex justify-between text-[10px] text-gray-400"><span>2</span><span>6</span></div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgImageCountLabel')}<span className="text-xs text-gray-400 font-normal ml-2">· {i18nService.t('wzImgImageCountHint')}</span></label>
+                <NumBox value={imageCount} onChange={setImageCount} min={2} max={6} accent="emerald" disabled={saving} />
               </div>
             )}
 
             {/* 每号每轮生成几篇。剧本侧本来就支持(洗牌抽题、优先不重复),这里只是把选择权还给用户。 */}
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgPerRoundPrefix')} <span className="text-emerald-500 font-bold">{dailyCount}</span> {i18nService.t('wzImgPerRoundSuffix')}</label>
-              <input type="range" min={1} max={100} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} disabled={saving} className="w-full accent-emerald-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>100</span></div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzImgPerRoundPrefix')}</label>
+              <NumBox value={dailyCount} onChange={setDailyCount} min={1} max={100} accent="emerald" disabled={saving} suffix={i18nService.t('wzImgPerRoundSuffix')} />
             </div>
 
             <div>

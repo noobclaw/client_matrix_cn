@@ -43,6 +43,7 @@ import {
 import { videoQueue, VIDEO_TASK_LIMIT } from '../../../services/videoQueue';
 import StoryboardReviewModal from './StoryboardReviewModal';
 import BgmPreviewBar, { BgmPreviewButtons, BgmPreviewPlayer, useBgmPreview, useVoicePreview } from './BgmPreviewBar';
+import { NumBox } from '../../matrix/NumberStepper';
 
 // 订阅 store 的 React hook:任意视图都能拿到最新任务列表 + 运行记录并自动重渲染。
 function useVideoStore(): { tasks: VideoTask[]; runs: VideoRunRecord[] } {
@@ -4758,15 +4759,7 @@ const VideoConfigModal: React.FC<{
                 ? (mode === 'stock' ? '每条 AI 独立写稿 + 配音,各不相同(失败自动跳过)' : '复用同一脚本与配音，每条画面组合不同')
                 : (mode === 'stock' ? 'each clip: fresh AI script + voice (failures skipped)' : 'reuse script & voice, vary clips')}>
                 <div className="flex items-center gap-3">
-                  <input
-                    type="range" min={1} max={mode === 'stock' ? 100 : 10} step={1}
-                    value={videoCount}
-                    onChange={(e) => setVideoCount(Number(e.target.value) || 1)}
-                    className="flex-1 accent-rose-500"
-                  />
-                  <span className="w-16 text-center text-sm font-semibold text-rose-600 dark:text-rose-400">
-                    {videoCount} {isZh ? '条' : ''}
-                  </span>
+                  <NumBox value={videoCount} onChange={setVideoCount} min={1} max={mode === 'stock' ? 100 : 10} accent="rose" suffix={isZh ? '条' : ''} />
                 </div>
                 <div className="text-[11px] text-gray-400 mt-1">{
                   mode === 'pure_ai'
@@ -5949,12 +5942,8 @@ export const HotspotVideoModal: React.FC<{
 
               {/* 每次运行【固定】出片条数 —— 单滑块,简单明确(双 min-max 滑块易出现"最少>最多"反转,弃用)。 */}
               <Field label={isZh ? `每次运行条数(1-${HOTSPOT_COUNT_CAP})` : `Videos per run (1-${HOTSPOT_COUNT_CAP})`}>
-                <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                  {isZh ? '固定生成' : 'Generate'} <span className="font-semibold text-amber-500">{count}</span> {isZh ? '条' : 'videos'}
-                </div>
-                <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={count}
-                  onChange={(e) => setCount(parseInt(e.target.value, 10))}
-                  className="w-full accent-amber-500 cursor-pointer" />
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{isZh ? '固定生成' : 'Generate'}</div>
+                <NumBox value={count} onChange={setCount} min={1} max={HOTSPOT_COUNT_CAP} accent="amber" suffix={isZh ? '条' : 'videos'} />
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
                     ? `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
@@ -6530,12 +6519,8 @@ export const ThreadVideoModal: React.FC<{
                 )}
               </Field>
               <Field label={isZh ? `每次运行条数(1-${THREAD_COUNT_CAP})` : `Videos per run (1-${THREAD_COUNT_CAP})`}>
-                <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                  {isZh ? '固定生成' : 'Generate'} <span className="font-semibold text-orange-500">{count}</span> {isZh ? '条' : 'videos'}
-                </div>
-                <input type="range" min={1} max={THREAD_COUNT_CAP} value={count}
-                  onChange={(e) => setCount(parseInt(e.target.value, 10))}
-                  className="w-full accent-orange-500 cursor-pointer" />
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{isZh ? '固定生成' : 'Generate'}</div>
+                <NumBox value={count} onChange={setCount} min={1} max={THREAD_COUNT_CAP} accent="orange" suffix={isZh ? '条' : 'videos'} />
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
                     ? `每次运行固定出 ${count} 条 · 每条独立选帖 · 按条计费(每条约 $${fee.min}~$${fee.max})`

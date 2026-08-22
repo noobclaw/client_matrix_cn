@@ -16,6 +16,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
+import { NumMinMax } from '../matrix/NumberStepper';
 
 interface Props {
   scenario: Scenario;
@@ -527,22 +528,11 @@ const RangeSlider: React.FC<RangeSliderProps> = ({ label, min, max, setMin, setM
   return (
     <div>
       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{label}（{isZh ? '随机区间' : 'random range'}）</label>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{isZh ? '最少' : 'min'}: <span className="font-bold text-violet-500">{min}</span></div>
-          <input type="range" min={0} max={hardCap} value={min}
-            onChange={e => setMin(parseInt(e.target.value, 10))}
-            disabled={disabled}
-            className="w-full accent-violet-500" />
-        </div>
-        <div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{isZh ? '最多' : 'max'}: <span className="font-bold text-violet-500">{max}</span></div>
-          <input type="range" min={0} max={hardCap} value={max}
-            onChange={e => setMax(parseInt(e.target.value, 10))}
-            disabled={disabled}
-            className="w-full accent-violet-500" />
-        </div>
-      </div>
+      <NumMinMax
+        min={min} max={max} setMin={setMin} setMax={setMax} lo={0} hi={hardCap}
+        minLabel={isZh ? '最少' : 'Min'} maxLabel={isZh ? '最多' : 'Max'}
+        disabled={disabled} accent="violet"
+      />
       <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{hint}</div>
     </div>
   );

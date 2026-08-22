@@ -300,8 +300,11 @@ export interface LeadEngageConfig {
   seedAccounts: string[];             // accounts 模式:同行 TikTok handle,最多 50
   keywords: string[];                 // keywords 模式:赛道关键词
   maxLeads: number;                   // 单次【新增】获客上限 1-100
-  likesPerLead: number;               // 每客户单次点赞条数 1-10
-  commentsPerLead: number;            // 每客户单次评论条数 1-10
+  // 本次总量上限(2026-08-21 改定):每人分到多少由剧本按「总量 / 实际触达人数」算,
+  //   目的是优先保证互动人数。
+  maxLikes: number;                   // 本次点赞总量 0-500(0=不点赞)
+  maxFollows: number;                 // 本次关注总量 0-100(0=不关注)
+  maxComments: number;                // 本次评论总量 0-100(0=不评论)
   leadsPerRun: number;                // 单次运行最多触达多少人(新旧客轮转)
   doLike: boolean;
   doComment: boolean;

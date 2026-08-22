@@ -10,6 +10,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { NumBox } from './NumberStepper';
 
 export const FUNNEL_PHRASE_MAX = 1000; // 一行一条最多 20 条,放宽总字数
 export const FUNNEL_LINES_MAX = 20;
@@ -192,14 +193,15 @@ const MatrixFunnelConfig: React.FC<Props> = ({ accounts, accent, perMode, setPer
               {hasPhrase ? i18nService.t('wzEngageFunnelProbHintOn') : i18nService.t('wzEngageFunnelProbHintOff')}
             </span>
           </label>
-          <input
-            type="range"
+          <NumBox
+            value={editorValue.funnel_probability}
+            onChange={(n) => setEditorValue({ ...editorValue, funnel_probability: n })}
             min={FUNNEL_PROB_MIN}
             max={FUNNEL_PROB_MAX}
-            value={editorValue.funnel_probability}
-            onChange={(e) => setEditorValue({ ...editorValue, funnel_probability: parseInt(e.target.value, 10) })}
+            step={5}
             disabled={disabled || !hasPhrase}
-            className="w-full accent-fuchsia-500 disabled:opacity-40"
+            accent="fuchsia"
+            suffix="%"
           />
         </div>
       </div>

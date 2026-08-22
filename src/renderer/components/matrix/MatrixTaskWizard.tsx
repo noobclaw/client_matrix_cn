@@ -9,6 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
+import { NumMinMax } from './NumberStepper';
 
 const LIKE_HARDCAP = 500;
 const FOLLOW_HARDCAP = 100;
@@ -414,19 +415,15 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   );
 };
 
+// 名字沿用 RangeSlider(调用点不动),内部已换成数量输入框:滑杆在 0-500 区间拖不准。
 const RangeSlider: React.FC<{ label: string; min: number; max: number; setMin: (v: number) => void; setMax: (v: number) => void; hardCap: number; hint: string; disabled?: boolean }> = ({ label, min, max, setMin, setMax, hardCap, hint, disabled }) => (
   <div>
     <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{label}{i18nService.t('wzEngageRandomRangeSuffix')}</label>
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzEngageRangeMin')} <span className="font-bold text-violet-500">{min}</span></div>
-        <input type="range" min={0} max={hardCap} value={min} onChange={(e) => setMin(parseInt(e.target.value, 10))} disabled={disabled} className="w-full accent-violet-500" />
-      </div>
-      <div>
-        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">{i18nService.t('wzEngageRangeMax')} <span className="font-bold text-violet-500">{max}</span></div>
-        <input type="range" min={0} max={hardCap} value={max} onChange={(e) => setMax(parseInt(e.target.value, 10))} disabled={disabled} className="w-full accent-violet-500" />
-      </div>
-    </div>
+    <NumMinMax
+      min={min} max={max} setMin={setMin} setMax={setMax} lo={0} hi={hardCap}
+      minLabel={i18nService.t('wzEngageRangeMin')} maxLabel={i18nService.t('wzEngageRangeMax')}
+      disabled={disabled} accent="violet"
+    />
     <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{hint}</div>
   </div>
 );

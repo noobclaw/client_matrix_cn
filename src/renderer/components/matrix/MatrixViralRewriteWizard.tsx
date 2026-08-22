@@ -14,6 +14,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
 import MatrixLocalImagePicker from './MatrixLocalImagePicker';
+import { NumBox } from './NumberStepper';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -188,9 +189,8 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
         {step === 2 && (
           <>
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzViralPerRoundPrefix')} <span className="text-rose-500 font-bold">{dailyCount}</span> {i18nService.t('wzViralPerRoundSuffix')}</label>
-              <input type="range" min={1} max={100} value={dailyCount} onChange={(e) => setDailyCount(Number(e.target.value))} disabled={saving} className="w-full accent-rose-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>100</span></div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzViralPerRoundPrefix')}</label>
+              <NumBox value={dailyCount} onChange={setDailyCount} min={1} max={100} accent="rose" disabled={saving} suffix={i18nService.t('wzViralPerRoundSuffix')} />
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">🖼️ {i18nService.t('wzImgImageModeLabel')}</label>

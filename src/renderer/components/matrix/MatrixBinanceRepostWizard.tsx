@@ -15,6 +15,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
+import { NumBox } from './NumberStepper';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -346,9 +347,8 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
             )}
             {/* 每号每轮搬几条。采集量 = 号数 × 本值;分发按轮次交替,同号两条之间隔 1~2 分钟。 */}
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzBnRepostPerAccPrefix')} <span className="text-amber-500 font-bold">{perAccountCount}</span> {i18nService.t('wzBnRepostPerAccSuffix')}</label>
-              <input type="range" min={1} max={100} value={perAccountCount} onChange={(e) => setPerAccountCount(Number(e.target.value))} disabled={saving} className="w-full accent-amber-500" />
-              <div className="flex justify-between text-[10px] text-gray-400"><span>1</span><span>100</span></div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{i18nService.t('wzBnRepostPerAccPrefix')}</label>
+              <NumBox value={perAccountCount} onChange={setPerAccountCount} min={1} max={100} accent="amber" disabled={saving} suffix={i18nService.t('wzBnRepostPerAccSuffix')} />
             </div>
 
             <div>
