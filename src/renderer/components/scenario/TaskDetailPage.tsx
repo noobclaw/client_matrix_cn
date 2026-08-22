@@ -1525,6 +1525,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
                     const labels = { like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
+                    // 定向获客:在赞/关注/评论【前面】先报两个潜客数(这是这张卡真正的产出)。
+                    //   它们没有 target,所以只显示纯计数,不显示 N/target。
+                    const leadPrefix = (/_lead_engage$/.test(scenario?.id || '')
+                      || (scenario?.workflow_type as any) === 'lead_engage')
+                      ? (
+                        <>
+                          <span className="font-mono text-gray-700 dark:text-gray-200">
+                            📇 <strong className="text-cyan-600 dark:text-cyan-400">{(ap as any).lead_new?.done ?? 0}</strong>{' '}
+                            <span className="text-gray-500">{i18nService.currentLanguage === 'zh' ? '获得潜客' : 'leads'}</span>
+                          </span>
+                          <span className="font-mono text-gray-700 dark:text-gray-200">
+                            🤝 <strong className="text-cyan-600 dark:text-cyan-400">{(ap as any).lead_engaged?.done ?? 0}</strong>{' '}
+                            <span className="text-gray-500">{i18nService.currentLanguage === 'zh' ? '互动潜客' : 'engaged'}</span>
+                          </span>
+                        </>
+                      ) : null;
                     // v6.x: 回复粉丝评论(xhs/douyin)= 「已回复评论数」+「文章进度 当前/总」,
                     //   不是「N/target 评论」。评论纯累计(无 target),文章扫描后才知道总数
                     //   (扫描前 target=0 → 显示 "-")。精确 id 门控,不碰其他场景。
@@ -1549,23 +1565,29 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         </>
                       );
                     }
-                    const keys = Object.keys(ap).filter(k => (ap[k]?.target || 0) > 0 || (ap[k]?.done || 0) > 0).sort((a, b) => {
+                    // lead_* 已由 leadPrefix 单独渲染(它们没有 target,走通用循环会显示成 "3/0")。
+                    const keys = Object.keys(ap).filter(k => k !== 'lead_new' && k !== 'lead_engaged').filter(k => (ap[k]?.target || 0) > 0 || (ap[k]?.done || 0) > 0).sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);
                       if (ia === -1) return 1;
                       if (ib === -1) return -1;
                       return ia - ib;
                     });
-                    return keys.map(k => {
-                      const { done, target } = ap[k];
-                      return (
-                        <span key={k} className="font-mono text-gray-700 dark:text-gray-200">
-                          {(ICONS[k] || '·')} <strong className="text-green-600 dark:text-green-400">{done}</strong>
-                          <span className="text-gray-400 dark:text-gray-500">/{target}</span>{' '}
-                          <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{(labels as any)[k] || k}</span>
-                        </span>
-                      );
-                    });
+                    return (
+                      <>
+                        {leadPrefix}
+                        {keys.map(k => {
+                          const { done, target } = ap[k];
+                          return (
+                            <span key={k} className="font-mono text-gray-700 dark:text-gray-200">
+                              {(ICONS[k] || '·')} <strong className="text-green-600 dark:text-green-400">{done}</strong>
+                              <span className="text-gray-400 dark:text-gray-500">/{target}</span>{' '}
+                              <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{(labels as any)[k] || k}</span>
+                            </span>
+                          );
+                        })}
+                      </>
+                    );
                   })()}
                 </div>
               </div>
@@ -1598,40 +1620,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       )}
 
       {/* 矩阵号:各账号独立进度已移到「当前运行明细」上方做成账号 tab(见下方),不再在此单独成块。 */}
-
-      {/* 定向获客专属:潜客两维(获得 / 互动)按 本次·上次·累计 三档展示,放在
-          点赞/关注/评论那组统计的【上方】—— 这是这张卡真正的产出,比动作数更重要。
-          数据来自剧本 ctx.addActionCount('lead_new'|'lead_engaged'),与动作同一条通道。 */}
-      {(() => {
-        const isLead = /_lead_engage$/.test(scenario?.id || '')
-          || (scenario?.workflow_type as any) === 'lead_engage';
-        if (!isLead) return null;
-        const zhLead = i18nService.currentLanguage === 'zh';
-        const cum: any = stats?.cumulative_action_counts || {};
-        const last: any = stats?.last_run_action_counts || {};
-        const live: any = (progress as any)?.action_progress || {};
-        // 本次 = 正在跑/刚跑完这次的实时计数;没有实时数据时回落上次,避免空着。
-        const curNew = Number(live.lead_new?.done ?? live.lead_new ?? last.lead_new ?? 0) || 0;
-        const curEng = Number(live.lead_engaged?.done ?? live.lead_engaged ?? last.lead_engaged ?? 0) || 0;
-        const cell = (label: string, a: number, b: number, c: number) => (
-          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 px-4 py-3">
-            <div className="text-xs text-cyan-600 dark:text-cyan-400 mb-1.5">{label}</div>
-            <div className="flex items-baseline gap-3 text-sm dark:text-gray-200">
-              <span><span className="text-gray-500 text-xs">{zhLead ? '本次 ' : 'now '}</span><b className="text-base">{a}</b></span>
-              <span><span className="text-gray-500 text-xs">{zhLead ? '上次 ' : 'prev '}</span><b>{b}</b></span>
-              <span><span className="text-gray-500 text-xs">{zhLead ? '累计 ' : 'total '}</span><b>{c}</b></span>
-            </div>
-          </div>
-        );
-        return (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-            {cell(zhLead ? '📇 获得潜客数' : '📇 Leads collected',
-              curNew, Number(last.lead_new || 0), Number(cum.lead_new || 0))}
-            {cell(zhLead ? '🤝 互动潜客数' : '🤝 Leads engaged',
-              curEng, Number(last.lead_engaged || 0), Number(cum.lead_engaged || 0))}
-          </div>
-        );
-      })()}
 
       {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
            so the "下次运行" stat is meaningless; show only the first five.
@@ -2085,6 +2073,15 @@ function formatActionBreakdown(
   if (/_image_text$/.test(sid)) {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
+  }
+  // 定向获客(*_lead_engage):除了赞/关注/评论,还要报两个潜客数 —— 那才是这张卡的产出。
+  //   放在最前面显示,顺序与「本次运行进度」一致。
+  if (/_lead_engage$/.test(sid)) {
+    const c: any = counts || {};
+    const zhL = i18nService.currentLanguage === 'zh';
+    const n = (k: string) => Number(c[k] || 0);
+    return `📇 ${n('lead_new')} ${zhL ? '潜客' : 'leads'} · 🤝 ${n('lead_engaged')} ${zhL ? '互动' : 'engaged'}`
+      + ` · 👍 ${n('like')} · ➕ ${n('follow')} · 💬 ${n('comment')}`;
   }
   // 爆款批量仿写(*_viral_production_career):内容创作任务,产出=发布篇数,显示 📤 N 发帖,
   //   绝不显示赞/关注/评论(它不是互动涨粉)。同 image_text,action_counts 恒含 {like:0,...} 不早返回会误显。

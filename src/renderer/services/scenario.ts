@@ -527,10 +527,14 @@ function mxRunToTaskRun(r: any): ScenarioTaskRun {
     ended_at: r.finishedAt,
     status: mxRunStatusOf(r),
     // post(图文发帖)/download(视频下载)仅当运行记录里有该键才带上 → engage 不受影响、不会多出 📤0/⬇️0。
+    // 定向获客的两维同理:只有运行记录里真有该键才带上,不污染别的任务类型。
+    //   漏带的话详情页那两张卡的「上次/累计」永远是 0(sidecar 已经把它们汇总进 totals 了)。
     action_counts: {
       like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0,
       ...(typeof t.post === 'number' ? { post: t.post } : {}),
       ...(typeof t.download === 'number' ? { download: t.download } : {}),
+      ...(typeof t.lead_new === 'number' ? { lead_new: t.lead_new } : {}),
+      ...(typeof t.lead_engaged === 'number' ? { lead_engaged: t.lead_engaged } : {}),
     },
     // 累计/上次消耗:从运行记录的 cost 取(老记录无 cost → 0)。
     tokens_used: Number(r.cost?.credits) || 0,
@@ -644,7 +648,9 @@ function mxProgressToScenario(taskId: string, resp: any): ScenarioRunProgress | 
   ];
   const apOf = (tg: any, dn: any): Record<string, { done: number; target: number }> => {
     const ap: Record<string, { done: number; target: number }> = {};
-    for (const k of ['like', 'follow', 'comment']) {
+    // 定向获客的 lead_new / lead_engaged 也要出现在实时进度里,否则详情页那两张卡的
+    //   「本次」永远是 0(它们没有 target,只有 done —— 所以判据必须允许 target 缺席)。
+    for (const k of ['like', 'follow', 'comment', 'lead_new', 'lead_engaged']) {
       if ((tg || {})[k] > 0 || (dn || {})[k] > 0) ap[k] = { done: (dn || {})[k] || 0, target: (tg || {})[k] || 0 };
     }
     return ap;

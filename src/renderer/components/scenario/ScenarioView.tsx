@@ -1679,34 +1679,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           </div>
           )}
-          {/* 自动回复粉丝(矩阵多账号)—— 小红书/快手/哔哩哔哩:在创作者中心评论管理里逐条回复自己作品下的粉丝评论。 */}
-          {MATRIX_REPLY_FAN_PLATFORMS.has(currentPlatform) && (
-            <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/5 dark:bg-fuchsia-500/10 p-6 flex flex-col">
-              <div className="flex items-center gap-2 text-xs font-semibold text-fuchsia-600 dark:text-fuchsia-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500" /> {i18nService.t('svSectionReply')}
-              </div>
-              <div className="text-xl font-bold dark:text-white mb-1">💌 {platLabel} · {i18nService.t('svCardReplyTitle')}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                {i18nService.t('svCardReplyDesc1')}<strong>{i18nService.t('svCardReplyDescStrong')}</strong>{i18nService.t('svCardReplyDesc2')}
-              </div>
-              <div className="mt-auto flex items-center flex-wrap pt-1">
-              <button
-                type="button"
-                onClick={() => openMatrixReplyWizard(currentPlatform)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-fuchsia-500 text-white text-sm font-bold hover:bg-fuchsia-600 shadow-sm shadow-fuchsia-500/25 transition-all active:scale-95"
-              >
-                💌 {i18nService.t('svStartReply')}
-              </button>
-              <button
-                type="button"
-                onClick={() => onSwitchToManage?.(currentPlatform as any)}
-                className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              >
-                {i18nService.t('svHasTasks')}
-              </button>
-              </div>
-            </div>
-          )}
           {/* 定向获客 —— 采集同行评论区里的人当潜客名单 → 逐个触达点赞/评论/关注。每平台独立卡片。 */}
           {MATRIX_LEAD_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
@@ -1734,6 +1706,34 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 >
                   {i18nService.t('svHasTasks')}
                 </button>
+              </div>
+            </div>
+          )}
+          {/* 自动回复粉丝(矩阵多账号)—— 小红书/快手/哔哩哔哩:在创作者中心评论管理里逐条回复自己作品下的粉丝评论。 */}
+          {MATRIX_REPLY_FAN_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-fuchsia-500/30 bg-fuchsia-500/5 dark:bg-fuchsia-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-fuchsia-600 dark:text-fuchsia-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-500" /> {i18nService.t('svSectionReply')}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">💌 {platLabel} · {i18nService.t('svCardReplyTitle')}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                {i18nService.t('svCardReplyDesc1')}<strong>{i18nService.t('svCardReplyDescStrong')}</strong>{i18nService.t('svCardReplyDesc2')}
+              </div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+              <button
+                type="button"
+                onClick={() => openMatrixReplyWizard(currentPlatform)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-fuchsia-500 text-white text-sm font-bold hover:bg-fuchsia-600 shadow-sm shadow-fuchsia-500/25 transition-all active:scale-95"
+              >
+                💌 {i18nService.t('svStartReply')}
+              </button>
+              <button
+                type="button"
+                onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                {i18nService.t('svHasTasks')}
+              </button>
               </div>
             </div>
           )}
