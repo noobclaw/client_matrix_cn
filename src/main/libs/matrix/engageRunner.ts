@@ -132,7 +132,9 @@ export interface EngageTaskOptions {
   onItem?: (item: EngageItemResult) => void;
   // 该账号本次随机选定的动作目标(orchestrator ctx.setActionTargets 抛出)。
   // 进度面板靠它聚合 action_progress 的 target(N 账号求和),没有则回落配额上限。
-  onTargets?: (accountId: string, targets: { like?: number; follow?: number; comment?: number }) => void;
+  // 定向获客多两维(获得潜客 / 互动潜客)—— 它们才是这张卡的产出,没有分母的话
+  //   进度里只能显示一个光秃秃的数字,看不出跑没跑满。
+  onTargets?: (accountId: string, targets: { like?: number; follow?: number; comment?: number; lead_new?: number; lead_engaged?: number }) => void;
 }
 
 export interface EngageItemResult {
@@ -544,8 +546,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
         if (typeof t.follow === 'number') parts.push(`关${t.follow}`);
         if (typeof t.comment === 'number') parts.push(`评${t.comment}`);
         if (typeof t.note === 'number') parts.push(`作品${t.note}`);
+        if (typeof t.lead_new === 'number') parts.push(`潜客${t.lead_new}`);
+        if (typeof t.lead_engaged === 'number') parts.push(`触达${t.lead_engaged}`);
         if (parts.length) log(`🎯 ${opts.taskType === 'reply_fan' ? '目标' : '配额'} ${parts.join('/')}`);
-        try { opts.onTargets?.(accountId, { like: t.like, follow: t.follow, comment: t.comment }); } catch { /* ignore */ }
+        try { opts.onTargets?.(accountId, { like: t.like, follow: t.follow, comment: t.comment, lead_new: t.lead_new, lead_engaged: t.lead_engaged }); } catch { /* ignore */ }
       },
       addActionCount: (type: string, n: number) => { if (type in counts) (counts as any)[type] += n; opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); },
       finish: (status: string, error?: string) => { finished = { status, error }; },
@@ -559,10 +563,20 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       appendKeywords: (arr: string[]) => { try { appendDerivedKeywords(accountId, arr); } catch { /* ignore */ } },
       // 互动报告落盘:写到 <matrixDir>/reports/<平台>/<accountId>/ 下,返回绝对路径给编排器记日志。
       // 老空桩只返 {ok:true} 没 path → 编排器日志「报告已保存 → undefined」且文件根本没存。
-      writeReport: async (fname: string, md: string) => {
+      // 落盘位置:<matrixDir>/reports/<平台>/<任务id>/<账号id>/
+      //   ⚠️ 中间那层【任务id】是 2026-08-22 加的。原来是 reports/<平台>/<账号id>/ ——
+      //   同一平台上所有任务的产出全堆在一起,详情页「打开输出文件夹」只能打开平台级目录,
+      //   用户点开看到的根本不是这个任务的东西。sidecar 的 scenario:getTaskDir 按同一套
+      //   路径拼,两边必须一起改。
+      //   scope:'account' 例外:定向获客的「潜客名单」是跟着【账号】长期累积的(账本口径),
+      //   拆进各任务目录会变成一人一份重复副本,所以它仍写在账号级目录。
+      writeReport: async (fname: string, md: string, wopts?: { scope?: 'task' | 'account' }) => {
         try {
           const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
-          const dir = path.join(base, 'reports', opts.platform || acc.platform || 'unknown', accountId);
+          const platDir = path.join(base, 'reports', opts.platform || acc.platform || 'unknown');
+          const dir = wopts?.scope === 'account' || !opts.taskId
+            ? path.join(platDir, accountId)
+            : path.join(platDir, String(opts.taskId), accountId);
           fs.mkdirSync(dir, { recursive: true });
           // 文件名去掉路径分隔符等非法字符,保留中文/字母数字,限长。
           const safeName = String(fname || 'report.md').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);

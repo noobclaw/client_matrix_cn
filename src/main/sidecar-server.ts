@@ -232,13 +232,15 @@ interface MatrixLiveProgress {
   taskId: string;
   status: 'running' | 'done' | 'error';
   startedAt: number;
-  targets: { like: number; follow: number; comment: number };
+  // targets 与 done 同形:定向获客的 lead_new/lead_engaged 也要有分母,否则进度里
+  //   「获得潜客 20」看不出是跑满了还是才开了个头。
+  targets: { like: number; follow: number; comment: number; [k: string]: number };
   // 定向获客还会上报 lead_new / lead_engaged(见 engageRunner 的 counts 白名单),
   //   所以这里不能只写死三个动作 —— 写死的话实时进度里拿不到潜客数,详情页「本次」恒 0。
   done: { like: number; follow: number; comment: number; [k: string]: number };
   // 本次运行累计扣费(各账号实际扣费之和):credits=积分(钱包真实扣的),usd=按 token_price_per_million 算好的美元。
   cost: { credits: number; usd: number };
-  perAccountTargets: Record<string, { like: number; follow: number; comment: number }>;
+  perAccountTargets: Record<string, { like: number; follow: number; comment: number; [k: string]: number }>;
   // 每个账号独立进度(详情页可切换查看):各号目标/完成/状态/日志/扣费互不影响。
   perAccount: Record<string, { displayName: string; status: string; targets: { like: number; follow: number; comment: number; [k: string]: number }; done: { like: number; follow: number; comment: number; [k: string]: number }; cost: { credits: number; usd: number }; logs: Array<{ ts: number; msg: string }> }>;
   logs: Array<{ ts: number; accountId: string; msg: string }>;
@@ -335,7 +337,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const suspendedIds: string[] = accIds.filter((id) => !allowSet.has(id));
     const accN = runIds.length || 1;
     const q: any = task.quota || {};
-    const zero = () => ({ like: 0, follow: 0, comment: 0 });
+    const zero = (): Record<string, number> => ({ like: 0, follow: 0, comment: 0, lead_new: 0, lead_engaged: 0 });
     const perAccount: MatrixLiveProgress['perAccount'] = {};
     for (const aid of accIds) {
       const suspended = suspendedIds.includes(aid);
@@ -365,7 +367,11 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
       const pa = live.perAccountTargets;
       if (!Object.keys(pa).length) return;
       const sum = zero();
-      for (const t of Object.values(pa)) { sum.like += t.like || 0; sum.follow += t.follow || 0; sum.comment += t.comment || 0; }
+      // 顶部「本次运行进度」是【各账号求和】(单账号卡才是该号自己的 x/上限)。
+      //   逐 key 求和,新增维度不用再改这里。
+      for (const t of Object.values(pa)) {
+        for (const k of Object.keys(t)) sum[k] = (sum[k] || 0) + (t[k] || 0);
+      }
       live.targets = sum;
     };
     broadcastSSE('matrix:progress', { type: 'taskStart', taskId: task.id });
@@ -384,8 +390,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const isBinanceRepost = task.type === 'binance_repost';
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
-    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number }) => {
-      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0 };
+    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; lead_new?: number; lead_engaged?: number }) => {
+      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0, lead_new: t.lead_new || 0, lead_engaged: t.lead_engaged || 0 };
       live.perAccountTargets[accountId] = tg;
       if (live.perAccount[accountId]) live.perAccount[accountId].targets = tg; // 该号真实随机配额覆盖兜底
       recomputeTargets();
@@ -2114,7 +2120,7 @@ const server = http.createServer(async (req, res) => {
                   skipped: ids.filter((k) => pa[k].status === 'skipped').length,
                   totals: { like: lp.done.like, follow: lp.done.follow, comment: lp.done.comment },
                   // 目标值:列表里渲染「已完成/目标」的 X/Y 进度用(仅在跑的这条有)。
-                  targets: { like: lp.targets.like, follow: lp.targets.follow, comment: lp.targets.comment },
+                  targets: { ...lp.targets },
                   cost: lp.cost,
                   items: ids.map((k) => ({ accountId: k, displayName: pa[k].displayName, state: pa[k].status })),
                 });
@@ -2735,7 +2741,12 @@ const server = http.createServer(async (req, res) => {
                       const os = require('os'); const path = require('path'); const fs = require('fs');
                       const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
                       const bucket = mt.type === 'image_text' ? 'drafts' : mt.type === 'video_download' ? 'downloads' : 'reports';
-                      const dir = path.join(base, bucket, mt.platform || '');
+                      // reports 桶按【任务】分目录(与 engageRunner.writeReport 的路径一致),
+                      //   否则这里只能打开平台级目录 —— 同平台所有任务的产出混在一起,
+                      //   用户点「打开输出文件夹」看到的不是当前这个任务的东西。
+                      const dir = bucket === 'reports'
+                        ? path.join(base, bucket, mt.platform || '', String(mt.id))
+                        : path.join(base, bucket, mt.platform || '');
                       try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ } // 没跑过也能打开(空目录)
                       return writeJSON(res, 200, { dir });
                     }

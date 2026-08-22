@@ -359,9 +359,10 @@ export const RunHistoryPage: React.FC<Props> = ({
                     const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
                     const at = (rec.result as any)?.action_targets as Record<string, number> | undefined;
                     if (!ac && !at) return null;
-                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
-                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels: Record<string, string> = { like: i18nService.t('rhActLike'), follow: i18nService.t('rhActFollow'), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
+                    const isZhLead = i18nService.currentLanguage === 'zh';
+                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
+                    const labels: Record<string, string> = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rhActLike'), follow: i18nService.t('rhActFollow'), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
                     // Union of keys present in either map — running rows
                     // may briefly have only targets (orchestrator set
                     // them, no addActionCount yet); completed rows have

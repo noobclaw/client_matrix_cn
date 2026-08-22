@@ -290,11 +290,12 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
             or 📤 N 发帖). Pre-rollout runs lack action_counts → '-'. */}
         {(() => {
           const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
-          const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
-          const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
+          const isZhLead = i18nService.currentLanguage === 'zh';
+          const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+          const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
           const labels = isZh
-            ? { like: i18nService.t('rrActLike'), follow: i18nService.t('rrActFollow'), comment: i18nService.t('rrActComment'), reply: i18nService.t('rrActReply'), subscribe: i18nService.t('rrActSubscribe'), post: i18nService.t('rrActPost'), download: i18nService.t('rrActDownload') }
-            : { like: i18nService.t('rrActLike'), follow: i18nService.t('rrActFollow'), comment: i18nService.t('rrActComment'), reply: i18nService.t('rrActReply'), subscribe: i18nService.t('rrActSubscribe'), post: i18nService.t('rrActPost'), download: i18nService.t('rrActDownload') };
+            ? { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rrActLike'), follow: i18nService.t('rrActFollow'), comment: i18nService.t('rrActComment'), reply: i18nService.t('rrActReply'), subscribe: i18nService.t('rrActSubscribe'), post: i18nService.t('rrActPost'), download: i18nService.t('rrActDownload') }
+            : { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rrActLike'), follow: i18nService.t('rrActFollow'), comment: i18nService.t('rrActComment'), reply: i18nService.t('rrActReply'), subscribe: i18nService.t('rrActSubscribe'), post: i18nService.t('rrActPost'), download: i18nService.t('rrActDownload') };
           let display: React.ReactNode = '-';
           if (ac && Object.keys(ac).length > 0) {
             // 'note'(回复粉丝场景的文章进度内部计数)只在「本次运行进度」实时卡里展示;

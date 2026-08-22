@@ -1521,24 +1521,32 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </div>
                 <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
                   {(() => {
-                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
-                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = { like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+                    const isZhLead = i18nService.currentLanguage === 'zh';
+                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
+                    const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
                     // 定向获客:在赞/关注/评论【前面】先报两个潜客数(这是这张卡真正的产出)。
-                    //   它们没有 target,所以只显示纯计数,不显示 N/target。
+                    //   跟赞/关注/评论一样带分母 —— 光一个「获得潜客 20」看不出跑没跑满。
+                    //   这一栏是【所有账号求和】(sidecar recomputeTargets 逐 key 相加);
+                    //   下面「当前运行明细」里每张账号卡显示的才是该号自己的 x/上限。
+                    const leadCell = (icon: string, key: string, zhWord: string, enWord: string) => {
+                      const d = (ap as any)[key]?.done ?? 0;
+                      const tg = (ap as any)[key]?.target ?? 0;
+                      return (
+                        <span className="font-mono text-gray-700 dark:text-gray-200">
+                          {icon} <strong className="text-cyan-600 dark:text-cyan-400">{d}</strong>
+                          {tg > 0 ? <span className="text-gray-500">/{tg}</span> : null}{' '}
+                          <span className="text-gray-500">{i18nService.currentLanguage === 'zh' ? zhWord : enWord}</span>
+                        </span>
+                      );
+                    };
                     const leadPrefix = (/_lead_engage$/.test(scenario?.id || '')
                       || (scenario?.workflow_type as any) === 'lead_engage')
                       ? (
                         <>
-                          <span className="font-mono text-gray-700 dark:text-gray-200">
-                            📇 <strong className="text-cyan-600 dark:text-cyan-400">{(ap as any).lead_new?.done ?? 0}</strong>{' '}
-                            <span className="text-gray-500">{i18nService.currentLanguage === 'zh' ? '获得潜客' : 'leads'}</span>
-                          </span>
-                          <span className="font-mono text-gray-700 dark:text-gray-200">
-                            🤝 <strong className="text-cyan-600 dark:text-cyan-400">{(ap as any).lead_engaged?.done ?? 0}</strong>{' '}
-                            <span className="text-gray-500">{i18nService.currentLanguage === 'zh' ? '互动潜客' : 'engaged'}</span>
-                          </span>
+                          {leadCell('📇', 'lead_new', '获得潜客', 'leads')}
+                          {leadCell('🤝', 'lead_engaged', '互动潜客', 'engaged')}
                         </>
                       ) : null;
                     // v6.x: 回复粉丝评论(xhs/douyin)= 「已回复评论数」+「文章进度 当前/总」,
@@ -1845,8 +1853,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             return <span className="text-gray-400 font-sans">{POST_ICON[sid] || '📤'} {word}</span>;
                           }
                           // 定向获客:逐号也要看得到自己采到/触达了多少人(上面那栏是各号求和)。
+                          //   分母是【这个账号自己的上限】,不是所有账号的总和。
                           if (/_lead_engage$/.test(sid)) {
-                            return <>📇 {(ap as any).lead_new?.done ?? 0} · 🤝 {(ap as any).lead_engaged?.done ?? 0} · 👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
+                            const dt = (k: string) => {
+                              const d = (ap as any)[k]?.done ?? 0;
+                              const t = (ap as any)[k]?.target ?? 0;
+                              return t > 0 ? `${d}/${t}` : String(d);
+                            };
+                            return <>📇 {dt('lead_new')} · 🤝 {dt('lead_engaged')} · 👍 {dt('like')} · ➕ {dt('follow')} · 💬 {dt('comment')}</>;
                           }
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
@@ -2152,7 +2166,9 @@ function formatActionBreakdown(
   }
   // Engage-family icons. 'comment' covers replies too (xhs / x both map
   // their reply types to 'comment' to match Douyin's bucketing).
+  const isZhLead = i18nService.currentLanguage === 'zh';
   const ICONS: Record<string, string> = {
+    lead_new: '📇', lead_engaged: '🤝',
     like: '👍',
     follow: '➕',
     comment: '💬',
@@ -2161,7 +2177,7 @@ function formatActionBreakdown(
     post: '📤',
     download: '⬇️',
   };
-  const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
+  const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
   // v5.x+: keep 0-count keys when they're explicitly present in the map.
   // Pre-rollout records have no action_counts → empty map → the early
   // return on line above handles those. Newer runs that DID call
@@ -2183,7 +2199,7 @@ function formatActionBreakdown(
       return ia - ib;
     });
   if (keys.length === 0) return '-';
-  const labels = { like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+  const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
   return keys.map(k => {
     const icon = ICONS[k] || '·';
     const label = (labels as any)[k] || k;

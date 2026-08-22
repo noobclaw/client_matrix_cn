@@ -649,7 +649,8 @@ function mxProgressToScenario(taskId: string, resp: any): ScenarioRunProgress | 
   const apOf = (tg: any, dn: any): Record<string, { done: number; target: number }> => {
     const ap: Record<string, { done: number; target: number }> = {};
     // 定向获客的 lead_new / lead_engaged 也要出现在实时进度里,否则详情页那两张卡的
-    //   「本次」永远是 0(它们没有 target,只有 done —— 所以判据必须允许 target 缺席)。
+    //   「本次」永远是 0。判据允许 target 缺席:剧本要跑到 STEP1 才下发分母,在那之前
+    //   只有 done 也得显示出来。
     for (const k of ['like', 'follow', 'comment', 'lead_new', 'lead_engaged']) {
       if ((tg || {})[k] > 0 || (dn || {})[k] > 0) ap[k] = { done: (dn || {})[k] || 0, target: (tg || {})[k] || 0 };
     }
