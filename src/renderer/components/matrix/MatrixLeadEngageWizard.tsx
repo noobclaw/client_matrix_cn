@@ -105,20 +105,25 @@ const SEED_SPEC: Record<string, { host: RegExp; strip: RegExp; allow: RegExp; hi
 };
 const specOf = (p?: string) => SEED_SPEC[String(p || 'tiktok')] || SEED_SPEC.tiktok;
 
-// 一行一个,接受 @x / x / 完整主页链接 三种填法(按平台规则归一)。
+// 一行一个,接受 @x / x / 完整主页链接 三种填法。
+//
+// ⚠️ 这里【只做去空行 / 去重 / 限 50】,原样往下传 —— 认不认得出来是剧本的事。
+//   平台的 URL 规则变得很勤(小红书主页现在必须带 ?xsec_token=,拆掉就打不开;
+//   抖音分享短链也一样),而剧本是服务端下发、热更新的,客户端改一次却要重新打包发版。
+//   所以归一化和残渣剔除都放在剧本里(见各 *_lead_engage 的 normSeed / seedUrl)。
+//   2026-08-22 之前这里做过一版「剥域名再按白名单过滤」,把
+//   `www.douyin.com/user/xxx` 剥成了 `www.douyin.com` 存进去,编辑任务时显示成
+//   一个凭空多出来的 `@douyin.com` 同行号。
 const parseSeedLines = (text: string, platform?: string): string[] => {
-  const sp = specOf(platform);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of text.split('\n')) {
-    let s = raw.trim();
-    if (!s) continue;
-    s = s.replace(sp.host, '').replace(sp.strip, '').replace(/[/?#].*$/, '');
-    // ⚠️ 必须【先小写再过滤】:TikTok 的 allow 是 /[^a-z0-9._]/g,顺序反了会把大写字母
-    //   当非法字符删掉(实测 "@JiaXch" → "iach")。抖音 sec_uid 大小写敏感,绝不能小写化。
-    if (platform === 'tiktok') s = s.toLowerCase();
-    s = s.replace(sp.allow, '');
-    if (s && !seen.has(s)) { seen.add(s); out.push(s); }
+    const line = raw.trim().replace(/^@/, '');
+    if (!line) continue;
+    const key = platform === 'tiktok' ? line.toLowerCase() : line;   // TikTok handle 不区分大小写
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(line);
     if (out.length >= MAX_SEED) break;
   }
   return out;
