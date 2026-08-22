@@ -148,9 +148,9 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 20);
   const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20);
-  const [maxLikes, setMaxLikes] = useState<number>(typeof le.maxLikes === 'number' ? le.maxLikes : 60);
+  const [maxLikes, setMaxLikes] = useState<number>(typeof le.maxLikes === 'number' ? le.maxLikes : 100);
   const [maxFollows, setMaxFollows] = useState<number>(typeof le.maxFollows === 'number' ? le.maxFollows : 20);
-  const [maxComments, setMaxComments] = useState<number>(typeof le.maxComments === 'number' ? le.maxComments : 20);
+  const [maxComments, setMaxComments] = useState<number>(typeof le.maxComments === 'number' ? le.maxComments : 100);
 
   // 引流语(评论时按概率融进 AI 评论)。与互动涨粉同一套口径,直接复用 MatrixFunnelConfig。
   const [funnelPerMode, setFunnelPerMode] = useState<boolean>(!!initialTask?.funnelByAccount && Object.keys(initialTask.funnelByAccount).length > 0);
