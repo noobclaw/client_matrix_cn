@@ -324,7 +324,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'xhs_video_download') return STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH;
     if (sid === 'douyin_video_download') return STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH;
     if (sid === 'tiktok_video_download') return STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH;
-    if (sid === 'tiktok_lead_engage') return LEAD_ENGAGE_STEP_NAMES();
+    // 定向获客五个平台【流程完全一致】(采集 → 触达 → 落盘),步骤名也共用一套。
+    //   以前只认 tiktok_lead_engage,另外四家落到下面通用的互动涨粉步骤名,
+    //   详情页显示的步骤跟实际在跑的对不上。
+    if (/_lead_engage$/.test(String(sid || ''))) return LEAD_ENGAGE_STEP_NAMES();
     // 快手 / 哔哩哔哩 流程镜像抖音,但步骤名按各自平台名生成(纯展示,scenario.id 独立),
     // 不再复用抖音常量,避免「抖音」字样串台到别的平台页。
     if (sid === 'kuaishou_auto_engage') return engageStepNames(i18nService.t('tdKuaishou'), i18nService.t('tdActsLikeFollowComment'));
