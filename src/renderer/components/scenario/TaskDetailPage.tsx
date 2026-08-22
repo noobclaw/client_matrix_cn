@@ -1390,6 +1390,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment' || sid === 'toutiao_reply_fans_comment') {
                           return i18nService.t('tdSummaryReplyVideos').replace('{interval}', intervalLabel);
                         }
+                          // 定向获客:没有「条」这回事 —— 它的产出是潜客人数。落通用兜底会
+                          //   显示成「1 条/次」,纯误导。报它真正的两个配额。
+                          if (/_lead_engage$/.test(String(sid || ''))) {
+                            const le = (t.lead_engage || {}) as any;
+                            const nLead = typeof le.maxLeads === 'number' ? le.maxLeads : 20;
+                            const nReach = typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20;
+                            const zhLead = i18nService.currentLanguage === 'zh';
+                            return zhLead
+                              ? `${intervalLabel} · 获取≤${nLead} 潜客 · 触达≤${nReach} 人`
+                              : `${intervalLabel} · up to ${nLead} new leads · reach ${nReach}`;
+                          }
                         if (typeof cMin === 'number' && typeof cMax === 'number') {
                           return `${intervalLabel} · ${cMin}-${cMax} ${i18nService.t('tdArticlesRun')}`;
                         }

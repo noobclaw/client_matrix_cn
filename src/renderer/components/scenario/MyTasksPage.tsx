@@ -752,6 +752,17 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           const rMin = t.daily_reply_min, rMax = t.daily_reply_max;
                           const cMin = t.daily_count_min, cMax = t.daily_count_max;
                           const pMin = t.daily_post_min, pMax = t.daily_post_max;
+                          // 定向获客:没有「条」这回事 —— 它的产出是潜客人数。落通用兜底会
+                          //   显示成「1 条/次」,纯误导。报它真正的两个配额。
+                          if (/_lead_engage$/.test(String(sid || ''))) {
+                            const le = (t.lead_engage || {}) as any;
+                            const nLead = typeof le.maxLeads === 'number' ? le.maxLeads : 20;
+                            const nReach = typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20;
+                            const zhLead = i18nService.currentLanguage === 'zh';
+                            return zhLead
+                              ? `⏰ ${scheduleLabel(task)} · 获取≤${nLead} 潜客 · 触达≤${nReach} 人`
+                              : `⏰ ${scheduleLabel(task)} · up to ${nLead} new leads · reach ${nReach}`;
+                          }
                           // auto_engage(X 或 Binance):follow + reply 双范围
                           if (sid === 'x_auto_engage' || sid === 'binance_square_auto_engage') {
                             const fStr = (typeof fMin === 'number' && typeof fMax === 'number')
