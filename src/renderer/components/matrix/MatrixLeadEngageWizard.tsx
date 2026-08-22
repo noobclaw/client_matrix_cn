@@ -46,7 +46,7 @@ export interface LeadEngageInput {
   //   「总量 ÷ 实际触达人数」算 —— 优先保证互动人数。
   maxLikes: number;      // 1-500
   maxFollows: number;    // 1-100
-  maxComments: number;   // 1-100
+  maxComments: number;   // 0-300
   leadsPerRun: number;
   doLike: boolean;
   doComment: boolean;
@@ -195,7 +195,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     4: { ok: true },
     // 点赞/关注/评论三个总量都填 0 = 采完潜客后挨个打开主页干等、什么也不做(采集那步照样跑)。
     //   这肯定不是用户想要的,拦在第 5 步(评论数是最后一个填的)。
-    5: (clampInt(maxLikes, 0, 500) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 100)) > 0
+    5: (clampInt(maxLikes, 0, 500) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 300)) > 0
       ? { ok: true }
       : { ok: false, reason: t('点赞 / 关注 / 评论至少要开一项,否则获取到潜客后什么也不会做', 'Enable at least one of like / follow / comment — otherwise nothing happens after leads are collected') },
     6: termsAccepted ? { ok: true } : { ok: false, reason: t('请先同意条款', 'Please accept the terms') },
@@ -249,11 +249,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           //   剧本内部 nLikeLead 也会是 0,两边一致才不会出现「设了 0 还照做」。
           maxLikes: clampInt(maxLikes, 0, 500),
           maxFollows: clampInt(maxFollows, 0, 100),
-          maxComments: clampInt(maxComments, 0, 100),
+          maxComments: clampInt(maxComments, 0, 300),
           leadsPerRun: clampInt(leadsPerRun, 1, 100),
           // 总量为 0 = 关闭该动作(向导没有单独的开关行,用数量本身表达)。
           doLike: clampInt(maxLikes, 0, 500) > 0,
-          doComment: clampInt(maxComments, 0, 100) > 0,
+          doComment: clampInt(maxComments, 0, 300) > 0,
           doFollow: clampInt(maxFollows, 0, 100) > 0,
           // ⚠️ taskStore 对 leadEngage 是整体替换(`input.leadEngage ?? 旧值`),不是逐字段合并。
           //   这两项已经从向导里去掉了,若硬写空,老任务只要被打开编辑一次(哪怕只改频率)
@@ -419,7 +419,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               {numRow(t('💬 本次评论最大数量', '💬 Total comments this run'),
                 t(`总量,按实际互动人数平摊 · 每人约 ${perLead(maxComments)} 条 · 评论由 AI 生成(有 AI 费用) · 设为 0 = 不评论`,
                   `Total, spread across the leads reached (~${perLead(maxComments)} each) · AI-generated (incurs AI cost) · 0 disables commenting`),
-                maxComments, setMaxComments, 0, 100)}
+                maxComments, setMaxComments, 0, 300)}
             </div>
             <MatrixFunnelConfig
               accounts={funnelAccounts}
@@ -467,7 +467,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 100)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次总量', 'Totals')}</span><span>{[
                 clampInt(maxLikes,0,500) > 0 ? `👍${clampInt(maxLikes,0,500)}` : null,
-                clampInt(maxComments,0,100) > 0 ? `💬${clampInt(maxComments,0,100)}` : null,
+                clampInt(maxComments,0,300) > 0 ? `💬${clampInt(maxComments,0,300)}` : null,
                 clampInt(maxFollows,0,100) > 0 ? `➕${clampInt(maxFollows,0,100)}` : null,
               ].filter(Boolean).join(' · ') || '—'}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('平摊到每人', 'Per lead')}</span><span>{[

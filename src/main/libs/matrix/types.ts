@@ -304,7 +304,7 @@ export interface LeadEngageConfig {
   //   目的是优先保证互动人数。
   maxLikes: number;                   // 本次点赞总量 0-500(0=不点赞)
   maxFollows: number;                 // 本次关注总量 0-100(0=不关注)
-  maxComments: number;                // 本次评论总量 0-100(0=不评论)
+  maxComments: number;                // 本次评论总量 0-300(0=不评论)
   leadsPerRun: number;                // 单次运行最多触达多少人(新旧客轮转)
   doLike: boolean;
   doComment: boolean;
