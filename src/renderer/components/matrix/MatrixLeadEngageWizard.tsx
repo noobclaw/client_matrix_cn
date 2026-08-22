@@ -145,10 +145,16 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const [mode, setMode] = useState<'accounts' | 'keywords'>(le.mode === 'keywords' ? 'keywords' : 'accounts');
-  // 回填:只有 @handle 制的平台(TikTok/抖音)加 @ 前缀;小红书/B站/快手存的是 id,加了反而错。
+  // 回填:只有【裸 handle】且是 @handle 制的平台(TikTok/抖音)才补 @;
+  //   存的是整条主页链接就原样显示 —— 否则回填出来是 `@https://www.douyin.com/user/...`
+  //   (用户 2026-08-22 截图)。小红书/B站/快手存的是 id,本来就不加。
   const [seedText, setSeedText] = useState<string>(
     Array.isArray(le.seedAccounts)
-      ? le.seedAccounts.map((h) => ((platform === 'tiktok' || platform === 'douyin') ? '@' + h : h)).join('\n')
+      ? le.seedAccounts.map((h) => {
+        const v = String(h || '');
+        const atStyle = platform === 'tiktok' || platform === 'douyin';
+        return (atStyle && !/^https?:\/\//i.test(v)) ? '@' + v : v;
+      }).join('\n')
       : '');
 
   const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 20);
