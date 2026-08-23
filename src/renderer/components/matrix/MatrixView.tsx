@@ -99,8 +99,9 @@ const loginUrlFor = (platform: string, loginScope?: string): string => {
 };
 // 快手两类账号子 tab。
 const KS_SCOPES: { key: 'main' | 'creator'; label: string }[] = [
-  { key: 'creator', label: i18nService.t('mvKsCreator') },
+  // 主站在前:涨粉/获客都用主站,创作者中心只在发布时用(用户 2026-08-23)。
   { key: 'main', label: i18nService.t('mvKsMain') },
+  { key: 'creator', label: i18nService.t('mvKsCreator') },
 ];
 const STATUS_DOT: Record<AccountStatus, string> = { idle: 'bg-green-500', running: 'bg-blue-500', login_required: 'bg-amber-500', limited: 'bg-gray-400', banned: 'bg-red-500' };
 // ⚠️ 必须【每次调用时】求值 i18nService.t —— 不能写成模块级 const 对象:那会在模块加载时(语言可能还没
@@ -309,8 +310,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [kernelPath] = useState<string>(() => localStorage.getItem('matrix:kernelPath') || '');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   // 快手专属:当前子 tab(创作者中心 / 主站)+ 新建时所选类型(建号后不可改)。
-  const [ksScope, setKsScope] = useState<'main' | 'creator'>('creator');
-  const [newScope, setNewScope] = useState<'main' | 'creator'>('creator');
+  // 默认停在【主站】—— 日常进来看的是涨粉/获客那批号(用户 2026-08-23)。
+  const [ksScope, setKsScope] = useState<'main' | 'creator'>('main');
+  // 新建时的类型:openAdd 里会 setNewScope(ksScope) 跟随当前 tab,这里只是兜底初值。
+  const [newScope, setNewScope] = useState<'main' | 'creator'>('main');
 
   // 进度
   const [items, setItems] = useState<Record<string, ItemResult>>({});
