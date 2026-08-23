@@ -55,14 +55,15 @@ import MatrixViralRewriteWizard, { type ViralRewriteWizardSave } from '../matrix
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'gate' | 'bitget' | 'bybit' | 'okx' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'reddit' | 'video';
 
-// 矩阵 tab 顺序:多平台视频创作放最前(用户要求),其后与「我的矩阵账号」平台顺序一致(含视频号/头条)。
+// 矩阵 tab 顺序:与「我的矩阵账号」平台顺序一致(含视频号/头条),多平台视频创作放【最后】
+//   (2026-08-14 用户要求:首屏优先露出各平台的精准获客/互动入口)。
 // ⚠️ 这是【平台 tab 的唯一顺序来源】,账号页(MatrixView 的 PLATFORMS)必须与它保持一致
 //    —— 两处曾经漂移过(本文件末尾是 facebook/reddit/instagram,账号页却是 instagram/facebook/reddit,
 //    而旧注释还写着"已与 PLATFORMS 一致"),用户在两个页面之间来回切会觉得错乱。改任一处都要同步另一处。
 // 交易所广场三家紧跟在币安广场后面(同类平台聚在一起,用户按"广场"找得到)。
 // 📌 CN 版特有的顺序:交易所广场四家(币安/OKX/Bitget/Bybit/Gate)统一排在【最后】,与 global 版
 //    (紧跟币安广场、整体在中部)不同。这是本仓的刻意差异,cherry-pick global 改动后要保住。
-const MATRIX_TAB_ORDER: PlatformId[] = ['video', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'okx', 'bitget', 'bybit', 'gate'];
+const MATRIX_TAB_ORDER: PlatformId[] = ['douyin', 'xhs', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao', 'x', 'youtube', 'tiktok', 'facebook', 'reddit', 'instagram', 'binance', 'okx', 'bitget', 'bybit', 'gate', 'video'];
 // 交易所广场五家 —— 国内版【保留】(HIDE_EXCHANGE_SQUARES=false),只是排在 MATRIX_TAB_ORDER
 // 末尾。口径与「我的矩阵账号」页的 WEB3_SQUARE_PLATFORMS 保持一致(那边同名常量)。
 // ⚠️ 别把这个挂回 HIDE_WEB3:那个开关砍的是钱包/返佣/链上支付,跟"能不能往交易所广场发帖"无关。
@@ -227,8 +228,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
   //   create 模式落在 'create'(新建页);manage 模式落在 'tasks'(我的涨粉任务)。
   const baseSection: SectionId = mode === 'create' ? 'create' : mode === 'runs' ? 'history' : 'tasks';
-  // 默认平台 tab:统一默认【多平台视频创作】(video)。
-  const defaultPlatform: PlatformId = 'video';
+  // 默认平台 tab:2026-08-14 起落在 MATRIX_TAB_ORDER 的【第一个平台】(抖音),不再默认视频创作
+  //   —— 视频创作已移到 tab 最后一位,再默认选它会让页面一进来就停在最右端、且首屏看不到
+  //   各平台的精准获客/互动入口。非矩阵(旧视频版)不走 MATRIX_TAB_ORDER,保持 'video' 不变。
+  const defaultPlatform: PlatformId = matrixMode ? MATRIX_TAB_ORDER[0] : 'video';
   const [view, setView] = useState<ViewState>({ kind: 'main', section: baseSection, platform: initialPlatform || defaultPlatform });
 
   // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
@@ -1685,7 +1688,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> {i18nService.currentLanguage === 'zh' ? '精准获客' : 'Lead Finder'}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🎯 {platLabel} · {i18nService.currentLanguage === 'zh' ? '定向获客' : 'Lead Finder'}</div>
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <div className="text-xl font-bold dark:text-white">🎯 {platLabel} · {i18nService.currentLanguage === 'zh' ? '精准定向获客' : 'Lead Finder'}</div>
+                {/* 推荐角标:定向获客是当前主推能力,右上角小火苗(纯展示,不影响逻辑) */}
+                <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-orange-500/15 text-orange-500 dark:text-orange-400 border border-orange-500/30">
+                  🔥 {i18nService.currentLanguage === 'zh' ? '推荐' : 'Top pick'}
+                </span>
+              </div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
                 {i18nService.currentLanguage === 'zh'
                   ? <>采集<strong>同行作品评论区</strong>里的潜在客户,去重存成本地名单,再逐个去他们主页点赞 / 评论 / 关注,把人引回来看你。</>
