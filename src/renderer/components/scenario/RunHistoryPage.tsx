@@ -362,7 +362,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                     const isZhLead = i18nService.currentLanguage === 'zh';
                     const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels: Record<string, string> = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rhActLike'), follow: i18nService.t('rhActFollow'), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
+                    const labels: Record<string, string> = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rhActLike'), follow: (String(rec.scenario_snapshot?.id || '') === 'youtube_lead_engage' ? i18nService.t('rhActSubscribe') : i18nService.t('rhActFollow')), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
                     // Union of keys present in either map — running rows
                     // may briefly have only targets (orchestrator set
                     // them, no addActionCount yet); completed rows have

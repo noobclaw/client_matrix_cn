@@ -102,6 +102,11 @@ const SEED_SPEC: Record<string, { host: RegExp; strip: RegExp; allow: RegExp; hi
     host: /^https?:\/\/space\.bilibili\.com\//i, strip: /^(uid:?)/i, allow: /[^0-9]/g,
     hint: 'B站空间链接 或 UID(纯数字)', ph: 'https://space.bilibili.com/12345678\n12345678',
   },
+  // YouTube 身份是 @handle(跟 TikTok 同制,大小写不敏感);频道主页 = youtube.com/@handle。
+  youtube: {
+    host: /^https?:\/\/(www\.)?youtube\.com\//i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
+    hint: '@频道 handle 或 频道主页链接', ph: '@competitor1\n@competitor2\nhttps://www.youtube.com/@competitor3',
+  },
 };
 const specOf = (p?: string) => SEED_SPEC[String(p || 'tiktok')] || SEED_SPEC.tiktok;
 
@@ -120,7 +125,9 @@ const parseSeedLines = (text: string, platform?: string): string[] => {
   for (const raw of text.split('\n')) {
     const line = raw.trim().replace(/^@/, '');
     if (!line) continue;
-    const key = platform === 'tiktok' ? line.toLowerCase() : line;   // TikTok handle 不区分大小写
+    // TikTok / YouTube 的 handle 都不区分大小写(/@MKBHD 与 /@mkbhd 是同一个频道),
+    //   不归一会把同一个同行填两遍、剧本再各收一轮。
+    const key = (platform === 'tiktok' || platform === 'youtube') ? line.toLowerCase() : line;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(line);
@@ -133,6 +140,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const zh = i18nService.currentLanguage === 'zh';
   const t = (a: string, b: string) => (zh ? a : b);
   const editing = !!initialTask;
+  // YouTube 的「关注」在平台上叫【订阅】。用户 2026-08-23:每个平台的卡片/向导/详情都要
+  //   说自己平台的词。剧本侧计数键仍是 follow(跨平台统一),只有给人看的文案按平台走。
+  const isSubscribePlatform = platform === 'youtube';
+  const followWord = isSubscribePlatform ? t('订阅', 'subscribe') : t('关注', 'follow');
+  const followIcon = isSubscribePlatform ? '📌' : '➕';
   const le: Partial<LeadEngageInput> = initialTask?.leadEngage || {};
 
   const [step, setStep] = useState<number>(1);
@@ -152,7 +164,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     Array.isArray(le.seedAccounts)
       ? le.seedAccounts.map((h) => {
         const v = String(h || '');
-        const atStyle = platform === 'tiktok' || platform === 'douyin';
+        const atStyle = platform === 'tiktok' || platform === 'douyin' || platform === 'youtube';
         return (atStyle && !/^https?:\/\//i.test(v)) ? '@' + v : v;
       }).join('\n')
       : '');
@@ -208,7 +220,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     //   这肯定不是用户想要的,拦在第 5 步(评论数是最后一个填的)。
     5: (clampInt(maxLikes, 0, 500) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 300)) > 0
       ? { ok: true }
-      : { ok: false, reason: t('点赞 / 关注 / 评论至少要开一项,否则获取到潜客后什么也不会做', 'Enable at least one of like / follow / comment — otherwise nothing happens after leads are collected') },
+      : { ok: false, reason: t(`点赞 / ${followWord} / 评论至少要开一项,否则获取到潜客后什么也不会做`, `Enable at least one of like / ${followWord} / comment — otherwise nothing happens after leads are collected`) },
     6: termsAccepted ? { ok: true } : { ok: false, reason: t('请先同意条款', 'Please accept the terms') },
   };
 
@@ -403,7 +415,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           </div>
         )}
 
-        {/* STEP 4 · 点赞 + 关注 */}
+        {/* STEP 4 · 点赞 + 关注/订阅 */}
         {step === 4 && (
           <>
             <div className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -415,9 +427,9 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                 t(`总量,按实际互动人数平摊 · 每人约 ${perLead(maxLikes)} 条 · 设为 0 = 不点赞`,
                   `Total, spread across the leads reached (~${perLead(maxLikes)} each) · 0 disables liking`),
                 maxLikes, setMaxLikes, 0, 500)}
-              {numRow(t('➕ 本次关注最大数量', '➕ Total follows this run'),
-                t('每个潜客终身只关注一次,已关注过的不再重复 · 设为 0 = 不关注',
-                  'Each lead is followed once ever · 0 disables following'),
+              {numRow(t(`${followIcon} 本次${followWord}最大数量`, `${followIcon} Total ${followWord}s this run`),
+                t(`每个潜客终身只${followWord}一次,已${followWord}过的不再重复 · 设为 0 = 不${followWord}`,
+                  `Each lead is ${followWord}d once ever · 0 disables it`),
                 maxFollows, setMaxFollows, 0, 100)}
             </div>
           </>

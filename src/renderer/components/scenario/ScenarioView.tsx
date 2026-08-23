@@ -84,7 +84,11 @@ const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou'
 const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'toutiao', 'shipinhao']);
 // 定向获客:有 <平台>_lead_engage 剧本的平台。每个平台一张独立卡片、独立任务(type='lead_engage'
 //   按平台各存一条)、独立向导与详情 —— 与互动涨粉/回复粉丝互不影响。
-const MATRIX_LEAD_PLATFORMS = new Set<PlatformId>(['tiktok', 'douyin', 'xhs', 'kuaishou', 'bilibili']);
+const MATRIX_LEAD_PLATFORMS = new Set<PlatformId>(['tiktok', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'youtube']);
+// YouTube 的「关注」在平台上叫【订阅】,卡片/向导/详情的文案都要说平台自己的词
+//   (用户 2026-08-23:「任务详情要独立、和自己平台名字切合」)。计数键仍统一是 follow。
+const LEAD_FOLLOW_WORD = (p: PlatformId | string): [string, string] =>
+  (p === 'youtube' ? ['订阅', 'subscribe'] : ['关注', 'follow']);
 // 后端 backend/matrix/scenarios 有 <platform>_video_download「视频无水印下载」剧本的平台(单账号工具任务)。
 // 抖音(页面 fetch wrapper 签名拿 detail)/快手(读 <video> src)/哔哩哔哩(playurl html5 单文件 mp4)/
 // TikTok(SSR __UNIVERSAL_DATA__ + 多级 fallback,须 VPN 真机)。都走【主站】登录态,取主站号。
@@ -1697,8 +1701,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
                 {i18nService.currentLanguage === 'zh'
-                  ? <>采集<strong>同行作品评论区</strong>里的潜在客户,去重存成本地名单,再逐个去他们主页点赞 / 评论 / 关注,把人引回来看你。</>
-                  : <>Harvests potential customers from <strong>competitors' comment sections</strong>, dedupes them into a local roster, then likes / comments / follows on each to pull them back to you.</>}
+                  ? <>采集<strong>同行作品评论区</strong>里的潜在客户,去重存成本地名单,再逐个去他们主页点赞 / 评论 / {LEAD_FOLLOW_WORD(currentPlatform)[0]},把人引回来看你。</>
+                  : <>Harvests potential customers from <strong>competitors' comment sections</strong>, dedupes them into a local roster, then likes / comments / {LEAD_FOLLOW_WORD(currentPlatform)[1]}s each to pull them back to you.</>}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
                 <button
@@ -2661,7 +2665,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               platformLabel={(() => {
                 const p = matrixLeadPlatform;
                 return p === 'tiktok' ? 'TikTok' : p === 'douyin' ? '抖音' : p === 'xhs' ? '小红书'
-                  : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : String(p);
+                  : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : p === 'youtube' ? 'YouTube' : String(p);
               })()}
               platform={matrixLeadPlatform}
               accounts={matrixLeadAccounts}
