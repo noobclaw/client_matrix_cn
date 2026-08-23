@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
+import type { PayMethods } from '../../services/noobclawApi';
 import { noobClawApi, PaymentInfo, ChainBlock, RedeemPackagesResponse } from '../../services/noobclawApi';
 import { CnyWithdrawModal } from './CnyWithdrawModal';
 import MembershipPanel from '../membership/MembershipPanel';
@@ -120,7 +121,7 @@ function getStatusColor(status: string): string {
 
 // Network logo for the deposit-chain selector + order rows. Inline SVG so we
 // have a single source of truth and no extra asset fetch. Sizes are square px.
-const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: number }> = ({ chain, size = 18 }) => {
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'; size?: number }> = ({ chain, size = 18 }) => {
   if (chain === 'WXPAY') {
     // 微信支付绿气泡(简化标)
     return (
@@ -137,7 +138,16 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: num
       </svg>
     );
   }
-  if (chain === 'DODO') {
+  if (chain === 'ALIPAY') {
+    // 支付宝:蓝底「支」(简化标)
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+        <circle cx={12} cy={12} r={12} fill="#1677FF" />
+        <text x="12" y="16.5" textAnchor="middle" fontSize="12" fontWeight="bold" fill="white">支</text>
+      </svg>
+    );
+  }
+  if (chain === 'DODO' || chain === 'CARD') {
     // 银行卡(Dodo 海外收单)。通用卡片图标,不打三方品牌。
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" style={{ verticalAlign: 'middle' }}>
@@ -203,9 +213,21 @@ const MethodRow: React.FC<{
 // Get the active chain block + a list of packages for it from PaymentInfo,
 // falling back to legacy top-level fields when the backend predates the
 // multi-chain block.
-function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO') {
+// 等待页展示的应付金额:人民币渠道(微信/支付宝/银行卡)看 face_value_rmb(没有就退回美元),链上看各自币种。
+function amountForDisplay(chain: string, order: any, result: any): string {
+  if (chain === 'WXPAY' || chain === 'ALIPAY' || chain === 'CARD') {
+    const cny = order?.face_value_rmb ?? result?.cnyAmount;
+    if (cny != null && !isNaN(parseFloat(String(cny)))) return String(parseFloat(String(cny)));
+    return String(parseFloat(order?.usd_amount ?? 0));
+  }
+  if (chain === 'DODO') return String(parseFloat(order?.usd_amount));
+  if (chain === 'TRON') return String(parseFloat(order?.usdt_amount));
+  return String(parseFloat(order?.bnb_amount));
+}
+
+function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY') {
   if (!info) return null;
-  const fromChains: any = info.chains && info.chains[chain];
+  const fromChains: any = info.chains && (info.chains as any)[chain];
   if (fromChains) return fromChains;
   // legacy fallback: only BSC was supported, top-level packages == BSC
   if (chain === 'DODO') {
@@ -252,7 +274,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // right unit + treasury address. Kept as a single string + chain rather
   // than two separate states to avoid drift between the two on chain switch.
   const [pendingAmount, setPendingAmount] = useState('');
-  const [pendingChain, setPendingChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO'>('BSC');
+  const [pendingChain, setPendingChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'>('BSC');
   const [pendingCreatedAt, setPendingCreatedAt] = useState('');
   // 微信 Native 下单返回的 weixin:// 付款链接(渲染成二维码)。只在下单响应里有,
   // 为了让「充值记录 → 查看待支付订单」也能重新展示,同时落一份 localStorage
@@ -265,7 +287,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // USDT is the more common new-user path. lazy-init reads the cached
   // paymentInfo so on second-and-later visits the picker doesn't flash
   // BSC for one frame before flipping to TRON.
-  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO'>(() => {
+  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'>(() => {
     const cached = readCachedPaymentInfo();
     // 银行卡覆盖面最广且是推荐渠道 → 有就默认选它。
     if (cached?.chains?.DODO) return 'DODO';
@@ -604,7 +626,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     };
   }, [partnerColor]);
 
-  const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' = currentChain) => {
+  const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = currentChain) => {
     setLoading(true);
     setError('');
     const result = await noobClawApi.createOrder(amount, chain);
@@ -613,26 +635,19 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       // orders carry face_value_rmb (人民币面值,无 unique-tail). Either way,
       // what we display on the pay screen is the amount the user must pay.
       const order = result.order;
-      const amountStr = chain === 'WXPAY'
-        ? String(parseFloat(order.face_value_rmb ?? result.cnyAmount ?? 0))
-        : chain === 'DODO'
-        ? String(parseFloat(order.usd_amount))
-        : chain === 'TRON'
-        ? String(parseFloat(order.usdt_amount))
-        : String(parseFloat(order.bnb_amount));
+      const amountStr = amountForDisplay(chain, order, result);
       setPendingOrderNo(order.order_no);
       setPendingAmount(amountStr);
       setPendingChain(chain);
       setPendingCreatedAt(order.created_at);
-      setPendingCodeUrl(chain === 'WXPAY' ? (result.codeUrl || '') : '');
-      // 银行卡:收银台在 Dodo,用系统浏览器打开;本页进等待态轮询到账(靠 webhook 入账)。
-      if (chain === 'DODO') {
-        setPendingCheckoutUrl(result.checkoutUrl || '');
-        if (result.checkoutUrl) window.electron?.shell?.openExternal(result.checkoutUrl);
-      } else {
-        setPendingCheckoutUrl('');
-      }
-      if (chain === 'WXPAY' && result.codeUrl) {
+      // 网页支付(银行卡/微信/支付宝;老 Dodo 同路):后端给 payUrl(支付站域名 admin 可配)→ 系统浏览器打开,
+      //   本页进等待态轮询到账。⚠️ 按【响应里有没有 payUrl】判,不按 chain 判:老后端的微信单只有 codeUrl,
+      //   仍在本页出二维码 —— 新老后端都能跑。
+      const webUrl = String(result.payUrl || result.checkoutUrl || '');
+      setPendingCheckoutUrl(webUrl);
+      setPendingCodeUrl(!webUrl && chain === 'WXPAY' ? (result.codeUrl || '') : '');
+      if (webUrl) window.electron?.shell?.openExternal(webUrl);
+      if (!webUrl && chain === 'WXPAY' && result.codeUrl) {
         try { localStorage.setItem('noobclaw_wxpay_qr', JSON.stringify({ orderNo: order.order_no, codeUrl: result.codeUrl })); } catch { /* quota */ }
       }
       setIsExpired(false);
@@ -663,7 +678,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   })();
 
   // 弹窗里选定支付方式 → 分发下单。SHOP 不下单,关掉本弹窗后再弹一层店铺弹窗(去店铺买 + 回来就地兑换)。
-  const handlePayPackageWith = (m: 'DODO' | 'TRON' | 'BSC' | 'SHOP', usd: number) => {
+  // 各支付方式显示开关(后端 admin 可配)。老后端没下发 payMethods → 全显示。
+  const showM = (k: keyof PayMethods) => !paymentInfo?.payMethods || paymentInfo.payMethods[k] !== false;
+  const handlePayPackageWith = (m: 'DODO' | 'CARD' | 'WXPAY' | 'ALIPAY' | 'TRON' | 'BSC' | 'SHOP', usd: number) => {
     setPayPkg(null);
     setError('');
     // ⚠️ 别再 setCnySelected(true) —— 那是整页换成内嵌卡密面板的老交互,官网早已改成弹窗。
@@ -687,28 +704,23 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     // ⚠️ 'once'(单月购买)原样传后端 —— 后端对它有独立定价(price_usd_once,比连续包月贵)
     //   并映射到 Dodo 的一次性 product。折算成 'month' 会少收钱且开成自动续费,性质完全错。
     period: 'month' | 'quarter' | 'half' | 'year' | 'once',
-    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO',
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY',
   ): Promise<string | null> => {
     setError('');
     const result = await noobClawApi.createSubscriptionOrder(planCode, period, chain);
     if (result?.order) {
       const order = result.order;
-      if (chain === 'DODO') {
-        setPendingCheckoutUrl(result.checkoutUrl || '');
-        if (result.checkoutUrl) window.electron?.shell?.openExternal(result.checkoutUrl);
-      } else {
-        setPendingCheckoutUrl('');
-      }
-      const amountStr = chain === 'WXPAY'
-        ? String(parseFloat(order.face_value_rmb ?? result.cnyAmount ?? 0))
-        : chain === 'DODO' ? String(parseFloat(order.usd_amount))
-        : chain === 'TRON' ? String(parseFloat(order.usdt_amount)) : String(parseFloat(order.bnb_amount));
+      // 网页支付(银行卡/微信/支付宝):后端给 payUrl → 系统浏览器打开,本页进等待态(同充值)。按响应判,不按 chain 判。
+      const webUrl = String(result.payUrl || result.checkoutUrl || '');
+      setPendingCheckoutUrl(webUrl);
+      if (webUrl) window.electron?.shell?.openExternal(webUrl);
+      const amountStr = amountForDisplay(chain, order, result);
       setPendingOrderNo(order.order_no);
       setPendingAmount(amountStr);
       setPendingChain(chain);
       setPendingCreatedAt(order.created_at);
-      setPendingCodeUrl(chain === 'WXPAY' ? (result.codeUrl || '') : '');
-      if (chain === 'WXPAY' && result.codeUrl) {
+      setPendingCodeUrl(!webUrl && chain === 'WXPAY' ? (result.codeUrl || '') : '');
+      if (!webUrl && chain === 'WXPAY' && result.codeUrl) {
         try { localStorage.setItem('noobclaw_wxpay_qr', JSON.stringify({ orderNo: order.order_no, codeUrl: result.codeUrl })); } catch { /* quota */ }
       }
       setIsExpired(false);
@@ -751,9 +763,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
   const handleViewPendingOrder = (order: any) => {
     const rawChain = (order.chain || 'BSC').toUpperCase();
-    const chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' = rawChain === 'TRON' ? 'TRON' : rawChain === 'WXPAY' ? 'WXPAY' : 'BSC';
-    const amountStr = chain === 'WXPAY'
-      ? String(parseFloat(order.face_value_rmb ?? 0))
+    const chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' | 'CARD' | 'ALIPAY' = rawChain === 'TRON' ? 'TRON' : rawChain === 'WXPAY' ? 'WXPAY'
+      : rawChain === 'CARD' ? 'CARD' : rawChain === 'ALIPAY' ? 'ALIPAY' : rawChain === 'DODO' ? 'DODO' : 'BSC';
+    const amountStr = (chain === 'WXPAY' || chain === 'CARD' || chain === 'ALIPAY')
+      ? String(parseFloat(order.face_value_rmb ?? order.usd_amount ?? 0))
+      : chain === 'DODO' ? String(parseFloat(order.usd_amount ?? 0))
       : chain === 'TRON'
       ? String(parseFloat(order.usdt_amount))
       : String(parseFloat(order.bnb_amount));
@@ -1010,7 +1024,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 const isWxpay = String(order.chain || '').toUpperCase() === 'WXPAY';
                 // 银行卡(Dodo)订单:chain='DODO',bnb/usdt 同样都为 NULL —— 必须和 WXPAY 一样
                 //   先于卡密的第 4 条兜底判掉,否则信用卡买的订阅/积分会被标成「CNY 卡密」。
-                const isDodo = String(order.chain || '').toUpperCase() === 'DODO';
+                // 银行卡/支付宝(支付站)订单与 Dodo 同形:bnb/usdt 都为 NULL,同样要先于卡密兜底判掉。
+                const isDodo = ['DODO', 'CARD', 'ALIPAY'].indexOf(String(order.chain || '').toUpperCase()) >= 0;
                 const isRedeem = !isWxpay && !isDodo && (order.payment_method === 'redeem'
                   || order.kind === 'redeem'
                   || /^RD/i.test(orderNo)
@@ -1943,7 +1958,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <MembershipPanel onPay={startSubscriptionPay} dodoEnabled={!!paymentInfo?.chains?.DODO} dodoPlans={paymentInfo?.chains?.DODO?.subscriptionPlans} usdCnyRate={paymentInfo?.usdCnyRate} />
+          <MembershipPanel onPay={startSubscriptionPay} payMethods={paymentInfo?.payMethods} usdCnyRate={paymentInfo?.usdCnyRate} />
         </div>
         )}
 
@@ -2086,44 +2101,48 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   {cnyRef(payPkg.usd, paymentInfo?.usdCnyRate) ? ` (${cnyRef(payPkg.usd, paymentInfo?.usdCnyRate)})` : ''}
                 </div>
                 <div className="space-y-2.5">
-                  <MethodRow
-                    icon={<ChainLogo chain="DODO" size={22} />}
-                    title={i18nService.t('dodoCardTabWx')}
-                    desc={paymentInfo?.chains?.DODO ? i18nService.t('payCardDescTopup') : i18nService.t('payUnavailable')}
-                    badge={i18nService.t('payBadgeBest')}
-                    disabled={!paymentInfo?.chains?.DODO}
-                    onClick={() => handlePayPackageWith('DODO', payPkg.usd)}
-                  />
-                  {/* 国内版(HIDE_WEB3)隐藏 USDT / BNB —— 代码保留不删,和 cn 官网一致只留银行卡 + 卡密。 */}
-                  {!HIDE_WEB3 && (
-                    <>
-                      <MethodRow
-                        icon={<ChainLogo chain="TRON" size={22} />}
-                        title="USDT · TRC20"
-                        desc={paymentInfo?.chains?.TRON
-                          ? i18nService.t('payUsdtSend').replace('{amt}', String(payPkg.usd))
-                          : i18nService.t('payUnavailable')}
-                        disabled={!paymentInfo?.chains?.TRON}
-                        onClick={() => handlePayPackageWith('TRON', payPkg.usd)}
-                      />
-                      <MethodRow
-                        icon={<ChainLogo chain="BSC" size={22} />}
-                        title="BNB · BSC"
-                        desc={bnbPrice > 0
-                          ? i18nService.t('payBnbApprox').replace('{amt}', bnbAmt.toFixed(4))
-                          : i18nService.t('payBnbRateLoading')}
-                        disabled={!(bnbPrice > 0)}
-                        onClick={() => handlePayPackageWith('BSC', payPkg.usd)}
-                      />
-                    </>
+                  {/* 顺序是产品定的:银行卡 → 微信 → 支付宝 → 官方店铺 → USDT → BNB。
+                      国内版(HIDE_WEB3)照旧不露出 USDT/BNB。前三个下单后跳支付站(域名 admin 可配)付款;每一行显示与否由后端 payMethods 决定。 */}
+                  {showM('card') && (
+                    <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => handlePayPackageWith('CARD', payPkg.usd)} />
                   )}
-                  <MethodRow
-                    icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
-                    title={i18nService.t('payShopTitle')}
-                    desc={redeemInfo ? i18nService.t('payShopDescTopup') : i18nService.t('payUnavailable')}
-                    disabled={!redeemInfo}
-                    onClick={() => handlePayPackageWith('SHOP', payPkg.usd)}
-                  />
+                  {showM('wxpay') && (
+                    <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('WXPAY', payPkg.usd)} />
+                  )}
+                  {showM('alipay') && (
+                    <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('ALIPAY', payPkg.usd)} />
+                  )}
+                  {showM('shop') && (
+                    <MethodRow
+                      icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
+                      title={i18nService.t('payShopTitle')}
+                      desc={redeemInfo ? i18nService.t('payShopDescTopup') : i18nService.t('payUnavailable')}
+                      disabled={!redeemInfo}
+                      onClick={() => handlePayPackageWith('SHOP', payPkg.usd)}
+                    />
+                  )}
+                  {!HIDE_WEB3 && showM('usdt') && (
+                    <MethodRow
+                      icon={<ChainLogo chain="TRON" size={22} />}
+                      title="USDT · TRC20"
+                      desc={paymentInfo?.chains?.TRON
+                        ? i18nService.t('payUsdtSend').replace('{amt}', String(payPkg.usd))
+                        : i18nService.t('payUnavailable')}
+                      disabled={!paymentInfo?.chains?.TRON}
+                      onClick={() => handlePayPackageWith('TRON', payPkg.usd)}
+                    />
+                  )}
+                  {!HIDE_WEB3 && showM('bnb') && (
+                    <MethodRow
+                      icon={<ChainLogo chain="BSC" size={22} />}
+                      title="BNB · BSC"
+                      desc={bnbPrice > 0
+                        ? i18nService.t('payBnbApprox').replace('{amt}', bnbAmt.toFixed(4))
+                        : i18nService.t('payBnbRateLoading')}
+                      disabled={!(bnbPrice > 0)}
+                      onClick={() => handlePayPackageWith('BSC', payPkg.usd)}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -2209,7 +2228,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     {i18nService.t('walletBack')}
                   </button>
                 </div>
-              ) : pendingChain === 'DODO' ? (
+              ) : (pendingCheckoutUrl || pendingChain === 'CARD' || pendingChain === 'ALIPAY' || pendingChain === 'DODO') ? (
                 /* 银行卡等待界面:付款在 Dodo 收银台(已用系统浏览器打开),本页只等到账。
                    入账靠 webhook —— 用户付完直接关浏览器也能到账。 */
                 <div className="text-center py-6">

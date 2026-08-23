@@ -55,6 +55,9 @@ export interface ChainBlock {
   }>;
 }
 
+/** 各支付方式的显示开关(后端 admin 可配,随 /payment/info 下发)。字段缺省 = 显示。 */
+export interface PayMethods { card?: boolean; wxpay?: boolean; alipay?: boolean; shop?: boolean; usdt?: boolean; bnb?: boolean }
+
 export interface PaymentInfo {
   treasuryWallet: string;
   bnbPriceUsd: number;
@@ -69,6 +72,8 @@ export interface PaymentInfo {
   noobPerDollar?: number;
   purchaseNoobPerDollarMin?: number;
   purchaseNoobPerDollarMax?: number;
+  /** 各支付方式显示开关。老后端没有这个字段 → 客户端按全部显示处理。 */
+  payMethods?: PayMethods;
   /**
    * 美元→人民币参考汇率。国内版拿它把美元标价折成「≈¥」显示。
    * 顶层下发(不在 WXPAY 块里)—— 微信通道关掉后那块整块不下发,汇率会跟着没,
@@ -190,14 +195,15 @@ class NoobClawApiService {
    */
   async createOrder(
     amount: number,
-    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' = 'BSC',
-  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = 'BSC',
+  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; payUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
       // WXPAY 的 amount 也是 USDT 档位数(后端按 usdt_to_cny_rate 折人民币),
       // 响应多 codeUrl(weixin:// 链接)由前端渲染成付款二维码。
       // DODO(银行卡)同样传美元档位数,响应多 checkoutUrl —— 用系统浏览器打开 Dodo 收银台,
       //   客户端不内嵌收银台(PCI 合规 + 三方页面不该塞进 app)。
-      const body = chain === 'TRON' || chain === 'WXPAY' || chain === 'DODO'
+      // 除 BNB 外全部按美元档位数下单(人民币渠道后端按汇率折算;银行卡/微信/支付宝另返 payUrl 去支付站付)。
+      const body = chain !== 'BSC'
         ? { chain, usdtAmount: amount }
         : { chain: 'BSC',  bnbAmount: amount };
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
@@ -253,8 +259,8 @@ class NoobClawApiService {
   async createSubscriptionOrder(
     planCode: string,
     period: 'month' | 'quarter' | 'half' | 'year' | 'once',
-    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' = 'TRON',
-  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = 'TRON',
+  ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; payUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
         method: 'POST',

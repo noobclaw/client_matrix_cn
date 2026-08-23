@@ -5,7 +5,7 @@ import { i18nService } from '../../services/i18n';
 import { HIDE_WEB3 } from '../../buildFlags';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
-import { getWebsiteUrl } from '../../services/endpoints';
+import type { PayMethods } from '../../services/noobclawApi';
 import { readCachedPlanConfig, writeCachedPlanConfig } from '../../services/paymentInfoCache';
 
 // 嵌入「我的充值」页「会员订阅」tab 的会员面板(无独立页面 chrome)。
@@ -18,12 +18,21 @@ import { readCachedPlanConfig, writeCachedPlanConfig } from '../../services/paym
 //   但历史订单 / 会员兑换码回传的 plan_period 仍可能是 'half',periodLabel 要认得。
 type Period = 'month' | 'quarter' | 'half' | 'year' | 'once';
 // 弹窗里的四个支付方式。SHOP = 官方店铺(卡密),不下单、只开兑换弹窗。
-type PayMethod = 'DODO' | 'TRON' | 'BSC' | 'SHOP';
+type PayMethod = 'CARD' | 'WXPAY' | 'ALIPAY' | 'TRON' | 'BSC' | 'SHOP';
 
 // 币种图标(对齐购买积分那排支付方式 tab)。本地复制自 WalletView 的 ChainLogo:
 // WalletView 已 import 本组件,反向 import 会形成循环依赖,故按矩阵惯例就地复制两枚 SVG。
-const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO'; size?: number }> = ({ chain, size = 16 }) => {
-  if (chain === 'DODO') {
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'; size?: number }> = ({ chain, size = 16 }) => {
+  if (chain === 'ALIPAY') {
+    // 支付宝:蓝底「支」(简化标,与 WalletView 同款)
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+        <circle cx={12} cy={12} r={12} fill="#1677FF" />
+        <text x="12" y="16.5" textAnchor="middle" fontSize="12" fontWeight="bold" fill="white">支</text>
+      </svg>
+    );
+  }
+  if (chain === 'DODO' || chain === 'CARD') {
     // 银行卡(Dodo)。通用卡片图标,不打三方品牌。
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" style={{ verticalAlign: 'middle' }}>
@@ -105,9 +114,9 @@ const MethodRow: React.FC<{
 // 4 种购买模式:前 3 个是连续订阅(银行卡走 Dodo 自动续费;USDT/BNB 无法自动续费,等同一次买断该时长);
 //   'once' 是单月购买(明确不续费,后端单独定价 price_usd_once,比连续包月贵)。
 const periods = (): Array<{ key: Period; label: string }> => [
-  { key: 'month', label: i18nService.t('mpPeriodMonthAuto') },
-  { key: 'quarter', label: i18nService.t('mpPeriodQuarterAuto') },
-  { key: 'year', label: i18nService.t('mpPeriodYearAuto') },
+  // 连续包月已下线(拿不到连续扣费通道)。季/年都是一次性买断,文案不能再带「连续」。
+  { key: 'quarter', label: i18nService.t('mpPeriodQuarterBuy') },
+  { key: 'year', label: i18nService.t('mpPeriodYearBuy') },
   { key: 'once', label: i18nService.t('mpPeriodOnce') },
 ];
 const periodLabel = (k: string): string => (({ month: i18nService.t('mpUnitMonth'), quarter: i18nService.t('mpUnitQuarter'), half: i18nService.t('mpUnitHalf'), year: i18nService.t('mpUnitYear'), once: i18nService.t('mpUnitMonth') } as Record<string, string>)[k] || '');
@@ -124,14 +133,12 @@ function fmtCredits(n: number): string {
 }
 
 const MembershipPanel: React.FC<{
-  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO') => Promise<string | null>;
-  /** 后端报了 DODO 通道 → 支付方式弹窗里露出「银行卡」(推荐渠道,支持自动续费) */
-  dodoEnabled?: boolean;
-  /** DODO 渠道真有 product 的订阅档,如 ['basic:month','basic:once'] —— 没有的档位银行卡那行置灰 */
-  dodoPlans?: string[];
+  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY') => Promise<string | null>;
+  /** 各支付方式显示开关(后端 /payment/info 的 payMethods,admin 可配)。缺省(老后端)= 全部显示。 */
+  payMethods?: PayMethods;
   /** 美元→人民币参考汇率(后端 /payment/info 下发)。 */
   usdCnyRate?: number;
-}> = ({ onPay, dodoEnabled, dodoPlans, usdCnyRate }) => {
+}> = ({ onPay, payMethods, usdCnyRate }) => {
   // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
   // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
@@ -144,8 +151,6 @@ const MembershipPanel: React.FC<{
   const [shopOpen, setShopOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  // 中性提示(非报错):目前只用于「取消自动续费请去官网」。
-  const [notice, setNotice] = useState('');
   // 会员码兑换
   const [redeemInput, setRedeemInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
@@ -194,7 +199,7 @@ const MembershipPanel: React.FC<{
 
   // 订阅下单交给 WalletView,复用「购买积分」那套支付步骤(QR/倒计时/轮询/取消)。失败回错误串在此显示。
   // ⚠️ period 原样传后端 —— 'once'(单月购买)后端有独立定价 + 一次性 product,绝不能折算成 'month'。
-  const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'DODO') => {
+  const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY') => {
     if (!onPay) return;
     setBusy(true); setError('');
     const err = await onPay(planCode, period, chain);
@@ -231,24 +236,10 @@ const MembershipPanel: React.FC<{
 
   // ── 选择视图 ──
   const planName = (p: any) => ((i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? (p?.name_zh || p?.name_en) : (p?.name_en || p?.name_zh)) || '';
-  // 取消自动续费:客户端【不调接口】,改为打开官网用户中心让用户在网页上完成。
-  //   ① 客户端直调 /subscription/cancel 实测会报错,把人卡住;② 多一层摩擦也是产品要的。
-  //   URL 走 getWebsiteUrl()(cn 版内部按 HIDE_WEB3 自动带 /cn),绝不硬编码域名。
-  const handleCancelAutoRenew = () => {
-    setError('');
-    setNotice(i18nService.t('subCancelOnWeb'));
-    try { (window as any).electron?.shell?.openExternal?.(getWebsiteUrl() + '/#page-user-center'); } catch { /* noop */ }
-  };
-
   const sorted = [...plans].sort((a, b) => a.sort_order - b.sort_order); // free 在前
+  // 各支付方式显示开关(后端 admin 可配)。老后端没下发 payMethods → 全显示。
+  const showM = (k: keyof PayMethods) => !payMethods || payMethods[k] !== false;
   const isOnce = period === 'once';
-  // 连续包月只留银行卡:USDT/BNB/卡密都是一次性到账,给不了「连续」。用它们买连续包月
-  //   = $9.9 拿一个月还不续费,比单月购买 $12.9 更便宜 —— 白让 $3 又丢掉续费。
-  //   后端 /payment/create 有同名兜底(MONTH_CARD_ONLY),这里只是不给入口。
-  const isMonthAuto = period === 'month';
-  // 银行卡可用性以后端下发的 subscriptionPlans 为准(它只列真有 product id 的档位,如 'pro:once')。
-  //   列表为空(老后端)时不拦,交给后端拒。
-  const dodoHasPlan = (planCode: string) => !dodoPlans?.length || dodoPlans.some(x => String(x) === `${planCode}:${period}`);
 
   return (
     <div>
@@ -261,25 +252,15 @@ const MembershipPanel: React.FC<{
         </div>
       </div>
 
-      {/* 自动续费状态条:说明下次扣款时间 + 给一条退出路径。
-          语义是「到期取消」—— 当前周期已付费,剩余天数照用,只是不再自动续。 */}
-      {subActive && cur?.autoRenew && (
-        <div className="mb-3 flex items-center justify-between gap-3 flex-wrap p-3 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-            {i18nService.t('subNextCharge')} {cur.periodEnd ? new Date(cur.periodEnd).toLocaleDateString() : ''}
-          </span>
-          <button
-            onClick={handleCancelAutoRenew}
-            className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary underline underline-offset-2 transition-colors"
-          >
-            {i18nService.t('subCancelAutoRenew')}
-          </button>
+      {/* 当前计划有效期。没有连续扣费通道,所有套餐都是一次性买断 —— 不再有「下次扣款 / 取消自动续费」。 */}
+      {subActive && cur?.periodEnd && (
+        <div className="mb-3 p-3 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+          {i18nService.t('mpValidUntil').replace('{date}', new Date(cur.periodEnd).toLocaleDateString())}
         </div>
       )}
 
       {error && <div className="mb-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-red-400">{error}</div>}
       {/* 中性提示条(不是报错)—— 例如「取消自动续费请在官网完成」 */}
-      {notice && <div className="mb-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{notice}</div>}
 
       {/* 套餐卡(4 档,免费版第一) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -292,7 +273,7 @@ const MembershipPanel: React.FC<{
           //   第二笔订阅并行扣钱。改为展示「自动续费中」并禁用。
           const autoOn = !!cur?.autoRenew;
           const cta = isCurActive
-            ? (autoOn ? i18nService.t('subAutoRenewing') : i18nService.t('mpCtaRenew'))
+            ? (autoOn ? i18nService.t('mpCurrentPlan') : i18nService.t('mpCtaRenew'))
             : (subActive ? i18nService.t('mpCtaUpgrade') : i18nService.t('mpCtaSubscribe'));
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
@@ -378,41 +359,18 @@ const MembershipPanel: React.FC<{
               <button onClick={() => setMethodPlan(null)} className="text-lg leading-none dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400">✕</button>
             </div>
             <div className="space-y-2.5">
-              <MethodRow
-                icon={<ChainLogo chain="DODO" size={22} />}
-                // ⚠️ Dodo 的微信支付【不支持订阅】(只支持一次性付款)—— 连续包月/季/年的收银台
-                //   只会出现 Card,所以标题里不能写 WeChat,否则用户选了发现没有微信会以为出错。
-                //   单月购买是一次性,微信可用,标题照旧带上。
-                title={isOnce ? i18nService.t('dodoCardTabWx') : i18nService.t('dodoCardTab')}
-                desc={!dodoEnabled ? i18nService.t('payUnavailable')
-                  : !dodoHasPlan(methodPlan) ? i18nService.t('payCardPeriodOff')
-                  : isOnce ? i18nService.t('payCardDescOnce') : i18nService.t('payCardDescAuto')}
-                badge={i18nService.t('payBadgeBest')}
-                disabled={!dodoEnabled || !dodoHasPlan(methodPlan)}
-                onClick={() => payWith('DODO', methodPlan)}
-              />
-              {/* 国内版(HIDE_WEB3)隐藏 USDT / BNB —— 代码保留不删,和 cn 官网一致只留银行卡 + 卡密。 */}
-              {!HIDE_WEB3 && (
-                <>
-                  {!isMonthAuto && (
-                    <MethodRow
-                      icon={<ChainLogo chain="TRON" size={22} />}
-                      title="USDT · TRC20"
-                      desc={i18nService.t('payChainAuto')}
-                      onClick={() => payWith('TRON', methodPlan)}
-                    />
-                  )}
-                  {!isMonthAuto && (
-                    <MethodRow
-                      icon={<ChainLogo chain="BSC" size={22} />}
-                      title="BNB · BSC"
-                      desc={i18nService.t('payChainAuto')}
-                      onClick={() => payWith('BSC', methodPlan)}
-                    />
-                  )}
-                </>
+              {/* 顺序是产品定的:银行卡 → 微信 → 支付宝 → 官方店铺 → USDT → BNB。
+                  国内版(HIDE_WEB3)照旧不露出 USDT/BNB。前三个下单后跳【支付站】(域名 admin 可配)付款;每一行显示与否由后端 payMethods 决定。 */}
+              {showM('card') && (
+                <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => payWith('CARD', methodPlan)} />
               )}
-              {!isMonthAuto && (
+              {showM('wxpay') && (
+                <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => payWith('WXPAY', methodPlan)} />
+              )}
+              {showM('alipay') && (
+                <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} onClick={() => payWith('ALIPAY', methodPlan)} />
+              )}
+              {showM('shop') && (
                 <MethodRow
                   icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
                   title={i18nService.t('payShopTitle')}
@@ -420,11 +378,11 @@ const MembershipPanel: React.FC<{
                   onClick={() => payWith('SHOP', methodPlan)}
                 />
               )}
-              {/* 隐藏了三行就得说清楚为什么,否则拿了卡密/想用链上的用户会以为坏了。 */}
-              {isMonthAuto && (
-                <p className="pt-1 text-[11px] leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                  {i18nService.t('payMonthCardOnly')}
-                </p>
+              {!HIDE_WEB3 && showM('usdt') && (
+                <MethodRow icon={<ChainLogo chain="TRON" size={22} />} title="USDT · TRC20" desc={i18nService.t('payChainAuto')} onClick={() => payWith('TRON', methodPlan)} />
+              )}
+              {!HIDE_WEB3 && showM('bnb') && (
+                <MethodRow icon={<ChainLogo chain="BSC" size={22} />} title="BNB · BSC" desc={i18nService.t('payChainAuto')} onClick={() => payWith('BSC', methodPlan)} />
               )}
             </div>
           </div>
