@@ -84,33 +84,33 @@ const clampInt = (v: number, lo: number, hi: number): number => {
 const SEED_SPEC: Record<string, { host: RegExp; strip: RegExp; allow: RegExp; hint: string; ph: string }> = {
   tiktok: {
     host: /^https?:\/\/(www\.)?tiktok\.com\//i, strip: /^@/, allow: /[^a-z0-9._]/g,
-    hint: '@账号名 或 主页链接', ph: '@competitor1\n@competitor2\nhttps://www.tiktok.com/@competitor3',
+    hint: '@账号名 或 主页链接 或 指定视频链接', ph: '@competitor1\nhttps://www.tiktok.com/@competitor2\nhttps://www.tiktok.com/@someone/video/7300000000000000000',
   },
   douyin: {
     host: /^https?:\/\/(www\.)?douyin\.com\/(user\/)?/i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
-    hint: '抖音号 或 主页链接', ph: 'https://www.douyin.com/user/MS4wLjABAAAA...\nMS4wLjABAAAA...',
+    hint: '抖音号 或 主页链接 或 指定视频链接', ph: 'https://www.douyin.com/user/MS4wLjABAAAA...\nhttps://www.douyin.com/video/7640000000000000000',
   },
   xhs: {
     host: /^https?:\/\/(www\.)?xiaohongshu\.com\/user\/profile\//i, strip: /^@/, allow: /[^a-zA-Z0-9]/g,
-    hint: '小红书主页链接(含 24 位 uid)', ph: 'https://www.xiaohongshu.com/user/profile/5f3a...\n5f3a...',
+    hint: '主页链接 或 24 位 uid 或 指定笔记链接', ph: 'https://www.xiaohongshu.com/user/profile/5f3a...\nhttps://www.xiaohongshu.com/explore/66xxxx?xsec_token=...',
   },
   kuaishou: {
     host: /^https?:\/\/(www\.)?kuaishou\.com\/profile\//i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
-    hint: '快手主页链接 或 用户 id', ph: 'https://www.kuaishou.com/profile/3xabc...\n3xabc...',
+    hint: '主页链接 或 用户 id 或 指定作品链接', ph: 'https://www.kuaishou.com/profile/3xabc...\nhttps://www.kuaishou.com/short-video/3xdef...',
   },
   bilibili: {
     host: /^https?:\/\/space\.bilibili\.com\//i, strip: /^(uid:?)/i, allow: /[^0-9]/g,
-    hint: 'B站空间链接 或 UID(纯数字)', ph: 'https://space.bilibili.com/12345678\n12345678',
+    hint: '空间链接 或 UID 或 指定视频链接', ph: 'https://space.bilibili.com/12345678\nhttps://www.bilibili.com/video/BV1xx411c7mD',
   },
   // 推特身份是 @handle(大小写不敏感);主页 = x.com/handle。也可以直接粘推文链接。
   x: {
     host: /^https?:\/\/(www\.)?(twitter|x)\.com\//i, strip: /^@/, allow: /[^a-zA-Z0-9_]/g,
-    hint: '@账号 或 主页/推文链接', ph: '@competitor1\n@competitor2\nhttps://x.com/someone/status/1234567890',
+    hint: '@账号 或 主页链接 或 指定推文链接', ph: '@competitor1\nhttps://x.com/competitor2\nhttps://x.com/someone/status/1234567890',
   },
   // YouTube 身份是 @handle(跟 TikTok 同制,大小写不敏感);频道主页 = youtube.com/@handle。
   youtube: {
     host: /^https?:\/\/(www\.)?youtube\.com\//i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
-    hint: '@频道 handle 或 频道主页链接', ph: '@competitor1\n@competitor2\nhttps://www.youtube.com/@competitor3',
+    hint: '@频道 handle 或 频道链接 或 指定视频链接', ph: '@competitor1\nhttps://www.youtube.com/@competitor2\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ',
   },
 };
 const specOf = (p?: string) => SEED_SPEC[String(p || 'tiktok')] || SEED_SPEC.tiktok;
@@ -370,8 +370,8 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                 与其给一个不稳的入口,不如只留稳的那个(用户 2026-08-23 明确要求)。 */}
             <div className={`grid gap-2.5 ${platform === 'x' ? 'grid-cols-1' : 'grid-cols-2'}`}>
               {(platform === 'x'
-                ? ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或推文链接,采集回复区里的人', 'From competitor accounts or a tweet URL')]] as const)
-                : ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号,采集他们作品评论区里的人', 'From competitor accounts\' commenters')],
+                ? ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或指定推文链接,采集回复区里的人再逐个互动', 'Competitor accounts or a tweet URL — harvest its repliers, then engage them')]] as const)
+                : ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或指定视频/帖子链接,采集评论区里的人再逐个互动', 'Competitor accounts or a post URL — harvest its commenters, then engage them')],
                     ['keywords', '🔍', t('关键词获客', 'Keyword'), t('按赛道关键词搜视频,采集评论区里的人', 'From videos found by niche keywords')]] as const)
               ).map(([m, icon, title, desc]) => (
                 <button key={m} type="button" onClick={() => setMode(m)}
