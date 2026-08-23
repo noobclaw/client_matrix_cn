@@ -683,7 +683,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
   // 弹窗里选定支付方式 → 分发下单。SHOP 不下单,关掉本弹窗后再弹一层店铺弹窗(去店铺买 + 回来就地兑换)。
   // 各支付方式显示开关(后端 admin 可配)。老后端没下发 payMethods → 全显示。
-  const showM = (k: keyof PayMethods) => !paymentInfo?.payMethods || paymentInfo.payMethods[k] !== false;
+  // 老后端没下发 payMethods:银行卡/支付宝是新渠道,老后端不认 → 默认藏起来;其余照旧显示。
+  //   否则客户端先于后端发布时,这两行露出来但下单必失败。
+  const showM = (k: keyof PayMethods) => {
+    const pm = paymentInfo?.payMethods;
+    if (!pm) return k !== 'card' && k !== 'alipay';
+    return pm[k] !== false;
+  };
   const handlePayPackageWith = (m: 'DODO' | 'CARD' | 'WXPAY' | 'ALIPAY' | 'TRON' | 'BSC' | 'SHOP', usd: number) => {
     setPayPkg(null);
     setError('');

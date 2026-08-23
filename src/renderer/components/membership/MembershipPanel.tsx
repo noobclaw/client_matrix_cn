@@ -238,7 +238,11 @@ const MembershipPanel: React.FC<{
   const planName = (p: any) => ((i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? (p?.name_zh || p?.name_en) : (p?.name_en || p?.name_zh)) || '';
   const sorted = [...plans].sort((a, b) => a.sort_order - b.sort_order); // free 在前
   // 各支付方式显示开关(后端 admin 可配)。老后端没下发 payMethods → 全显示。
-  const showM = (k: keyof PayMethods) => !payMethods || payMethods[k] !== false;
+  // 老后端没下发 payMethods:银行卡/支付宝是新渠道,老后端不认 → 默认藏起来;其余照旧显示。
+  const showM = (k: keyof PayMethods) => {
+    if (!payMethods) return k !== 'card' && k !== 'alipay';
+    return payMethods[k] !== false;
+  };
   const isOnce = period === 'once';
 
   return (
