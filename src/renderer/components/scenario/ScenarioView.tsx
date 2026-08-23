@@ -1695,7 +1695,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="text-xl font-bold dark:text-white">🎯 {platLabel} · {i18nService.currentLanguage === 'zh' ? '精准定向获客' : 'Lead Finder'}</div>
                 {/* 推荐角标:定向获客是当前主推能力,右上角小火苗(纯展示,不影响逻辑) */}
-                <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-orange-500/15 text-orange-500 dark:text-orange-400 border border-orange-500/30">
+                <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-red-500 text-white shadow-md shadow-red-500/40 ring-1 ring-red-400/60">
                   🔥 {i18nService.currentLanguage === 'zh' ? '推荐' : 'Top pick'}
                 </span>
               </div>

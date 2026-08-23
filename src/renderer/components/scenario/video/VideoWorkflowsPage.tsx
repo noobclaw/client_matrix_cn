@@ -358,10 +358,10 @@ const VideoTutorialButton: React.FC<{ isZh: boolean }> = ({ isZh }) => {
                  border border-amber-500/30 hover:border-amber-500/60
                  shadow-sm hover:shadow-md hover:shadow-amber-500/20
                  transition-all duration-200 hover:-translate-y-0.5"
-      title={isZh ? '查看视频创作教程' : 'Open video creation tutorial'}
+      title={isZh ? '查看使用教程' : 'Open the user guide'}
     >
       <span className="text-sm leading-none">📖</span>
-      <span>{isZh ? '视频创作教程' : 'Tutorial'}</span>
+      <span>{isZh ? '使用教程' : 'User Guide'}</span>
       <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">→</span>
     </button>
   );
@@ -561,7 +561,7 @@ const VideoLanding: React.FC<{
               : 'Turn a topic into a narrated, subtitled portrait short — saved locally first, publish later.'}
           </div>
           <span className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-rose-500 group-hover:bg-rose-600 text-white text-sm font-bold shadow-lg shadow-rose-500/25 transition-colors">
-            ✨ {isZh ? '新建视频创作任务' : 'Create a video task'} →
+            ✨ {isZh ? '新建任务' : 'Create a task'} →
           </span>
         </button>
 
@@ -576,7 +576,7 @@ const VideoLanding: React.FC<{
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold dark:text-white flex items-center gap-2">
-          📋 {isZh ? '我的视频任务' : 'My Videos'}
+          📋 {isZh ? '我的任务' : 'My Tasks'}
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${total >= VIDEO_TASK_LIMIT ? 'bg-red-500/15 text-red-500' : 'bg-gray-500/10 text-gray-500'}`}>
             {total}/{VIDEO_TASK_LIMIT}
           </span>
@@ -2353,14 +2353,14 @@ const VideoCreateFlow: React.FC<{
               <span className="text-xl leading-none">⚠️</span>
               <div className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
                 {isZh
-                  ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
-                  : `Video tasks are full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one in "My Videos" first.`}
+                  ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的任务」删掉已完成的再新建。`
+                  : `Video tasks are full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one in "My Tasks" first.`}
               </div>
             </div>
             <div className="mt-5 flex gap-2 justify-end">
               <button type="button" onClick={() => setLimitFull(false)} className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">{isZh ? '关闭' : 'Close'}</button>
               {onGoTasks && (
-                <button type="button" onClick={() => { setLimitFull(false); onGoTasks(); }} className="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600">{isZh ? '去我的视频任务' : 'Go to My Videos'}</button>
+                <button type="button" onClick={() => { setLimitFull(false); onGoTasks(); }} className="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600">{isZh ? '去我的视频任务' : 'Go to My Tasks'}</button>
               )}
             </div>
           </div>
@@ -3864,8 +3864,8 @@ const VideoConfigModal: React.FC<{
     try {
       if (!(await videoQueue.canCreate())) {
         setSubmitError(isZh
-          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
-          : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one in "My Videos" first.`);
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的任务」删掉已完成的再新建。`
+          : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one in "My Tasks" first.`);
         return;
       }
       const id = videoTaskStore.createTask(input, buildTitle(), schedule);
@@ -5564,7 +5564,7 @@ export const HotspotVideoModal: React.FC<{
       }
       if (!(await videoQueue.canCreate())) {
         setErr(isZh
-          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的任务」删掉已完成的再新建。`
           : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.`);
         return;
       }
@@ -6265,7 +6265,7 @@ export const ThreadVideoModal: React.FC<{
       }
       if (!(await videoQueue.canCreate())) {
         setErr(isZh
-          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的任务」删掉已完成的再新建。`
           : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.`);
         return;
       }
@@ -7773,7 +7773,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
       // 新建才校验任务数上限;编辑是改已有任务,不占新名额。
       if (!isEdit && !(await videoQueue.canCreate())) {
         setErr(isZh
-          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的任务」删掉已完成的再新建。`
           : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.`);
         return;
       }
