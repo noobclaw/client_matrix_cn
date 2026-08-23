@@ -767,6 +767,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       if (sid === 'xhs_lead_engage')      return { icon: '🎯', label: leadZh ? '小红书 定向获客' : 'Xiaohongshu Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       if (sid === 'kuaishou_lead_engage') return { icon: '🎯', label: leadZh ? '快手 定向获客' : 'Kuaishou Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       if (sid === 'bilibili_lead_engage') return { icon: '🎯', label: leadZh ? '哔哩哔哩 定向获客' : 'Bilibili Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (sid === 'youtube_lead_engage')  return { icon: '🎯', label: leadZh ? 'YouTube 定向获客' : 'YouTube Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       return { icon: '🎯', label: leadZh ? '定向获客' : 'Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
@@ -1538,7 +1539,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     const isZhLead = i18nService.currentLanguage === 'zh';
                     const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+                    const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
                     // 定向获客:在赞/关注/评论【前面】先报两个潜客数(这是这张卡真正的产出)。
                     //   跟赞/关注/评论一样带分母 —— 光一个「获得潜客 20」看不出跑没跑满。
@@ -1874,7 +1875,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                               const t = (ap as any)[k]?.target ?? 0;
                               return t > 0 ? `${d}/${t}` : String(d);
                             };
-                            return <>📇 {dt('lead_new')} · 🤝 {dt('lead_engaged')} · 👍 {dt('like')} · ➕ {dt('follow')} · 💬 {dt('comment')}</>;
+                            // YouTube 的关注叫订阅,图标也换成 📌(跟剧本日志一致)。
+                            const _ytLead = String(sid || '') === 'youtube_lead_engage';
+                            return <>📇 {dt('lead_new')} · 🤝 {dt('lead_engaged')} · 👍 {dt('like')} · {_ytLead ? '📌' : '➕'} {dt('follow')} · 💬 {dt('comment')}</>;
                           }
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
@@ -2213,7 +2216,7 @@ function formatActionBreakdown(
       return ia - ib;
     });
   if (keys.length === 0) return '-';
-  const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+  const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
   return keys.map(k => {
     const icon = ICONS[k] || '·';
     const label = (labels as any)[k] || k;

@@ -527,6 +527,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     xhs_lead_engage: ['小红书 定向获客', 'Xiaohongshu Lead Finder'],
                     kuaishou_lead_engage: ['快手 定向获客', 'Kuaishou Lead Finder'],
                     bilibili_lead_engage: ['哔哩哔哩 定向获客', 'Bilibili Lead Finder'],
+                    youtube_lead_engage: ['YouTube 定向获客', 'YouTube Lead Finder'],
                   };
                   const pair = leadName[sid] || ['定向获客', 'Lead Finder'];
                   return { icon: '🎯', label: leadZh ? pair[0] : pair[1], color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
@@ -847,7 +848,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     const isZhLead = i18nService.currentLanguage === 'zh';
                     const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('mtxActLike'), follow: i18nService.t('mtxActFollow'), comment: i18nService.t('mtxActComment'), reply: i18nService.t('mtxActReply'), subscribe: i18nService.t('mtxActSubscribe'), post: i18nService.t('mtxActPost'), download: i18nService.t('mtxActDownload') };
+                    const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('mtxActLike'), follow: (String(task.scenario_id || '') === 'youtube_lead_engage' ? i18nService.t('mtxActSubscribe') : i18nService.t('mtxActFollow')), comment: i18nService.t('mtxActComment'), reply: i18nService.t('mtxActReply'), subscribe: i18nService.t('mtxActSubscribe'), post: i18nService.t('mtxActPost'), download: i18nService.t('mtxActDownload') };
                     // For idle tasks that have never produced action counts
                     // (brand-new tasks, or post-creator scenarios where the
                     // backend hasn't backfilled `cumulative_action_counts`
