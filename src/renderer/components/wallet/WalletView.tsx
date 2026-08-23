@@ -683,13 +683,19 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
   // 弹窗里选定支付方式 → 分发下单。SHOP 不下单,关掉本弹窗后再弹一层店铺弹窗(去店铺买 + 回来就地兑换)。
   // 各支付方式显示开关(后端 admin 可配)。老后端没下发 payMethods → 全显示。
-  // 老后端没下发 payMethods:银行卡/支付宝是新渠道,老后端不认 → 默认藏起来;其余照旧显示。
-  //   否则客户端先于后端发布时,这两行露出来但下单必失败。
-  const showM = (k: keyof PayMethods) => {
-    const pm = paymentInfo?.payMethods;
-    if (!pm) return k !== 'card' && k !== 'alipay';
-    return pm[k] !== false;
+  // 有效的支付方式开关(会员面板 + 充值弹窗共用):后端下发了 payMethods 就用它;
+  //   老后端没下发时按它报的渠道推断 —— 微信看 chains.WXPAY(admin 关了微信就不会下发,
+  //   之前按「默认显示」处理导致关了还露出来、点了报「微信下单失败」)、USDT 看 chains.TRON、
+  //   银行卡/支付宝老后端不认 → 关。
+  const payMethodsEff: PayMethods = paymentInfo?.payMethods || {
+    card: false,
+    alipay: false,
+    wxpay: !!paymentInfo?.chains?.WXPAY && paymentInfo.chains.WXPAY.enabled !== false,
+    usdt: !!paymentInfo?.chains?.TRON,
+    bnb: true,
+    shop: true,
   };
+  const showM = (k: keyof PayMethods) => payMethodsEff[k] !== false;
   const handlePayPackageWith = (m: 'DODO' | 'CARD' | 'WXPAY' | 'ALIPAY' | 'TRON' | 'BSC' | 'SHOP', usd: number) => {
     setPayPkg(null);
     setError('');
@@ -1980,7 +1986,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <MembershipPanel onPay={startSubscriptionPay} payMethods={paymentInfo?.payMethods} usdCnyRate={paymentInfo?.usdCnyRate} />
+          <MembershipPanel onPay={startSubscriptionPay} payMethods={payMethodsEff} usdCnyRate={paymentInfo?.usdCnyRate} />
         </div>
         )}
 

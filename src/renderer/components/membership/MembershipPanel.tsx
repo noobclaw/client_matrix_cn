@@ -256,12 +256,6 @@ const MembershipPanel: React.FC<{
         </div>
       </div>
 
-      {/* 当前计划有效期。没有连续扣费通道,所有套餐都是一次性买断 —— 不再有「下次扣款 / 取消自动续费」。 */}
-      {subActive && cur?.periodEnd && (
-        <div className="mb-3 p-3 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-          {i18nService.t('mpValidUntil').replace('{date}', new Date(cur.periodEnd).toLocaleDateString())}
-        </div>
-      )}
 
       {error && <div className="mb-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-red-400">{error}</div>}
       {/* 中性提示条(不是报错)—— 例如「取消自动续费请在官网完成」 */}
