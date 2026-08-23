@@ -1688,16 +1688,18 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           )}
           {/* 定向获客 —— 采集同行评论区里的人当潜客名单 → 逐个触达点赞/评论/关注。每平台独立卡片。 */}
           {MATRIX_LEAD_PLATFORMS.has(currentPlatform) && (
-            <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
+            <div className="relative overflow-hidden rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
+              {/* 推荐丝带:定向获客是当前主推能力。斜条 rotate-45 横跨右上角,
+                  靠父级的 overflow-hidden 裁成一块实心三角区域(纯展示,pointer-events-none
+                  保证不挡下面任何可点元素)。原来那颗小胶囊太不显眼(用户 2026-08-23)。 */}
+              <span className="pointer-events-none absolute -right-12 top-6 w-44 rotate-45 bg-red-500 py-1.5 text-center text-[13px] font-extrabold tracking-wide text-white shadow-lg shadow-red-500/40">
+                🔥 {i18nService.currentLanguage === 'zh' ? '推荐' : 'Top pick'}
+              </span>
               <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> {i18nService.currentLanguage === 'zh' ? '精准获客' : 'Lead Finder'}
               </div>
-              <div className="flex items-start justify-between gap-2 mb-1">
+              <div className="mb-1 pr-16">
                 <div className="text-xl font-bold dark:text-white">🎯 {platLabel} · {i18nService.currentLanguage === 'zh' ? '精准定向获客' : 'Lead Finder'}</div>
-                {/* 推荐角标:定向获客是当前主推能力,右上角小火苗(纯展示,不影响逻辑) */}
-                <span className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-red-500 text-white shadow-md shadow-red-500/40 ring-1 ring-red-400/60">
-                  🔥 {i18nService.currentLanguage === 'zh' ? '推荐' : 'Top pick'}
-                </span>
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
                 {i18nService.currentLanguage === 'zh'
@@ -2285,7 +2287,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   ? '🧬 ' + i18nService.t('matrixMyFanTasks')
                   : mode === 'runs'
                     ? '🧬 ' + i18nService.t('matrixRunHistory')
-                    : '🧬 ' + i18nService.t('matrixMyFanTasks'))
+                    : mode === 'create'
+                      ? '🧬 ' + i18nService.t('matrixNewFanTask')
+                      : '🧬 ' + i18nService.t('matrixMyFanTasks'))
               : inDetailView
                 ? i18nService.t('myFanTasks')
                 : mode === 'create'
