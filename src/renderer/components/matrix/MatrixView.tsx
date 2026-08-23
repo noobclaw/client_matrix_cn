@@ -1404,7 +1404,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       const active = editId ? false : newScope === s.key;   // 编辑态不高亮可选,只读展示
                       return (
                         <button key={s.key} disabled={!!editId} onClick={() => setNewScope(s.key)}
-                          className={`flex-1 text-xs px-3 py-2 rounded-lg border transition-colors ${editId ? 'opacity-60 cursor-not-allowed border-gray-300 dark:border-gray-700' : active ? 'border-orange-500 bg-orange-500/10 text-orange-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-orange-500/50'}`}>
+                          className={`flex-1 text-xs px-3 py-2 rounded-lg border transition-colors ${editId ? 'opacity-60 cursor-not-allowed border-gray-300 dark:border-gray-700' : active ? 'border-orange-500 bg-orange-500 text-white font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-orange-500/50'}`}>
                           {s.label}{editId && (newScope === s.key ? ' ✓' : '')}
                         </button>
                       );
