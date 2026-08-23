@@ -649,7 +649,10 @@ const App: React.FC = () => {
   // 矩阵号:记住账号页当前选中的平台 —— 「新建涨粉任务」互动向导默认落在这个平台,
   // 而不是写死抖音(否则在 YouTube tab 点新建,弹出的却是「配置抖音互动涨粉」=串台)。
   // 初值用 'video'(多平台视频创作):新建/我的/运行记录三页默认就停在这个 tab。
-  const [matrixPlatform, setMatrixPlatform] = useState<string>('video');
+  // 空串 = 「没指定平台」,交给 ScenarioView 的 defaultPlatform 决定(矩阵模式落
+  //   MATRIX_TAB_ORDER[0] = 抖音)。以前这里写死 'video',而 ScenarioView 是
+  //   initialPlatform || defaultPlatform —— 真值会把默认值整个短路掉。
+  const [matrixPlatform, setMatrixPlatform] = useState<string>('');
   // 矩阵号:全平台「登录过期」账号总数 —— 喂给侧栏「我的矩阵账号」菜单右上角红圈角标(与账号页各平台 tab 角标口径一致),
   // 即便当前不在矩阵页也独立订阅,保证用户在任何页面都能看到「有号过期了,去重连」的提醒。
   const [matrixExpiredTotal, setMatrixExpiredTotal] = useState(0);
@@ -1007,11 +1010,15 @@ const App: React.FC = () => {
   const handleShowContact = () => setMainView('contact');
   const handleShowPersonality = () => setMainView('personality');
   const handleShowMatrix = () => setMainView('matrix');
-  // 侧栏点「新建/我的/记录」:复位到默认【多平台视频创作】tab(从某平台「已有任务」跳过去才带具体平台)。
+  // 侧栏点「新建/我的/记录」:把平台清空,让 ScenarioView 落到它自己的 defaultPlatform
+  //   (矩阵模式 = MATRIX_TAB_ORDER[0] = 抖音;非矩阵的旧视频版仍是多平台视频创作)。
+  //   ⚠️ 别在这儿写死平台名 —— 以前写死 'video',把 ScenarioView 那行改默认 tab 的代码
+  //   整个架空了(用户 2026-08-23:一进去还是停在多平台视频创作)。
+  //   从某平台卡片的「已有任务 →」跳过来时仍会带具体平台,那条路走 onSwitchToManage,不经这里。
   // bump navNonce 让 ScenarioView 按新 initialPlatform 复位 tab。
-  const handleShowMatrixTaskNew = () => { setMatrixPlatform('video'); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); };
-  const handleShowMatrixTasks = () => { setMatrixPlatform('video'); setMainView('matrixTasks'); setScenarioNavNonce((n) => n + 1); };
-  const handleShowMatrixRuns = () => { setMatrixPlatform('video'); setMainView('matrixRuns'); setScenarioNavNonce((n) => n + 1); };
+  const handleShowMatrixTaskNew = () => { setMatrixPlatform(''); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); };
+  const handleShowMatrixTasks = () => { setMatrixPlatform(''); setMainView('matrixTasks'); setScenarioNavNonce((n) => n + 1); };
+  const handleShowMatrixRuns = () => { setMatrixPlatform(''); setMainView('matrixRuns'); setScenarioNavNonce((n) => n + 1); };
 
   return (
     <div className="relative h-screen overflow-hidden flex flex-col dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
