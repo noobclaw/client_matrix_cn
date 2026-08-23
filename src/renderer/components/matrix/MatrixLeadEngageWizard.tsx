@@ -169,8 +169,8 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
       }).join('\n')
       : '');
 
-  const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 20);
-  const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 20);
+  const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 50);
+  const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 100);
   const [maxLikes, setMaxLikes] = useState<number>(typeof le.maxLikes === 'number' ? le.maxLikes : 100);
   const [maxFollows, setMaxFollows] = useState<number>(typeof le.maxFollows === 'number' ? le.maxFollows : 20);
   const [maxComments, setMaxComments] = useState<number>(typeof le.maxComments === 'number' ? le.maxComments : 100);
