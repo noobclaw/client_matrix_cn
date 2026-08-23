@@ -175,13 +175,19 @@ const MembershipPanel: React.FC<{
   const subActive = !!cur?.subActive;
   const curOrder = subActive ? (plans.find(p => p.code === curCode)?.sort_order ?? 0) : 0;
 
+  // 升级确认用【应用内弹窗】,不能用 window.confirm:Tauri 把它接管成 plugin:dialog|confirm 的异步调用,
+  //   ① 返回 Promise 恒真 → 没确认就直接开了支付弹窗;② 调用被 ACL 拒 → 冒成全局「Unhandled」错误提示
+  //   (用户 2026-08-23 截图)。MatrixView 的 confirmDlg 就是为同一个坑改的,这里照做。
+  const [upgradeAsk, setUpgradeAsk] = useState<{ planCode: string; text: string } | null>(null);
+
   // 点套餐卡片 → 先确认「升级会从今天重算周期」,再开支付方式弹窗。
   const choosePlan = (planCode: string) => {
     setError('');
     const isUpgradeNow = subActive && !!cur?.planCode && cur.planCode !== planCode;
     if (isUpgradeNow) {
       const endTxt = cur?.periodEnd ? new Date(cur.periodEnd).toLocaleDateString() : '';
-      if (!window.confirm(i18nService.t('mpUpgradeRestartWarn').replace('{date}', endTxt))) return;
+      setUpgradeAsk({ planCode, text: i18nService.t('mpUpgradeRestartWarn').replace('{date}', endTxt) });
+      return;
     }
     setMethodPlan(planCode);
   };
@@ -352,6 +358,18 @@ const MembershipPanel: React.FC<{
           顺序即推荐序:银行卡(推荐,走 Dodo,连续订阅)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。
           ⚠️ portal 到 body —— 合伙人金色卡片的 filter/glow 会成为 position:fixed 的包含块,
              不 portal 会把全屏遮罩裁进卡片里。 */}
+      {upgradeAsk && createPortal(
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setUpgradeAsk(null)}>
+          <div className="w-full max-w-md rounded-2xl p-6 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="text-sm leading-relaxed whitespace-pre-line mb-6 dark:text-claude-darkText text-claude-text">{upgradeAsk.text}</div>
+            <div className="flex justify-end gap-2.5">
+              <button onClick={() => setUpgradeAsk(null)} className="px-4 py-2 text-sm rounded-lg border dark:border-white/15 border-black/15 dark:text-claude-darkText text-claude-text">{i18nService.t('mvCancel')}</button>
+              <button onClick={() => { const pc = upgradeAsk.planCode; setUpgradeAsk(null); setMethodPlan(pc); }} className="px-4 py-2 text-sm rounded-lg text-white bg-orange-500 hover:bg-orange-600">{i18nService.t('mvOk')}</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       {methodPlan && createPortal(
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setMethodPlan(null)}>
           <div className="w-full max-w-md rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
