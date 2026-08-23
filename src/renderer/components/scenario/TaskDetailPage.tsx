@@ -768,6 +768,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       if (sid === 'kuaishou_lead_engage') return { icon: '🎯', label: leadZh ? '快手 定向获客' : 'Kuaishou Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       if (sid === 'bilibili_lead_engage') return { icon: '🎯', label: leadZh ? '哔哩哔哩 定向获客' : 'Bilibili Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       if (sid === 'youtube_lead_engage')  return { icon: '🎯', label: leadZh ? 'YouTube 定向获客' : 'YouTube Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (sid === 'x_lead_engage')        return { icon: '🎯', label: leadZh ? '推特 定向获客' : 'X Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       return { icon: '🎯', label: leadZh ? '定向获客' : 'Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };

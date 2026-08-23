@@ -84,7 +84,7 @@ const MATRIX_ENGAGE_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou'
 const MATRIX_REPLY_FAN_PLATFORMS = new Set<PlatformId>(['douyin', 'xhs', 'kuaishou', 'bilibili', 'toutiao', 'shipinhao']);
 // 定向获客:有 <平台>_lead_engage 剧本的平台。每个平台一张独立卡片、独立任务(type='lead_engage'
 //   按平台各存一条)、独立向导与详情 —— 与互动涨粉/回复粉丝互不影响。
-const MATRIX_LEAD_PLATFORMS = new Set<PlatformId>(['tiktok', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'youtube']);
+const MATRIX_LEAD_PLATFORMS = new Set<PlatformId>(['tiktok', 'douyin', 'xhs', 'kuaishou', 'bilibili', 'youtube', 'x']);
 // YouTube 的「关注」在平台上叫【订阅】,卡片/向导/详情的文案都要说平台自己的词
 //   (用户 2026-08-23:「任务详情要独立、和自己平台名字切合」)。计数键仍统一是 follow。
 const LEAD_FOLLOW_WORD = (p: PlatformId | string): [string, string] =>
@@ -2669,7 +2669,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               platformLabel={(() => {
                 const p = matrixLeadPlatform;
                 return p === 'tiktok' ? 'TikTok' : p === 'douyin' ? '抖音' : p === 'xhs' ? '小红书'
-                  : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : p === 'youtube' ? 'YouTube' : String(p);
+                  : p === 'kuaishou' ? '快手' : p === 'bilibili' ? '哔哩哔哩' : p === 'youtube' ? 'YouTube' : p === 'x' ? '推特' : String(p);
               })()}
               platform={matrixLeadPlatform}
               accounts={matrixLeadAccounts}

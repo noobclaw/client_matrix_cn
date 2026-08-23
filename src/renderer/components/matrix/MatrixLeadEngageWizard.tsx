@@ -102,6 +102,11 @@ const SEED_SPEC: Record<string, { host: RegExp; strip: RegExp; allow: RegExp; hi
     host: /^https?:\/\/space\.bilibili\.com\//i, strip: /^(uid:?)/i, allow: /[^0-9]/g,
     hint: 'B站空间链接 或 UID(纯数字)', ph: 'https://space.bilibili.com/12345678\n12345678',
   },
+  // 推特身份是 @handle(大小写不敏感);主页 = x.com/handle。也可以直接粘推文链接。
+  x: {
+    host: /^https?:\/\/(www\.)?(twitter|x)\.com\//i, strip: /^@/, allow: /[^a-zA-Z0-9_]/g,
+    hint: '@账号 或 主页/推文链接', ph: '@competitor1\n@competitor2\nhttps://x.com/someone/status/1234567890',
+  },
   // YouTube 身份是 @handle(跟 TikTok 同制,大小写不敏感);频道主页 = youtube.com/@handle。
   youtube: {
     host: /^https?:\/\/(www\.)?youtube\.com\//i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
@@ -127,7 +132,7 @@ const parseSeedLines = (text: string, platform?: string): string[] => {
     if (!line) continue;
     // TikTok / YouTube 的 handle 都不区分大小写(/@MKBHD 与 /@mkbhd 是同一个频道),
     //   不归一会把同一个同行填两遍、剧本再各收一轮。
-    const key = (platform === 'tiktok' || platform === 'youtube') ? line.toLowerCase() : line;
+    const key = (platform === 'tiktok' || platform === 'youtube' || platform === 'x') ? line.toLowerCase() : line;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(line);
@@ -164,7 +169,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     Array.isArray(le.seedAccounts)
       ? le.seedAccounts.map((h) => {
         const v = String(h || '');
-        const atStyle = platform === 'tiktok' || platform === 'douyin' || platform === 'youtube';
+        const atStyle = platform === 'tiktok' || platform === 'douyin' || platform === 'youtube' || platform === 'x';
         return (atStyle && !/^https?:\/\//i.test(v)) ? '@' + v : v;
       }).join('\n')
       : '');
@@ -361,9 +366,14 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {/* STEP 2 · 获客模式 + 来源 */}
         {step === 2 && (
           <>
-            <div className="grid grid-cols-2 gap-2.5">
-              {([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号,采集他们作品评论区里的人', 'From competitor accounts\' commenters')],
-                 ['keywords', '🔍', t('关键词获客', 'Keyword'), t('按赛道关键词搜视频,采集评论区里的人', 'From videos found by niche keywords')]] as const).map(([m, icon, title, desc]) => (
+            {/* 推特只做精准获客:X 的搜索页对未登录/低权重账号限制大、结果噪音也高,
+                与其给一个不稳的入口,不如只留稳的那个(用户 2026-08-23 明确要求)。 */}
+            <div className={`grid gap-2.5 ${platform === 'x' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              {(platform === 'x'
+                ? ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或推文链接,采集回复区里的人', 'From competitor accounts or a tweet URL')]] as const)
+                : ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号,采集他们作品评论区里的人', 'From competitor accounts\' commenters')],
+                    ['keywords', '🔍', t('关键词获客', 'Keyword'), t('按赛道关键词搜视频,采集评论区里的人', 'From videos found by niche keywords')]] as const)
+              ).map(([m, icon, title, desc]) => (
                 <button key={m} type="button" onClick={() => setMode(m)}
                   className={`text-left p-3 rounded-xl border transition-colors ${mode === m ? 'border-cyan-500 bg-cyan-500/5' : 'border-gray-200 dark:border-gray-700 hover:border-cyan-500/40'}`}>
                   <div className="text-sm font-semibold dark:text-white mb-0.5">{icon} {title}</div>

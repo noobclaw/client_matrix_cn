@@ -7651,5 +7651,71 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
         ]
       }
     ]
+  },
+  {
+    "id": "x_lead_engage",
+    "version": "1.0.0",
+    "platform": "x",
+    "platforms": [
+      "x_main"
+    ],
+    "workflow_type": "lead_engage",
+    "category": "engagement",
+    "name_zh": "推特 定向获客",
+    "name_en": "X Lead Finder",
+    "description_zh": "两段式获客(只有精准模式)。① 采集:逐个打开你填的同行 @账号,取他主页上的推文;也可以【直接粘某条推文的链接】,跳过翻主页这一步、进去就采。打开推文详情后收【除作者外】的回复者,去重入库当潜客名单;回复区里的投放广告会被剔掉(它长得跟普通回复一模一样,收进去就是白花钱)。每打开一条推文会顺手在那条下面回一条,争一份曝光(与触达潜客的回复各算各的)。② 触达:逐个打开名单里的主页,做关注 / 点赞他的推文 / 回复他的推文(每人每样最多一次),让对方回访你。",
+    "description_en": "Two stages, precise mode only. (1) Collect: open each seed @account and read their timeline, or paste a single tweet URL to go straight to it. Opening a tweet harvests its repliers (never the author) into a deduplicated lead list; promoted tweets are filtered out, since they look exactly like ordinary replies and would otherwise be collected and billed. Each tweet that gets opened also gets one reply from you, for the exposure. (2) Reach out: open each lead and follow / like / reply once so they come back to look at you.",
+    "icon": "🎯",
+    "default_config": {
+      "mode": "accounts",
+      "seed_accounts": [],
+      "max_leads": 50,
+      "leads_per_run": 100,
+      "keywords": [],
+      "lead_do_like": true,
+      "lead_do_comment": true,
+      "lead_do_follow": true,
+      "schedule_window": "09:00-23:00",
+      "comment_prompt": "用一句自然短评，口语化；真诚地夸到点子上——夸具体的那一处（某个细节、某个想法），给对方情绪价值；禁止挖苦、讽刺、阴阳怪气、说教、评价内容好坏；不要超过 30 字 / 20 词；语言匹配视频与评论区的主语言。",
+      "max_likes": 100,
+      "max_follows": 20,
+      "max_comments": 100
+    },
+    "risk_caps": {
+      "max_daily_runs": 1,
+      "max_scroll_per_run": 30,
+      "min_scroll_delay_ms": 3000,
+      "max_scroll_delay_ms": 10000,
+      "read_dwell_min_ms": 12000,
+      "read_dwell_max_ms": 45000,
+      "max_run_duration_ms": 7200000,
+      "min_interval_hours": 24,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "max_likes_per_day": 500,
+      "max_follows_per_day": 100,
+      "max_comments_per_day": 300,
+      "daily_count_cap": 30,
+      "min_action_interval_ms": 30000,
+      "max_action_interval_ms": 240000,
+      "feed_scroll_min": 4,
+      "feed_scroll_max": 12
+    },
+    "required_login_url": "https://x.com/home",
+    "entry_urls": {
+      "home": "https://x.com/home",
+      "profile": "https://x.com/{handle}"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {
+        "comment_composer": "prompts/comment_composer.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    },
+    "tracks": []
   }
 ] as unknown) as Scenario[];
