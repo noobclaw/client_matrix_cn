@@ -646,7 +646,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       const webUrl = String(result.payUrl || result.checkoutUrl || '');
       setPendingCheckoutUrl(webUrl);
       setPendingCodeUrl(!webUrl && chain === 'WXPAY' ? (result.codeUrl || '') : '');
-      if (webUrl) window.electron?.shell?.openExternal(webUrl);
+      if (webUrl) {
+        // 按订单号存起来:从「待支付订单」点回来要能重新打开同一个支付页(同微信 code_url 的做法)。
+        try { localStorage.setItem('noobclaw_pay_url', JSON.stringify({ orderNo: order.order_no, url: webUrl })); } catch { /* quota */ }
+        window.electron?.shell?.openExternal(webUrl);
+      }
       if (!webUrl && chain === 'WXPAY' && result.codeUrl) {
         try { localStorage.setItem('noobclaw_wxpay_qr', JSON.stringify({ orderNo: order.order_no, codeUrl: result.codeUrl })); } catch { /* quota */ }
       }
@@ -713,7 +717,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       // 网页支付(银行卡/微信/支付宝):后端给 payUrl → 系统浏览器打开,本页进等待态(同充值)。按响应判,不按 chain 判。
       const webUrl = String(result.payUrl || result.checkoutUrl || '');
       setPendingCheckoutUrl(webUrl);
-      if (webUrl) window.electron?.shell?.openExternal(webUrl);
+      if (webUrl) {
+        // 按订单号存起来:从「待支付订单」点回来要能重新打开同一个支付页(同微信 code_url 的做法)。
+        try { localStorage.setItem('noobclaw_pay_url', JSON.stringify({ orderNo: order.order_no, url: webUrl })); } catch { /* quota */ }
+        window.electron?.shell?.openExternal(webUrl);
+      }
       const amountStr = amountForDisplay(chain, order, result);
       setPendingOrderNo(order.order_no);
       setPendingAmount(amountStr);
@@ -763,7 +771,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
   const handleViewPendingOrder = (order: any) => {
     const rawChain = (order.chain || 'BSC').toUpperCase();
-    const chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' | 'CARD' | 'ALIPAY' = rawChain === 'TRON' ? 'TRON' : rawChain === 'WXPAY' ? 'WXPAY'
+    const chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = rawChain === 'TRON' ? 'TRON' : rawChain === 'WXPAY' ? 'WXPAY'
       : rawChain === 'CARD' ? 'CARD' : rawChain === 'ALIPAY' ? 'ALIPAY' : rawChain === 'DODO' ? 'DODO' : 'BSC';
     const amountStr = (chain === 'WXPAY' || chain === 'CARD' || chain === 'ALIPAY')
       ? String(parseFloat(order.face_value_rmb ?? order.usd_amount ?? 0))
@@ -783,6 +791,14 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     } else {
       setPendingCodeUrl('');
     }
+    // 网页支付单:恢复它自己的支付页 URL;对不上(清过缓存/换设备)就清空 —— 绝不能留着上一单的。
+    //   ⚠️ 必须清:这个值同时是「走网页等待页」的判定条件,残留会把老微信二维码单误判成网页支付。
+    let payUrl = '';
+    try {
+      const savedPay = JSON.parse(localStorage.getItem('noobclaw_pay_url') || 'null');
+      if (savedPay?.orderNo === order.order_no && savedPay?.url) payUrl = String(savedPay.url);
+    } catch { /* corrupted */ }
+    setPendingCheckoutUrl(payUrl);
     setPendingOrderNo(order.order_no);
     setPendingAmount(amountStr);
     setPendingChain(chain);

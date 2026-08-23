@@ -273,7 +273,7 @@ const MembershipPanel: React.FC<{
           //   第二笔订阅并行扣钱。改为展示「自动续费中」并禁用。
           const autoOn = !!cur?.autoRenew;
           const cta = isCurActive
-            ? (autoOn ? i18nService.t('mpCurrentPlan') : i18nService.t('mpCtaRenew'))
+            ? (autoOn ? i18nService.t('mpCurrentPlanActive') : i18nService.t('mpCtaRenew'))
             : (subActive ? i18nService.t('mpCtaUpgrade') : i18nService.t('mpCtaSubscribe'));
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
