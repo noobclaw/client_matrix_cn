@@ -921,7 +921,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="flex items-center gap-2 mb-4 -mt-1">
                 <span className="text-xs text-gray-400">{i18nService.t('mvKsTwoTypes')}</span>
                 {KS_SCOPES.map((s) => (
-                  <button key={s.key} onClick={() => setKsScope(s.key)} className={`px-3 py-1 rounded-lg text-xs border transition-colors ${ksScope === s.key ? 'border-orange-500 bg-orange-500/10 text-orange-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-orange-500/50'}`}>{s.label}</button>
+                  <button key={s.key} onClick={() => setKsScope(s.key)} className={`px-3 py-1 rounded-lg text-xs border transition-colors ${ksScope === s.key ? 'border-orange-500 bg-orange-500 text-white font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-orange-500/50'}`}>{s.label}</button>
                 ))}
               </div>
             )}
