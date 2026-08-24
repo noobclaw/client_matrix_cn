@@ -40,6 +40,7 @@ const kwOf = (a: LeadWizardAccount): string[] => {
 export interface LeadEngageInput {
   mode: 'accounts' | 'keywords';
   seedAccounts: string[];
+  seedByAccount?: Record<string, string[]>;
   keywords: string[];
   maxLeads: number;
   // 本次总量上限(2026-08-21 改定):不再是「每人几条」,每人分到多少由剧本按
@@ -165,14 +166,27 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   // 回填:只有【裸 handle】且是 @handle 制的平台(TikTok/抖音)才补 @;
   //   存的是整条主页链接就原样显示 —— 否则回填出来是 `@https://www.douyin.com/user/...`
   //   (用户 2026-08-22 截图)。小红书/B站/快手存的是 id,本来就不加。
-  const [seedText, setSeedText] = useState<string>(
-    Array.isArray(le.seedAccounts)
-      ? le.seedAccounts.map((h) => {
-        const v = String(h || '');
-        const atStyle = platform === 'tiktok' || platform === 'douyin' || platform === 'youtube' || platform === 'x';
-        return (atStyle && !/^https?:\/\//i.test(v)) ? '@' + v : v;
-      }).join('\n')
-      : '');
+  // 同行种子回填成「显示文本」:@handle 制平台(TikTok/抖音/YT/X)给裸 handle 补 @,主页链接原样。
+  const seedListToText = (list: any): string =>
+    (Array.isArray(list) ? list : []).map((h) => {
+      const v = String(h || '');
+      const atStyle = platform === 'tiktok' || platform === 'douyin' || platform === 'youtube' || platform === 'x';
+      return (atStyle && !/^https?:\/\//i.test(v)) ? '@' + v : v;
+    }).join('\n');
+  // 每个执行账号各自的同行种子文本。老任务只有共用 seedAccounts → 回落时铺到每个账号框(语义等价:大家原本用同一批)。
+  const sharedSeedText = le.seedByAccount ? '' : seedListToText(le.seedAccounts);
+  const [seedTextByAccount, setSeedTextByAccount] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    if (le.seedByAccount) for (const k of Object.keys(le.seedByAccount)) init[k] = seedListToText(le.seedByAccount[k]);
+    return init;
+  });
+  // 某账号没显式编辑过 → 老任务回落共用文本;新任务是空。
+  const seedTextFor = (id: string): string => (id in seedTextByAccount ? seedTextByAccount[id] : sharedSeedText);
+  const setSeedTextFor = (id: string, v: string) => setSeedTextByAccount((m) => ({ ...m, [id]: v }));
+  const applySeedToAll = (fromId: string) => {
+    const v = seedTextFor(fromId);
+    setSeedTextByAccount(() => { const m: Record<string, string> = {}; for (const a of selectedAccounts) m[a.id] = v; return m; });
+  };
 
   const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 50);
   const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 100);
@@ -188,6 +202,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
       ? initialTask.funnel.funnel_probability : FUNNEL_PROB_DEFAULT);
   const [funnelPerMap, setFunnelPerMap] = useState<Record<string, FunnelValue>>(initialTask?.funnelByAccount || {});
   const [funnelUnsetConfirm, setFunnelUnsetConfirm] = useState<number | null>(null);
+  const [seedUnsetConfirm, setSeedUnsetConfirm] = useState<number | null>(null);
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
@@ -200,7 +215,17 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     const n = clampInt(total, 0, 500);
     return n > 0 ? Math.max(1, Math.ceil(n / reach)) : 0;
   };
-  const seedList = useMemo(() => parseSeedLines(seedText, platform), [seedText, platform]);
+  // 各账号种子并集(去重)—— 用于任务名「已识别 N」和回落 seedAccounts。
+  const seedList = useMemo(() => {
+    const seen = new Set<string>(); const out: string[] = [];
+    for (const a of selectedAccounts) for (const x of parseSeedLines(seedTextFor(a.id), platform)) { if (!seen.has(x)) { seen.add(x); out.push(x); } }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedTextByAccount, sharedSeedText, selected, accounts, platform]);
+  // 有几个选中账号配了种子(每账号独立配,未配的号本轮不采集)。
+  const seededAcctCount = useMemo(() => selectedAccounts.filter((a) => parseSeedLines(seedTextFor(a.id), platform).length > 0).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seedTextByAccount, sharedSeedText, selected, accounts, platform]);
   const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 关键词模式下真正会用到的词 = 各账号自己配的关键词(与互动涨粉一致)。
   const acctsWithoutKw = selectedAccounts.filter((a) => kwOf(a).length === 0);
@@ -212,7 +237,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const canAdvance: Record<number, { ok: boolean; reason?: string }> = {
     1: { ok: selected.size >= 1, reason: t('请至少选择一个执行账号', 'Select at least one account') },
     2: mode === 'accounts'
-      ? (seedList.length >= 1 ? { ok: true } : { ok: false, reason: t(`请至少填写一个同行${platformLabel}账号`, 'Add at least one competitor account') })
+      ? (seededAcctCount >= 1 ? { ok: true } : { ok: false, reason: t(`请至少给一个执行账号填同行${platformLabel}账号`, 'Fill competitor accounts for at least one executing account') })
       // ⚠️ 账号是弹窗开了之后【异步】填进来的(编辑任务 + sidecar 忙时要等几秒,listAccounts
       //   失败还会一直是空)。此时 selectedAccounts 为空 → `0 < 0` 恒 false → 这一步被判死,
       //   用户看到「所选账号都没配关键词」且永远过不去。账号没到位时先放行,别拿未知当错误。
@@ -239,11 +264,17 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
       const un = countUnconfigured(funnelAccounts, funnelPerMap);
       if (un > 0) { setFunnelUnsetConfirm(un); return; }
     }
+    // 精准获客:有账号没填同行 → 先确认(未配的号本轮不采集,不是错误)。
+    if (step === 2 && mode === 'accounts' && seedUnsetConfirm === null) {
+      const un = selectedAccounts.length - seededAcctCount;
+      if (un > 0) { setSeedUnsetConfirm(un); return; }
+    }
     setSaveError(null);
     setFunnelUnsetConfirm(null);
+    setSeedUnsetConfirm(null);
     setStep((s) => Math.min(TOTAL_STEPS, s + 1));
   };
-  const back = () => { setSaveError(null); setFunnelUnsetConfirm(null); setStep((s) => Math.max(1, s - 1)); };
+  const back = () => { setSaveError(null); setFunnelUnsetConfirm(null); setSeedUnsetConfirm(null); setStep((s) => Math.max(1, s - 1)); };
 
   const cleanPerMap = () => {
     const out: Record<string, FunnelValue> = {};
@@ -268,7 +299,13 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         frequency: runInterval,
         leadEngage: {
           mode,
+          // seedAccounts 存并集,作为老客户端/回落用;权威是 seedByAccount(每号各自)。
           seedAccounts: mode === 'accounts' ? seedList : [],
+          seedByAccount: mode === 'accounts' ? (() => {
+            const out: Record<string, string[]> = {};
+            for (const id of selected) { const list = parseSeedLines(seedTextFor(id), platform); if (list.length) out[id] = list; }
+            return out;
+          })() : undefined,
           // 关键词跟随账号设置,向导不再提供输入;但老任务里存过的任务级词要原样保留(同上,整体替换)。
           keywords: Array.isArray(le.keywords) ? le.keywords : [],
           maxLeads: clampInt(maxLeads, 1, 100),
@@ -364,6 +401,18 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         )}
 
         {/* STEP 2 · 获客模式 + 来源 */}
+        {step === 2 && seedUnsetConfirm !== null && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5">
+              <div className="text-sm font-semibold dark:text-white mb-2">{t(`有 ${seedUnsetConfirm} 个账号没填同行`, `${seedUnsetConfirm} account(s) have no competitors`)}</div>
+              <div className="text-[12px] text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">{t('没填同行的账号本轮不会采集潜客(其它步骤照常)。确定继续?', 'Accounts without competitors won\'t collect leads this run. Continue?')}</div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setSeedUnsetConfirm(null)} className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 dark:text-gray-200">{t('返回填写', 'Go back')}</button>
+                <button type="button" onClick={() => { setSeedUnsetConfirm(null); setSaveError(null); setStep((s) => Math.min(TOTAL_STEPS, s + 1)); }} className="px-3 py-1.5 text-xs rounded-lg bg-cyan-500 text-white">{t('继续', 'Continue')}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {step === 2 && (
           <>
             {/* 推特只做精准获客:X 的搜索页对未登录/低权重账号限制大、结果噪音也高,
@@ -383,12 +432,32 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
             </div>
 
             {mode === 'accounts' ? (
-              <div>
-                <div className="text-sm font-medium dark:text-gray-200 mb-1">{t(`同行${platformLabel}账号`, 'Competitor accounts')}
-                  <span className="text-xs text-gray-400 font-normal ml-1">{t(`${specOf(platform).hint} · 一行一个,最多 ${MAX_SEED} 个 · 已识别 ${seedList.length} 个`, `one per line, max ${MAX_SEED} · ${seedList.length} parsed`)}</span>
+              <div className="space-y-3">
+                <div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                  {t(`每个执行账号盯自己的一批同行 —— 给下面每个账号分别填${specOf(platform).hint}(一行一个,最多 ${MAX_SEED} 个)。没填的账号本轮不采集。`,
+                     `Each executing account targets its own competitors — fill ${specOf(platform).hint} per account below (one per line, max ${MAX_SEED}). Accounts left blank are skipped this run.`)}
                 </div>
-                <textarea value={seedText} onChange={(e) => setSeedText(e.target.value)} rows={8} placeholder={specOf(platform).ph}
-                  className="w-full text-sm p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white font-mono leading-relaxed" />
+                {selectedAccounts.length === 0 ? (
+                  <div className="text-[12px] text-amber-500">{t('请先在第 1 步选执行账号', 'Pick executing accounts in step 1 first')}</div>
+                ) : selectedAccounts.map((a) => {
+                  const cnt = parseSeedLines(seedTextFor(a.id), platform).length;
+                  return (
+                    <div key={a.id} className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {a.avatar ? <img src={a.avatar} alt="" className="w-5 h-5 rounded-full shrink-0" /> : <span className="w-5 h-5 rounded-full bg-cyan-500/20 shrink-0" />}
+                          <span className="text-sm font-medium dark:text-gray-200 truncate">{a.nickname || a.displayName}</span>
+                          <span className={`text-[11px] shrink-0 ${cnt ? 'text-gray-400' : 'text-amber-500'}`}>{cnt ? t(`已识别 ${cnt} 个`, `${cnt} parsed`) : t('未填', 'empty')}</span>
+                        </div>
+                        {selectedAccounts.length > 1 && cnt > 0 && (
+                          <button type="button" onClick={() => applySeedToAll(a.id)} className="text-[11px] text-cyan-500 hover:underline shrink-0">{t('复制到全部账号', 'Copy to all')}</button>
+                        )}
+                      </div>
+                      <textarea value={seedTextFor(a.id)} onChange={(e) => setSeedTextFor(a.id, e.target.value)} rows={4} placeholder={specOf(platform).ph}
+                        className="w-full text-sm p-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white font-mono leading-relaxed" />
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">

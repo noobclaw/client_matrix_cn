@@ -297,7 +297,10 @@ export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_
  */
 export interface LeadEngageConfig {
   mode: 'accounts' | 'keywords';      // 精准获客(填同行号)/ 关键词获客(赛道搜)
-  seedAccounts: string[];             // accounts 模式:同行 TikTok handle,最多 50
+  seedAccounts: string[];             // accounts 模式:同行种子(【共用/回落】—— 老任务或未逐账号配时用)
+  // 每个执行账号各自的同行种子(accounts 模式,2026-08-23):键=矩阵账号 id,值=该号盯的同行/视频链接。
+  //   有它就每号跑自己的;缺省(老任务)回落 seedAccounts 共用。
+  seedByAccount?: Record<string, string[]>;
   keywords: string[];                 // keywords 模式:赛道关键词
   maxLeads: number;                   // 单次【新增】获客上限 1-100
   // 本次总量上限(2026-08-21 改定):每人分到多少由剧本按「总量 / 实际触达人数」算,

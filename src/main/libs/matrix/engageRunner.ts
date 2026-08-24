@@ -101,6 +101,7 @@ export interface EngageTaskOptions {
   // 定向获客(lead_engage)配置。任务级(对所有执行账号相同):种子号/关键词/名额等由向导填,
   // 注入到 orchestrator 读的 ctx.task.mode/seed_accounts/max_leads/... 顶层字段。
   leadEngage?: {
+    seedByAccount?: Record<string, string[]>;
     mode?: 'accounts' | 'keywords';
     seedAccounts?: string[];
     keywords?: string[];
@@ -206,7 +207,8 @@ const FUNNEL_WEAVE_PROMPT = [
   '',
   '# 约束',
   '- 总长 10~80 字,引流部分不超过总长 60%',
-  '- 跟评论正文同样的语气;不要 @ 用户名;不要「以下是改写」之类的元话术',
+  '- 跟评论正文同样的语气;不要 @ 用户名;不要「以下是改写」之类的元话术',
+
   '- 【输出语言 = 评论正文的语言】(压倒一切):评论正文是英文就整句输出英文,是日文就输出日文,以此类推。',
   '  本 prompt 和引流文案是中文【不代表】要用中文回 —— 引流文案是别的语言时,把它的意思用评论正文',
   '  那种语言重新说一遍(链接 / 微信号 / 账号名 / 口令这类硬信息照抄不译)。',
@@ -475,7 +477,11 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     if (opts.taskType === 'lead_engage' && opts.leadEngage) {
       const le = opts.leadEngage;
       task.mode = le.mode || 'accounts';
-      task.seed_accounts = Array.isArray(le.seedAccounts) ? le.seedAccounts : [];
+      // 每账号独立种子(2026-08-23):有本账号的配置就用它,否则回落共用 seedAccounts(老任务)。
+      //   没配的账号 seed_accounts=[] → orchestrator 会报「至少填 1 行」并跳过该号,安全。
+      task.seed_accounts = (le.seedByAccount && Array.isArray(le.seedByAccount[accountId]))
+        ? le.seedByAccount[accountId]
+        : (Array.isArray(le.seedAccounts) ? le.seedAccounts : []);
       // 关键词模式跟随【账号自己的关键词】(与互动涨粉一致,用户要改就去改账号)。
       //   所以只有向导显式传了词才覆盖,否则保留上面 effectiveKeywords(acc) 的结果 ——
       //   直接赋空数组会把账号关键词冲掉,关键词模式就没词可搜了。
