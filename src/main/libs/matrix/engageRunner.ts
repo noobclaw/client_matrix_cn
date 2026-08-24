@@ -75,6 +75,12 @@ export interface EngageQuota {
   // 刷剧模式(仅抖音 engage):'binge'=无视关键词,在账号自己的推荐流里沉浸式刷视频互动。
   // 走 quota 通道透传(wizard→taskStore→sidecar 全链已贯通,零新管道);关键词为空时剧本也会自动进入。
   engage_mode?: '' | 'binge' | 'precise';
+  // ⚠️ 这份 EngageQuota 与 types.ts 那份是各自独立的重复声明(runner 不 import 那边),
+  //   新字段两边都要加 —— 只加 types.ts 的话这里读属性全是 TS2339。
+  daily_favorite_min?: number; daily_favorite_max?: number;
+  precise_urls?: string[];
+  precise_like?: number; precise_favorite?: number;
+  precise_follow?: number; precise_comment?: number;
 }
 
 // 评论语言 code → AI 语言名(强制模式)。auto/空 → 不下发,剧本回落「跟帖子语言」。
@@ -135,7 +141,7 @@ export interface EngageTaskOptions {
   // 进度面板靠它聚合 action_progress 的 target(N 账号求和),没有则回落配额上限。
   // 定向获客多两维(获得潜客 / 互动潜客)—— 它们才是这张卡的产出,没有分母的话
   //   进度里只能显示一个光秃秃的数字,看不出跑没跑满。
-  onTargets?: (accountId: string, targets: { like?: number; follow?: number; comment?: number; lead_new?: number; lead_engaged?: number }) => void;
+  onTargets?: (accountId: string, targets: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number }) => void;
 }
 
 export interface EngageItemResult {
@@ -145,7 +151,7 @@ export interface EngageItemResult {
   // 别的任务类型各自的完成维度,可选。各任务只填自己有的那个。
   counts?: { like: number; follow: number; comment: number; post?: number; download?: number;
     // 定向获客专用:本次新增潜客数 / 本次触达潜客数。
-    lead_new?: number; lead_engaged?: number };
+    favorite?: number; lead_new?: number; lead_engaged?: number };
   // 该号本次累计实际扣费(积分 + 美元)。每条互动动作扣费后累加,用于「本次/累计消耗」。
   chargedCredits?: number;
   chargedUsd?: number;
@@ -358,7 +364,11 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.platform !== 'binance';
   // 抖音/快手/TikTok 互动支持「刷剧模式」(binge):显式开启 or 关键词为空时,后端剧本走推荐流沉浸式互动,不需要关键词。
   const bingeCapable = ['douyin', 'kuaishou', 'tiktok'].includes(opts.platform) && (opts.taskType === 'engage' || !opts.taskType);
-  if (needsKeywords && (!acc.keywords || acc.keywords.length === 0)) {
+  // 🎯 精准模式的链接是用户给的,跟账号配没配关键词无关 —— 不豁免的话 bilibili/youtube
+  //   (不在 bingeCapable 里)的无词账号会被下面直接 return no_keywords 静默跳过,
+  //   抖音/快手/TikTok 则会打出误导性的「未配置关键词 → 刷剧模式」日志(实际下发的是 precise)。
+  const isPrecise = String((opts.quota as any)?.engage_mode || opts.engageMode || '') === 'precise';
+  if (needsKeywords && !isPrecise && (!acc.keywords || acc.keywords.length === 0)) {
     if (bingeCapable) {
       log('📺 未配置关键词 → 刷剧模式:在账号自己的推荐流里刷视频互动');
     } else {
@@ -374,7 +384,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
   // 全集(grep backend/matrix/scenarios):like/follow/comment/download/post/note。漏 download → 视频下载记录恒 0。
   //   定向获客另加两维:lead_new = 本次新收录的潜客数、lead_engaged = 本次触达过的潜客数。
   //   任务详情页要在点赞/关注/评论上方单独展示这两个数(本次/上次/累计)。
-  const counts = { like: 0, follow: 0, comment: 0, download: 0, post: 0, note: 0, lead_new: 0, lead_engaged: 0 };
+  const counts = { like: 0, follow: 0, comment: 0, favorite: 0, download: 0, post: 0, note: 0, lead_new: 0, lead_engaged: 0 };
   let chargedCredits = 0; // 该号本次累计扣费(积分),每笔互动动作扣费后累加
   let chargedUsd = 0;     // 同上,美元(后端按 token_price_per_million 算好)
   const history = engageHistoryFor(accountId);
@@ -569,7 +579,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
         if (typeof t.lead_new === 'number') parts.push(`潜客${t.lead_new}`);
         if (typeof t.lead_engaged === 'number') parts.push(`触达${t.lead_engaged}`);
         if (parts.length) log(`🎯 ${opts.taskType === 'reply_fan' ? '目标' : '配额'} ${parts.join('/')}`);
-        try { opts.onTargets?.(accountId, { like: t.like, follow: t.follow, comment: t.comment, lead_new: t.lead_new, lead_engaged: t.lead_engaged }); } catch { /* ignore */ }
+        try { opts.onTargets?.(accountId, { like: t.like, follow: t.follow, comment: t.comment, favorite: t.favorite, lead_new: t.lead_new, lead_engaged: t.lead_engaged }); } catch { /* ignore */ }
       },
       addActionCount: (type: string, n: number) => { if (type in counts) (counts as any)[type] += n; opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); },
       finish: (status: string, error?: string) => { finished = { status, error }; },

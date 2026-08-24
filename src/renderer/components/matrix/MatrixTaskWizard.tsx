@@ -325,8 +325,10 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                   // 刷剧模式(抖音)开启时不需要关键词 — 无关键词账号也可选,提示改为推荐流互动。
                   const bingeOk = bingeSupported && bingeMode;
                   const linked = a.status !== 'login_required' && a.status !== 'banned';
-                  const ready = (hasKw || bingeOk) && linked;
-                  const reason = a.status === 'banned' ? i18nService.t('wzEngageReasonBanned') : a.status === 'login_required' ? i18nService.t('wzEngageReasonNotConnected') : !hasKw ? (bingeOk ? (i18nService.currentLanguage === 'zh' ? '无关键词 · 推荐流互动' : 'no keywords · feed mode') : i18nService.t('wzEngageReasonNoKeywords')) : '';
+                  // 精准模式不看关键词 —— 链接是用户自己给的,跟账号配没配词没关系。
+                  //   漏了它的话没配词的账号是灰的、勾不上,跟 setEngageMode 里的注释自相矛盾。
+                  const ready = (hasKw || bingeOk || preciseMode) && linked;
+                  const reason = a.status === 'banned' ? i18nService.t('wzEngageReasonBanned') : a.status === 'login_required' ? i18nService.t('wzEngageReasonNotConnected') : !hasKw ? (preciseMode ? (i18nService.currentLanguage === 'zh' ? '精准模式 · 不需要关键词' : 'targeted · no keywords needed') : bingeOk ? (i18nService.currentLanguage === 'zh' ? '无关键词 · 推荐流互动' : 'no keywords · feed mode') : i18nService.t('wzEngageReasonNoKeywords')) : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
@@ -441,6 +443,25 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                 {pickRow(zh ? '➕ 关注作者' : '➕ Follow author', zh ? '0 或 1 次' : '0 or 1', pFollow, setPFollow, [0, 1])}
                 {pickRow(zh ? '💬 每条评论' : '💬 Comments each', zh ? '最多 3 条' : 'up to 3', pComment, setPComment, [0, 1, 2, 3])}
               </div>
+
+              {/* 评论语言:精准模式跳过了 comment 步,而语言选择器只挂在那一步 ——
+                  不在这儿补一个的话,TikTok/YouTube 这些海外平台在精准模式下没有任何入口设置它。 */}
+              {pComment > 0 && overseasEngage && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                    {i18nService.currentLanguage === 'zh' ? '评论语言' : 'Comment language'}
+                    <span className="text-xs text-gray-400 font-normal ml-1">{i18nService.currentLanguage === 'zh' ? '选具体语言=强制用它写;自动=跟帖子语言' : 'a specific language forces it; Auto follows the post'}</span>
+                  </label>
+                  <select value={commentLang} onChange={(e) => setCommentLang(e.target.value)} disabled={saving} className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/40">
+                    {[
+                      { code: 'auto', label: i18nService.currentLanguage === 'zh' ? '自动(跟帖子语言)' : 'Auto (follow post)' },
+                      { code: 'zh', label: '简体中文' }, { code: 'zh-TW', label: '繁體中文' }, { code: 'en', label: 'English' },
+                      { code: 'ja', label: '日本語' }, { code: 'ko', label: '한국어' }, { code: 'ru', label: 'Русский' },
+                      { code: 'fr', label: 'Français' }, { code: 'de', label: 'Deutsch' }, { code: 'vi', label: 'Tiếng Việt' },
+                    ].map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+                  </select>
+                </div>
+              )}
 
               {pComment > 1 && (
                 <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 px-4 py-3 text-xs text-violet-700 dark:text-violet-300 leading-relaxed">

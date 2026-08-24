@@ -32,7 +32,11 @@ interface MatrixAccount {
 }
 interface MatrixTask {
   id: string; platform: string; type: 'engage' | 'reply_fan'; name: string; enabled: boolean; accountIds: string[];
-  quota: { daily_like_min?: number; daily_like_max?: number; daily_follow_min?: number; daily_follow_max?: number; daily_comment_min?: number; daily_comment_max?: number };
+  // ⚠️ 这是本文件独有的第三份 quota 声明(types.ts / engageRunner.ts 各还有一份)——
+  //   加字段时三处都要补,漏哪处哪处就 TS2339。
+  quota: { daily_like_min?: number; daily_like_max?: number; daily_follow_min?: number; daily_follow_max?: number; daily_comment_min?: number; daily_comment_max?: number;
+    daily_favorite_min?: number; daily_favorite_max?: number; engage_mode?: string;
+    precise_urls?: string[]; precise_like?: number; precise_favorite?: number; precise_follow?: number; precise_comment?: number };
   funnel?: { funnel_phrase?: string; funnel_probability?: number };
   concurrency?: number; frequency: string; nextPlannedRunAt?: number; lastRunAt?: number; createdAt: number;
 }
@@ -251,6 +255,31 @@ const M = () => (window as any).electron?.matrix;
 const fmtTime = (ts?: number) => { if (!ts || ts >= Number.MAX_SAFE_INTEGER) return '—'; const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; initialPlatform?: string; onNavigate?: (s: string, platform?: string) => void; onPlatformChange?: (p: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void; onShowInvite?: () => void }
+
+// 任务摘要里的动作部分。精准模式的四个区间是【有意】存成 0 的(动作数在 precise_*),
+//   直接按区间渲染会变成「👍 0-0 · ➕ 0-0 · 💬 0-0」,看着像这个任务不干活。
+//   收藏区间也在这里一并显示 —— 否则用户配了收藏在任何页面都确认不到。
+function engageQuotaSummary(q: any, zh: boolean): string {
+  if (!q) return '';
+  if (String(q.engage_mode || '') === 'precise') {
+    const n = Array.isArray(q.precise_urls) ? q.precise_urls.length : 0;
+    const per = [
+      q.precise_like ? '👍1' : '',
+      q.precise_favorite ? '⭐1' : '',
+      q.precise_follow ? '➕1' : '',
+      q.precise_comment ? ('💬' + q.precise_comment) : '',
+    ].filter(Boolean).join(' ');
+    return (zh ? `🎯 精准 · ${n} 条链接` : `🎯 Targeted · ${n} links`)
+      + (per ? (zh ? ` · 每条 ${per}` : ` · each ${per}`) : '');
+  }
+  const parts = [
+    `👍 ${q.daily_like_min}-${q.daily_like_max}`,
+    `➕ ${q.daily_follow_min}-${q.daily_follow_max}`,
+  ];
+  if (q.daily_favorite_max > 0) parts.push(`⭐ ${q.daily_favorite_min}-${q.daily_favorite_max}`);
+  parts.push(`💬 ${q.daily_comment_min}-${q.daily_comment_max}`);
+  return parts.join(' · ');
+}
 
 const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onNavigate, onPlatformChange }) => {
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
@@ -1145,7 +1174,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">👥 {i18nService.t('mvAccountCountLabel').replace('{n}', String(t.accountIds.length))} · {isReply ? i18nService.t('mvReplyOwnFans') : i18nService.t('mvUseOwnKeywords')}</div>
                       {isReply
                         ? <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {freqLabel(t.frequency)} · 🎣 {t.funnel?.funnel_phrase ? i18nService.t('mvFunnelTail').replace('{n}', String(t.funnel.funnel_probability || 0)) : i18nService.t('mvPureAiReply')}</div>
-                        : <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {freqLabel(t.frequency)} · 👍 {t.quota.daily_like_min}-{t.quota.daily_like_max} · ➕ {t.quota.daily_follow_min}-{t.quota.daily_follow_max} · 💬 {t.quota.daily_comment_min}-{t.quota.daily_comment_max} / {i18nService.t('mvPerRun')}</div>}
+                        : <div className="text-xs text-gray-500 dark:text-gray-400">⏰ {freqLabel(t.frequency)} · {engageQuotaSummary(t.quota, i18nService.currentLanguage === 'zh')}{String(t.quota?.engage_mode || '') === 'precise' ? '' : ` / ${i18nService.t('mvPerRun')}`}</div>}
                       <div className="text-[11px] text-gray-400 mt-1">{t.lastRunAt ? i18nService.t('mvLastRun').replace('{time}', fmtTime(t.lastRunAt)) : i18nService.t('mvNotRunYet')}</div>
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-end">
                         {isRunning
@@ -1184,7 +1213,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvFunnelPhrase')}</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.funnel?.funnel_phrase ? `"${selectedTask.funnel.funnel_phrase.slice(0, 40)}${selectedTask.funnel.funnel_phrase.length > 40 ? '...' : ''}" · ${selectedTask.funnel.funnel_probability || 0}%` : i18nService.t('mvFunnelEmpty')}</span></div>
                     <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvReplyScope')}</span><span className="text-gray-800 dark:text-gray-200">{i18nService.t('mvReplyScopeVal').replace('{n}', String(selectedTask.concurrency || 3))}</span></div>
                   </>
-                : <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvQuotaPerRun')}</span><span className="text-gray-800 dark:text-gray-200">👍 {selectedTask.quota.daily_like_min}-{selectedTask.quota.daily_like_max} · ➕ {selectedTask.quota.daily_follow_min}-{selectedTask.quota.daily_follow_max} · 💬 {selectedTask.quota.daily_comment_min}-{selectedTask.quota.daily_comment_max} · {i18nService.t('mvConcurrencyLabel').replace('{n}', String(selectedTask.concurrency || 3))}</span></div>}
+                : <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvQuotaPerRun')}</span><span className="text-gray-800 dark:text-gray-200">{engageQuotaSummary(selectedTask.quota, i18nService.currentLanguage === 'zh')} · {i18nService.t('mvConcurrencyLabel').replace('{n}', String(selectedTask.concurrency || 3))}</span></div>}
               <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 w-20 shrink-0">{i18nService.t('mvAccountsLabel').replace('{n}', String(selectedTask.accountIds.length))}</span><span className="text-gray-800 dark:text-gray-200 break-all">{selectedTask.accountIds.map((id) => accounts.find((a) => a.id === id)?.displayName || id).join('、')}</span></div>
             </div>
             {(() => {

@@ -337,7 +337,9 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const suspendedIds: string[] = accIds.filter((id) => !allowSet.has(id));
     const accN = runIds.length || 1;
     const q: any = task.quota || {};
-    const zero = (): Record<string, number> => ({ like: 0, follow: 0, comment: 0, lead_new: 0, lead_engaged: 0 });
+    // favorite 也要在这儿开位:互动的收藏动作(2026-08-23 新增)同样走 addActionCount,
+    //   不开位的话实时进度里收藏恒 0(与上面 lead_new/lead_engaged 同一个坑)。
+    const zero = (): Record<string, number> => ({ like: 0, follow: 0, comment: 0, favorite: 0, lead_new: 0, lead_engaged: 0 });
     const perAccount: MatrixLiveProgress['perAccount'] = {};
     for (const aid of accIds) {
       const suspended = suspendedIds.includes(aid);
@@ -390,8 +392,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const isBinanceRepost = task.type === 'binance_repost';
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
-    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; lead_new?: number; lead_engaged?: number }) => {
-      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0, lead_new: t.lead_new || 0, lead_engaged: t.lead_engaged || 0 };
+    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number }) => {
+      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0, favorite: t.favorite || 0, lead_new: t.lead_new || 0, lead_engaged: t.lead_engaged || 0 };
       live.perAccountTargets[accountId] = tg;
       if (live.perAccount[accountId]) live.perAccount[accountId].targets = tg; // 该号真实随机配额覆盖兜底
       recomputeTargets();
