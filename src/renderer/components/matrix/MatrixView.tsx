@@ -35,7 +35,7 @@ interface MatrixTask {
   // ⚠️ 这是本文件独有的第三份 quota 声明(types.ts / engageRunner.ts 各还有一份)——
   //   加字段时三处都要补,漏哪处哪处就 TS2339。
   quota: { daily_like_min?: number; daily_like_max?: number; daily_follow_min?: number; daily_follow_max?: number; daily_comment_min?: number; daily_comment_max?: number;
-    daily_favorite_min?: number; daily_favorite_max?: number; engage_mode?: string;
+    daily_favorite_min?: number; daily_favorite_max?: number; max_comment_per_work?: number; engage_mode?: string;
     precise_urls?: string[]; precise_like?: number; precise_favorite?: number; precise_follow?: number; precise_comment?: number };
   funnel?: { funnel_phrase?: string; funnel_probability?: number };
   concurrency?: number; frequency: string; nextPlannedRunAt?: number; lastRunAt?: number; createdAt: number;

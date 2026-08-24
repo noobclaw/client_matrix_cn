@@ -440,6 +440,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // 收藏配额 + 精准模式配置回填:漏带的话,编辑任务时向导读不到已存的值 →
         //   保存回去就把它们洗成默认(与 comment_lang / engage_mode 完全同类的坑)。
         daily_favorite_min: (task as any).daily_favorite_min, daily_favorite_max: (task as any).daily_favorite_max,
+        max_comment_per_work: (task as any).max_comment_per_work,
         precise_urls: (task as any).precise_urls, precise_like: (task as any).precise_like,
         precise_favorite: (task as any).precise_favorite, precise_follow: (task as any).precise_follow,
         precise_comment: (task as any).precise_comment,

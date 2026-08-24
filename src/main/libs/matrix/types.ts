@@ -88,6 +88,8 @@ export interface EngageQuota {
   daily_comment_min?: number; daily_comment_max?: number;
   // 收藏配额(2026-08-23 新增,抖音/快手/小红书/B站/TikTok)。老任务没有 = 0,不会凭空多做收藏。
   daily_favorite_min?: number; daily_favorite_max?: number;
+  // 单个作品最多评论几次(0~5)。老任务没有这个字段 → 剧本回落 1 = 老行为「评过就不再评这条」。
+  max_comment_per_work?: number;
   comment_lang?: string;            // 评论语言(海外平台强制模式)
   // ''=关键词筛选 / 'binge'=刷剧(抖音/快手/TikTok) / 'precise'=精准(粘链接逐条互动)
   engage_mode?: '' | 'binge' | 'precise';

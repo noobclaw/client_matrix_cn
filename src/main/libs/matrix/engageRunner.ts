@@ -78,6 +78,7 @@ export interface EngageQuota {
   // ⚠️ 这份 EngageQuota 与 types.ts 那份是各自独立的重复声明(runner 不 import 那边),
   //   新字段两边都要加 —— 只加 types.ts 的话这里读属性全是 TS2339。
   daily_favorite_min?: number; daily_favorite_max?: number;
+  max_comment_per_work?: number;
   precise_urls?: string[];
   precise_like?: number; precise_favorite?: number;
   precise_follow?: number; precise_comment?: number;
@@ -477,6 +478,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
       // 收藏配额(剧本读 daily_favorite_*;没配 = 0 = 不做收藏)
       daily_favorite_min: q.daily_favorite_min, daily_favorite_max: q.daily_favorite_max,
+      // 单个作品最多评论几次(剧本读它;不下发时剧本回落 1 = 老行为)
+      max_comment_per_work: q.max_comment_per_work,
       // 精准模式:链接清单 + 每条链接的动作次数。多账号共用同一批链接(各自做一遍)。
       precise_urls: Array.isArray(q.precise_urls) ? q.precise_urls : [],
       precise_like: typeof q.precise_like === 'number' ? q.precise_like : 0,

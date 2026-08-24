@@ -108,6 +108,9 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const [folMax, setFolMaxRaw] = useState<number>(typeof q.daily_follow_max === 'number' ? q.daily_follow_max : 2);
   const setFolMin = (v: number) => { const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v)); setFolMinRaw(n); setFolMaxRaw((p) => (p < n ? n : p)); };
   const setFolMax = (v: number) => { const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v)); setFolMaxRaw(n); setFolMinRaw((p) => (p > n ? n : p)); };
+  // 单个作品最多评论几次(0~5)。老任务没存过 → 1 = 老行为「同一条评过就不再评」。
+  const [maxCmtPerWork, setMaxCmtPerWork] = useState<number>(
+    typeof q.max_comment_per_work === 'number' ? Math.min(5, Math.max(0, q.max_comment_per_work)) : 1);
   // ── 收藏配额(关键词/刷剧模式;放在关注下方)──
   const [favMin, setFavMinRaw] = useState<number>(typeof q.daily_favorite_min === 'number' ? q.daily_favorite_min : 0);
   const [favMax, setFavMaxRaw] = useState<number>(typeof q.daily_favorite_max === 'number' ? q.daily_favorite_max : 0);
@@ -181,7 +184,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const cur = stepNames[Math.min(step, TOTAL_STEPS) - 1];
   // 已选账号(引流步的卡片列表用;标题/赛道与 Step1 行一致)
   const selectedAccounts = accounts.filter((a) => selected.has(a.id)).map((a) => ({ id: a.id, title: a.nickname || a.displayName, group: a.group, platformName: PLATFORM_NAME[a.platform || ''] || a.platform, avatar: a.avatar }));
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, favMin, favMax, preciseText, pLike, pFav, pFollow, pComment, funnelPhrase, funnelProb, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, favMin, favMax, maxCmtPerWork, preciseText, pLike, pFav, pFollow, pComment, funnelPhrase, funnelProb, runInterval]);
 
   const canAdvance: Record<string, { ok: boolean; reason?: string }> = {
     accounts: { ok: selected.size >= 1, reason: i18nService.t('wzEngageErrSelectAccount') },
@@ -227,6 +230,9 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             daily_like_min: 0, daily_like_max: 0, daily_follow_min: 0, daily_follow_max: 0,
             daily_comment_min: 0, daily_comment_max: 0, daily_favorite_min: 0, daily_favorite_max: 0,
             comment_lang: commentLang, engage_mode: 'precise',
+            // 精准模式用自己的 precise_cmt 去重,这个值用不上,但要原样带着 ——
+            //   否则用户在精准模式存一次,关键词模式那边配的上限就被抹成默认了。
+            max_comment_per_work: maxCmtPerWork,
             precise_urls: preciseUrls,
             precise_like: pLike, precise_favorite: favoriteSupported ? pFav : 0,
             precise_follow: pFollow, precise_comment: pComment,
@@ -236,6 +242,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             daily_follow_min: platform === 'reddit' ? 0 : folMin, daily_follow_max: platform === 'reddit' ? 0 : folMax,
             daily_comment_min: cmtMin, daily_comment_max: cmtMax,
             daily_favorite_min: favoriteSupported ? favMin : 0, daily_favorite_max: favoriteSupported ? favMax : 0,
+            max_comment_per_work: maxCmtPerWork,
             comment_lang: commentLang, engage_mode: (bingeSupported && bingeMode) ? 'binge' : '',
           },
         // 引流:评论时按概率把引流文案融进 AI 评论。留空/平台不支持 → funnel_probability=0 → 视作未配,纯 AI 评论。
@@ -486,6 +493,29 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         {cur === 'comment' && (
           <>
             <RangeSlider label={i18nService.t('wzEngageCommentLabel')} min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax} hardCap={COMMENT_HARDCAP} hint={i18nService.t('wzEngageCommentHint').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax)).replace('{cap}', String(COMMENT_HARDCAP))} disabled={saving} />
+
+            {/* 同一条作品最多评几次。跟上面那条是一组:上面管「本次总共评几条」,这条管「同一条最多评几次」。
+                默认 1 = 老行为(同一条评过就不再评);设 0 = 一次都不评(但点赞/关注照做)。 */}
+            {cmtMax > 0 && (
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                  {i18nService.currentLanguage === 'zh' ? '单个作品最多评论' : 'Max comments per post'}
+                  <span className="text-xs text-gray-400 font-normal ml-1">
+                    {i18nService.currentLanguage === 'zh'
+                      ? (maxCmtPerWork === 0 ? '设为 0 = 这条一次都不评(点赞/关注照做)' : `同一条作品最多评 ${maxCmtPerWork} 次,评满就不再评它`)
+                      : (maxCmtPerWork === 0 ? '0 = never comment on a post (likes/follows still run)' : `at most ${maxCmtPerWork} comment(s) on the same post`)}
+                  </span>
+                </label>
+                <div className="flex gap-2">
+                  {[0, 1, 2, 3, 4, 5].map((c) => (
+                    <button key={c} type="button" disabled={saving} onClick={() => setMaxCmtPerWork(c)}
+                      className={`px-4 py-1.5 rounded-lg text-sm border transition-colors ${maxCmtPerWork === c ? 'border-violet-500 bg-violet-500 text-white font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-violet-500/40'} ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 评论语言(评论 max>0 且海外平台才显示):auto=跟帖子语言;选具体语言=强制用该语言写评论。中文平台不显示。 */}
             {cmtMax > 0 && overseasEngage && (
