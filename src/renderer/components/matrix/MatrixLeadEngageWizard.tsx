@@ -113,6 +113,13 @@ const SEED_SPEC: Record<string, { host: RegExp; strip: RegExp; allow: RegExp; hi
     host: /^https?:\/\/(www\.)?youtube\.com\//i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
     hint: '@频道 handle 或 频道链接 或 指定视频链接', ph: '@competitor1\nhttps://www.youtube.com/@competitor2\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ',
   },
+  instagram: {
+    // IG 主页就是 instagram.com/<用户名>/;帖子是 /<用户名>/p/<code>/ 或 /reel/<code>/。
+    //   用户名允许字母数字点下划线(真机取到的样本:fcbayern / hakan.erdem.446190 / sashalmr_)。
+    host: /^https?:\/\/(www\.)?instagram\.com\//i, strip: /^@/, allow: /[^a-zA-Z0-9._]/g,
+    hint: '@用户名 或 主页链接 或 指定帖子链接',
+    ph: '@competitor1\nhttps://www.instagram.com/competitor2/\nhttps://www.instagram.com/competitor2/p/DcWyIaZDxrO/',
+  },
 };
 const specOf = (p?: string) => SEED_SPEC[String(p || 'tiktok')] || SEED_SPEC.tiktok;
 
