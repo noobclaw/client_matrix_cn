@@ -1348,6 +1348,20 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                               ? (zhLang ? '📺 刷剧模式 · ' : '📺 Binge · ')
                               : (zhLang ? '🔍 关键词筛选 · ' : '🔍 Keyword search · '))
                             : '';
+                          // 🎯 精准模式:区间配额全是 0,不能套用上面那套摘要(会显示「点赞 0-0」像是不干活),
+                          //   而且它不受 bingeCap 限制。直接给它自己的一行。
+                          if (t.engage_mode === 'precise') {
+                            const nUrls = Array.isArray((t as any).precise_urls) ? (t as any).precise_urls.length : 0;
+                            const per = [
+                              (t as any).precise_like ? '👍1' : '',
+                              (t as any).precise_favorite ? '⭐1' : '',
+                              (t as any).precise_follow ? '➕1' : '',
+                              (t as any).precise_comment ? ('💬' + (t as any).precise_comment) : '',
+                            ].filter(Boolean).join(' ');
+                            return (zhLang ? '🎯 精准 · ' : '🎯 Targeted · ') + intervalLabel
+                              + (zhLang ? ` · ${nUrls} 条链接` : ` · ${nUrls} links`)
+                              + (per ? (zhLang ? ` · 每条 ${per}` : ` · each ${per}`) : '');
+                          }
                           if (sid === 'youtube_auto_engage') {
                             const sStr = fmtRange(sMin, sMax, 1);
                             return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;

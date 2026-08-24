@@ -86,8 +86,18 @@ export interface EngageQuota {
   daily_like_min?: number; daily_like_max?: number;
   daily_follow_min?: number; daily_follow_max?: number;
   daily_comment_min?: number; daily_comment_max?: number;
+  // 收藏配额(2026-08-23 新增,抖音/快手/小红书/B站/TikTok)。老任务没有 = 0,不会凭空多做收藏。
+  daily_favorite_min?: number; daily_favorite_max?: number;
   comment_lang?: string;            // 评论语言(海外平台强制模式)
-  engage_mode?: '' | 'binge';       // 抖音/快手/TikTok:''=关键词筛选, 'binge'=刷剧模式
+  // ''=关键词筛选 / 'binge'=刷剧(抖音/快手/TikTok) / 'precise'=精准(粘链接逐条互动)
+  engage_mode?: '' | 'binge' | 'precise';
+  // ── 精准模式配置(engage_mode==='precise' 时才用)──
+  //   所有链接一视同仁:每条都按下面这几个数做动作。多账号则各自把这批链接做一遍。
+  precise_urls?: string[];          // 作品/帖子链接,最多 50 条
+  precise_like?: number;            // 0/1 点赞
+  precise_favorite?: number;        // 0/1 收藏
+  precise_follow?: number;          // 0/1 关注作者
+  precise_comment?: number;         // 0-3 评论条数(剧本会把多条打散,不连着发)
 }
 
 /**

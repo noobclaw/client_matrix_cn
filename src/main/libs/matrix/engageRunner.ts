@@ -74,7 +74,7 @@ export interface EngageQuota {
   comment_lang?: string;            // 评论语言:'auto'|'zh'|'zh-TW'|'en'|'ja'|'ko'|'ru'|'fr'|'de'|'vi'(空/auto=跟帖子语言)
   // 刷剧模式(仅抖音 engage):'binge'=无视关键词,在账号自己的推荐流里沉浸式刷视频互动。
   // 走 quota 通道透传(wizard→taskStore→sidecar 全链已贯通,零新管道);关键词为空时剧本也会自动进入。
-  engage_mode?: '' | 'binge';
+  engage_mode?: '' | 'binge' | 'precise';
 }
 
 // 评论语言 code → AI 语言名(强制模式)。auto/空 → 不下发,剧本回落「跟帖子语言」。
@@ -117,7 +117,7 @@ export interface EngageTaskOptions {
   };
   // 刷剧模式(仅抖音 engage):'binge'=无视关键词,在账号自己的推荐流里沉浸式刷视频互动。
   // 关键词为空时后端剧本也会自动进入 binge(兜底),此字段是向导显式开关的透传。
-  engageMode?: 'search' | 'binge';
+  engageMode?: 'search' | 'binge' | 'precise';
   scenarioId?: string;             // 显式指定后端剧本 id(reply_fan→*_reply_fans_comment / video_download→*_video_download);缺省按平台推
   funnel?: { funnel_phrase?: string; funnel_probability?: number }; // 引流尾巴配置:reply_fan 走后端剧本;engage 由 makeAiCall 对 comment_composer 融入
   // 各账号独立引流语:有值时按 accountId 取,未配的账号视为不带引流(不回落共用值);
@@ -465,6 +465,14 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
       daily_follow_min: q.daily_follow_min, daily_follow_max: q.daily_follow_max,
       daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
+      // 收藏配额(剧本读 daily_favorite_*;没配 = 0 = 不做收藏)
+      daily_favorite_min: q.daily_favorite_min, daily_favorite_max: q.daily_favorite_max,
+      // 精准模式:链接清单 + 每条链接的动作次数。多账号共用同一批链接(各自做一遍)。
+      precise_urls: Array.isArray(q.precise_urls) ? q.precise_urls : [],
+      precise_like: typeof q.precise_like === 'number' ? q.precise_like : 0,
+      precise_favorite: typeof q.precise_favorite === 'number' ? q.precise_favorite : 0,
+      precise_follow: typeof q.precise_follow === 'number' ? q.precise_follow : 0,
+      precise_comment: typeof q.precise_comment === 'number' ? q.precise_comment : 0,
       // 评论语言(强制模式;auto/空时不下发,剧本回落「跟帖子语言」)。各 *_auto_engage 剧本优先用它。
       comment_language_hint: commentLangHint(q.comment_lang),
       comment_lang: q.comment_lang || 'auto',

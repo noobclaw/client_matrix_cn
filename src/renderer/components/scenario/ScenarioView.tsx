@@ -437,6 +437,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // 刷剧模式回填:同 comment_lang 一样必须带上,否则编辑时向导读 initialTask.quota.engage_mode
         //   永远 undefined → 回到「关键词筛选」模式(mxTaskToScenario 已把 engage_mode 拍平到 task 顶层)。
         engage_mode: (task as any).engage_mode,
+        // 收藏配额 + 精准模式配置回填:漏带的话,编辑任务时向导读不到已存的值 →
+        //   保存回去就把它们洗成默认(与 comment_lang / engage_mode 完全同类的坑)。
+        daily_favorite_min: (task as any).daily_favorite_min, daily_favorite_max: (task as any).daily_favorite_max,
+        precise_urls: (task as any).precise_urls, precise_like: (task as any).precise_like,
+        precise_favorite: (task as any).precise_favorite, precise_follow: (task as any).precise_follow,
+        precise_comment: (task as any).precise_comment,
       },
       // 评论引流回填(老任务无此字段 → 空 → 向导显示未填)。
       funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },

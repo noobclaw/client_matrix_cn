@@ -276,6 +276,12 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     // 刷剧模式:同 comment_lang 一样必须透传,否则详情页读不到 t.engage_mode 永远不显示模式,
     // 且 updateTask 兜底写回时会把已存的模式抹掉(与 comment_lang 完全同类的坑)。
     engage_mode: q.engage_mode,
+    // 收藏配额 + 精准模式配置:与 comment_lang / engage_mode 完全同类的坑 ——
+    //   不在这里透传,详情页读不到,而且 updateTask 兜底写回时会把已存的值抹掉。
+    daily_favorite_min: q.daily_favorite_min, daily_favorite_max: q.daily_favorite_max,
+    precise_urls: q.precise_urls, precise_like: q.precise_like,
+    precise_favorite: q.precise_favorite, precise_follow: q.precise_follow,
+    precise_comment: q.precise_comment,
     // 回复粉丝 + 互动(评论引流)都带引流尾巴配置(供详情页展示 + 编辑回填)。
     // 互动任务的引流用于「评论时按概率把引流语融进 AI 评论」(见 engageRunner.makeAiCall)。
     funnel_phrase: (isReply || isEngage || isLead) ? (fn.funnel_phrase || '') : undefined,
@@ -497,6 +503,11 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       comment_lang: input.comment_lang,
       // 刷剧模式同理:不写回则 updateTask 兜底会把已存的 engage_mode 抹成关键词搜索模式。
       engage_mode: input.engage_mode,
+      // 收藏配额 + 精准模式配置,同上必须写回。
+      daily_favorite_min: input.daily_favorite_min, daily_favorite_max: input.daily_favorite_max,
+      precise_urls: input.precise_urls, precise_like: input.precise_like,
+      precise_favorite: input.precise_favorite, precise_follow: input.precise_follow,
+      precise_comment: input.precise_comment,
     },
     // 互动评论引流:透传引流配置,否则经 updateTask 兜底(如 MyTasksPage 改启用)会把 funnel 丢掉。
     // 老任务 / 未填 → funnel_phrase 为 undefined → 存 {'',0} 视作未配,评论纯 AI(向后兼容)。

@@ -28,6 +28,10 @@ const FUNNEL_PROB_DEFAULT = 50;
 const FUNNEL_SUPPORTED_PLATFORMS = new Set(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube', 'binance', 'facebook', 'instagram', 'reddit', 'x', 'xhs', 'gate', 'bitget', 'bybit', 'okx']);
 
 type WizardStep = number;
+// 收藏上限跟点赞同量级(它比关注安全得多,但仍是可被风控的动作)。
+const FAVORITE_HARDCAP = 100;
+// 精准模式一次最多粘 50 条链接(与定向获客的种子上限同口径)。
+const PRECISE_URL_MAX = 50;
 // 步骤(动态):1 选账号 / 2 点赞+关注 / 3 评论(数量+语言) / [4 引流(平台支持且评论>0 才有)] / 末步 频率+条款。
 // 引流独立成一步:支持「所有账号共用」与「各账号各自配置」两种模式(用户需求 2026-08-09)。
 
@@ -55,8 +59,26 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   //   像真人一样刷视频完成点赞/评论/关注。走 quota.engage_mode 透传(全链已贯通);
   //   未配关键词的账号后端剧本也会自动进入该模式(兜底)。
   const bingeSupported = ['douyin', 'kuaishou', 'tiktok'].includes(String(platform || ''));
-  // 新建任务默认「刷剧模式」;编辑已有任务按存的 engage_mode 回填(老任务无该字段=关键词筛选模式)。
-  const [bingeMode, setBingeModeRaw] = useState<boolean>(initialTask ? initialTask?.quota?.engage_mode === 'binge' : true);
+  // 🎯 精准模式:用户粘一批作品链接,每条按配置做点赞/收藏/关注/评论 —— 不搜索、不刷推荐流。
+  //   后半段(打开页 → 互动)复用的就是关键词模式那套动作函数,所以有 auto_engage 剧本的平台都支持。
+  //   ⚠️ 只列【剧本真的实现了 precise 分支】的平台。小红书/X 的互动流程与这五家结构不同
+  //   (小红书按文章逐篇跑、没有 quota 那套;X 只有 postReplyToTweet),要单独适配 —— 没实现就不给入口,
+  //   否则用户选了会跑成「配额全 0,无动作可做」。
+  const preciseSupported = ['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube'].includes(String(platform || ''));
+  // ⭐ 收藏:只有这几家的剧本实现了收藏动作(其它平台要么没有收藏,要么 DOM 还没扒)。
+  const favoriteSupported = ['douyin', 'kuaishou', 'bilibili', 'tiktok'].includes(String(platform || ''));
+  // 模式三态。新建默认:支持刷剧的平台进刷剧,其余进关键词 —— 精准要用户粘链接,不能当默认。
+  //   编辑已有任务按存的 engage_mode 回填(老任务无该字段 = 关键词模式)。
+  type EngageModeKind = 'binge' | 'search' | 'precise';
+  const [engageMode, setEngageModeRaw] = useState<EngageModeKind>(() => {
+    const saved = String(initialTask?.quota?.engage_mode || '');
+    if (saved === 'precise') return 'precise';
+    if (saved === 'binge') return 'binge';
+    if (initialTask) return 'search';
+    return bingeSupported ? 'binge' : 'search';
+  });
+  const bingeMode = engageMode === 'binge';
+  const preciseMode = engageMode === 'precise';
 
   // 任务名不让用户填(对齐旧版):内部按平台+账号数自动命名。
   // 默认勾选所有「可用」账号(配了关键词 + 未封);编辑时用任务已存的账号。
@@ -67,9 +89,14 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   // 关掉刷剧模式时:无关键词账号在「关键词搜索」下不可用,从已选里剔除 —— 否则保存后
   //   engage_mode='' 但后端 bingeCapable 仍会因关键词为空自动进 binge,与"关掉刷剧"的意图相悖。
-  const setBingeMode = (on: boolean) => {
-    setBingeModeRaw(on);
-    if (!on) setSelected((prev) => new Set([...prev].filter((id) => { const a = accounts.find((x) => x.id === id); return !!(a && a.keywords && a.keywords.length); })));
+  const setEngageMode = (m: EngageModeKind) => {
+    setEngageModeRaw(m);
+    // 只有【关键词模式】要求账号配过关键词 —— 切到它时把没词的账号剔掉,否则保存后
+    //   后端 bingeCapable 会因关键词为空自动进刷剧,与用户「我要按关键词搜」的意图相悖。
+    //   精准模式不看关键词(链接是用户给的),不能跟着剔号。
+    if (m === 'search') {
+      setSelected((prev) => new Set([...prev].filter((id) => { const a = accounts.find((x) => x.id === id); return !!(a && a.keywords && a.keywords.length); })));
+    }
   };
 
   const q = initialTask?.quota || {};
@@ -81,6 +108,30 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const [folMax, setFolMaxRaw] = useState<number>(typeof q.daily_follow_max === 'number' ? q.daily_follow_max : 2);
   const setFolMin = (v: number) => { const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v)); setFolMinRaw(n); setFolMaxRaw((p) => (p < n ? n : p)); };
   const setFolMax = (v: number) => { const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v)); setFolMaxRaw(n); setFolMinRaw((p) => (p > n ? n : p)); };
+  // ── 收藏配额(关键词/刷剧模式;放在关注下方)──
+  const [favMin, setFavMinRaw] = useState<number>(typeof q.daily_favorite_min === 'number' ? q.daily_favorite_min : 0);
+  const [favMax, setFavMaxRaw] = useState<number>(typeof q.daily_favorite_max === 'number' ? q.daily_favorite_max : 0);
+  const setFavMin = (v: number) => { const n = Math.max(0, Math.min(FAVORITE_HARDCAP, v)); setFavMinRaw(n); setFavMaxRaw((prev) => (prev < n ? n : prev)); };
+  const setFavMax = (v: number) => { const n = Math.max(0, Math.min(FAVORITE_HARDCAP, v)); setFavMaxRaw(n); setFavMinRaw((prev) => (prev > n ? n : prev)); };
+  // ── 精准模式:链接清单 + 每条链接做几次 ──
+  const [preciseText, setPreciseText] = useState<string>(() => (Array.isArray(q.precise_urls) ? q.precise_urls.join('\n') : ''));
+  const [pLike, setPLike] = useState<number>(typeof q.precise_like === 'number' ? q.precise_like : 1);
+  const [pFav, setPFav] = useState<number>(typeof q.precise_favorite === 'number' ? q.precise_favorite : 0);
+  const [pFollow, setPFollow] = useState<number>(typeof q.precise_follow === 'number' ? q.precise_follow : 0);
+  const [pComment, setPComment] = useState<number>(typeof q.precise_comment === 'number' ? q.precise_comment : 1);
+  // 按行解析链接:去空行、去重、封顶 50。同一条粘两遍 = 做两遍动作,几乎肯定是手滑。
+  const preciseUrls = React.useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const line of String(preciseText || '').split(/\r?\n/)) {
+      const v = line.trim();
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+      if (out.length >= PRECISE_URL_MAX) break;
+    }
+    return out;
+  }, [preciseText]);
   const [cmtMin, setCmtMinRaw] = useState<number>(typeof q.daily_comment_min === 'number' ? q.daily_comment_min : 1);
   const [cmtMax, setCmtMaxRaw] = useState<number>(typeof q.daily_comment_max === 'number' ? q.daily_comment_max : 3);
   const setCmtMin = (v: number) => { const n = Math.max(0, Math.min(COMMENT_HARDCAP, v)); setCmtMinRaw(n); setCmtMaxRaw((p) => (p < n ? n : p)); };
@@ -119,19 +170,28 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const funnelSupported = FUNNEL_SUPPORTED_PLATFORMS.has(platform || '');
-  const showFunnel = cmtMax > 0 && funnelSupported;
-  const totalMaxActions = likeMax + folMax + cmtMax;
-  // 动态步骤表:引流一步只在(平台支持 + 评论>0)时出现
-  const stepNames: string[] = showFunnel ? ['accounts', 'quota', 'comment', 'funnel', 'final'] : ['accounts', 'quota', 'comment', 'final'];
+  // 引流语只在会评论时才有意义 —— 精准模式看 pComment,其它模式看 cmtMax。
+  const showFunnel = (preciseMode ? pComment > 0 : cmtMax > 0) && funnelSupported;
+  const totalMaxActions = likeMax + folMax + cmtMax + favMax;
+  // 动态步骤表:精准模式用自己那一步(链接 + 每条做几次),不走关键词模式的区间配额/评论两步。
+  const stepNames: string[] = preciseMode
+    ? (showFunnel ? ['accounts', 'precise', 'funnel', 'final'] : ['accounts', 'precise', 'final'])
+    : (showFunnel ? ['accounts', 'quota', 'comment', 'funnel', 'final'] : ['accounts', 'quota', 'comment', 'final']);
   const TOTAL_STEPS = stepNames.length;
   const cur = stepNames[Math.min(step, TOTAL_STEPS) - 1];
   // 已选账号(引流步的卡片列表用;标题/赛道与 Step1 行一致)
   const selectedAccounts = accounts.filter((a) => selected.has(a.id)).map((a) => ({ id: a.id, title: a.nickname || a.displayName, group: a.group, platformName: PLATFORM_NAME[a.platform || ''] || a.platform, avatar: a.avatar }));
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, funnelPhrase, funnelProb, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, favMin, favMax, preciseText, pLike, pFav, pFollow, pComment, funnelPhrase, funnelProb, runInterval]);
 
   const canAdvance: Record<string, { ok: boolean; reason?: string }> = {
     accounts: { ok: selected.size >= 1, reason: i18nService.t('wzEngageErrSelectAccount') },
     quota: { ok: true }, // 点赞+关注:可全 0(只评论也行),校验放到评论那步保证「至少配一种动作」
+    // 精准模式:链接和动作都在同一步填,所以两样都在这里卡。
+    precise: preciseUrls.length === 0
+      ? { ok: false, reason: i18nService.currentLanguage === 'zh' ? '请至少粘一条作品链接' : 'Paste at least one post link' }
+      : (pLike + pFav + pFollow + pComment) === 0
+        ? { ok: false, reason: i18nService.currentLanguage === 'zh' ? '点赞 / 收藏 / 关注 / 评论至少要开一项,否则打开链接后什么也不会做' : 'Enable at least one action, otherwise nothing happens after opening the links' }
+        : { ok: true },
     comment: totalMaxActions === 0 ? { ok: false, reason: i18nService.t('wzEngageErrConfigAction') } : { ok: true },
     funnel: { ok: true }, // 未配置账号的拦截走确认弹层(下一步按钮里),不在这硬卡
     final: { ok: allTermsAccepted, reason: i18nService.t('wzEngageErrAcceptTerms') },
@@ -159,7 +219,25 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         concurrency: selected.size,   // 选几个号就同时开几个窗(runner 内部有安全上限兜底)
         frequency: runInterval,
         // Reddit 无关注玩法 → 强制 follow=0(即使有老值也清零),隐藏了滑块也不落库脏数据。
-        quota: { daily_like_min: likeMin, daily_like_max: likeMax, daily_follow_min: platform === 'reddit' ? 0 : folMin, daily_follow_max: platform === 'reddit' ? 0 : folMax, daily_comment_min: cmtMin, daily_comment_max: cmtMax, comment_lang: commentLang, engage_mode: (bingeSupported && bingeMode) ? 'binge' : '' },
+        // ⚠️ 精准模式下【不能】把 like/follow/comment 区间也写成用户设的那些数 ——
+        //   剧本在精准分支只读 precise_*,但这些区间会显示在详情页/摘要里,写错了用户会以为
+        //   任务要按区间跑。所以精准模式把区间清零,只留 precise_*。
+        quota: preciseMode
+          ? {
+            daily_like_min: 0, daily_like_max: 0, daily_follow_min: 0, daily_follow_max: 0,
+            daily_comment_min: 0, daily_comment_max: 0, daily_favorite_min: 0, daily_favorite_max: 0,
+            comment_lang: commentLang, engage_mode: 'precise',
+            precise_urls: preciseUrls,
+            precise_like: pLike, precise_favorite: favoriteSupported ? pFav : 0,
+            precise_follow: pFollow, precise_comment: pComment,
+          }
+          : {
+            daily_like_min: likeMin, daily_like_max: likeMax,
+            daily_follow_min: platform === 'reddit' ? 0 : folMin, daily_follow_max: platform === 'reddit' ? 0 : folMax,
+            daily_comment_min: cmtMin, daily_comment_max: cmtMax,
+            daily_favorite_min: favoriteSupported ? favMin : 0, daily_favorite_max: favoriteSupported ? favMax : 0,
+            comment_lang: commentLang, engage_mode: (bingeSupported && bingeMode) ? 'binge' : '',
+          },
         // 引流:评论时按概率把引流文案融进 AI 评论。留空/平台不支持 → funnel_probability=0 → 视作未配,纯 AI 评论。
         // 各账号模式:任务级 funnel 置空,逐账号配置走 funnelByAccount;共用模式显式传 null 清掉旧的逐账号配置。
         funnel: (funnelSupported && !funnelPerMode && hasFunnel) ? { funnel_phrase: funnelPhrase.trim(), funnel_probability: funnelProb } : { funnel_phrase: '', funnel_probability: 0 },
@@ -188,24 +266,29 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
         {cur === 'accounts' && (
           <>
-            {bingeSupported && (() => {
+            {(bingeSupported || preciseSupported) && (() => {
               const zh = i18nService.currentLanguage === 'zh';
-              const opts = [
-                { on: true, icon: '📺', title: zh ? '刷剧模式' : 'Binge mode',
+              const allOpts = [
+                { on: 'binge' as EngageModeKind, show: bingeSupported, icon: '📺', title: zh ? '刷剧模式' : 'Binge mode',
                   desc: zh
                     ? '在账号自己的推荐流里像真人一样刷短视频,并在与账号赛道关键词匹配的视频下方随机点赞/评论/关注,更贴合推荐算法、精准找到受众粉丝。'
                     : 'Binge-watches the account\'s own recommendation feed like a real user, and likes/comments/follows on videos matching the account niche keywords — rides the recommendation algorithm to reach the right audience.' },
-                { on: false, icon: '🔍', title: zh ? '关键词筛选模式' : 'Keyword search mode',
+                { on: 'search' as EngageModeKind, show: true, icon: '🔍', title: zh ? '关键词筛选模式' : 'Keyword search mode',
                   desc: zh
                     ? '通过赛道关键词搜索,找到匹配合适的视频进行随机点赞/评论/关注互动,覆盖范围更大,适合增长探索。'
                     : 'Searches by niche keywords, finds matching videos and randomly likes/comments/follows — wider reach, good for growth exploration.' },
+                { on: 'precise' as EngageModeKind, show: preciseSupported, icon: '🎯', title: zh ? '精准模式' : 'Targeted mode',
+                  desc: zh
+                    ? '你自己粘作品/帖子链接(最多 50 条),挨个打开按你设的次数点赞、收藏、关注作者、评论 —— 不搜索也不刷推荐流,打给你指定的那些内容。'
+                    : 'Paste up to 50 post links yourself; each one is opened and gets exactly the likes / favorites / follows / comments you configure — no search, no feed.' },
               ];
+              const opts = allOpts.filter((o) => o.show);
               return (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {opts.map((o) => {
-                    const active = bingeMode === o.on;
+                    const active = engageMode === o.on;
                     return (
-                      <button key={String(o.on)} type="button" disabled={saving} onClick={() => setBingeMode(o.on)}
+                      <button key={String(o.on)} type="button" disabled={saving} onClick={() => setEngageMode(o.on)}
                         className={`text-left rounded-xl border px-4 py-3 transition-colors ${active ? 'border-violet-500 bg-violet-500/5 ring-1 ring-violet-500/40' : 'border-gray-200 dark:border-gray-700 hover:border-violet-500/40'} ${saving ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
                         <div className="flex items-center gap-2">
                           <span className={`h-3.5 w-3.5 rounded-full border shrink-0 ${active ? 'border-violet-500 bg-violet-500' : 'border-gray-400'}`} />
@@ -287,6 +370,17 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
               );
             })()}
 
+            {/* ⭐ 收藏(2026-08-23):排在关注下方。只有实现了收藏动作的平台显示。 */}
+            {favoriteSupported && (
+              <RangeSlider
+                label={i18nService.currentLanguage === 'zh' ? '⭐ 每次收藏' : '⭐ Favorites per run'}
+                min={favMin} max={favMax} setMin={setFavMin} setMax={setFavMax} hardCap={FAVORITE_HARDCAP}
+                hint={i18nService.currentLanguage === 'zh'
+                  ? `每次运行随机收藏 ${favMin}-${favMax} 条(上限 ${FAVORITE_HARDCAP};设 0 = 不收藏)`
+                  : `Randomly favorites ${favMin}-${favMax} posts per run (cap ${FAVORITE_HARDCAP}; 0 = off)`}
+                disabled={saving} />
+            )}
+
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
               <div className="font-semibold">{i18nService.t('wzEngageSafetyTitle')}</div>
               <ul className="list-disc list-inside space-y-0.5">
@@ -296,6 +390,76 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             </div>
           </>
         )}
+
+        {cur === 'precise' && (() => {
+          const zh = i18nService.currentLanguage === 'zh';
+          // 0/1 开关行 与 0-3 次数行:两种都用同一排按钮,少写一套样式。
+          const pickRow = (label: string, hint: string, val: number, set: (n: number) => void, choices: number[]) => (
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                {label}<span className="text-xs text-gray-400 font-normal ml-1">{hint}</span>
+              </label>
+              <div className="flex gap-2">
+                {choices.map((c) => (
+                  <button key={c} type="button" disabled={saving} onClick={() => set(c)}
+                    className={`px-4 py-1.5 rounded-lg text-sm border transition-colors ${val === c ? 'border-violet-500 bg-violet-500 text-white font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-violet-500/40'} ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                    {c === 0 ? (zh ? '不做' : 'Off') : c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+          return (
+            <>
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                  {zh ? '作品 / 帖子链接' : 'Post links'}
+                  <span className="text-xs text-gray-400 font-normal ml-1">
+                    {zh
+                      ? `一行一个,最多 ${PRECISE_URL_MAX} 条 · 已识别 ${preciseUrls.length} 条`
+                      : `one per line, up to ${PRECISE_URL_MAX} · ${preciseUrls.length} detected`}
+                  </span>
+                </label>
+                <textarea
+                  value={preciseText}
+                  onChange={(e) => setPreciseText(e.target.value)}
+                  disabled={saving}
+                  rows={7}
+                  placeholder={zh ? '把要互动的作品链接粘在这里,一行一个' : 'Paste the post links here, one per line'}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm font-mono dark:text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-violet-500"
+                />
+                <div className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+                  {zh
+                    ? '所选的每个账号都会把这批链接做一遍(各自独立)。同一条链接粘重复了会自动去重。'
+                    : 'Every selected account runs through the whole list independently. Duplicate lines are removed.'}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {pickRow(zh ? '👍 每条点赞' : '👍 Like each', zh ? '0 或 1 次' : '0 or 1', pLike, setPLike, [0, 1])}
+                {favoriteSupported && pickRow(zh ? '⭐ 每条收藏' : '⭐ Favorite each', zh ? '0 或 1 次' : '0 or 1', pFav, setPFav, [0, 1])}
+                {pickRow(zh ? '➕ 关注作者' : '➕ Follow author', zh ? '0 或 1 次' : '0 or 1', pFollow, setPFollow, [0, 1])}
+                {pickRow(zh ? '💬 每条评论' : '💬 Comments each', zh ? '最多 3 条' : 'up to 3', pComment, setPComment, [0, 1, 2, 3])}
+              </div>
+
+              {pComment > 1 && (
+                <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 px-4 py-3 text-xs text-violet-700 dark:text-violet-300 leading-relaxed">
+                  {zh
+                    ? `同一条作品下要发 ${pComment} 条评论时,不会连着发 —— 会跟点赞/收藏/关注穿插,评论之间还会拉长到几分钟,避免刷屏被折叠。`
+                    : `When posting ${pComment} comments on the same post they are never sent back-to-back — they get interleaved with the other actions and spaced minutes apart.`}
+                </div>
+              )}
+
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
+                <div className="font-semibold">{i18nService.t('wzEngageSafetyTitle')}</div>
+                <ul className="list-disc list-inside space-y-0.5">
+                  <li>{zh ? '每条链接之间会随机停留、按真人节奏操作,不会秒开秒点。' : 'Each link gets a human-paced dwell; nothing is instant.'}</li>
+                  <li>{i18nService.t('wzEngageSafetyTip2')}</li>
+                </ul>
+              </div>
+            </>
+          );
+        })()}
 
         {/* Step 3:评论(数量 + 语言);引流拆去下一步(共用/各账号两种模式)。 */}
         {cur === 'comment' && (
@@ -353,9 +517,26 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">{i18nService.t('wzEngageSummaryTitle')}</div>
               <SummaryRow label={i18nService.t('wzEngageSummaryAccounts')} value={i18nService.t('wzEngageSummaryAccountsValue').replace('{n}', String(selected.size))} />
-              <SummaryRow label={i18nService.t('wzEngageSummaryLikes')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(likeMin)).replace('{max}', String(likeMax))} />
-              <SummaryRow label={i18nService.t(platform === 'facebook' ? 'wzEngageSummaryAddFriends' : 'wzEngageSummaryFollows')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(folMin)).replace('{max}', String(folMax))} />
-              <SummaryRow label={i18nService.t('wzEngageSummaryComments')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax))} />
+              {preciseMode ? (
+                <>
+                  <SummaryRow label={i18nService.currentLanguage === 'zh' ? '模式' : 'Mode'} value={i18nService.currentLanguage === 'zh' ? '🎯 精准(指定链接)' : '🎯 Targeted (given links)'} />
+                  <SummaryRow label={i18nService.currentLanguage === 'zh' ? '链接数' : 'Links'} value={String(preciseUrls.length)} />
+                  <SummaryRow label={i18nService.currentLanguage === 'zh' ? '每条做' : 'Per link'} value={[
+                    pLike ? '👍1' : '', pFav ? '⭐1' : '', pFollow ? '➕1' : '', pComment ? ('💬' + pComment) : '',
+                  ].filter(Boolean).join(' · ') || (i18nService.currentLanguage === 'zh' ? '无' : 'none')} />
+                </>
+              ) : (
+                <>
+                  <SummaryRow label={i18nService.t('wzEngageSummaryLikes')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(likeMin)).replace('{max}', String(likeMax))} />
+                  <SummaryRow label={i18nService.t(platform === 'facebook' ? 'wzEngageSummaryAddFriends' : 'wzEngageSummaryFollows')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(folMin)).replace('{max}', String(folMax))} />
+                  {favoriteSupported && favMax > 0 && (
+                    <SummaryRow label={i18nService.currentLanguage === 'zh' ? '每次收藏' : 'Favorites per run'} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(favMin)).replace('{max}', String(favMax))} />
+                  )}
+                </>
+              )}
+              {!preciseMode && (
+                <SummaryRow label={i18nService.t('wzEngageSummaryComments')} value={i18nService.t('wzEngageSummaryPerRunValue').replace('{min}', String(cmtMin)).replace('{max}', String(cmtMax))} />
+              )}
               {showFunnel && <SummaryRow label={i18nService.t('wzEngageSummaryFunnel')} value={funnelPerMode
                 ? i18nService.t('wzFunnelSummaryPer').replace('{done}', String(selectedAccounts.length - countUnconfigured(selectedAccounts, funnelPerMap))).replace('{total}', String(selectedAccounts.length))
                 : (hasFunnel ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%` : i18nService.t('wzEngageSummaryFunnelEmpty'))} />}
