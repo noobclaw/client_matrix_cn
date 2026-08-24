@@ -66,7 +66,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   //   否则用户选了会跑成「配额全 0,无动作可做」。
   const preciseSupported = ['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube'].includes(String(platform || ''));
   // ⭐ 收藏:只有这几家的剧本实现了收藏动作(其它平台要么没有收藏,要么 DOM 还没扒)。
-  const favoriteSupported = ['douyin', 'kuaishou', 'bilibili', 'tiktok'].includes(String(platform || ''));
+  const favoriteSupported = ['douyin', 'kuaishou', 'xhs', 'bilibili', 'tiktok'].includes(String(platform || ''));
   // 模式三态。新建默认:支持刷剧的平台进刷剧,其余进关键词 —— 精准要用户粘链接,不能当默认。
   //   编辑已有任务按存的 engage_mode 回填(老任务无该字段 = 关键词模式)。
   type EngageModeKind = 'binge' | 'search' | 'precise';
