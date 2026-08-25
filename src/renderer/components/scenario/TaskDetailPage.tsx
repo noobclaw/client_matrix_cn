@@ -1561,9 +1561,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
                   {(() => {
                     const isZhLead = i18nService.currentLanguage === 'zh';
-                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
                     const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+                    const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), favorite: (i18nService.currentLanguage === 'zh' ? '收藏' : 'favorites'), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
                     // 定向获客:在赞/关注/评论【前面】先报两个潜客数(这是这张卡真正的产出)。
                     //   跟赞/关注/评论一样带分母 —— 光一个「获得潜客 20」看不出跑没跑满。
@@ -2243,6 +2243,14 @@ function formatActionBreakdown(
   // those as "👍 0 · ➕ 0 · 💬 0", not collapse them to "-". Sort by
   // ORDER first, then unknown keys alphabetically — keeps engage line
   // in 👍 ➕ 💬 order regardless of insertion order.
+  // ⭐ 支持收藏的五家：哪怕这次一条没收藏，也要画出「⭐ 0」。
+  //   —— 旧运行记录里压根没有 favorite 这个键（它是后加的），而「累计完成」是历史记录
+  //   求和，所以光靠「counts 里有什么就画什么」永远轮不到它；用户配了收藏却在卡上
+  //   找不到，会以为功能没生效。
+  const FAV_ENGAGE_SIDS = ['douyin', 'kuaishou', 'xhs', 'bilibili', 'tiktok'].map((x) => x + '_auto_engage');
+  if (FAV_ENGAGE_SIDS.indexOf(sid) >= 0 && typeof (counts as any).favorite !== 'number') {
+    counts = { ...counts, favorite: 0 };
+  }
   const keys = Object.keys(counts)
     // 'note'(回复粉丝场景的文章进度内部计数)只在「本次运行进度」实时卡里展示;
     //   累计/上次完成里只看评论数,过滤掉,避免中文下出现未翻译的原始 "note"。
@@ -2256,7 +2264,7 @@ function formatActionBreakdown(
       return ia - ib;
     });
   if (keys.length === 0) return '-';
-  const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
+  const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), favorite: (i18nService.currentLanguage === 'zh' ? '收藏' : 'favorites'), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
   return keys.map(k => {
     const icon = ICONS[k] || '·';
     const label = (labels as any)[k] || k;
