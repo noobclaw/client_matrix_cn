@@ -73,6 +73,7 @@ export interface SaveTaskInput {
   funnel?: ReplyFanConfig;         // reply_fan 用:引流尾巴配置
   // 各账号独立引流语:对象=各账号模式;null=显式清掉(切回共用);undefined=更新时保留旧值。
   funnelByAccount?: Record<string, ReplyFanConfig> | null;
+  maxReplyPerComment?: number;
   imageText?: ImageTextConfig;     // image_text 用:图文创作配置
   viralRewrite?: ViralRewriteConfig; // viral_rewrite 用:爆款仿写配置
   tweetPost?: TweetPostConfig;     // x_post 用:自动发推配置
@@ -108,6 +109,9 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       funnel: input.funnel ?? tasks[i].funnel,
       // null=显式清掉(向导切回共用模式);undefined=没动这块(如 updateTask 兜底),保留旧值。
       funnelByAccount: input.funnelByAccount === undefined ? tasks[i].funnelByAccount : (input.funnelByAccount || undefined),
+      // undefined = 本次没传(保留原值);传了就覆盖 —— 与 funnelByAccount 同一口径,
+      //   否则编辑任务时只改频率也会把它抹掉。
+      maxReplyPerComment: input.maxReplyPerComment === undefined ? tasks[i].maxReplyPerComment : input.maxReplyPerComment,
       imageText: input.imageText ?? tasks[i].imageText,
       viralRewrite: input.viralRewrite ?? tasks[i].viralRewrite,
       tweetPost: input.tweetPost ?? tasks[i].tweetPost,
@@ -140,6 +144,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     quota: input.quota || {},
     funnel: input.funnel,
     funnelByAccount: input.funnelByAccount || undefined,
+    maxReplyPerComment: input.maxReplyPerComment,
     imageText: input.imageText,
     viralRewrite: input.viralRewrite,
     tweetPost: input.tweetPost,

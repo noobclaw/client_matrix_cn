@@ -34,7 +34,7 @@ interface Props {
   accountsLoading?: boolean;
   initialTask?: any | null;                // 编辑时传入矩阵任务
   onCancel: () => void;
-  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount: Record<string, { funnel_phrase: string; funnel_probability: number }> | null }) => Promise<void> | void;
+  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount: Record<string, { funnel_phrase: string; funnel_probability: number }> | null; maxReplyPerComment?: number }) => Promise<void> | void;
 }
 
 const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
@@ -44,6 +44,12 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
   // 平台相关文案。小红书是唯一「逐篇笔记进详情页」的流程,其余短视频平台在各自创作者中心
   // 「评论管理」集中回复。创作者中心中文名 + 作品/笔记 量词按平台切。
   const isXhs = platform === 'xhs';
+  // 「单个用户评论最大回复数」只做抖音(用户 2026-08-25 明确:其余平台的回复粉丝任务不加)。
+  const showMaxReply = platform === 'douyin';
+  //   最低 1 —— 回复粉丝任务本来就是要回的,0 没意义;默认 1 = 老行为「回过就不再回」。
+  const [maxReplyPerComment, setMaxReplyPerComment] = useState<number>(
+    typeof (initialTask as any)?.maxReplyPerComment === 'number'
+      ? Math.min(5, Math.max(1, (initialTask as any).maxReplyPerComment)) : 1);
   const ccNameZh = platform === 'kuaishou' ? i18nService.t('wzReplyCcKuaishou')
     : platform === 'bilibili' ? i18nService.t('wzReplyCcBilibili')
     : platform === 'xhs' ? i18nService.t('wzReplyCcXhs')
@@ -117,6 +123,8 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
           for (const id of selected) { const v = funnelPerMap[id]; const ph = (v?.funnel_phrase || '').trim(); if (ph) out[id] = { funnel_phrase: ph, funnel_probability: v.funnel_probability }; }
           return out;
         })() : null,
+        // 只有抖音会用到;其余平台不传 → 剧本回落 1 = 老行为。
+        maxReplyPerComment: showMaxReply ? maxReplyPerComment : undefined,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzReplyErrSaveFailed'));
@@ -197,6 +205,28 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
         {step === 2 && (
           <>
+            {/* 单个用户评论最大回复数(仅抖音)。默认 1 = 老行为「同一条评论回过就不再回」。 */}
+            {showMaxReply && (
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                  {i18nService.currentLanguage === 'zh' ? '单个用户评论最大回复数' : 'Max replies per comment'}
+                  <span className="text-xs text-gray-400 font-normal ml-1">
+                    {i18nService.currentLanguage === 'zh'
+                      ? (maxReplyPerComment === 1 ? '同一条评论只回一次(默认)' : `同一条评论最多回 ${maxReplyPerComment} 次,回满就不再回它`)
+                      : (maxReplyPerComment === 1 ? 'reply once per comment (default)' : `at most ${maxReplyPerComment} replies to the same comment`)}
+                  </span>
+                </label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4, 5].map((c) => (
+                    <button key={c} type="button" disabled={saving} onClick={() => setMaxReplyPerComment(c)}
+                      className={`px-4 py-1.5 rounded-lg text-sm border transition-colors ${maxReplyPerComment === c ? 'border-fuchsia-500 bg-fuchsia-500 text-white font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-fuchsia-500/40'} ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* 引流语配置:共用一份 / 各账号各自(点账号卡逐号配,未配=该号回复不带引流)。 */}
             <MatrixFunnelConfig
               accounts={selectedAccounts}

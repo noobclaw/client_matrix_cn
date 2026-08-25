@@ -130,6 +130,8 @@ export interface EngageTaskOptions {
   // 各账号独立引流语:有值时按 accountId 取,未配的账号视为不带引流(不回落共用值);
   // undefined 时沿用 funnel(共用,老行为)。
   funnelByAccount?: Record<string, { funnel_phrase?: string; funnel_probability?: number }>;
+  // 单个用户评论最大回复数(仅抖音回复粉丝剧本读它;不传 → 剧本回落 1 = 老行为)
+  maxReplyPerComment?: number;
   urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
   concurrency?: number;
   jitterMinMs?: number; jitterMaxMs?: number;
@@ -471,6 +473,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
           funnel_probability: typeof f.funnel_probability === 'number' ? f.funnel_probability : 0,
         };
       })(),
+      // 回复粉丝:单个用户评论最大回复数(仅抖音向导有这个选项)。
+      max_reply_per_comment: opts.maxReplyPerComment,
       // video_download 剧本读 task.urls(用户粘贴的待下载链接清单)。
       urls: Array.isArray(opts.urls) ? opts.urls : [],
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
