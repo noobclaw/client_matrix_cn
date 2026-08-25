@@ -222,6 +222,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     const n = clampInt(total, 0, 500);
     return n > 0 ? Math.max(1, Math.ceil(n / reach)) : 0;
   };
+  const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 各账号种子并集(去重)—— 用于任务名「已识别 N」和回落 seedAccounts。
   const seedList = useMemo(() => {
     const seen = new Set<string>(); const out: string[] = [];
@@ -233,7 +234,6 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const seededAcctCount = useMemo(() => selectedAccounts.filter((a) => parseSeedLines(seedTextFor(a.id), platform).length > 0).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [seedTextByAccount, sharedSeedText, selected, accounts, platform]);
-  const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 关键词模式下真正会用到的词 = 各账号自己配的关键词(与互动涨粉一致)。
   const acctsWithoutKw = selectedAccounts.filter((a) => kwOf(a).length === 0);
   const funnelAccounts = selectedAccounts.map((a) => ({
