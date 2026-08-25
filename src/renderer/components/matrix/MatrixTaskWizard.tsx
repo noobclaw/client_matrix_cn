@@ -213,7 +213,11 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
 
   const handleSave = async () => {
     if (saving) return;
-    if (!canAdvance.comment.ok) { setSaveError(canAdvance.comment.reason || ''); return; }
+    // ⚠️ 按模式选闸:comment 那道查的是 likeMax+folMax+cmtMax+favMax(关键词/刷剧的【区间】配额),
+    //   而精准模式把那四个区间【有意】存成 0(动作数在 precise_*)。写死用 comment 的话,
+    //   新建时靠默认值 8/2/3 蒙混过关,一旦编辑已存的精准任务就回填全 0 → 明明配了动作却报「至少配一个」。
+    const gate = preciseMode ? canAdvance.precise : canAdvance.comment;
+    if (!gate.ok) { setSaveError(gate.reason || ''); return; }
     setSaving(true);
     try {
       await onSave({

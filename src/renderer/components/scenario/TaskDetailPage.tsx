@@ -1336,13 +1336,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             if (typeof mn === 'number' && typeof mx === 'number') return mn === mx ? String(mn) : `${mn}-${mx}`;
                             return String(fb);
                           };
+                          const zhLang = i18nService.currentLanguage === 'zh';
                           const lStr = fmtRange(lMin, lMax, 3);
                           const cmStr = fmtRange(cmMin, cmMax, 1);
+                          // ⭐ 收藏:只在真配了(max>0)时才进摘要 —— 没配的任务/不支持收藏的平台
+                          //   硬显示「⭐ 0-0」是噪音。用户 2026-08-25:详情页看不到收藏数值。
+                          const favA = (t as any).daily_favorite_min, favB = (t as any).daily_favorite_max;
+                          const favStr = (typeof favB === 'number' && favB > 0)
+                            ? ` · ⭐ ${fmtRange(favA, favB, 0)}` : '';
+                          // 「单个作品最多评论几次」默认 1 = 老行为,只在用户改过时才标出来。
+                          const mcw = (t as any).max_comment_per_work;
+                          const mcwStr = (typeof mcw === 'number' && mcw !== 1)
+                            ? (zhLang ? ` · 单条最多评 ${mcw} 次` : ` · max ${mcw}/post`) : '';
                           // 海外平台(youtube/tiktok/facebook/reddit/instagram)才标评论语言;国内(douyin/kuaishou/bilibili)跟帖子语言、不标。
                           const engLangTag = (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage' || sid === 'facebook_auto_engage' || sid === 'reddit_auto_engage' || sid === 'instagram_auto_engage') ? langTag : '';
                           // 抖音/快手/TikTok 支持「刷剧模式 vs 关键词筛选」,摘要开头标出当前模式(engage_mode);其余平台无此模式。
                           const bingeCap = sid === 'douyin_auto_engage' || sid === 'kuaishou_auto_engage' || sid === 'tiktok_auto_engage';
-                          const zhLang = i18nService.currentLanguage === 'zh';
                           const modePrefix = bingeCap
                             ? ((t.engage_mode === 'binge')
                               ? (zhLang ? '📺 刷剧模式 · ' : '📺 Binge · ')
@@ -1364,11 +1373,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           }
                           if (sid === 'youtube_auto_engage') {
                             const sStr = fmtRange(sMin, sMax, 1);
-                            return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
+                            return `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr}${favStr} · ${i18nService.t('tdSubscribe')} ${sStr} · ${i18nService.t('tdComment')} ${cmStr}${mcwStr}` + engLangTag;
                           }
                           // tiktok / douyin 用 follow
                           const fStr2 = fmtRange(fMin, fMax, 1);
-                          return modePrefix + `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr} · ${i18nService.t('tdFollow')} ${fStr2} · ${i18nService.t('tdComment')} ${cmStr}` + engLangTag;
+                          return modePrefix + `${intervalLabel} · ${i18nService.t('tdLike')} ${lStr}${favStr} · ${i18nService.t('tdFollow')} ${fStr2} · ${i18nService.t('tdComment')} ${cmStr}${mcwStr}` + engLangTag;
                         }
                         // v4.31.27: binance_from_x_repost 也走 daily_post_min/max(批量搬运同样按"每次 N 条")
                         // v4.31.30: 频次摘要文案对齐 wizard step3 — 之前只有数字+"条/次",
