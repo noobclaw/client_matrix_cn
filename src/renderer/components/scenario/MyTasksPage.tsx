@@ -952,8 +952,14 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         return (v?.target || 0) > 0 || (v?.done || 0) > 0;
                       }
                       // cumulative: keep zeros so newly-created tasks still
-                      // show "累计完成: 0 帖" instead of nothing.
-                      return true;
+                      // show "累计完成: 0 帖" instead of nothing —— 但只对【本场景真会做】
+                      //   的动作保留 0。sidecar 逐 key 求和后 counts 带着全部动作键,
+                      //   全留会让互动任务拖出「📤 0 发帖 · ⬇️ 0 下载」。
+                      const MT_FAV_SIDS = ['douyin', 'kuaishou', 'xhs', 'bilibili', 'tiktok'].map((x) => x + '_auto_engage');
+                      const mtAlways = ['like', 'follow', 'comment', 'post', 'download']
+                        .concat(MT_FAV_SIDS.indexOf(String(task.scenario_id || '')) >= 0 ? ['favorite'] : []);
+                      if (mtAlways.indexOf(k) >= 0) return true;
+                      return Number((effectiveInfo.data as any)[k] || 0) > 0;
                     }).sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);

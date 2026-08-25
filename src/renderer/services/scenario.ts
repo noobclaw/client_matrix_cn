@@ -289,6 +289,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     funnel_probability: (isReply || isEngage || isLead) ? (typeof fn.funnel_probability === 'number' ? fn.funnel_probability : 0) : undefined,
     // 各账号独立引流语:必须透传,否则 updateTask 兜底(如 MyTasksPage 改启用)会把它抹掉(与 comment_lang 同类坑)。
     funnel_by_account: (isReply || isEngage || isLead) ? (t.funnelByAccount || undefined) : undefined,
+    // 单个用户评论最大回复数（仅抖音回复粉丝）—— 同上，必须透传。
+    max_reply_per_comment: isReply ? (t as any).maxReplyPerComment : undefined,
     account_ids: t.accountIds || [],
     created_at: t.createdAt || 0,
     updated_at: t.createdAt || 0,
@@ -315,6 +317,8 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       },
       // 各账号独立引流语写回(undefined 时 taskStore 保留旧值,不误清)。
       funnelByAccount: input.funnel_by_account,
+      // 同上：不写回的话，在「我的任务」里改个启用开关都会把它抹掉。
+      maxReplyPerComment: (input as any).max_reply_per_comment,
       concurrency: accountIds.length,
       frequency: input.run_interval || 'daily_random',
       enabled: input.enabled !== false,

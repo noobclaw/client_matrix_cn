@@ -2257,10 +2257,16 @@ function formatActionBreakdown(
   if (FAV_ENGAGE_SIDS.indexOf(sid) >= 0 && typeof (counts as any).favorite !== 'number') {
     counts = { ...counts, favorite: 0 };
   }
+  // sidecar 改成逐 key 求和之后,counts 会带上 runner 白名单里的【全部】动作键
+  //   (post/download/lead_* 对互动任务恒 0)。不挡的话摘要会拖出一串
+  //   「📤 0 发帖 · ⬇️ 0 下载 · 📇 0 获得潜客」。必需三键恒显示(哪怕 0),
+  //   收藏只对实现了它的五家恒显示,其余维度有值才显示。
+  const ALWAYS_KEYS = ['like', 'follow', 'comment'].concat(FAV_ENGAGE_SIDS.indexOf(sid) >= 0 ? ['favorite'] : []);
   const keys = Object.keys(counts)
     // 'note'(回复粉丝场景的文章进度内部计数)只在「本次运行进度」实时卡里展示;
     //   累计/上次完成里只看评论数,过滤掉,避免中文下出现未翻译的原始 "note"。
-    .filter(k => typeof counts[k] === 'number' && k !== 'note')
+    .filter(k => typeof counts[k] === 'number' && k !== 'note'
+      && (ALWAYS_KEYS.indexOf(k) >= 0 || (counts as any)[k] > 0))
     .sort((a, b) => {
       const ia = ORDER.indexOf(a);
       const ib = ORDER.indexOf(b);

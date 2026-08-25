@@ -519,6 +519,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       accountIds: task.account_ids || [],
       funnel: { funnel_phrase: (task as any).funnel_phrase || '', funnel_probability: (task as any).funnel_probability ?? 0 },
       funnelByAccount: (task as any).funnel_by_account || undefined,
+      // 回填：漏了编辑时永远显示默认 1，保存回去就把用户设的值洗掉了。
+      maxReplyPerComment: (task as any).max_reply_per_comment,
       frequency: task.run_interval,
     });
     setMatrixReplyPlatform(plat);
@@ -529,11 +531,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     } catch { setMatrixReplyAccounts([]); }
     finally { setMatrixReplyAccountsLoading(false); }
   };
-  const saveMatrixReplyFanTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number } }) => {
+  const saveMatrixReplyFanTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; maxReplyPerComment?: number }) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
     // type='reply_fan' + funnel(无配额)。与同平台互动任务是不同 type,可并存。
-    const r = await m?.saveTask?.({ id: matrixReplyTask?.id, platform: matrixReplyPlatform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, funnelByAccount: (input as any).funnelByAccount, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await m?.saveTask?.({ id: matrixReplyTask?.id, platform: matrixReplyPlatform, type: 'reply_fan', name: input.name, accountIds: input.accountIds, funnel: input.funnel, funnelByAccount: (input as any).funnelByAccount,
+      // 单个用户评论最大回复数（仅抖音）。❗ 本向导有三个挂载点，MatrixView 两个、这里一个；
+      //   漏了这一处的话，从场景页进去的编辑弹窗选什么都存不下（用户 2026-08-26 实测）。
+      maxReplyPerComment: input.maxReplyPerComment, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixReplyPlatform; setMatrixReplyPlatform(null); setMatrixReplyTask(null); setDupNotice({ platform: dp as string, label: '回复粉丝' }); return; }
       throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限' } as any)[r?.error] || r?.error || '保存失败');
