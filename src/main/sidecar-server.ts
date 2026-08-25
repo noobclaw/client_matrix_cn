@@ -339,21 +339,26 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const q: any = task.quota || {};
     // favorite 也要在这儿开位:互动的收藏动作(2026-08-23 新增)同样走 addActionCount,
     //   不开位的话实时进度里收藏恒 0(与上面 lead_new/lead_engaged 同一个坑)。
-    const zero = (): Record<string, number> => ({ like: 0, follow: 0, comment: 0, favorite: 0, lead_new: 0, lead_engaged: 0 });
+    // 签名同时满足两件事：可以 sum[k] 索引赋值（逐 key 求和要用），
+    //   又保证 like/follow/comment 三个必需键存在（MatrixLiveProgress.done 要求）。
+    const zero = (): { [k: string]: number; like: number; follow: number; comment: number } =>
+      ({ like: 0, follow: 0, comment: 0, favorite: 0, lead_new: 0, lead_engaged: 0 });
     const perAccount: MatrixLiveProgress['perAccount'] = {};
     for (const aid of accIds) {
       const suspended = suspendedIds.includes(aid);
       perAccount[aid] = {
         displayName: getAccount(aid)?.displayName || aid,
         status: suspended ? 'skipped' : 'running',
-        targets: { like: q.daily_like_max || 0, follow: q.daily_follow_max || 0, comment: q.daily_comment_max || 0 },
+        // favorite 也要在兜底 targets 里 —— 剧本 setActionTargets 回来之前(以及万一没回来),
+        //   缺这个键账号卡就显示「⭐ 0/0」,用户明明配了 1 却看不出来。
+        targets: { like: q.daily_like_max || 0, follow: q.daily_follow_max || 0, comment: q.daily_comment_max || 0, favorite: q.daily_favorite_max || 0 },
         done: zero(), cost: { credits: 0, usd: 0 }, logs: [],
       };
     }
     // 本任务独立进度(并发时各任务互不覆盖),存进 liveProgressByTask[taskId]。
     const live: MatrixLiveProgress = {
       taskId: task.id, status: 'running', startedAt,
-      targets: { like: (q.daily_like_max || 0) * accN, follow: (q.daily_follow_max || 0) * accN, comment: (q.daily_comment_max || 0) * accN },
+      targets: { like: (q.daily_like_max || 0) * accN, follow: (q.daily_follow_max || 0) * accN, comment: (q.daily_comment_max || 0) * accN, favorite: (q.daily_favorite_max || 0) * accN },
       done: zero(),
       cost: { credits: 0, usd: 0 },
       perAccountTargets: {}, perAccount, logs: [],
@@ -416,10 +421,12 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
         const sum = zero();
         const costSum = { credits: 0, usd: 0 };
         for (const it of collected.values()) {
-          sum.like += it.counts?.like || 0; sum.follow += it.counts?.follow || 0; sum.comment += it.counts?.comment || 0;
-          // 定向获客的两维也要进实时进度,否则详情页的「本次获得/互动潜客」永远是 0。
-          (sum as any).lead_new = ((sum as any).lead_new || 0) + (it.counts?.lead_new || 0);
-          (sum as any).lead_engaged = ((sum as any).lead_engaged || 0) + (it.counts?.lead_engaged || 0);
+          // ⚠️ 逐 key 求和,别再逐字段手抄 —— 原来写死 like/follow/comment + lead_* 五个字段,
+          //   后加的 favorite 就这么漏了:zero() 里开了位、runner 也传了数,但这里不累加,
+          //   于是收藏在「累计完成/上次完成/本次进度」永远是 0(用户 2026-08-26 实测)。
+          //   以后再加动作维度,这里不用改。
+          const c: any = it.counts || {};
+          for (const k of Object.keys(c)) sum[k] = (sum[k] || 0) + (Number(c[k]) || 0);
           costSum.credits += it.chargedCredits || 0; costSum.usd += it.chargedUsd || 0;
         }
         live.done = sum;
@@ -428,11 +435,13 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
         if (pa) {
           // 定向获客的两维也要落到【每个账号】的进度里 —— 上面的 live.done 是各账号求和,
           //   逐号那栏漏带的话,多账号跑获客时看不出是哪个号采到/触达了多少人。
-          if (item.counts) pa.done = {
-            like: item.counts.like || 0, follow: item.counts.follow || 0, comment: item.counts.comment || 0,
-            lead_new: (item.counts as any).lead_new || 0,
-            lead_engaged: (item.counts as any).lead_engaged || 0,
-          };
+          // 同上:以 zero() 打底再逐 key 覆盖,不手抄字段名(手抄漏了 favorite → 账号卡 ⭐ 恒 0/N)。
+          if (item.counts) {
+            const d = zero();
+            const c: any = item.counts;
+            for (const k of Object.keys(c)) d[k] = Number(c[k]) || 0;
+            pa.done = d;
+          }
           pa.cost = { credits: item.chargedCredits || 0, usd: item.chargedUsd || 0 };
         }
         broadcastSSE('matrix:progress', { type: 'item', accountId: item.accountId, state: item.state, reason: item.reason, counts: item.counts, chargedCredits: item.chargedCredits, chargedUsd: item.chargedUsd, taskId: task.id });
@@ -529,7 +538,14 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
       // 存运行记录(供「矩阵涨粉运行记录」页)
       try {
         const items = Array.from(collected.values()).map((it: any) => ({ accountId: it.accountId, displayName: getAccount(it.accountId)?.displayName, state: it.state, reason: it.reason, counts: it.counts, chargedCredits: it.chargedCredits, chargedUsd: it.chargedUsd }));
-        const totals: any = items.reduce((acc, it: any) => ({ like: acc.like + (it.counts?.like || 0), follow: acc.follow + (it.counts?.follow || 0), comment: acc.comment + (it.counts?.comment || 0) }), { like: 0, follow: 0, comment: 0 });
+        // 逐 key 求和（同 cbOnItem）—— 这里存的就是「累计完成/上次完成」的数据源，
+        //   原来只手抄 like/follow/comment 三个字段，收藏就永远存不进运行记录。
+        //   以三个必需键打底，其余维度有多少收多少。
+        const totals: any = items.reduce((acc: any, it: any) => {
+          const c: any = it.counts || {};
+          for (const k of Object.keys(c)) acc[k] = (acc[k] || 0) + (Number(c[k]) || 0);
+          return acc;
+        }, { like: 0, follow: 0, comment: 0 });
         // 非互动任务的完成维度:图文创作累计「发帖数」、视频下载累计「下载条数」。只给对应 type 加键,
         // 不污染 engage(否则累计/上次完成会多出 📤0/⬇️0)。
         if (isImageText || isTweetPost || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost || isBinanceRepost) totals.post = items.reduce((s, it: any) => s + (it.counts?.post || 0), 0);
@@ -2122,7 +2138,8 @@ const server = http.createServer(async (req, res) => {
                   success: ids.filter((k) => pa[k].status === 'success').length,
                   failed: ids.filter((k) => pa[k].status === 'failed').length,
                   skipped: ids.filter((k) => pa[k].status === 'skipped').length,
-                  totals: { like: lp.done.like, follow: lp.done.follow, comment: lp.done.comment },
+                  // 带上全部维度（含 favorite / lead_*），别只挑三个。
+                  totals: { ...lp.done },
                   // 目标值:列表里渲染「已完成/目标」的 X/Y 进度用(仅在跑的这条有)。
                   targets: { ...lp.targets },
                   cost: lp.cost,
