@@ -14,7 +14,7 @@
  * 文案内联中英(仅 TikTok 卡使用),不新增 i18n key。
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import MatrixFunnelConfig, {
   FunnelUnsetConfirm, countUnconfigured, FUNNEL_PHRASE_MAX, FUNNEL_PROB_DEFAULT,
@@ -210,6 +210,17 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [funnelPerMap, setFunnelPerMap] = useState<Record<string, FunnelValue>>(initialTask?.funnelByAccount || {});
   const [funnelUnsetConfirm, setFunnelUnsetConfirm] = useState<number | null>(null);
   const [seedUnsetConfirm, setSeedUnsetConfirm] = useState<number | null>(null);
+  // 账号横条:当前编辑哪个号 + 左右渐隐(号多到滚出视野时提示两边还有)。
+  const [activeSeedId, setActiveSeedId] = useState<string>('');
+  const seedStripRef = React.useRef<HTMLDivElement | null>(null);
+  const [seedFadeL, setSeedFadeL] = useState(false);
+  const [seedFadeR, setSeedFadeR] = useState(false);
+  const updateSeedFade = () => {
+    const el = seedStripRef.current;
+    if (!el) return;
+    setSeedFadeL(el.scrollLeft > 4);
+    setSeedFadeR(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
 
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'daily_random');
   const [termsAccepted, setTermsAccepted] = useState<boolean>(true);
@@ -224,6 +235,9 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   };
   const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 各账号种子并集(去重)—— 用于任务名「已识别 N」和回落 seedAccounts。
+  // 账号数变了（第 1 步勾选变动）或刚切到本步时，渐隐要重算 ——
+  //   否则从 2 个号加到 20 个号，右侧渐隐不出现，用户看不出横条还能滚。
+  useEffect(() => { updateSeedFade(); /* eslint-disable-next-line */ }, [selected, step]);
   const seedList = useMemo(() => {
     const seen = new Set<string>(); const out: string[] = [];
     for (const a of selectedAccounts) for (const x of parseSeedLines(seedTextFor(a.id), platform)) { if (!seen.has(x)) { seen.add(x); out.push(x); } }
@@ -446,25 +460,74 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                 </div>
                 {selectedAccounts.length === 0 ? (
                   <div className="text-[12px] text-amber-500">{t('请先在第 1 步选执行账号', 'Pick executing accounts in step 1 first')}</div>
-                ) : selectedAccounts.map((a) => {
-                  const cnt = parseSeedLines(seedTextFor(a.id), platform).length;
+                ) : (() => {
+                  // 当前正在编辑哪个号。选中的号被取消勾选后 activeSeedId 会指向不存在的号 ——
+                  //   回落到第一个,否则编辑区空白、用户以为填的东西丢了。
+                  const act = selectedAccounts.find((x) => x.id === activeSeedId) || selectedAccounts[0];
+                  const actCnt = act ? parseSeedLines(seedTextFor(act.id), platform).length : 0;
                   return (
-                    <div key={a.id} className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          {a.avatar ? <img src={a.avatar} alt="" className="w-5 h-5 rounded-full shrink-0" /> : <span className="w-5 h-5 rounded-full bg-cyan-500/20 shrink-0" />}
-                          <span className="text-sm font-medium dark:text-gray-200 truncate">{a.nickname || a.displayName}</span>
-                          <span className={`text-[11px] shrink-0 ${cnt ? 'text-gray-400' : 'text-amber-500'}`}>{cnt ? t(`已识别 ${cnt} 个`, `${cnt} parsed`) : t('未填', 'empty')}</span>
+                    <>
+                      {/* 账号横条:一行装下所有号,点谁编谁(与引流语同款)。号多时横向滚,
+                          两侧渐隐提示还有更多 —— 纵向堆 textarea 的老布局 10 个号就滚不完了。 */}
+                      <div className="relative">
+                        <div
+                          ref={seedStripRef}
+                          onScroll={updateSeedFade}
+                          className="flex gap-1.5 overflow-x-auto pb-1"
+                          style={{ scrollbarWidth: 'none' }}
+                        >
+                          {selectedAccounts.map((a) => {
+                            const cnt = parseSeedLines(seedTextFor(a.id), platform).length;
+                            const on = act && act.id === a.id;
+                            return (
+                              <button key={a.id} type="button" onClick={() => setActiveSeedId(a.id)}
+                                className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-left transition-colors ${
+                                  on ? 'border-cyan-500 bg-cyan-500/10 ring-1 ring-cyan-500/50' : 'border-gray-200 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500'
+                                }`}>
+                                {a.avatar
+                                  ? <img src={String(a.avatar).replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-5 h-5 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+                                  : <span className="w-5 h-5 rounded-full bg-cyan-500/20 shrink-0" />}
+                                <span className="min-w-0">
+                                  <span className="block text-xs font-medium dark:text-gray-200 truncate max-w-[120px]">{a.nickname || a.displayName}</span>
+                                  <span className="block text-[10px] text-gray-400 truncate max-w-[120px]">{a.group || ''}</span>
+                                </span>
+                                <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${cnt ? 'bg-cyan-500/10 text-cyan-500' : 'bg-amber-400/10 text-amber-500'}`}>
+                                  {cnt ? String(cnt) : t('未填', 'empty')}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
-                        {selectedAccounts.length > 1 && cnt > 0 && (
-                          <button type="button" onClick={() => applySeedToAll(a.id)} className="text-[11px] text-cyan-500 hover:underline shrink-0">{t('复制到全部账号', 'Copy to all')}</button>
-                        )}
+                        {seedFadeL && <div className="pointer-events-none absolute left-0 top-0 bottom-1 w-8 bg-gradient-to-r from-white dark:from-gray-900 to-transparent" />}
+                        {seedFadeR && <div className="pointer-events-none absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-white dark:from-gray-900 to-transparent" />}
                       </div>
-                      <textarea value={seedTextFor(a.id)} onChange={(e) => setSeedTextFor(a.id, e.target.value)} rows={4} placeholder={specOf(platform).ph}
-                        className="w-full text-sm p-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent dark:text-white font-mono leading-relaxed" />
-                    </div>
+
+                      {/* 编辑区:只编当前选中那个号 */}
+                      {act && (
+                        <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 px-4 py-3">
+                          <div className="flex items-center justify-between mb-1.5 gap-2">
+                            <div className="text-xs text-gray-600 dark:text-gray-300 min-w-0 truncate">
+                              {t(`正在给「${act.nickname || act.displayName}」填`, `Editing for ${act.nickname || act.displayName}`)}
+                              <span className={`ml-1.5 ${actCnt ? 'text-gray-400' : 'text-amber-500'}`}>{actCnt ? t(`已识别 ${actCnt} 个`, `${actCnt} parsed`) : t('未填', 'empty')}</span>
+                            </div>
+                            {selectedAccounts.length > 1 && actCnt > 0 && (
+                              <button type="button" onClick={() => applySeedToAll(act.id)} className="text-[11px] text-cyan-500 hover:underline shrink-0">{t('复制到全部账号', 'Copy to all')}</button>
+                            )}
+                          </div>
+                          <textarea value={seedTextFor(act.id)} onChange={(e) => setSeedTextFor(act.id, e.target.value)} rows={5} placeholder={specOf(platform).ph}
+                            className="w-full text-sm p-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-white font-mono leading-relaxed" />
+                        </div>
+                      )}
+
+                      {/* 一眼看出还有几个号没填 —— chip 条滚出视野时这行是唯一的提醒 */}
+                      {selectedAccounts.length > 1 && (
+                        <div className="text-[11px] text-gray-400">
+                          {t(`${seededAcctCount}/${selectedAccounts.length} 个账号已填`, `${seededAcctCount}/${selectedAccounts.length} accounts filled`)}
+                        </div>
+                      )}
+                    </>
                   );
-                })}
+                })()}
               </div>
             ) : (
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
