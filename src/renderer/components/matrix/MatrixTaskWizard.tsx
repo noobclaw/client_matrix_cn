@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
-import { NumMinMax } from './NumberStepper';
+import { NumMinMax, NumRow } from './NumberStepper';
 
 const LIKE_HARDCAP = 500;
 const FOLLOW_HARDCAP = 100;
@@ -403,20 +403,11 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
         {cur === 'precise' && (() => {
           const zh = i18nService.currentLanguage === 'zh';
           // 0/1 开关行 与 0-3 次数行:两种都用同一排按钮,少写一套样式。
-          const pickRow = (label: string, hint: string, val: number, set: (n: number) => void, choices: number[]) => (
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                {label}<span className="text-xs text-gray-400 font-normal ml-1">{hint}</span>
-              </label>
-              <div className="flex gap-2">
-                {choices.map((c) => (
-                  <button key={c} type="button" disabled={saving} onClick={() => set(c)}
-                    className={`px-4 py-1.5 rounded-lg text-sm border transition-colors ${val === c ? 'border-violet-500 bg-violet-500 text-white font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-violet-500/40'} ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                    {c === 0 ? (zh ? '不做' : 'Off') : c}
-                  </button>
-                ))}
-              </div>
-            </div>
+          // 与「互动配置」用同一套数量输入框(NumBox 的 − [框] +),不再用按钮组 ——
+          //   同一个向导里两种控件长得不一样,用户会以为是两类东西。
+          const pickRow = (label: string, hint: string, val: number, set: (n: number) => void, hi: number) => (
+            <NumRow label={label} hint={hint} value={val} onChange={set} min={0} max={hi}
+              accent="violet" disabled={saving} suffix={zh ? '次' : ''} />
           );
           return (
             <>
@@ -445,10 +436,10 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {pickRow(zh ? '👍 每条点赞' : '👍 Like each', zh ? '0 或 1 次' : '0 or 1', pLike, setPLike, [0, 1])}
-                {favoriteSupported && pickRow(zh ? '⭐ 每条收藏' : '⭐ Favorite each', zh ? '0 或 1 次' : '0 or 1', pFav, setPFav, [0, 1])}
-                {pickRow(zh ? '➕ 关注作者' : '➕ Follow author', zh ? '0 或 1 次' : '0 or 1', pFollow, setPFollow, [0, 1])}
-                {pickRow(zh ? '💬 每条评论' : '💬 Comments each', zh ? '最多 5 条' : 'up to 5', pComment, setPComment, [0, 1, 2, 3, 4, 5])}
+                {pickRow(zh ? '👍 每条点赞' : '👍 Like each', zh ? '0 或 1 次' : '0 or 1', pLike, setPLike, 1)}
+                {favoriteSupported && pickRow(zh ? '⭐ 每条收藏' : '⭐ Favorite each', zh ? '0 或 1 次' : '0 or 1', pFav, setPFav, 1)}
+                {pickRow(zh ? '➕ 关注作者' : '➕ Follow author', zh ? '0 或 1 次' : '0 or 1', pFollow, setPFollow, 1)}
+                {pickRow(zh ? '💬 每条评论' : '💬 Comments each', zh ? '最多 5 条' : 'up to 5', pComment, setPComment, 5)}
               </div>
 
               {/* 评论语言:精准模式跳过了 comment 步,而语言选择器只挂在那一步 ——
@@ -497,24 +488,14 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             {/* 同一条作品最多评几次。跟上面那条是一组:上面管「本次总共评几条」,这条管「同一条最多评几次」。
                 默认 1 = 老行为(同一条评过就不再评);设 0 = 一次都不评(但点赞/关注照做)。 */}
             {cmtMax > 0 && (
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                  {i18nService.currentLanguage === 'zh' ? '单个作品最多评论' : 'Max comments per post'}
-                  <span className="text-xs text-gray-400 font-normal ml-1">
-                    {i18nService.currentLanguage === 'zh'
-                      ? (maxCmtPerWork === 0 ? '设为 0 = 这条一次都不评(点赞/关注照做)' : `同一条作品最多评 ${maxCmtPerWork} 次,评满就不再评它`)
-                      : (maxCmtPerWork === 0 ? '0 = never comment on a post (likes/follows still run)' : `at most ${maxCmtPerWork} comment(s) on the same post`)}
-                  </span>
-                </label>
-                <div className="flex gap-2">
-                  {[0, 1, 2, 3, 4, 5].map((c) => (
-                    <button key={c} type="button" disabled={saving} onClick={() => setMaxCmtPerWork(c)}
-                      className={`px-4 py-1.5 rounded-lg text-sm border transition-colors ${maxCmtPerWork === c ? 'border-violet-500 bg-violet-500 text-white font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-violet-500/40'} ${saving ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <NumRow
+                label={i18nService.currentLanguage === 'zh' ? '单个作品最多评论' : 'Max comments per post'}
+                hint={i18nService.currentLanguage === 'zh'
+                  ? (maxCmtPerWork === 0 ? '设为 0 = 这条一次都不评(点赞/关注照做)' : `同一条作品最多评 ${maxCmtPerWork} 次,评满就不再评它`)
+                  : (maxCmtPerWork === 0 ? '0 = never comment on a post (likes/follows still run)' : `at most ${maxCmtPerWork} comment(s) on the same post`)}
+                value={maxCmtPerWork} onChange={setMaxCmtPerWork} min={0} max={5}
+                accent="violet" disabled={saving} suffix={i18nService.currentLanguage === 'zh' ? '次' : ''}
+              />
             )}
 
             {/* 评论语言(评论 max>0 且海外平台才显示):auto=跟帖子语言;选具体语言=强制用该语言写评论。中文平台不显示。 */}
