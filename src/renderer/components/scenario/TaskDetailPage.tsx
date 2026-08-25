@@ -1562,7 +1562,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {(() => {
                     const isZhLead = i18nService.currentLanguage === 'zh';
                     const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
-                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
+                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
                     const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
                     // 定向获客:在赞/关注/评论【前面】先报两个潜客数(这是这张卡真正的产出)。
@@ -1903,7 +1903,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             const _ytLead = String(sid || '') === 'youtube_lead_engage';
                             return <>📇 {dt('lead_new')} · 🤝 {dt('lead_engaged')} · 👍 {dt('like')} · {_ytLead ? '📌' : '➕'} {dt('follow')} · 💬 {dt('comment')}</>;
                           }
-                          return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
+                          // ⭐ 收藏：只在这个号真配了收藏（target>0）或已经收藏过时才画，
+                          //   否则不支持收藏的平台/没配的任务会多出一个永远的「⭐ 0/0」。
+                          const _favD = (ap as any).favorite?.done ?? 0;
+                          const _favT = (ap as any).favorite?.target ?? 0;
+                          const _fav = (_favD > 0 || _favT > 0)
+                            ? <> · ⭐ {_favD}/{_favT}</> : null;
+                          return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0}{_fav} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
                       </div>
                     </button>
@@ -2200,7 +2206,14 @@ function formatActionBreakdown(
       // xhs_reply_fans_comment 只产生 'comment' 计数,不发 like/follow;
       // 其他 engage 场景三档都跑 — 这里用 sid 区分,避免显示 "👍 0 · ➕ 0" 误导用户
       // (回复粉丝评论不会涨赞数 / 不会关注新人)。
-      counts = sid === 'xhs_reply_fans_comment' ? { comment: 0 } : { like: 0, comment: 0, follow: 0 };
+      // ⭐ 只有剧本真实现了收藏动作的五家才占位 —— 其它平台硬画「⭐ 0」
+      //   会让用户以为那里也能配收藏。与向导的 favoriteSupported 同一份名单。
+      const FAV_SIDS = ['douyin', 'kuaishou', 'xhs', 'bilibili', 'tiktok'].map((x) => x + '_auto_engage');
+      counts = sid === 'xhs_reply_fans_comment'
+        ? { comment: 0 }
+        : (FAV_SIDS.indexOf(sid) >= 0
+            ? { like: 0, follow: 0, favorite: 0, comment: 0 }
+            : { like: 0, comment: 0, follow: 0 });
     } else {
       return '-';
     }
@@ -2212,13 +2225,16 @@ function formatActionBreakdown(
     lead_new: '📇', lead_engaged: '🤝',
     like: '👍',
     follow: '➕',
+    // ⭐ 收藏：漏了这一行，剔音/快手/小红书/B站/TikTok 记下的收藏数
+    //   就会被 ICONS 过滤掉 —— 三张卡全都看不到收藏。
+    favorite: '⭐',
     comment: '💬',
     reply: '💬',
     subscribe: '📌',
     post: '📤',
     download: '⬇️',
   };
-  const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
+  const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
   // v5.x+: keep 0-count keys when they're explicitly present in the map.
   // Pre-rollout records have no action_counts → empty map → the early
   // return on line above handles those. Newer runs that DID call

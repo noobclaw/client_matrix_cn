@@ -847,8 +847,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                   {(() => {
                     const info = taskActionInfo[task.id];
                     const isZhLead = i18nService.currentLanguage === 'zh';
-                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
-                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
+                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
                     const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('mtxActLike'), follow: (String(task.scenario_id || '') === 'youtube_lead_engage' ? i18nService.t('mtxActSubscribe') : i18nService.t('mtxActFollow')), comment: i18nService.t('mtxActComment'), reply: i18nService.t('mtxActReply'), subscribe: i18nService.t('mtxActSubscribe'), post: i18nService.t('mtxActPost'), download: i18nService.t('mtxActDownload') };
                     // For idle tasks that have never produced action counts
                     // (brand-new tasks, or post-creator scenarios where the
