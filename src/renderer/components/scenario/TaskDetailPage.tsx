@@ -22,7 +22,6 @@ import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { FALLBACK_IMAGE_STYLES } from '../../services/imageStyles';
 import { TRACK_META, trackDisplayName, trackIcon } from '../../services/trackNames';
-import { engageCoreActions, scenarioSupportsFavorite } from '../../services/engageActions';
 
 // v4.28.x: 之前只放了 XHS tracks,Twitter / Binance 的 web3_* track 没法在
 // detail 页面被翻译,会回落到原始 ID(如 'web3_alpha'),用户看到「人设: web3_alpha」。
@@ -1614,11 +1613,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       );
                     }
                     // lead_* 已由 leadPrefix 单独渲染(它们没有 target,走通用循环会显示成 "3/0")。
-                    // 互动任务:赞/关注/评论(支持收藏的平台再加收藏)是这类任务的固定四项,
-                    //   配额为 0 也占位 —— 否则同一页三处口径打架:累计完成固定四项、账号卡
-                    //   固定画 👍/➕/💬,唯独这里按 target>0 过滤,用户会以为「这个平台没有收藏」。
-                    const alwaysKeys = engageCoreActions(scenario?.id);
-                    const keys = Array.from(new Set(Object.keys(ap).concat(alwaysKeys))).filter(k => k !== 'lead_new' && k !== 'lead_engaged').filter(k => alwaysKeys.indexOf(k) >= 0 || (ap[k]?.target || 0) > 0 || (ap[k]?.done || 0) > 0).sort((a, b) => {
+                    const keys = Object.keys(ap).filter(k => k !== 'lead_new' && k !== 'lead_engaged').filter(k => (ap[k]?.target || 0) > 0 || (ap[k]?.done || 0) > 0).sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);
                       if (ia === -1) return 1;
@@ -1629,8 +1624,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <>
                         {leadPrefix}
                         {keys.map(k => {
-                          // 占位的动作在 ap 里可能还没有条目(剧本尚未申报),取值必须兜底
-                          const { done = 0, target = 0 } = (ap[k] || {}) as { done?: number; target?: number };
+                          const { done, target } = ap[k];
                           return (
                             <span key={k} className="font-mono text-gray-700 dark:text-gray-200">
                               {(ICONS[k] || '·')} <strong className="text-green-600 dark:text-green-400">{done}</strong>
@@ -1909,12 +1903,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             const _ytLead = String(sid || '') === 'youtube_lead_engage';
                             return <>📇 {dt('lead_new')} · 🤝 {dt('lead_engaged')} · 👍 {dt('like')} · {_ytLead ? '📌' : '➕'} {dt('follow')} · 💬 {dt('comment')}</>;
                           }
-                          // ⭐ 收藏:与 ➕ 关注同权 —— 只要这个平台的剧本真有收藏动作就固定显示,
-                          //   哪怕这次配额是 0(关注 0/0 一直都显示,收藏却藏起来,用户只会以为
-                          //   抖音不能收藏)。不支持收藏的平台仍然不画,免得以为那里也能配。
+                          // ⭐ 收藏：只在这个号真配了收藏（target>0）或已经收藏过时才画，
+                          //   否则不支持收藏的平台/没配的任务会多出一个永远的「⭐ 0/0」。
                           const _favD = (ap as any).favorite?.done ?? 0;
                           const _favT = (ap as any).favorite?.target ?? 0;
-                          const _fav = (scenarioSupportsFavorite(sid) || _favD > 0 || _favT > 0)
+                          const _fav = (_favD > 0 || _favT > 0)
                             ? <> · ⭐ {_favD}/{_favT}</> : null;
                           return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0} · ➕ {ap.follow?.done ?? 0}/{ap.follow?.target ?? 0}{_fav} · 💬 {ap.comment?.done ?? 0}/{ap.comment?.target ?? 0}</>;
                         })()}
@@ -2215,9 +2208,10 @@ function formatActionBreakdown(
       // (回复粉丝评论不会涨赞数 / 不会关注新人)。
       // ⭐ 只有剧本真实现了收藏动作的五家才占位 —— 其它平台硬画「⭐ 0」
       //   会让用户以为那里也能配收藏。与向导的 favoriteSupported 同一份名单。
+      const FAV_SIDS = ['douyin', 'kuaishou', 'xhs', 'bilibili', 'tiktok'].map((x) => x + '_auto_engage');
       counts = sid === 'xhs_reply_fans_comment'
         ? { comment: 0 }
-        : (scenarioSupportsFavorite(sid)
+        : (FAV_SIDS.indexOf(sid) >= 0
             ? { like: 0, follow: 0, favorite: 0, comment: 0 }
             : { like: 0, comment: 0, follow: 0 });
     } else {
