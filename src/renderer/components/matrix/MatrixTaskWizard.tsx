@@ -448,7 +448,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                 {pickRow(zh ? '👍 每条点赞' : '👍 Like each', zh ? '0 或 1 次' : '0 or 1', pLike, setPLike, [0, 1])}
                 {favoriteSupported && pickRow(zh ? '⭐ 每条收藏' : '⭐ Favorite each', zh ? '0 或 1 次' : '0 or 1', pFav, setPFav, [0, 1])}
                 {pickRow(zh ? '➕ 关注作者' : '➕ Follow author', zh ? '0 或 1 次' : '0 or 1', pFollow, setPFollow, [0, 1])}
-                {pickRow(zh ? '💬 每条评论' : '💬 Comments each', zh ? '最多 3 条' : 'up to 3', pComment, setPComment, [0, 1, 2, 3])}
+                {pickRow(zh ? '💬 每条评论' : '💬 Comments each', zh ? '最多 5 条' : 'up to 5', pComment, setPComment, [0, 1, 2, 3, 4, 5])}
               </div>
 
               {/* 评论语言:精准模式跳过了 comment 步,而语言选择器只挂在那一步 ——
