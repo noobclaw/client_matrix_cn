@@ -103,11 +103,11 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
 
   const q = initialTask?.quota || {};
   const [likeMin, setLikeMinRaw] = useState<number>(typeof q.daily_like_min === 'number' ? q.daily_like_min : 3);
-  const [likeMax, setLikeMaxRaw] = useState<number>(typeof q.daily_like_max === 'number' ? q.daily_like_max : 8);
+  const [likeMax, setLikeMaxRaw] = useState<number>(typeof q.daily_like_max === 'number' ? q.daily_like_max : 100);
   const setLikeMin = (v: number) => { const n = Math.max(0, Math.min(LIKE_HARDCAP, v)); setLikeMinRaw(n); setLikeMaxRaw((p) => (p < n ? n : p)); };
   const setLikeMax = (v: number) => { const n = Math.max(0, Math.min(LIKE_HARDCAP, v)); setLikeMaxRaw(n); setLikeMinRaw((p) => (p > n ? n : p)); };
   const [folMin, setFolMinRaw] = useState<number>(typeof q.daily_follow_min === 'number' ? q.daily_follow_min : 0);
-  const [folMax, setFolMaxRaw] = useState<number>(typeof q.daily_follow_max === 'number' ? q.daily_follow_max : 2);
+  const [folMax, setFolMaxRaw] = useState<number>(typeof q.daily_follow_max === 'number' ? q.daily_follow_max : 10);
   const setFolMin = (v: number) => { const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v)); setFolMinRaw(n); setFolMaxRaw((p) => (p < n ? n : p)); };
   const setFolMax = (v: number) => { const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v)); setFolMaxRaw(n); setFolMinRaw((p) => (p > n ? n : p)); };
   // 单个作品最多评论几次(0~5)。老任务没存过 → 1 = 老行为「同一条评过就不再评」。
@@ -115,7 +115,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
     typeof q.max_comment_per_work === 'number' ? Math.min(5, Math.max(0, q.max_comment_per_work)) : 1);
   // ── 收藏配额(关键词/刷剧模式;放在关注下方)──
   const [favMin, setFavMinRaw] = useState<number>(typeof q.daily_favorite_min === 'number' ? q.daily_favorite_min : 0);
-  const [favMax, setFavMaxRaw] = useState<number>(typeof q.daily_favorite_max === 'number' ? q.daily_favorite_max : 0);
+  const [favMax, setFavMaxRaw] = useState<number>(typeof q.daily_favorite_max === 'number' ? q.daily_favorite_max : 10);
   const setFavMin = (v: number) => { const n = Math.max(0, Math.min(FAVORITE_HARDCAP, v)); setFavMinRaw(n); setFavMaxRaw((prev) => (prev < n ? n : prev)); };
   const setFavMax = (v: number) => { const n = Math.max(0, Math.min(FAVORITE_HARDCAP, v)); setFavMaxRaw(n); setFavMinRaw((prev) => (prev > n ? n : prev)); };
   // ── 精准模式:链接清单 + 每条链接做几次 ──
@@ -138,7 +138,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
     return out;
   }, [preciseText]);
   const [cmtMin, setCmtMinRaw] = useState<number>(typeof q.daily_comment_min === 'number' ? q.daily_comment_min : 1);
-  const [cmtMax, setCmtMaxRaw] = useState<number>(typeof q.daily_comment_max === 'number' ? q.daily_comment_max : 3);
+  const [cmtMax, setCmtMaxRaw] = useState<number>(typeof q.daily_comment_max === 'number' ? q.daily_comment_max : 50);
   const setCmtMin = (v: number) => { const n = Math.max(0, Math.min(COMMENT_HARDCAP, v)); setCmtMinRaw(n); setCmtMaxRaw((p) => (p < n ? n : p)); };
   const setCmtMax = (v: number) => { const n = Math.max(0, Math.min(COMMENT_HARDCAP, v)); setCmtMaxRaw(n); setCmtMinRaw((p) => (p > n ? n : p)); };
 
