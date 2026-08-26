@@ -582,6 +582,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
         if (typeof t.like === 'number') parts.push(`赞${t.like}`);
         if (typeof t.follow === 'number') parts.push(`关${t.follow}`);
         if (typeof t.comment === 'number') parts.push(`评${t.comment}`);
+        // 收藏也要打出来:漏了的话用户配了收藏却在日志里看不到,只能靠猜。
+        if (typeof t.favorite === 'number') parts.push(`藏${t.favorite}`);
         if (typeof t.note === 'number') parts.push(`作品${t.note}`);
         if (typeof t.lead_new === 'number') parts.push(`潜客${t.lead_new}`);
         if (typeof t.lead_engaged === 'number') parts.push(`触达${t.lead_engaged}`);

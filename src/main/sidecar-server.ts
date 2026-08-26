@@ -343,22 +343,33 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     //   又保证 like/follow/comment 三个必需键存在（MatrixLiveProgress.done 要求）。
     const zero = (): { [k: string]: number; like: number; follow: number; comment: number } =>
       ({ like: 0, follow: 0, comment: 0, favorite: 0, lead_new: 0, lead_engaged: 0 });
+    // 每号的兜底配额。精准模式按【每条链接的动作数 × 链接数】算,其余模式用区间上限。
+    const fallbackTargets = () => {
+      if (String(q.engage_mode || '') === 'precise') {
+        const n = Array.isArray(q.precise_urls) ? q.precise_urls.length : 0;
+        return { like: (q.precise_like || 0) * n, follow: (q.precise_follow || 0) * n,
+                 comment: (q.precise_comment || 0) * n, favorite: (q.precise_favorite || 0) * n };
+      }
+      return { like: q.daily_like_max || 0, follow: q.daily_follow_max || 0,
+               comment: q.daily_comment_max || 0, favorite: q.daily_favorite_max || 0 };
+    };
     const perAccount: MatrixLiveProgress['perAccount'] = {};
     for (const aid of accIds) {
       const suspended = suspendedIds.includes(aid);
       perAccount[aid] = {
         displayName: getAccount(aid)?.displayName || aid,
         status: suspended ? 'skipped' : 'running',
-        // favorite 也要在兜底 targets 里 —— 剧本 setActionTargets 回来之前(以及万一没回来),
-        //   缺这个键账号卡就显示「⭐ 0/0」,用户明明配了 1 却看不出来。
-        targets: { like: q.daily_like_max || 0, follow: q.daily_follow_max || 0, comment: q.daily_comment_max || 0, favorite: q.daily_favorite_max || 0 },
+        // 剧本 setActionTargets 回来之前(启动指纹浏览器那几十秒)UI 显示的就是这份兜底。
+        //   ⚠️ 精准模式的动作数在 precise_*,daily_* 是【有意】存 0 的 —— 照搬 daily_* 的话
+        //   那段时间显示的全是错的(用户 2026-08-26:配了收藏 1 却显示 ⭐ 0/0)。
+        targets: fallbackTargets(),
         done: zero(), cost: { credits: 0, usd: 0 }, logs: [],
       };
     }
     // 本任务独立进度(并发时各任务互不覆盖),存进 liveProgressByTask[taskId]。
     const live: MatrixLiveProgress = {
       taskId: task.id, status: 'running', startedAt,
-      targets: { like: (q.daily_like_max || 0) * accN, follow: (q.daily_follow_max || 0) * accN, comment: (q.daily_comment_max || 0) * accN, favorite: (q.daily_favorite_max || 0) * accN },
+      targets: (function () { const f = fallbackTargets(); return { like: f.like * accN, follow: f.follow * accN, comment: f.comment * accN, favorite: f.favorite * accN }; })(),
       done: zero(),
       cost: { credits: 0, usd: 0 },
       perAccountTargets: {}, perAccount, logs: [],
