@@ -530,6 +530,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     bilibili_lead_engage: ['哔哩哔哩 定向获客', 'Bilibili Lead Finder'],
                     youtube_lead_engage: ['YouTube 定向获客', 'YouTube Lead Finder'],
                     x_lead_engage: ['推特 定向获客', 'X Lead Finder'],
+                    instagram_lead_engage: ['Instagram 定向获客', 'Instagram Lead Finder'],
                   };
                   const pair = leadName[sid] || ['定向获客', 'Lead Finder'];
                   return { icon: '🎯', label: leadZh ? pair[0] : pair[1], color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
