@@ -62,10 +62,11 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   const bingeSupported = ['douyin', 'kuaishou', 'tiktok'].includes(String(platform || ''));
   // 🎯 精准模式:用户粘一批作品链接,每条按配置做点赞/收藏/关注/评论 —— 不搜索、不刷推荐流。
   //   后半段(打开页 → 互动)复用的就是关键词模式那套动作函数,所以有 auto_engage 剧本的平台都支持。
-  //   ⚠️ 只列【剧本真的实现了 precise 分支】的平台。小红书/X 的互动流程与这五家结构不同
-  //   (小红书按文章逐篇跑、没有 quota 那套;X 只有 postReplyToTweet),要单独适配 —— 没实现就不给入口,
-  //   否则用户选了会跑成「配额全 0,无动作可做」。
-  const preciseSupported = ['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube'].includes(String(platform || ''));
+  //   ⚠️ 只列【剧本真的实现了 precise 分支】的平台 —— 没实现就不给入口,否则用户选了会跑成
+  //   「配额全 0,无动作可做」。X 还没适配(它只有 postReplyToTweet,没有点赞/收藏那套动作函数)。
+  //   小红书 2026-08-26 补上了:它主循环是 actionQueue 驱动、每篇笔记只做一个动作,跟精准模式
+  //   「一条链接把动作做完」对不上,所以是单写的一条 runPreciseFlow,不是塞进原循环。
+  const preciseSupported = ['douyin', 'kuaishou', 'bilibili', 'tiktok', 'youtube', 'xhs'].includes(String(platform || ''));
   // ⭐ 收藏:只有这几家的剧本实现了收藏动作(其它平台要么没有收藏,要么 DOM 还没扒)。
   // 名单挪到 services/engageActions —— 原来这里、详情页累计完成、账号卡各抄一份,加平台漏改一处界面就自相矛盾
   const favoriteSupported = platformSupportsFavorite(platform);
