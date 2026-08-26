@@ -1218,7 +1218,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             </div>
             {(() => {
               const tr = runs.filter((r) => r.taskId === selectedTask.id);
-              const cum = tr.reduce((a, r) => ({ like: a.like + (r.totals?.like || 0), follow: a.follow + (r.totals?.follow || 0), comment: a.comment + (r.totals?.comment || 0) }), { like: 0, follow: 0, comment: 0 });
+              const cum = tr.reduce((a, r) => ({ like: a.like + (r.totals?.like || 0), follow: a.follow + (r.totals?.follow || 0), comment: a.comment + (r.totals?.comment || 0), favorite: a.favorite + ((r.totals as any)?.favorite || 0) }), { like: 0, follow: 0, comment: 0, favorite: 0 });
               const last = tr[0];
               return (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">

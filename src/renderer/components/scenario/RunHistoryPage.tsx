@@ -360,9 +360,9 @@ export const RunHistoryPage: React.FC<Props> = ({
                     const at = (rec.result as any)?.action_targets as Record<string, number> | undefined;
                     if (!ac && !at) return null;
                     const isZhLead = i18nService.currentLanguage === 'zh';
-                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
-                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
-                    const labels: Record<string, string> = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rhActLike'), follow: (String(rec.scenario_snapshot?.id || '') === 'youtube_lead_engage' ? i18nService.t('rhActSubscribe') : i18nService.t('rhActFollow')), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
+                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
+                    const labels: Record<string, string> = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rhActLike'), follow: (String(rec.scenario_snapshot?.id || '') === 'youtube_lead_engage' ? i18nService.t('rhActSubscribe') : i18nService.t('rhActFollow')), favorite: (isZhLead ? '收藏' : 'favorites'), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
                     // Union of keys present in either map — running rows
                     // may briefly have only targets (orchestrator set
                     // them, no addActionCount yet); completed rows have
@@ -378,7 +378,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                     // 按【键是否存在】判别(不看值):内容/工具记录恒带 post/download 键(哪怕为 0,如发布失败的 0 帖),
                     //   互动记录从不带 → 失败的 0 帖记录也能正确归类、不误显赞/关注/评论。
                     const isContentOrTool = !!ac && ('post' in ac || 'download' in ac);
-                    const ENGAGE_KEYS = new Set(['like', 'follow', 'comment', 'subscribe', 'reply']);
+                    const ENGAGE_KEYS = new Set(['like', 'follow', 'favorite', 'comment', 'subscribe', 'reply']);
                     // 'note' 是回复粉丝场景的「文章进度」内部计数(当前第几篇/总),只在
                     //   「本次运行进度」实时卡里有意义;累计/历史里只展示评论数,过滤掉它,
                     //   否则中文下会出现未翻译的原始 "note" 键名。

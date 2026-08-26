@@ -18,6 +18,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { engageCoreActions, scenarioSupportsFavorite } from '../../services/engageActions';
 import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { TRACK_META, trackDisplayName } from '../../services/trackNames';
@@ -895,7 +896,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     const fallbackKeys: string[] = isPostScenario
                       ? ['post']
                       : isEngageScenario
-                        ? ['like', 'comment', 'follow']
+                        ? engageCoreActions(sid)
                         : isDownloadScenario
                           ? ['download']
                           : ['like'];
@@ -942,24 +943,34 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         </div>
                       );
                     }
-                    const keys = Object.keys(effectiveInfo.data).filter(k => {
+                    // 旧运行记录里压根没有 favorite 这个键(它是后加的),而下面是从
+                    //   Object.keys(data) 里【过滤】—— 固定占位名单只能保住已存在的键,
+                    //   保不住不存在的。所以支持收藏的平台先把键补出来,值给 0。
+                    const mtData: any = { ...(effectiveInfo.data as any) };
+                    if (effectiveInfo.mode !== 'running'
+                        && scenarioSupportsFavorite(task.scenario_id)
+                        && typeof mtData.favorite !== 'number') {
+                      mtData.favorite = 0;
+                    }
+                    const keys = Object.keys(mtData).filter(k => {
                       // post 系(图文创作/爆款仿写/发帖)不做互动 → 丢掉恒 0 的赞/关/评/订阅,只留 post;
                       // 下载系只留 download。否则 action_counts 恒含 {like:0,follow:0,comment:0} 会误显「赞/关/评」。
                       if (isPostScenario && k !== 'post') return false;
                       if (isDownloadScenario && k !== 'download') return false;
                       if (effectiveInfo.mode === 'running') {
-                        const v = (effectiveInfo.data as any)[k];
+                        const v = mtData[k];
                         return (v?.target || 0) > 0 || (v?.done || 0) > 0;
                       }
                       // cumulative: keep zeros so newly-created tasks still
                       // show "累计完成: 0 帖" instead of nothing —— 但只对【本场景真会做】
                       //   的动作保留 0。sidecar 逐 key 求和后 counts 带着全部动作键,
                       //   全留会让互动任务拖出「📤 0 发帖 · ⬇️ 0 下载」。
-                      const MT_FAV_SIDS = ['douyin', 'kuaishou', 'xhs', 'bilibili', 'tiktok'].map((x) => x + '_auto_engage');
-                      const mtAlways = ['like', 'follow', 'comment', 'post', 'download']
-                        .concat(MT_FAV_SIDS.indexOf(String(task.scenario_id || '')) >= 0 ? ['favorite'] : []);
-                      if (mtAlways.indexOf(k) >= 0) return true;
-                      return Number((effectiveInfo.data as any)[k] || 0) > 0;
+                      // ⚠️ post / download 【不能】进这份固定占位名单 —— 上面 isPostScenario /
+                      //   isDownloadScenario 已经各自处理过了,这里再放行就变成互动任务也恒显示
+                      //   「📮 0 发帖 · ⬇️ 0 下载」(用户 2026-08-26 截图)。
+                      //   名单走 engageActions 的共用件,别再各处硬编码 —— 漏改一处界面就自相矛盾。
+                      if (engageCoreActions(task.scenario_id).indexOf(k) >= 0) return true;
+                      return Number(mtData[k] || 0) > 0;
                     }).sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);
@@ -988,7 +999,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         </span>
                         {keys.map(k => {
                           if (effectiveInfo.mode === 'running') {
-                            const { done, target } = (effectiveInfo.data as any)[k];
+                            const { done, target } = mtData[k];
                             return (
                               <span key={k} className="font-mono">
                                 {(ICONS[k] || '·')} <strong className="text-green-600 dark:text-green-400">{done}</strong>
@@ -999,7 +1010,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           }
                           return (
                             <span key={k} className="text-gray-700 dark:text-gray-200">
-                              {(ICONS[k] || '·')} <strong>{(effectiveInfo.data as any)[k]}</strong>{' '}
+                              {(ICONS[k] || '·')} <strong>{mtData[k]}</strong>{' '}
                               <span className="text-[10px] text-gray-500 dark:text-gray-400">{(labels as any)[k] || k}</span>
                             </span>
                           );

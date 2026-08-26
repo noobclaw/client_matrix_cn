@@ -548,6 +548,8 @@ function mxRunToTaskRun(r: any): ScenarioTaskRun {
     //   漏带的话详情页那两张卡的「上次/累计」永远是 0(sidecar 已经把它们汇总进 totals 了)。
     action_counts: {
       like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0,
+      // 收藏漏了的话,历史运行记录页永远看不到 ⭐(sidecar 早就汇总进 totals 了)。
+      ...(typeof t.favorite === 'number' ? { favorite: t.favorite } : {}),
       ...(typeof t.post === 'number' ? { post: t.post } : {}),
       ...(typeof t.download === 'number' ? { download: t.download } : {}),
       ...(typeof t.lead_new === 'number' ? { lead_new: t.lead_new } : {}),
@@ -618,6 +620,7 @@ function mxRunToRecord(r: any): any {
     result: {
       action_counts: {
         like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0,
+        ...(typeof t.favorite === 'number' ? { favorite: t.favorite } : {}),
         ...(typeof t.post === 'number' ? { post: t.post } : {}),
         ...(typeof t.download === 'number' ? { download: t.download } : {}),
       },
@@ -625,7 +628,7 @@ function mxRunToRecord(r: any): any {
       //   action_counts + action_targets 显示实时进度的(见 RunHistoryPage 里那段注释)。
       //   已完成的记录不带(它的 targets 没落盘),保持原样。
       action_targets: r.running && r.targets
-        ? { like: r.targets.like || 0, follow: r.targets.follow || 0, comment: r.targets.comment || 0 }
+        ? { like: r.targets.like || 0, follow: r.targets.follow || 0, comment: r.targets.comment || 0, favorite: r.targets.favorite || 0 }
         : {},
       tokens_used: Number(r.cost?.credits) || 0, cost_usd: Number(r.cost?.usd) || 0, collected_count: 0, draft_count: 0,
     },
@@ -668,7 +671,11 @@ function mxProgressToScenario(taskId: string, resp: any): ScenarioRunProgress | 
     // 定向获客的 lead_new / lead_engaged 也要出现在实时进度里,否则详情页那两张卡的
     //   「本次」永远是 0。判据允许 target 缺席:剧本要跑到 STEP1 才下发分母,在那之前
     //   只有 done 也得显示出来。
-    for (const k of ['like', 'follow', 'comment', 'lead_new', 'lead_engaged']) {
+    // ⚠️ 别再手抄键名 —— favorite 就是这么漏的:剧本上报了「藏1」、sidecar 也存了,
+    //   偏偏在这一行被截住,详情页「本次运行进度」永远画 ⭐ 0/0(用户 2026-08-26 实测)。
+    //   逐 key 走 targets ∪ done 的并集,以后加动作维度这里不用再改。
+    const allKeys = new Set([...Object.keys(tg || {}), ...Object.keys(dn || {})]);
+    for (const k of allKeys) {
       if ((tg || {})[k] > 0 || (dn || {})[k] > 0) ap[k] = { done: (dn || {})[k] || 0, target: (tg || {})[k] || 0 };
     }
     return ap;
