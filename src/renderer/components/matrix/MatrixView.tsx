@@ -45,7 +45,46 @@ interface RunItem { accountId: string; displayName?: string; state: string; reas
 interface RunRecord { id: string; taskId: string; taskName: string; platform: string; startedAt: number; finishedAt: number; success: number; failed: number; skipped: number; totals: { like: number; follow: number; comment: number }; items: RunItem[] }
 interface ItemResult { accountId: string; state: 'success' | 'failed' | 'skipped'; reason?: string; counts?: { like: number; follow: number; comment: number } }
 
-function parseKeywords(s: string): string[] { return s.split(/[\s,，、\n]+/).map((x) => x.trim()).filter(Boolean); }
+// 关键词解析:换行 / 逗号 / 顿号 / 斜杠 都是分隔符。
+//   "美妆 护肤 种草"                          → 3 个词(没有 /,按空格切)
+//   "social media automation/instagram growth" → 2 个词(/ 分段,段内空格保留)
+//   "美妆/护肤/nail art tutorial"              → 3 个词
+//   "美妆 护肤/social media"                   → 3 个词(前段有中文仍按空格切)
+// ⚠️ 英文词组【必须用 / 分隔】,否则会被空格拆开 —— 输入框提示里已写明。
+// 关键词数组 → 输入框文本。含空格的词必须用一对斜杠包起来,
+// 否则用户不改直接保存,重新解析时会被空格拆开 —— 全量用户已在用,不能出这种事。
+function keywordsToText(list: string[]): string {
+  return (list || []).map((w) => {
+    const v = String(w || '').trim();
+    if (!v) return '';
+    return /\s/.test(v) ? ('/' + v + '/') : v;
+  }).filter(Boolean).join('\n');
+}
+
+// 关键词解析:空格 / 斜杠 / 换行 / 逗号 / 顿号 都是分隔符。
+//   一对斜杠包起来的内容整体算一个词(里面的空格保留):
+//     "美妆 护肤 种草"                        → 3 个词
+//     "/social media automation/"             → 1 个词
+//     "美妆 /nail art/ 护肤"                   → 3 个词
+//     "/social media/ /instagram growth/"     → 2 个词
+//     "social media automation"               → 3 个词(没包 → 按空格拆,提示里已写明)
+// ⚠️ 按【出现顺序】逐段匹配,不能先摘包裹项再拆剩下的 —— 那样关键词顺序会乱,
+//   而用户是按重要性排的(靠前的词先被搜)。
+const KW_TOKEN_RE = /\/([^/]*)\/|([^\s,，、\n/]+)/g;
+function parseKeywords(s: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (w: string) => {
+    const v = String(w || '').trim().replace(/\s+/g, ' ');
+    if (v && !seen.has(v)) { seen.add(v); out.push(v); }
+  };
+  const re = new RegExp(KW_TOKEN_RE.source, KW_TOKEN_RE.flags);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(String(s || ''))) !== null) {
+    push(m[1] !== undefined ? m[1] : m[2]);   // m[1]=被斜杠包裹的整段,m[2]=普通片段
+  }
+  return out;
+}
 // 原始词 + AI 衍生词合并去重(与 main 侧 accountManager.effectiveKeywords 同口径)。
 function mergeKw(base?: string[], derived?: string[]): string[] {
   const seen = new Set<string>();
@@ -542,7 +581,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     // 交易所广场(币安/OKX/Bitget/Bybit/Gate)默认 Web3 赛道,其余平台默认 DEFAULT_TRACK。
     const def = (CRYPTO_TRACK_PLATFORMS.has(platform) ? findCryptoTrack(trackPresets) : undefined)
       || trackPresets.find((t) => t.name === DEFAULT_TRACK) || trackPresets[0];
-    if (def) { setNewGroup(def.name); setNewPersona(trackPersona(def, cl)); setNewKeywords(trackKeywords(def, cl).join(' ')); }
+    if (def) { setNewGroup(def.name); setNewPersona(trackPersona(def, cl)); setNewKeywords(keywordsToText(trackKeywords(def, cl))); }
     // 新号从第 1 步开始;代理表单清空(第 2 步填,不填则共用本机 IP)。
     setAddStep(1); setProxyForm({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' });
     setProxyMsg(null); setPendingProxySave(null); setProxyBusy(false);
@@ -552,13 +591,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const pickTrack = (name: string) => {
     setNewGroup(name);
     const p = trackPresets.find((t) => t.name === name);
-    if (p) { setNewKeywords(trackKeywords(p, newContentLang).join(' ')); setNewPersona(trackPersona(p, newContentLang)); }
+    if (p) { setNewKeywords(keywordsToText(trackKeywords(p, newContentLang))); setNewPersona(trackPersona(p, newContentLang)); }
   };
   // 切换内容语言 → 若当前赛道是预设,按新语言重填人设+关键词(用户已手改的会被覆盖,符合「切语言=重来一份」预期);自定义赛道则不动。
   const switchContentLang = (cl: ContentLang) => {
     setNewContentLang(cl);
     const p = trackPresets.find((t) => t.name === newGroup);
-    if (p) { setNewKeywords(trackKeywords(p, cl).join(' ')); setNewPersona(trackPersona(p, cl)); }
+    if (p) { setNewKeywords(keywordsToText(trackKeywords(p, cl))); setNewPersona(trackPersona(p, cl)); }
   };
   // 编辑现有号:内容语言取账号已存的;存量号(建于此功能之前)无此字段 → 视为 'zh'(其赛道名/人设/关键词本就是中文),不按界面语言,避免「显示英文名但内容是中文」的错位。
   // 编辑时把【AI 衍生词】一并回填进输入框。任务跑起来用的是 effectiveKeywords =
@@ -566,7 +605,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   //   任务日志却说 19 个,多出来的在界面上看不见也删不掉(2026-08-21 用户反馈)。
   //   合并显示后「所见即所用」;保存时会把整个列表写回 keywords 并清空衍生池(见 saveAccount),
   //   所以用户删掉的词不会再被合并回来。
-  const openEdit = (a: MatrixAccount) => { if (!requireLogin()) return; setEditId(a.id); setNewName(a.displayName); setNewGroup(a.group || ''); setNewPersona(a.persona || ''); setNewKeywords(mergeKw(a.keywords, a.derivedKeywords).join(' ')); setNewContentLang((a.contentLang as ContentLang) || 'zh'); setNewScope((a.loginScope as 'main' | 'creator') || 'main'); setTrackOpen(false); setNotice(''); setShowAdd(true); };
+  const openEdit = (a: MatrixAccount) => { if (!requireLogin()) return; setEditId(a.id); setNewName(a.displayName); setNewGroup(a.group || ''); setNewPersona(a.persona || ''); setNewKeywords(keywordsToText(mergeKw(a.keywords, a.derivedKeywords))); setNewContentLang((a.contentLang as ContentLang) || 'zh'); setNewScope((a.loginScope as 'main' | 'creator') || 'main'); setTrackOpen(false); setNotice(''); setShowAdd(true); };
   // 账号卡赛道名显示:group 存的是中文规范名 → 按账号内容语言本地化(找到预设则取对应语言名;找不到/自定义则原样)。存量号无 contentLang 视为 zh。
   const groupLabel = (a: MatrixAccount): string => {
     if (!a.group) return '';
