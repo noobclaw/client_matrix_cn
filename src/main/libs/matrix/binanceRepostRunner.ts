@@ -427,6 +427,7 @@ function makeWaitForCaptcha(accountId: string, log: (m: string) => void, signal?
 // ═══════════════════════ 阶段A · 采集 ═══════════════════════
 async function collectFromSource(
   opts: BinanceRepostTaskOptions, collectPack: any, want: number, seen: ContentUsage,
+  taskSeen?: Set<string>,      // 流水线:本任务已采 post_id(批间去重,剧本经 ctx.seenPostIds 生效)
 ): Promise<{ candidates: RepostCandidate[]; reason?: string }> {
   const cfg = opts.config;
   const srcAccId = cfg.sourceAccountId;
@@ -524,7 +525,8 @@ async function collectFromSource(
       aiCall: makeAiCall(authToken, undefined, opts.signal),
       appendKeywords: (arr: string[]) => { try { appendDerivedKeywords(srcAccId, arr); } catch { /* ignore */ } },
       keywordMatch,
-      seenPostIds: seen.set,
+      // 去重集 = 持久锁(seen.set,发布成功才记)∪ 本任务已采(taskSeen,流水线批间不重采)。
+      seenPostIds: (taskSeen && taskSeen.size) ? new Set<string>([...Array.from(seen.set), ...Array.from(taskSeen)]) : seen.set,
       // 采集阶段不计数(只在发布成功后由 runBinanceRepostTask 调 seen.record);本轮内去重靠剧本自己的 local set。
       recordSeen: (_ids: any) => { /* no-op:计数挪到发布成功后 */ },
       // 视频采集落盘:base64 → <输出目录>/搬运素材/<platform>/<srcAccId>/<subdir>/<name>,返回 {ok,path}。
@@ -1067,93 +1069,24 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
   //   注:同平台多个发布号共用这一份记录,所以 A 号发过的内容 B 号也不会再发(符合"一个平台一次")。
   const srcSeen = contentUsageStore(`_platform_${opts.platform}`, cfg.sourcePlatform, REPOST_CONTENT_CAP);
 
-  // ── 阶段A:采集 ──
-  if (opts.signal?.aborted) return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'aborted' })) };
-  const collected = await collectFromSource(opts, collectPack, postCount, srcSeen);
-  const collectReason = collected.reason;
-  // 【第二把锁:源文案指纹】。平台 id 那把锁认的是"这条帖子",指纹认的是"这段内容",两者都记、
-  //   任一命中就跳过。加这道是因为光靠 id 有三种情况会漏:
-  //     ① 历史包用【随机数】当抖音的 id 记过账(见 collectDouyinVideos 的注释),那些记录永远
-  //        对不上今天的 aweme_id —— 老素材还会再搬一次,之后才开始正确记账;
-  //     ② 账本换过 key(f8cd46a 从"采集号"改成"发布平台")→ 旧账作废,全部当新的重搬一轮;
-  //     ③ 同一条内容被转发/在不同关键词下重出,平台给的 id 未必是同一个。
-  //   文案不会因为这些而变,所以它兜得住。放在这里过滤,四个源(含走剧本的 xhs/x/tiktok)一起生效,
-  //   backend 的采集剧本一行都不用改。
-  const candidates = collected.candidates.filter((c) => {
-    const key = capKeyOf(c.text);
-    if (!key) return true;
-    if (srcSeen.set.has(key)) { coworkLog('INFO', 'binanceRepostRunner', 'skip by caption fingerprint: ' + key); return false; }
-    return true;
-  });
-  const dropped = collected.candidates.length - candidates.length;
-  if (dropped > 0) for (const id of accIds) opts.onLog?.(id, `♻️ 跳过 ${dropped} 条搬过的内容(按源文案比对)`);
-  if (!candidates.length) {
-    const r = collectReason || 'no_candidates';
-    for (const id of accIds) opts.onLog?.(id, `⚠️ 采集为空(${r}),本次无可搬运素材`);
-    return { platform: opts.platform, total: accIds.length, success: 0, failed: 0, skipped: accIds.length, items: accIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: r })) };
-  }
+  // ── 流水线:采一批 → 发一批(用户 2026-08-29:别一口气采满 postCount 再逐条发)──
+  //   每批默认 3 条(cfg.repostBatchSize 可覆盖):调一次 collectFromSource(采集号 开→采→关),
+  //   把这批分给还有配额的号发掉,再采下一批;直到发满 postCount / 源搜尽 / 用户停止。
+  //   覆盖全部来源(x/tiktok/xhs 走剧本、douyin 走 runner 采集)与图文/视频两形态 —— 都汇在本编排。
+  //   ⚠️ 纯客户端编排改动:采集剧本契约不变(按 want 采够即返),旧客户端仍是「一次采够再发」,无需版本门。
+  const BATCH = Math.max(1, Math.min(Number((cfg as any).repostBatchSize) || 3, postCount));
+  const taskSeen = new Set<string>();            // 本任务已采过的 post_id:跨批去重(剧本源经 ctx.seenPostIds 生效;douyin 源靠下面 filter 兜底)
+  const remaining = new Map<string, number>();   // 每号剩余条数(按【尝试】计,同旧 plan 语义:失败不重试,防误判双发)
+  for (const id of accIds) remaining.set(id, perAcc);
+  const items: EngageItemResult[] = [];
+  let attempted = 0;
+  let lastPublishAt = 0;
+  let batchIdx = 0;
+  let stopReason = '';
 
-  // 按各号自己的赛道把候选分配好 —— 采集用的是所有发布号关键词的并集,若各号赛道不同,
-  // 按下标硬分会让 DeFi 的号拿到 Meme 素材。命中关键词的优先给对应的号,剩下的再顺次补。
-  const allocated = allocateByNiche(accIds, candidates);
-  const matchedCount = allocated.filter((c, i) => {
-    if (!c) return false;
-    const acc = getAccount(accIds[i]);
-    const kws = acc ? effectiveKeywords(acc).map((k) => String(k || '').trim().toLowerCase()).filter(Boolean) : [];
-    const text = String(c.text || '').toLowerCase();
-    return kws.some((k) => text.indexOf(k) >= 0);
-  }).length;
-  if (candidates.length > 1 && accIds.length > 1) {
-    for (const id of accIds) {
-      opts.onLog?.(id, `🎯 素材按赛道分配:${matchedCount}/${accIds.length} 个号拿到贴合自己关键词的素材`
-        + (matchedCount < accIds.length ? '(其余按顺序补,可能不完全对口)' : ''));
-    }
-  }
-
-  // ── 发布计划:每号 perAcc 条。按【轮次】铺开(第 1 轮每号各一条,第 2 轮再各一条…),
-  //   而不是同一个号连着发 perAcc 条 —— 这样同号两条之间天然隔着其它号的发布 + 各自的
-  //   10-60s 间隔,节奏更像真人,也避免同一账号短时间内连续发帖被平台盯上。
-  //   每轮都重新 allocateByNiche 一次,让本轮剩余候选继续按各号赛道就近分配。
-  const plan: Array<{ accountId: string; candidate: any }> = [];
-  {
-    let pool = candidates.slice();
-    for (let round = 0; round < perAcc && pool.length; round++) {
-      const alloc = round === 0 ? allocated : allocateByNiche(accIds, pool);
-      const used = new Set<any>();
-      for (let i = 0; i < accIds.length; i++) {
-        const c = alloc[i];
-        if (!c || used.has(c)) continue;
-        plan.push({ accountId: accIds[i], candidate: c });
-        used.add(c);
-      }
-      if (!used.size) break;                       // 这一轮一条都没分出去 → 池子对不上,别空转
-      pool = pool.filter((c) => !used.has(c));
-    }
-  }
-  if (perAcc > 1) {
-    for (const id of accIds) opts.onLog?.(id, `📋 本轮计划发布 ${plan.length} 条(每号最多 ${perAcc} 条,按轮次交替)`);
-  }
-  // 🚨 一条都没分到的号必须补一条 skipped。改成按 plan 迭代后,这些号在 items 里【完全消失】,
-  //   而 sidecar 只按 items 回填每号状态(runP.then 里 `for (const it of report.items)`)——
-  //   没出现的号会永远停在「运行中」,运行记录里也查无此号。旧代码本来有这条(no_more_candidate),
-  //   重构时被我一并删掉了,审计时才发现。
-  const planned = new Set(plan.map((p) => p.accountId));
-  const preItems: EngageItemResult[] = [];
-  for (const id of accIds) {
-    if (planned.has(id)) continue;
-    opts.onLog?.(id, 'ℹ️ 候选素材已分完,本号本轮不发');
-    const it: EngageItemResult = { accountId: id, state: 'skipped', reason: 'no_more_candidate' };
-    preItems.push(it);
-    try { opts.onItem?.(it); } catch { /* ignore */ }
-  }
-
-  // ── 阶段B:分发(顺序执行,每条之间睡 10-60s 防连坐)──
-  // 🚨 只选 1 个号 + 每号多条时,轮次交错退化成【同号连发】:publishOne 每条结尾都关内核,
-  //    休息期间窗口被关、下一条再冷启动(用户 2026-08-14 在发帖任务实拍的同款问题)。
-  //    单号场景用 skipLease 多拿一份引用把窗口吊住整个分发阶段(多号交错时各号窗口本就轮换,
-  //    全吊着会同时挂一排浏览器,不吊)。同 binancePostRunner 的说明。
+  // 单号多条:吊住发布号窗口,避免每条发完关窗、下一条再冷启动(同旧逻辑,流水线下跨批也保持)。
   let repostHoldId = '';
-  if (accIds.length === 1 && plan.length > 1) {
+  if (accIds.length === 1 && postCount > 1) {
     const hAcc = getAccount(accIds[0]);
     if (hAcc) {
       try {
@@ -1168,32 +1101,92 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
       } catch { /* 拿不到就退回逐条开关的老行为 */ }
     }
   }
-  const items: EngageItemResult[] = preItems.slice();   // 先带上「没分到素材」的那些号
+
   try {
-  for (let i = 0; i < plan.length; i++) {
-    if (opts.signal?.aborted) { items.push({ accountId: plan[i].accountId, state: 'skipped', reason: 'aborted' }); continue; }
-    const candidate = plan[i].candidate;
-    const r = isVideo
-      ? await publishVideoOne(opts, publishPack, plan[i].accountId, candidate)
-      : await publishOne(opts, publishPack, plan[i].accountId, candidate);
-    items.push(r);
-    // 仅【发布成功】才把这条源计 1 次 → 用满 cap(默认 1)后下轮跳过;发布失败不计,可下轮重试。
-    // 两把锁一起记:平台 id(认这条帖子)+ 源文案指纹(认这段内容,见上面 candidates 过滤处的说明)。
-    if (r.state === 'success') {
-      try { if (candidate.post_id) srcSeen.record(String(candidate.post_id)); } catch { /* ignore */ }
-      try { const ck = capKeyOf(candidate.text); if (ck) srcSeen.record(ck); } catch { /* ignore */ }
+    while (attempted < postCount && !opts.signal?.aborted) {
+      batchIdx++;
+      const need = Math.min(BATCH, postCount - attempted);
+      for (const id of accIds) opts.onLog?.(id, `📦 第 ${batchIdx} 批:先采 ${need} 条再发(采一批发一批)…`);
+      const collected = await collectFromSource(opts, collectPack, need, srcSeen, taskSeen);
+      // 【第二把锁:源文案指纹】平台 id 锁认"这条帖子",指纹锁认"这段内容"(转发/换号重发 id 会变、
+      //   文案不变),任一命中就跳过 —— 说明详见 capKeyOf。再叠 taskSeen:本任务批间去重。
+      const batchCands = collected.candidates.filter((c) => {
+        const pid = String(c.post_id || '').trim();
+        if (pid && taskSeen.has(pid)) return false;
+        const key = capKeyOf(c.text);
+        if (key && srcSeen.set.has(key)) { coworkLog('INFO', 'binanceRepostRunner', 'skip by caption fingerprint: ' + key); return false; }
+        return true;
+      });
+      for (const c of batchCands) { const pid = String(c.post_id || '').trim(); if (pid) taskSeen.add(pid); }
+      if (!batchCands.length) {
+        stopReason = collected.reason || (batchIdx === 1 ? 'no_candidates' : 'source_exhausted');
+        if (batchIdx === 1) { for (const id of accIds) opts.onLog?.(id, `⚠️ 采集为空(${stopReason}),本次无可搬运素材`); }
+        else { for (const id of accIds) opts.onLog?.(id, `ℹ️ 源里没有更多新素材了,已发 ${attempted}/${postCount} 条,收工`); }
+        break;
+      }
+      // 这一批按赛道分给【还有配额】的号(允许单号一批拿多条 —— 单号场景);niche 优先、剩余顺次补。
+      const batchPlan: Array<{ accountId: string; candidate: any }> = [];
+      {
+        let pool = batchCands.slice();
+        for (;;) {
+          const elig = accIds.filter((id) => {
+            const plannedHere = batchPlan.reduce((n, p) => n + (p.accountId === id ? 1 : 0), 0);
+            return (remaining.get(id) || 0) - plannedHere > 0;
+          });
+          if (!elig.length || !pool.length) break;
+          const alloc = allocateByNiche(elig, pool);
+          const used = new Set<any>();
+          for (let i = 0; i < elig.length; i++) {
+            const c = alloc[i];
+            if (!c || used.has(c)) continue;
+            batchPlan.push({ accountId: elig[i], candidate: c });
+            used.add(c);
+          }
+          if (!used.size) break;                 // 一条都没分出去 → 池子对不上,别空转
+          pool = pool.filter((c) => !used.has(c));
+        }
+      }
+      if (!batchPlan.length) { stopReason = 'quota_full'; break; }
+      // 发这一批(顺序执行;防连坐 10-60s,采集耗时计入间隔 —— 距上一条不足才补睡)。
+      for (const p of batchPlan) {
+        if (opts.signal?.aborted) break;
+        if (lastPublishAt) {
+          const gap = randInt(10000, 60000);
+          const wait = gap - (Date.now() - lastPublishAt);
+          if (wait > 0) {
+            opts.onLog?.(p.accountId, `⏳ 防连坐:距上一条发布间隔 ${Math.round(wait / 1000)}s…`);
+            await new Promise<void>((resolve) => { const t = setTimeout(resolve, wait); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
+          }
+        }
+        if (opts.signal?.aborted) break;
+        const r = isVideo
+          ? await publishVideoOne(opts, publishPack, p.accountId, p.candidate)
+          : await publishOne(opts, publishPack, p.accountId, p.candidate);
+        items.push(r);
+        attempted++;
+        remaining.set(p.accountId, (remaining.get(p.accountId) || 1) - 1);
+        lastPublishAt = Date.now();
+        // 仅【发布成功】才记两把锁(id + 文案指纹)→ 用满 cap 后下轮跳过;失败不记,下次任务可重试。
+        if (r.state === 'success') {
+          try { if (p.candidate.post_id) srcSeen.record(String(p.candidate.post_id)); } catch { /* ignore */ }
+          try { const ck = capKeyOf(p.candidate.text); if (ck) srcSeen.record(ck); } catch { /* ignore */ }
+        }
+        try { opts.onItem?.(r); } catch { /* ignore */ }
+      }
     }
-    try { opts.onItem?.(r); } catch { /* ignore */ }
-    // 下一条发布前睡 10-60s(最后一条不睡;停止立即退)。同号连发也走这条 = 1~2 分钟间隔。
-    const hasNext = i < plan.length - 1;
-    if (hasNext && !opts.signal?.aborted) {
-      const gap = randInt(10000, 60000);
-      opts.onLog?.(plan[i + 1].accountId, `⏳ 防连坐:距上一条发布间隔 ${Math.round(gap / 1000)}s…`);
-      await new Promise<void>((resolve) => { const t = setTimeout(resolve, gap); try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ } });
-    }
-  }
   } finally {
     if (repostHoldId) { try { closeKernel(repostHoldId, { skipLease: true }); } catch { /* ignore */ } }
+  }
+
+  // 一条都没轮到的号必须补 skipped —— sidecar 只按 items 回填每号状态,不出现的号会永远卡「运行中」。
+  const touched = new Set(items.map((x) => x.accountId));
+  for (const id of accIds) {
+    if (touched.has(id)) continue;
+    const reason = opts.signal?.aborted ? 'aborted' : (stopReason || 'no_more_candidate');
+    const it: EngageItemResult = { accountId: id, state: 'skipped', reason };
+    items.push(it);
+    try { opts.onItem?.(it); } catch { /* ignore */ }
+    opts.onLog?.(id, 'ℹ️ 素材不足或已停止,本号本轮未发(' + reason + ')');
   }
 
   return {
