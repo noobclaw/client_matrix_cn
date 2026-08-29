@@ -222,6 +222,23 @@ async function chargeAction(authToken: string | undefined, actionType: string, p
   } catch { return { ok: false, reason: 'network_error' }; }
 }
 
+// 发布尝试后的平台费(用户 2026-08-29 拍板):
+//   · 余额不足 → 不重试(无意义),直接返回 → 调用方停任务;item.reason 带 insufficient,
+//     sidecar 的 notifyInsufficient(挂在 onItem 上)会广播 token-insufficient →
+//     renderer 自动弹充值/续费窗(现成链路,零新增)。
+//   · 其它失败(网络/5xx/未知)→ 退避重试 3 次(3s/6s/9s),仍失败才返回 → 调用方停任务,
+//     失败原因进任务日志(先搞清为什么会失败)。
+async function chargePublishFee(authToken: string | undefined, actionType: string, platform: string, refId: string) {
+  let chg: any = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await sleep(3000 * attempt);
+    chg = await chargeAction(authToken, actionType, platform, refId);
+    if (chg && chg.ok) return chg;
+    if (/insufficient|余额/i.test(String((chg && chg.reason) || ''))) return chg;
+  }
+  return chg;
+}
+
 const CAPTCHA_DETECT_EXPR = "(function(){try{"
   + "if(document.querySelector('#captcha_container,#captcha-verify-image,[id*=\"captcha\" i][class*=\"verify\" i],[class*=\"captcha_verify\" i],[class*=\"geetest\" i],[class*=\"red-captcha\" i]'))return true;"
   + "var b=document.body?(document.body.innerText||'').slice(0,3000):'';"
@@ -811,17 +828,21 @@ async function publishOne(
     const fn = new AsyncFunction('ctx', code);
     await fn(ctx);
 
-    // 成功发布 → 按搬运形态扣费(repost_image_text / repost_video)。
-    if (posted && cfg.autoPublish) {
+    // 【按尝试计费】发布剧本已跑完 → 不论其上报 posted 与否都扣(确认信号可能漏报成功;
+    //   用户 2026-08-29:失败了一样扣)。仅本地(不发布)不扣。扣不上 → charge_failed 停整个任务。
+    if (cfg.autoPublish) {
       const actionType = (cfg.material === 'video') ? 'repost_video' : 'repost_image_text';
-      const res: any = await chargeAction(authToken, actionType, opts.platform, candidate.source_url || candidate.post_id || '');
+      const res: any = await chargePublishFee(authToken, actionType, opts.platform, candidate.source_url || candidate.post_id || '');
       if (res && res.ok) {
         chargedCredits += Number(res.charged) || 0;
         chargedUsd += Number(res.cost_usd) || 0;
-        try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
+        try { opts.onItem?.({ accountId, state: posted ? 'success' : 'failed', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
       } else {
-        log('⚠️ 平台费扣费失败(' + ((res && res.reason) || 'unknown') + '),本条未计费');
-        coworkLog('WARN', 'binanceRepost', `[${accountId}] ${actionType} charge failed: ${(res && res.reason) || 'unknown'}`);
+        const why = (res && res.reason) || 'unknown';
+        log('⛔ 平台费扣费失败(' + why + '),任务将停止');
+        coworkLog('WARN', 'binanceRepost', `[${accountId}] ${actionType} charge failed: ${why}`);
+        setAccountStatus(accountId, 'idle');
+        return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + why };
       }
     }
 
@@ -939,18 +960,25 @@ async function publishVideoOne(
     // 复用 binance.js 发布 driver:导航币安广场 → 视频 inline modal 上传 + 写正文 + 发文。
     log(`📤 上传视频到${platLabel(opts.platform)}(复用发布 driver)…`);
     const r = await runMatrixDriver(accountId, opts.platform as any, { videoPath: candidate.video_path, description: cap.text } as any, (m) => log(m));
-    if (!r || !r.ok) { closeReason = r?.reason; setAccountStatus(accountId, 'idle'); log('❌ 视频发布失败:' + (r?.reason || 'unknown')); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: r?.reason || 'driver_failed' }; }
+    // 【按尝试计费】driver 真跑了(素材已上传/发布已点)→ 无论上报成败都扣 repost_video ——
+    //   发布确认信号可能漏报成功,只按成功扣会漏钱(用户 2026-08-29:失败了一样扣)。
+    //   r 为空 = driver 都没跑起来(没下发/加载失败),什么都没发生,不扣。
+    if (r) {
+      const chg: any = await chargePublishFee(authToken, 'repost_video', opts.platform, candidate.source_url || candidate.post_id || '');
+      if (chg && chg.ok) { chargedCredits += Number(chg.charged) || 0; chargedUsd += Number(chg.cost_usd) || 0; }
+      else {
+        // 扣费失败(余额不足/计费异常)→ 本条记 charge_failed,流水线看到即停整个任务(不能白跑)。
+        const why = (chg && chg.reason) || 'unknown';
+        log('⛔ 平台费扣费失败(' + why + '),任务将停止');
+        coworkLog('WARN', 'binanceRepost', `[${accountId}] repost_video charge failed: ${why}`);
+        setAccountStatus(accountId, 'idle');
+        return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + why };
+      }
+    }
+    if (!r || !r.ok) { closeReason = r?.reason; setAccountStatus(accountId, 'idle'); log('❌ 视频发布失败:' + (r?.reason || 'unknown') + '(平台费已按尝试计)'); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: r?.reason || 'driver_failed' }; }
 
     counts.post += 1;
     log('✅ 视频已发布');
-    // 成功 → 扣 repost_video。
-    const chg: any = await chargeAction(authToken, 'repost_video', opts.platform, candidate.source_url || candidate.post_id || '');
-    if (chg && chg.ok) { chargedCredits += Number(chg.charged) || 0; chargedUsd += Number(chg.cost_usd) || 0; }
-    else {
-      // 扣费失败绝不能静默 —— 平台费收不上都没人知道(用户 2026-08-29:发了很多条,累计消耗才≈一条的钱)。
-      log('⚠️ 平台费扣费失败(' + ((chg && chg.reason) || 'unknown') + '),本条未计费');
-      coworkLog('WARN', 'binanceRepost', `[${accountId}] repost_video charge failed: ${(chg && chg.reason) || 'unknown'}`);
-    }
     setAccountStatus(accountId, 'idle');
     try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
     return { accountId, state: 'success', counts, chargedCredits, chargedUsd };
@@ -1180,6 +1208,12 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
           try { const ck = capKeyOf(p.candidate.text); if (ck) srcSeen.record(ck); } catch { /* ignore */ }
         }
         try { opts.onItem?.(r); } catch { /* ignore */ }
+        // 扣费失败 → 停整个任务(余额不足/计费异常时绝不白跑后面的条目)。
+        if (r.reason && String(r.reason).indexOf('charge_failed') === 0) { stopReason = String(r.reason); break; }
+      }
+      if (stopReason && stopReason.indexOf('charge_failed') === 0) {
+        for (const id of accIds) opts.onLog?.(id, '⛔ 扣费失败(余额不足或计费异常),任务停止:' + stopReason);
+        break;
       }
     }
   } finally {
