@@ -28,6 +28,58 @@ import { runMatrixDriver, runMatrixDouyinSearch } from './driverCtx';
 import { contentUsageStore, type ContentUsage } from './contentUsage';
 import { getAccount, setAccountStatus, effectiveKeywords, appendDerivedKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
+import https from 'https';
+import { detectSystemProxy } from '../video/ytdlpRuntime';
+
+// 走系统代理的 HTTPS GET(X 视频下载专用)。有系统代理(Clash 全局非 TUN)就挂 HttpsProxyAgent,
+// 没有(TUN/海外机,流量已被接管)就直连。跟随最多 3 次跳转;支持 abort、超时、体积上限。
+async function xHttpsGetProxied(
+  targetUrl: string,
+  o: { headers?: Record<string, string>; signal?: AbortSignal; timeoutMs: number; wantBuffer?: boolean; maxBytes?: number },
+): Promise<{ ok: boolean; status: number; json?: any; buffer?: Buffer; contentLength: number }> {
+  const proxy = (() => { try { return detectSystemProxy(); } catch { return ''; } })();
+  let agent: any = undefined;
+  if (proxy) {
+    try { const HPA: any = require('https-proxy-agent'); const Ctor = HPA.HttpsProxyAgent || HPA; agent = new Ctor(proxy); } catch { /* 无代理库→直连 */ }
+  }
+  let url = targetUrl;
+  for (let hop = 0; hop < 4; hop++) {
+    const r: any = await new Promise((resolve, reject) => {
+      const req = https.get(url, { headers: o.headers || {}, agent, timeout: o.timeoutMs } as any, (res) => {
+        const status = res.statusCode || 0;
+        const loc = res.headers.location;
+        if ([301, 302, 303, 307, 308].includes(status) && loc) { res.resume(); resolve({ redirect: true, location: loc }); return; }
+        const contentLength = Number(res.headers['content-length']) || 0;
+        const maxBytes = o.maxBytes || 0;
+        if (maxBytes && contentLength > maxBytes) { res.destroy(); resolve({ ok: false, status, contentLength }); return; }
+        const chunks: Buffer[] = []; let total = 0;
+        res.on('data', (c: Buffer) => {
+          total += c.length;
+          if (maxBytes && total > maxBytes) { res.destroy(); resolve({ ok: false, status, contentLength: total }); return; }
+          chunks.push(c);
+        });
+        res.on('end', () => {
+          const buf = Buffer.concat(chunks);
+          const ok = status >= 200 && status < 300;
+          if (o.wantBuffer) { resolve({ ok, status, buffer: buf, contentLength }); return; }
+          let json: any = null; try { json = JSON.parse(buf.toString('utf8')); } catch { /* null */ }
+          resolve({ ok, status, json, contentLength });
+        });
+        res.on('error', reject);
+      });
+      req.on('timeout', () => req.destroy(new Error('timeout')));
+      req.on('error', reject);
+      if (o.signal) {
+        if (o.signal.aborted) req.destroy(new Error('aborted'));
+        else o.signal.addEventListener('abort', () => req.destroy(new Error('aborted')), { once: true });
+      }
+    });
+    if (r && r.redirect && hop < 3) { url = new URL(r.location, url).toString(); continue; }
+    return r;
+  }
+  return { ok: false, status: 0, contentLength: 0 };
+}
+
 import { getNoobClawAuthToken } from '../claudeSettings';
 import type { EngageItemResult, EngageReport } from './engageRunner';
 import type { BinanceRepostConfig } from './types';
@@ -508,8 +560,8 @@ async function collectFromSource(
             const onAbort = () => apiCtl.abort();
             try { opts.signal?.addEventListener('abort', onAbort, { once: true }); } catch { /* ignore */ }
             try {
-              const resp = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`, {
-                method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', Accept: 'application/json' }, signal: apiCtl.signal,
+              const resp = await xHttpsGetProxied(`https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`, {
+                headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', Accept: 'application/json' }, signal: apiCtl.signal, timeoutMs: 8000,
               });
               clearTimeout(apiTo);
               if (!resp.ok) {
@@ -517,7 +569,7 @@ async function collectFromSource(
                 if ((resp.status >= 500 || resp.status === 429) && attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
                 return { ok: false, reason: 'syndication_' + lastErr };
               }
-              meta = await resp.json().catch(() => null);
+              meta = resp.json || null;
               if (meta) break;
               lastErr = 'json_parse_failed';
             } catch (e: any) {
@@ -548,20 +600,20 @@ async function collectFromSource(
           const onDlAbort = () => dlCtl.abort();
           try { opts.signal?.addEventListener('abort', onDlAbort, { once: true }); } catch { /* ignore */ }
           try {
-            const vResp = await fetch(mp4s[0].url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' }, signal: dlCtl.signal });
-            if (!vResp.ok) return { ok: false, reason: 'video_download_http_' + vResp.status };
-            // 体积闸:整片进内存,别让超大文件把进程吃爆(图片路径有 5MB 上限,视频给 300MB)。
             const maxBytes = limits?.maxBytes || 300 * 1024 * 1024;
-            const clen = Number(vResp.headers.get('content-length')) || 0;
-            if (clen > maxBytes) return { ok: false, reason: 'video_too_large:' + Math.round(clen / 1048576) + 'MB' };
-            const ab = await vResp.arrayBuffer();
-            if (ab.byteLength > maxBytes) return { ok: false, reason: 'video_too_large:' + Math.round(ab.byteLength / 1048576) + 'MB' };
+            const vResp = await xHttpsGetProxied(mp4s[0].url, { headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' }, signal: dlCtl.signal, timeoutMs: 5 * 60 * 1000, wantBuffer: true, maxBytes });
+            if (!vResp.ok) {
+              if (vResp.contentLength > maxBytes) return { ok: false, reason: 'video_too_large:' + Math.round(vResp.contentLength / 1048576) + 'MB' };
+              return { ok: false, reason: 'video_download_http_' + vResp.status };
+            }
+            const buf = vResp.buffer || Buffer.alloc(0);
+            if (buf.byteLength > maxBytes) return { ok: false, reason: 'video_too_large:' + Math.round(buf.byteLength / 1048576) + 'MB' };
             const dir = path.join(matrixDir(), 'repost_src', 'x', srcAccId, '原文');
             fs.mkdirSync(dir, { recursive: true });
             const fp = path.join(dir, `源视频_${statusId}.mp4`);
-            fs.writeFileSync(fp, Buffer.from(ab));
+            fs.writeFileSync(fp, buf);
             return {
-              ok: true, path: fp, videoUrl: mp4s[0].url, size: ab.byteLength,
+              ok: true, path: fp, videoUrl: mp4s[0].url, size: buf.byteLength,
               duration: Math.round((videoMedia.video_info?.duration_millis || 0) / 1000),
             };
           } catch (e: any) {

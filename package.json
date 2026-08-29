@@ -6,7 +6,7 @@
     "email": "support@noobclaw.com"
   },
   "license": "MIT",
-  "version": "3.4.37",
+  "version": "3.4.48",
   "main": "dist-electron/main.js",
   "engines": {
     "node": ">=24 <25"
@@ -71,6 +71,7 @@
     "extract-zip": "^2.0.1",
     "form-data": "^4.0.5",
     "grammy": "^1.21.0",
+    "https-proxy-agent": "^5.0.1",
     "js-yaml": "^4.1.1",
     "katex": "^0.16.21",
     "mermaid": "^10.9.5",
