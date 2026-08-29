@@ -1431,6 +1431,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                               ? `${intervalLabel} · 获取≤${nLead} 潜客 · 触达≤${nReach} 人`
                               : `${intervalLabel} · up to ${nLead} new leads · reach ${nReach}`;
                           }
+                        // 矩阵批量搬运(*_repost):条数在 binanceRepost.perAccountCount(每号几条)× 账号数,
+                        //   不在 daily_count → 落兜底恒显「1 条/次」(用户 2026-08-29 实拍:配 30 显示 1)。
+                        if (/_repost$/.test(String(sid || ''))) {
+                          const brq = (t.binanceRepost || {}) as any;
+                          const perQ = Math.max(1, Number(brq.perAccountCount) || 1);
+                          const accQ = Math.max(1, Array.isArray(t.account_ids) ? t.account_ids.length : 1);
+                          const zhQ = i18nService.currentLanguage === 'zh';
+                          return zhQ
+                            ? `${intervalLabel} · 每号 ${perQ} 条 × ${accQ} 号 = ${perQ * accQ} 条/次`
+                            : `${intervalLabel} · ${perQ}/account × ${accQ} = ${perQ * accQ} per run`;
+                        }
                         if (typeof cMin === 'number' && typeof cMax === 'number') {
                           return `${intervalLabel} · ${cMin}-${cMax} ${i18nService.t('tdArticlesRun')}`;
                         }

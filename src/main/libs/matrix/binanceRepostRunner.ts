@@ -819,6 +819,9 @@ async function publishOne(
         chargedCredits += Number(res.charged) || 0;
         chargedUsd += Number(res.cost_usd) || 0;
         try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
+      } else {
+        log('⚠️ 平台费扣费失败(' + ((res && res.reason) || 'unknown') + '),本条未计费');
+        coworkLog('WARN', 'binanceRepost', `[${accountId}] ${actionType} charge failed: ${(res && res.reason) || 'unknown'}`);
       }
     }
 
@@ -943,6 +946,11 @@ async function publishVideoOne(
     // 成功 → 扣 repost_video。
     const chg: any = await chargeAction(authToken, 'repost_video', opts.platform, candidate.source_url || candidate.post_id || '');
     if (chg && chg.ok) { chargedCredits += Number(chg.charged) || 0; chargedUsd += Number(chg.cost_usd) || 0; }
+    else {
+      // 扣费失败绝不能静默 —— 平台费收不上都没人知道(用户 2026-08-29:发了很多条,累计消耗才≈一条的钱)。
+      log('⚠️ 平台费扣费失败(' + ((chg && chg.reason) || 'unknown') + '),本条未计费');
+      coworkLog('WARN', 'binanceRepost', `[${accountId}] repost_video charge failed: ${(chg && chg.reason) || 'unknown'}`);
+    }
     setAccountStatus(accountId, 'idle');
     try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
     return { accountId, state: 'success', counts, chargedCredits, chargedUsd };

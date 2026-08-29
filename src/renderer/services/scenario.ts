@@ -162,8 +162,6 @@ const MATRIX_BINANCE_META: Record<string, { name_zh: string; icon: string }> = {
 };
 
 // 「币安广场批量搬运」剧本(backend/matrix/scenarios/binance_repost)。1 源平台采集号搜+下 → N 币安号各领一条仿写发。发布目标=币安,scenario_id 固定 'binance_repost'(非平台后缀)。
-const MATRIX_REPOST_SCENARIO_ID = 'binance_repost';
-const MATRIX_REPOST_PLATFORM = 'binance';
 // 交易所广场四家的搬运剧本 id 同样是 `${platform}_repost`。⚠️ 判定搬运任务时必须认全这 5 个,
 //   只认 'binance_repost' 会让四家的搬运任务被当成 engage → 配置丢失 + 卡片显示成互动涨粉。
 const MATRIX_REPOST_IDS = new Set(['binance_repost', 'gate_repost', 'bitget_repost', 'bybit_repost', 'okx_repost']);
@@ -760,11 +758,16 @@ class ScenarioService {
           name_zh: MATRIX_BINANCE_META[platform]?.name_zh || sid, name_en: '',
           icon: MATRIX_BINANCE_META[platform]?.icon || '📊',
         }));
-      // 同理补「币安广场批量搬运」剧本快照,让 binance_repost 任务能归到币安 tab。
-      const synthRepost = have.has(MATRIX_REPOST_SCENARIO_ID) ? [] : [{
-        id: MATRIX_REPOST_SCENARIO_ID, version: '1.0.0', platform: MATRIX_REPOST_PLATFORM, workflow_type: 'binance_repost_creation', category: 'creation',
-        name_zh: '币安广场 批量搬运', name_en: '', icon: '♻️',
-      }];
+      // 同理补「批量搬运」剧本快照 —— 五家都要合成。原来只合成 binance_repost,
+      //   gate/bitget/bybit/okx 的搬运任务解析不到 scenario → 详情页落回互动样式
+      //   (累计/上次完成画成 👍➕💬、明细画 👍0/0;用户 2026-08-29 实拍)。
+      const synthRepost = Object.keys(MATRIX_REPOST_META)
+        .map((platform) => ({ platform, rsid: platform + '_repost' }))
+        .filter(({ rsid }) => !have.has(rsid))
+        .map(({ platform, rsid }) => ({
+          id: rsid, version: '1.0.0', platform, workflow_type: 'binance_repost_creation', category: 'creation',
+          name_zh: MATRIX_REPOST_META[platform] || '批量搬运', name_en: '', icon: '♻️',
+        }));
       return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost] as unknown as Scenario[];
     }
     try {

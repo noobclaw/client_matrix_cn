@@ -2771,6 +2771,15 @@ const server = http.createServer(async (req, res) => {
                     const mt = mtStore.getTask ? mtStore.getTask(args[0]) : null;
                     if (mt) {
                       const os = require('os'); const path = require('path'); const fs = require('fs');
+                      // 批量搬运:产出(下载的源素材)在【视频输出目录】/搬运素材(3.4.49 起跟随可配置输出目录),
+                      //   不在 matrixDir。原来落到 reports 桶 → 打开个空目录,用户以为「没有任何输出文件」(2026-08-29 实拍)。
+                      if (mt.type === 'binance_repost') {
+                        const { resolveVideoOutputRoot } = require('./libs/video/outputRoot');
+                        const srcPlat = String((mt.binanceRepost && mt.binanceRepost.sourcePlatform) || '');
+                        const rdir = path.join(resolveVideoOutputRoot(), '搬运素材', srcPlat);
+                        try { fs.mkdirSync(rdir, { recursive: true }); } catch { /* ignore */ }
+                        return writeJSON(res, 200, { dir: rdir });
+                      }
                       const base = process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix');
                       const bucket = mt.type === 'image_text' ? 'drafts' : mt.type === 'video_download' ? 'downloads' : 'reports';
                       // reports 桶按【任务】分目录(与 engageRunner.writeReport 的路径一致),
