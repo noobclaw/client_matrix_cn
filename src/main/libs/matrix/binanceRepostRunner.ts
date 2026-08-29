@@ -28,8 +28,6 @@ import { runMatrixDriver, runMatrixDouyinSearch } from './driverCtx';
 import { contentUsageStore, type ContentUsage } from './contentUsage';
 import { getAccount, setAccountStatus, effectiveKeywords, appendDerivedKeywords, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
 import { promptReloginForExpiredAccount } from './reloginPrompt';
-import { detectSystemProxy } from '../video/ytdlpRuntime';
-import { ProxyAgent } from 'undici';
 import { getNoobClawAuthToken } from '../claudeSettings';
 import type { EngageItemResult, EngageReport } from './engageRunner';
 import type { BinanceRepostConfig } from './types';
@@ -500,10 +498,6 @@ async function collectFromSource(
           const m = String(tweetUrl || '').match(/(?:twitter|x)\.com\/[^/]+\/status\/(\d+)/i);
           if (!m) return { ok: false, reason: 'invalid_tweet_url' };
           const statusId = m[1];
-          // 系统代理:node fetch 默认不读,Clash 全局非 TUN 只设系统代理 → 不挂就直连被墙
-          //   (fetch failed)。YouTube 下载靠 detectSystemProxy 能成,照抄。
-          let proxyDispatcher: any = undefined;
-          try { const px = detectSystemProxy(); if (px) proxyDispatcher = new ProxyAgent(px); } catch { /* 直连 */ }
           let meta: any = null;
           let lastErr = '';
           for (let attempt = 1; attempt <= 3; attempt++) {
@@ -515,8 +509,8 @@ async function collectFromSource(
             try { opts.signal?.addEventListener('abort', onAbort, { once: true }); } catch { /* ignore */ }
             try {
               const resp = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`, {
-                method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', Accept: 'application/json' }, signal: apiCtl.signal, ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}),
-              } as any);
+                method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', Accept: 'application/json' }, signal: apiCtl.signal,
+              });
               clearTimeout(apiTo);
               if (!resp.ok) {
                 lastErr = 'http_' + resp.status;
@@ -554,7 +548,7 @@ async function collectFromSource(
           const onDlAbort = () => dlCtl.abort();
           try { opts.signal?.addEventListener('abort', onDlAbort, { once: true }); } catch { /* ignore */ }
           try {
-            const vResp = await fetch(mp4s[0].url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' }, signal: dlCtl.signal, ...(proxyDispatcher ? { dispatcher: proxyDispatcher } : {}) } as any);
+            const vResp = await fetch(mp4s[0].url, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' }, signal: dlCtl.signal });
             if (!vResp.ok) return { ok: false, reason: 'video_download_http_' + vResp.status };
             // 体积闸:整片进内存,别让超大文件把进程吃爆(图片路径有 5MB 上限,视频给 300MB)。
             const maxBytes = limits?.maxBytes || 300 * 1024 * 1024;
