@@ -32,19 +32,20 @@ export interface YoutubeDownloadTaskOptions {
   onItem?: (item: EngageItemResult) => void;
 }
 
-async function chargeOne(): Promise<{ credits: number; usd: number }> {
+// 2026-08-29 计费加固:带失败原因返回,调用方重试/熔断(文件都给用户了,扣费挂了绝不能静默白送)。
+async function chargeOne(): Promise<{ ok: boolean; credits: number; usd: number; reason?: string }> {
   try {
     const token = getNoobClawAuthToken();
-    if (!token) return { credits: 0, usd: 0 };
+    if (!token) return { ok: false, credits: 0, usd: 0, reason: 'auth_missing' };
     const resp = await fetch(`${baseUrl()}/api/charge/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ action_type: 'video_download', platform: 'youtube' }),
     });
     const j: any = await resp.json().catch(() => ({}));
-    if (resp.ok && j?.ok) return { credits: Number(j.charged) || 0, usd: Number(j.charged_usd) || 0 };
-  } catch { /* 计费失败不阻塞下载 */ }
-  return { credits: 0, usd: 0 };
+    if (resp.ok && j?.ok) return { ok: true, credits: Number(j.charged) || 0, usd: Number(j.charged_usd) || 0 };
+    return { ok: false, credits: 0, usd: 0, reason: String(j?.error || `http_${resp.status}`) };
+  } catch { return { ok: false, credits: 0, usd: 0, reason: 'network_error' }; }
 }
 
 export async function runYoutubeDownloadTask(opts: YoutubeDownloadTaskOptions): Promise<EngageReport> {
@@ -107,8 +108,16 @@ export async function runYoutubeDownloadTask(opts: YoutubeDownloadTaskOptions): 
     if (r.ok) {
       okCount++;
       counts.download = okCount; // 完成维度 = 下载条数
-      const c = await chargeOne();
+      let c = await chargeOne();
+      for (let ci = 1; ci < 4 && !c.ok && !/insufficient|余额/i.test(String(c.reason || '')); ci++) { await new Promise((rs) => setTimeout(rs, 3000 * ci)); c = await chargeOne(); }
       chargedCredits += c.credits; chargedUsd += c.usd;
+      if (!c.ok) {
+        const why = String(c.reason || 'unknown');
+        log(/insufficient|余额/i.test(why) ? '⛔ 余额不足,任务停止(请充值后再跑)' : '⛔ 扣费失败(' + why + '),任务停止');
+        emit('failed', 'charge_failed:' + why);
+        coworkLog('WARN', 'ytdl', `charge failed: ${why}`);
+        break;
+      }
       log(`   ✅ 第 ${i + 1} 条下载完成 → ${outDir}`);
       emit('success');
     } else {

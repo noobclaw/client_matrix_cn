@@ -352,8 +352,9 @@ async function chargeAction(authToken: string | undefined, actionType: string, p
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
-async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Promise<EngageItemResult> {
+async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, chargeFatal?: { reason: string }): Promise<EngageItemResult> {
   const acc = getAccount(accountId);
+  if (chargeFatal && chargeFatal.reason) return { accountId, state: 'skipped', reason: 'charge_failed:' + chargeFatal.reason };   // 扣费已失败 → 池里排队的号不再跑
   const log = (m: string) => { try { opts.onLog?.(accountId, m); } catch { /* ignore */ } };
   if (opts.signal?.aborted) return { accountId, state: 'skipped', reason: 'aborted' }; // 已停止:还没轮到的号直接跳过
   // 早期守卫一律补日志:以前直接 return 不打日志 → 账号被跳过却「啥日志都没有」,无法排查。
@@ -545,13 +546,24 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
       scroll: (amount?: number) => matrixCmd(accountId, 'scroll', { amount: amount || randInt(2, 4) }),
     };
 
-    // 扣费包装:调后端扣费 → 成功就累加 charged(积分)+ cost_usd,并推一次 onItem 让「本次消耗」实时更新。
+    // 扣费包装(2026-08-29 计费加固):失败退避重试 3 次;余额不足不重试;仍失败 → 置 chargeFatal,
+    //   所有号的 ctx.aborted() 立即变 true(剧本下个动作前收尾,不再白做动作白送服务),任务停。
+    //   成功路径与旧版完全一致(累加 + onItem)。
     const doCharge = async (a: string, p: string, r?: string) => {
-      const res: any = await chargeAction(authToken, a, p, r);
+      let res: any = await chargeAction(authToken, a, p, r);
+      for (let ci = 1; ci < 4 && !(res && res.ok) && !/insufficient|余额/i.test(String((res && res.reason) || '')); ci++) {
+        await sleep(3000 * ci);
+        res = await chargeAction(authToken, a, p, r);
+      }
       if (res && res.ok) {
         chargedCredits += Number(res.charged) || 0;
         chargedUsd += Number(res.cost_usd) || 0;
         try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
+      } else {
+        const why = String((res && res.reason) || 'unknown');
+        if (chargeFatal && !chargeFatal.reason) chargeFatal.reason = why;
+        log(/insufficient|余额/i.test(why) ? '⛔ 余额不足,任务停止(请充值后再跑)' : '⛔ 扣费失败(' + why + '),任务停止');
+        try { coworkLog('WARN', 'engageCharge', `[${accountId}] ${a} charge failed: ${why}`); } catch { /* ignore */ }
       }
       return res;
     };
@@ -559,7 +571,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     const ctx: any = {
       task, config: pack?.config || {}, manifest: pack?.manifest || {},
       appLocale: 'zh',
-      aborted: () => !!opts.signal?.aborted, // 剧本每个动作前查这个 → 停止后中途退出
+      aborted: () => !!opts.signal?.aborted || !!(chargeFatal && chargeFatal.reason), // 停止 / 扣费失败 → 剧本下个动作前退出
       // 浏览器
       browser: browserFn,
       navigate: (url: string) => kernelNavigate(accountId, url),
@@ -743,6 +755,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string): Pr
     const fn = new AsyncFunction('ctx', code);
     await fn(ctx);
 
+    if (chargeFatal && chargeFatal.reason) {
+      setAccountStatus(accountId, 'idle');
+      return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + chargeFatal.reason };
+    }
     setAccountStatus(accountId, 'idle');
     const fin = finished as { status: string; error?: string } | null;
     if (fin && fin.status === 'error') { coworkLog('ERROR', 'engage', `[${accountId}] finished error: ${fin.error}`); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: fin.error }; }
@@ -817,7 +833,8 @@ export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageRepo
     return { platform: opts.platform, total: opts.accountIds.length, success: 0, failed: 0, skipped: opts.accountIds.length, items };
   }
   coworkLog('INFO', 'engageRunner', `${opts.taskType || 'engage'} ${opts.platform} x${opts.accountIds.length} (${scenarioId})`);
-  const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id), opts.onItem);
+  const chargeFatal = { reason: '' };   // 任务级扣费熔断:任何号扣费失败 → 全部号收尾(见 doCharge)
+  const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id, chargeFatal), opts.onItem);
   return {
     platform: opts.platform, total: items.length,
     success: items.filter((x) => x.state === 'success').length,

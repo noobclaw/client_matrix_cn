@@ -192,17 +192,22 @@ async function chargeSuccess(
   platform: VideoPlatform, count: number, authToken?: string,
 ): Promise<{ charged: number; balanceAfter?: number } | undefined> {
   if (count <= 0 || !authToken) return undefined;
-  try {
-    const res = await fetch(`${baseUrl()}/api/matrix/charge`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({ platform, count }),
-    });
-    const j: any = await res.json();
-    if (res.ok && j?.ok) return { charged: j.charged, balanceAfter: j.balance_after };
-    coworkLog('WARN', 'matrixTask', 'charge non-ok', { status: res.status, body: j });
-  } catch (e) {
-    coworkLog('WARN', 'matrixTask', 'charge failed', { err: String(e) });
+  // 2026-08-29 计费加固:失败退避重试 3 次(余额不足/402 不重试)。任务已收尾,停无可停,但绝不静默只试一次。
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await new Promise((rs) => setTimeout(rs, 3000 * attempt));
+    try {
+      const res = await fetch(`${baseUrl()}/api/matrix/charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ platform, count }),
+      });
+      const j: any = await res.json();
+      if (res.ok && j?.ok) return { charged: j.charged, balanceAfter: j.balance_after };
+      coworkLog('WARN', 'matrixTask', 'charge non-ok', { status: res.status, body: j, attempt });
+      if (res.status === 402 || /insufficient/i.test(String(j?.error || ''))) break;
+    } catch (e) {
+      coworkLog('WARN', 'matrixTask', 'charge failed', { err: String(e), attempt });
+    }
   }
   return undefined;
 }

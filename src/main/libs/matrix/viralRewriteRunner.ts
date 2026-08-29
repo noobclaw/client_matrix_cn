@@ -158,8 +158,9 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 // ── 本号「已采爆款」复用计数(跨运行;同一篇最多仿写 cap 次,默认 3,见 contentUsage)──
 const VIRAL_CONTENT_CAP = defaultContentReuseCap();
 
-async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: string): Promise<EngageItemResult> {
+async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: string, chargeFatal?: { reason: string }): Promise<EngageItemResult> {
   const acc = getAccount(accountId);
+  if (chargeFatal && chargeFatal.reason) return { accountId, state: 'skipped', reason: 'charge_failed:' + chargeFatal.reason };   // 扣费已失败 → 池里排队的号不再跑
   const cfg = opts.config;
   const log = (m: string) => { try { opts.onLog?.(accountId, m); } catch { /* ignore */ } };
   if (opts.signal?.aborted) return { accountId, state: 'skipped', reason: 'aborted' };
@@ -251,12 +252,24 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
       scroll: (amount?: number) => matrixCmd(accountId, 'scroll', { amount: amount || randInt(2, 4) }),
     };
 
+    // 扣费包装(2026-08-29 计费加固):失败退避重试 3 次;余额不足不重试;仍失败 → 置 chargeFatal,
+    //   所有号的 ctx.aborted() 立即变 true(剧本下个动作前收尾,不再白做动作白送服务),任务停。
+    //   成功路径与旧版完全一致(累加 + onItem)。
     const doCharge = async (a: string, p: string, r?: string) => {
-      const res: any = await chargeAction(authToken, a, p, r);
+      let res: any = await chargeAction(authToken, a, p, r);
+      for (let ci = 1; ci < 4 && !(res && res.ok) && !/insufficient|余额/i.test(String((res && res.reason) || '')); ci++) {
+        await sleep(3000 * ci);
+        res = await chargeAction(authToken, a, p, r);
+      }
       if (res && res.ok) {
         chargedCredits += Number(res.charged) || 0;
         chargedUsd += Number(res.cost_usd) || 0;
         try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
+      } else {
+        const why = String((res && res.reason) || 'unknown');
+        if (chargeFatal && !chargeFatal.reason) chargeFatal.reason = why;
+        log(/insufficient|余额/i.test(why) ? '⛔ 余额不足,任务停止(请充值后再跑)' : '⛔ 扣费失败(' + why + '),任务停止');
+        try { coworkLog('WARN', 'viralCharge', `[${accountId}] ${a} charge failed: ${why}`); } catch { /* ignore */ }
       }
       return res;
     };
@@ -320,7 +333,7 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
     const ctx: any = {
       task, config: pack?.config || {}, manifest: pack?.manifest || {},
       appLocale: 'zh',
-      aborted: () => !!opts.signal?.aborted,
+      aborted: () => !!opts.signal?.aborted || !!(chargeFatal && chargeFatal.reason), // 停止 / 扣费失败 → 剧本下个动作前退出
       browser: browserFn,
       navigate: (url: string) => kernelNavigate(accountId, url),
       scroll: (amount?: number) => matrixCmd(accountId, 'scroll', { amount: amount || randInt(2, 4) }),
@@ -385,6 +398,10 @@ async function runOne(opts: ViralRewriteTaskOptions, pack: any, accountId: strin
     const fn = new AsyncFunction('ctx', code);
     await fn(ctx);
 
+    if (chargeFatal && chargeFatal.reason) {
+      setAccountStatus(accountId, 'idle');
+      return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + chargeFatal.reason };
+    }
     setAccountStatus(accountId, 'idle');
     const fin = finished as { status: string; error?: string } | null;
     if (fin && fin.status === 'error') {
@@ -441,7 +458,8 @@ export async function runViralRewriteTask(opts: ViralRewriteTaskOptions): Promis
     };
   }
   coworkLog('INFO', 'viralRewriteRunner', `viral_rewrite ${opts.platform} x${opts.accountIds.length} (${scenarioId})`);
-  const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id), opts.onItem);
+  const chargeFatal = { reason: '' };   // 任务级扣费熔断(见 doCharge)
+  const items = await runPool(opts.accountIds, k, (id) => runOne(opts, pack, id, chargeFatal), opts.onItem);
   return {
     platform: opts.platform, total: items.length,
     success: items.filter((x) => x.state === 'success').length,
