@@ -30,6 +30,7 @@ import { getAccount, setAccountStatus, effectiveKeywords, appendDerivedKeywords,
 import { promptReloginForExpiredAccount } from './reloginPrompt';
 import https from 'https';
 import { detectSystemProxy } from '../video/ytdlpRuntime';
+import { resolveVideoOutputRoot } from '../video/outputRoot';
 
 // 走系统代理的 HTTPS GET(X 视频下载专用)。有系统代理(Clash 全局非 TUN)就挂 HttpsProxyAgent,
 // 没有(TUN/海外机,流量已被接管)就直连。跟随最多 3 次跳转;支持 abort、超时、体积上限。
@@ -107,6 +108,9 @@ function randInt(min: number, max: number): number {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
 }
 function matrixDir(): string { return process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix'); }
+// 搬运下载素材的根目录:跟随用户设置的【视频输出目录】(可配、默认跟安装盘),
+//   而不是写死 C: 的 matrixDir/repost_src。子目录 搬运素材/<源平台>/<采集号>/…。
+function repostDownloadBase(): string { return path.join(resolveVideoOutputRoot(), '搬运素材'); }
 
 const BINANCE_SQUARE = 'https://www.binance.com/square';
 // 发布号登录预检导航的广场页(按【发布平台】取)。⚠️ 这里原来写死 BINANCE_SQUARE:本 runner 服务
@@ -301,7 +305,7 @@ async function collectDouyinVideos(
 ): Promise<RepostCandidate[]> {
   const out: RepostCandidate[] = [];
   if (!keywords.length) { log('⚠️ 采集号没有关键词,无法搜索'); return out; }
-  const dir = path.join(matrixDir(), 'repost_src', 'douyin', srcAccId, '原文');
+  const dir = path.join(repostDownloadBase(), 'douyin', srcAccId, '原文');
   const pickedLocal = new Set<string>();   // 本轮内去重(seen.set 只含已用满的)
 
   // 洗牌:driver 永远从第一个词搜起,不洗牌的话配 20 个词也只有最前面一两个长期在出力。
@@ -523,10 +527,10 @@ async function collectFromSource(
       seenPostIds: seen.set,
       // 采集阶段不计数(只在发布成功后由 runBinanceRepostTask 调 seen.record);本轮内去重靠剧本自己的 local set。
       recordSeen: (_ids: any) => { /* no-op:计数挪到发布成功后 */ },
-      // 视频采集落盘:base64 → <matrixDir>/repost_src/<platform>/<srcAccId>/<subdir>/<name>,返回 {ok,path}。
+      // 视频采集落盘:base64 → <输出目录>/搬运素材/<platform>/<srcAccId>/<subdir>/<name>,返回 {ok,path}。
       writeAsset: async (fileName: string, base64: string, o?: { subdir?: string }) => {
         try {
-          const dir = path.join(matrixDir(), 'repost_src', cfg.sourcePlatform || 'src', srcAccId, String((o && o.subdir) || '').replace(/[\\/:*?"<>|]/g, '_'));
+          const dir = path.join(repostDownloadBase(), cfg.sourcePlatform || 'src', srcAccId, String((o && o.subdir) || '').replace(/[\\/:*?"<>|]/g, '_'));
           fs.mkdirSync(dir, { recursive: true });
           const safe = String(fileName || `asset_${randInt(1e5, 9e5)}`).replace(/[\\/:*?"<>|]/g, '_').slice(0, 160);
           const fp = path.join(dir, safe);
@@ -608,7 +612,7 @@ async function collectFromSource(
             }
             const buf = vResp.buffer || Buffer.alloc(0);
             if (buf.byteLength > maxBytes) return { ok: false, reason: 'video_too_large:' + Math.round(buf.byteLength / 1048576) + 'MB' };
-            const dir = path.join(matrixDir(), 'repost_src', 'x', srcAccId, '原文');
+            const dir = path.join(repostDownloadBase(), 'x', srcAccId, '原文');
             fs.mkdirSync(dir, { recursive: true });
             const fp = path.join(dir, `源视频_${statusId}.mp4`);
             fs.writeFileSync(fp, buf);
@@ -920,7 +924,7 @@ async function publishVideoOne(
     log('✍️ 配文:' + cap.text.slice(0, 60) + '…');
 
     if (!cfg.autoPublish) {
-      // 仅本地:不发布,直接算完成(视频已在 repost_src 下载好,配文打日志)。
+      // 仅本地:不发布,直接算完成(视频已在 搬运素材 目录下载好,配文打日志)。
       setAccountStatus(accountId, 'idle');
       counts.post += 1;
       log('💾 仅生成不发(视频已下载,配文已生成)');
