@@ -508,7 +508,19 @@ async function collectFromSource(
             const onAbort = () => apiCtl.abort();
             try { opts.signal?.addEventListener('abort', onAbort, { once: true }); } catch { /* ignore */ }
             try {
-              const resp = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`, {
+              const metaUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`;
+              // ① 先借采集号浏览器网络栈(走系统代理/VPN,同源不撞 CORS,带 cookies)——
+              //    与下面视频文件下载同一套。Clash 全局非 TUN 下 node 直连 syndication 被墙,
+              //    只有走浏览器才通(用户 2026-08-29 实测 fetch failed)。
+              try {
+                const br = await matrixCmd(srcAccId, 'main_world_fetch_api',
+                  { url: metaUrl, method: 'GET', credentials: 'include' }, 15000);
+                if (br && br.ok && br.body != null) { meta = (typeof br.body === 'string') ? JSON.parse(br.body) : br.body; }
+                else if (br && !br.ok && br.status) { lastErr = 'http_' + br.status; }
+              } catch { /* 浏览器路失败 → node 兜底 */ }
+              if (meta) { clearTimeout(apiTo); break; }
+              // ② 兜底:node 直连(海外机/TUN 环境可用)
+              const resp = await fetch(metaUrl, {
                 method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', Accept: 'application/json' }, signal: apiCtl.signal,
               });
               clearTimeout(apiTo);
