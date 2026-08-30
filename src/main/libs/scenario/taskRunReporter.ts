@@ -172,3 +172,42 @@ export function scheduleVideoRunReport(args: VideoRunReportArgs): void {
     /* 绝不反噬主流程 */
   }
 }
+
+/** 矩阵任务(互动/发帖/搬运/图文/仿写/回复/获客/下载)整任务汇总上报。
+ *  由 sidecar-server 在 addRun() 之后调用,传 addRun 返回的整任务记录(含全局 success/failed/cost)。
+ *  与 scenario/video 走同一 fire-and-forget + _sent 去重通道;run_id 用 addRun 生成的唯一 id,
+ *  后端 UNIQUE + ON CONFLICT 再兜一层,绝不重复。绝不 throw / 不 await / 不反噬任务。 */
+export function scheduleMatrixRunReport(rec: {
+  id: string; taskId: string; taskName?: string; platform?: string; type?: string;
+  startedAt: number; finishedAt: number; success: number; failed: number; skipped: number;
+  totals?: Record<string, number>; cost?: { credits: number; usd: number };
+}): void {
+  try {
+    if (!rec || !rec.id || _sent.has(rec.id)) return;
+    const ok = Number(rec.success) || 0, bad = Number(rec.failed) || 0;
+    const status = (ok > 0 && bad > 0) ? 'partial' : ok > 0 ? 'done' : bad > 0 ? 'error' : 'stopped';
+    const totals = rec.totals || {};
+    const posted = Number(totals.post) || 0;
+    const acted = ['like', 'follow', 'comment', 'favorite'].reduce((s, k) => s + (Number(totals[k]) || 0), 0);
+    const summary = rec.type && /_repost|repost|_post|post/.test(String(rec.type))
+      ? `发布 ${posted} · 成功 ${ok}/${ok + bad}`
+      : `动作 ${acted} · 成功 ${ok}/${ok + bad}`;
+    enqueue(rec.id, () => ({
+      run_id: rec.id,
+      task_id: rec.taskId,
+      platform: rec.platform,
+      workflow_type: rec.type,
+      task_name: rec.taskName || rec.taskId,
+      status,
+      summary,
+      posted,
+      action_counts: totals,
+      tokens_used: rec.cost ? Number(rec.cost.credits) || 0 : 0,
+      cost_usd: rec.cost ? Number(rec.cost.usd) || 0 : 0,
+      started_at: rec.startedAt,
+      finished_at: rec.finishedAt,
+    }), 0);
+  } catch {
+    /* 绝不反噬主流程 */
+  }
+}
