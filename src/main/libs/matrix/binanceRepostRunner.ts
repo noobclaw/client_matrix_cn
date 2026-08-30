@@ -144,7 +144,7 @@ export interface BinanceRepostTaskOptions {
   signal?: AbortSignal;
   onLog?: (accountId: string, msg: string) => void;
   onItem?: (item: EngageItemResult) => void;
-  onTargets?: (accountId: string, targets: { like?: number; follow?: number; comment?: number }) => void;
+  onTargets?: (accountId: string, targets: { like?: number; follow?: number; comment?: number; post?: number }) => void;
 }
 
 interface RepostCandidate {
@@ -975,7 +975,7 @@ async function publishVideoOne(
         return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + why };
       }
     }
-    if (!r || !r.ok) { closeReason = r?.reason; setAccountStatus(accountId, 'idle'); log('❌ 视频发布失败:' + (r?.reason || 'unknown') + '(平台费已按尝试计)'); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: r?.reason || 'driver_failed' }; }
+    if (!r || !r.ok) { closeReason = r?.reason; setAccountStatus(accountId, 'idle'); log('❌ 视频发布失败:' + (r?.reason || 'unknown')); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: r?.reason || 'driver_failed' }; }
 
     counts.post += 1;
     log('✅ 视频已发布');
@@ -1115,6 +1115,10 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
   const remaining = new Map<string, number>();   // 每号剩余条数(按【尝试】计,同旧 plan 语义:失败不重试,防误判双发)
   for (const id of accIds) remaining.set(id, perAcc);
   const items: EngageItemResult[] = [];
+  // 按账号累计上报(cost + 已搬条数)——publishXxxOne 每条局部归零,不累计会被 sidecar 覆盖乱跳。
+  const agg = new Map<string, { credits: number; usd: number; posts: number }>();
+  // 上报每号目标条数(perAcc),进度卡/每号卡才有分母显示「📤 x/目标」。
+  for (const _id of accIds) { try { opts.onTargets?.(_id, { post: perAcc }); } catch { /* ignore */ } }
   let attempted = 0;
   let lastPublishAt = 0;
   let batchIdx = 0;
@@ -1207,7 +1211,13 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
           try { if (p.candidate.post_id) srcSeen.record(String(p.candidate.post_id)); } catch { /* ignore */ }
           try { const ck = capKeyOf(p.candidate.text); if (ck) srcSeen.record(ck); } catch { /* ignore */ }
         }
-        try { opts.onItem?.(r); } catch { /* ignore */ }
+        // 累计到本号总账,上报累计值(sidecar 按账号取最新 → 累计才不被下一条覆盖)。items 里仍留
+        //   每条的原值(运行记录按条求和才对)。
+        const _a = agg.get(p.accountId) || { credits: 0, usd: 0, posts: 0 };
+        _a.credits += r.chargedCredits || 0; _a.usd += r.chargedUsd || 0;
+        if (r.state === 'success') _a.posts += 1;
+        agg.set(p.accountId, _a);
+        try { opts.onItem?.({ accountId: p.accountId, state: r.state, reason: r.reason, counts: { like: 0, follow: 0, comment: 0, post: _a.posts }, chargedCredits: _a.credits, chargedUsd: _a.usd } as any); } catch { /* ignore */ }
         // 扣费失败 → 停整个任务(余额不足/计费异常时绝不白跑后面的条目)。
         if (r.reason && String(r.reason).indexOf('charge_failed') === 0) { stopReason = String(r.reason); break; }
       }

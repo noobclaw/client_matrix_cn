@@ -342,7 +342,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     // 签名同时满足两件事：可以 sum[k] 索引赋值（逐 key 求和要用），
     //   又保证 like/follow/comment 三个必需键存在（MatrixLiveProgress.done 要求）。
     const zero = (): { [k: string]: number; like: number; follow: number; comment: number } =>
-      ({ like: 0, follow: 0, comment: 0, favorite: 0, lead_new: 0, lead_engaged: 0 });
+      ({ like: 0, follow: 0, comment: 0, favorite: 0, lead_new: 0, lead_engaged: 0, post: 0 });
     // 每号的兜底配额。精准模式按【每条链接的动作数 × 链接数】算,其余模式用区间上限。
     const fallbackTargets = () => {
       if (String(q.engage_mode || '') === 'precise') {
@@ -408,8 +408,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const isBinanceRepost = task.type === 'binance_repost';
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
-    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number }) => {
-      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0, favorite: t.favorite || 0, lead_new: t.lead_new || 0, lead_engaged: t.lead_engaged || 0 };
+    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number; post?: number }) => {
+      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0, favorite: t.favorite || 0, lead_new: t.lead_new || 0, lead_engaged: t.lead_engaged || 0, post: t.post || 0 };
       live.perAccountTargets[accountId] = tg;
       if (live.perAccount[accountId]) live.perAccount[accountId].targets = tg; // 该号真实随机配额覆盖兜底
       recomputeTargets();

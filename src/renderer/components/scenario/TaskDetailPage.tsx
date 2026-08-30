@@ -1900,7 +1900,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           // ⚠️ 按【后缀】认发帖/搬运,别再逐个 id 硬枚举 —— 原来只列到 binance,
                           //    新加的 OKX / Bitget / Bybit / Gate 八个场景全漏,tab 上照旧画「👍0/0 ➕0/0 💬0/0」。
                           //    图标仍按平台给,认不出的用通用 📤 / ♻️。
-                          if (/_repost$/.test(sid)) return <span className="text-gray-400 font-sans">♻️ {i18nService.t('tdRepostWord')}</span>;
+                          if (/_repost$/.test(sid)) { const pd = (ap as any).post?.done ?? 0; const pt = (ap as any).post?.target ?? 0; return <span className="font-mono text-gray-700 dark:text-gray-200">📤 <strong className="text-green-600 dark:text-green-400">{pd}</strong>{pt > 0 ? <span className="text-gray-400 dark:text-gray-500">/{pt}</span> : null} <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{i18nService.t('tdRepostWord')}</span></span>; }
                           if (/_post$/.test(sid)) {
                             const POST_ICON: Record<string, string> = {
                               x_post: '🐦', binance_post: '📊', facebook_post: '👥', reddit_post: '🟠',
