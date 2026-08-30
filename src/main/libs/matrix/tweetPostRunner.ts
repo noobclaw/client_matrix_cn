@@ -129,7 +129,25 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
 // holdAfter=false:多条循环的中间轮 —— 外层已用引用计数吊着窗口(见 runTweetPostTask),
 // 这里不用再留 20s 检查期(窗口反正不关,留了纯属拖慢),也不真关窗(closeKernel 只把计数 -1)。
-async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string, holdAfter = true): Promise<EngageItemResult> {
+// 发帖平台费(2026-08-30):发布成功后按条扣 post 费。失败退避重试 3 次;余额不足不重试。
+async function chargePostAction(authToken: string | undefined, platform: string): Promise<{ ok: boolean; charged?: number; cost_usd?: number; reason?: string }> {
+  if (!authToken) return { ok: false, reason: 'auth_missing' };
+  const once = async () => {
+    try {
+      const res = await fetch(`${baseUrl()}/api/charge/action`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+        body: JSON.stringify({ action_type: 'post', platform, ref_id: null }),
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, reason: String(data?.error || `http_${res.status}`) };
+      return { ok: true, charged: Number(data?.charged) || 0, cost_usd: Number(data?.cost_usd) || 0 };
+    } catch { return { ok: false, reason: 'network_error' }; }
+  };
+  let chg = await once();
+  for (let ci = 1; ci < 4 && !chg.ok && !/insufficient|余额/i.test(String(chg.reason || '')); ci++) { await sleep(3000 * ci); chg = await once(); }
+  return chg;
+}
+async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string, holdAfter = true, chargeFatal?: { reason: string }): Promise<EngageItemResult> {
   const acc = getAccount(accountId);
   const cfg = opts.config;
   const log = (m: string) => { try { opts.onLog?.(accountId, m); } catch { /* ignore */ } };
@@ -141,6 +159,7 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string, 
   await abortableSleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000), opts.signal); // 错峰(可中断:停止立即结束)
 
   const counts = { like: 0, follow: 0, comment: 0, post: 0 };
+  if (chargeFatal && chargeFatal.reason) { return { accountId, state: 'skipped', counts, reason: 'charge_failed:' + chargeFatal.reason }; }
   let chargedCredits = 0, chargedUsd = 0;
   const authToken = opts.authToken || getNoobClawAuthToken() || undefined;
   let finished: { status: string; error?: string } | null = null;
@@ -334,6 +353,21 @@ async function runOne(opts: TweetPostTaskOptions, pack: any, accountId: string, 
       coworkLog('ERROR', 'tweetPost', `[${accountId}] finished error: ${fin.error}`);
       return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: fin.error };
     }
+    // 发布成功(非草稿)按条扣 post 平台费。草稿(autoPublish=false)只烧 token,不扣。
+    if ((cfg as any).autoPublish !== false && counts.post > 0) {
+      for (let pc = 0; pc < counts.post; pc++) {
+        const chg = await chargePostAction(authToken, opts.platform);
+        if (chg && chg.ok) { chargedCredits += Number(chg.charged) || 0; chargedUsd += Number(chg.cost_usd) || 0; }
+        else {
+          const why = String((chg && chg.reason) || 'unknown');
+          if (chargeFatal && !chargeFatal.reason) chargeFatal.reason = why;
+          log(/insufficient|余额/i.test(why) ? '⛔ 余额不足，任务停止（请充值后再跑）' : '⛔ 扣费失败（' + why + '），任务停止');
+          coworkLog('WARN', 'tweetPost', `[${accountId}] post charge failed: ${why}`);
+          return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + why };
+        }
+      }
+      try { opts.onItem?.({ accountId, state: 'success', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
+    }
     coworkLog('INFO', 'tweetPost', `[${accountId}] done 发 ${counts.post} 条 · 扣费 ${chargedCredits}积分`);
     return { accountId, state: 'success', counts, chargedCredits, chargedUsd };
   } catch (e: any) {
@@ -405,6 +439,7 @@ export async function runTweetPostTask(opts: TweetPostTaskOptions): Promise<Enga
   //   newsUsageStore,按 scenarioId + 标题持久化)在客户端,重跑剧本自然换选题。
   //   每条之间隔 10-60s,避免同号短时间连发。
   const perAcc = Math.max(1, Math.min(100, Number((opts.config as any)?.dailyCount) || 1));
+  const chargeFatal = { reason: '' };   // 任务级扣费熔断:任何号 post 扣费失败 → 后续号跳过
   const items = await runPool(opts.accountIds, k, async (id) => {
     let last: EngageItemResult = { accountId: id, state: 'skipped', reason: 'no_run' };
     // 🚨 多条时整轮吊住浏览器窗口(同 binancePostRunner 的说明):skipLease 多拿一份引用计数,
@@ -438,7 +473,8 @@ export async function runTweetPostTask(opts: TweetPostTaskOptions): Promise<Enga
           await abortableSleep(gap, opts.signal);
           if (opts.signal?.aborted) break;
         }
-        last = await runOne(opts, pack, id, n === perAcc - 1);
+        last = await runOne(opts, pack, id, n === perAcc - 1, chargeFatal);
+        if (last.reason && String(last.reason).indexOf('charge_failed') === 0) { opts.onLog?.(id, '⛔ 扣费失败，任务停止'); break; }
         // 登录失效 / 账号被限 / 平台不符 / 本地图丢失 → 剩下的条数必然同样收场,别再空转白等。
         if (last.state === 'skipped' && /login_expired|account_|platform_mismatch|no_local_images/.test(String(last.reason || ''))) {
           opts.onLog?.(id, `⏭ 本号后续 ${perAcc - n - 1} 条跳过(${last.reason})`);
