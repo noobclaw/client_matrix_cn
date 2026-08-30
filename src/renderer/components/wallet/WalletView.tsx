@@ -424,6 +424,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         // 国内版 cnySelected 初始值是 HIDE_WEB3(默认卡密面板)—— 有在线支付通道时
         // 翻回美元档位卡片(卡密仍可从「选择支付方式」弹窗的官方店铺那一行进入)。
         setCnySelected(false);
+      } else if ((info as any)?.cnyPackages?.length && (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW')) {
+        // 只开支付宝/银行卡(后端没下发 chains.WXPAY,但有顶层 cnyPackages)——
+        //   同样翻出卡密面板、落到美元档位卡片;点卡片弹「选择支付方式」(含支付宝),
+        //   卡密仍是弹窗里官方店铺那一行。不设 currentChain(具体渠道点卡片时再定)。
+        setCnySelected(false);
       } else if (info?.chains?.TRON) {
         setCurrentChain('TRON');
       }
@@ -678,6 +683,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     if (t?.packages?.length) return t.packages.map(p => ({ usd: Number(p.usdt), tokens: p.tokens }));
     const w = paymentInfo?.chains?.WXPAY;
     if (w?.packages?.length) return w.packages.map(p => ({ usd: Number(p.usdt), tokens: p.tokens }));
+    // 支付宝/银行卡-only(无 DODO/TRON/WXPAY 链块):读顶层 cnyPackages(usdt 字段承载美元数)。
+    //   否则「只开支付宝」时档位为空,买积分页会空白/退回卡密面板。
+    const cp = (paymentInfo as any)?.cnyPackages as Array<{ usdt: number; tokens: number }> | undefined;
+    if (cp?.length) return cp.map(p => ({ usd: Number(p.usdt), tokens: p.tokens }));
     return [];
   })();
 
