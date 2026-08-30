@@ -839,7 +839,7 @@ async function publishOne(
         try { opts.onItem?.({ accountId, state: posted ? 'success' : 'failed', counts: { ...counts }, chargedCredits, chargedUsd }); } catch { /* ignore */ }
       } else {
         const why = (res && res.reason) || 'unknown';
-        log('⛔ 平台费扣费失败(' + why + '),任务将停止');
+        log(/insufficient|余额/i.test(why) ? '⛔ 任务已暂停,请充值后继续' : '⛔ 任务已停止,请稍后重试');
         coworkLog('WARN', 'binanceRepost', `[${accountId}] ${actionType} charge failed: ${why}`);
         setAccountStatus(accountId, 'idle');
         return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + why };
@@ -969,7 +969,7 @@ async function publishVideoOne(
       else {
         // 扣费失败(余额不足/计费异常)→ 本条记 charge_failed,流水线看到即停整个任务(不能白跑)。
         const why = (chg && chg.reason) || 'unknown';
-        log('⛔ 平台费扣费失败(' + why + '),任务将停止');
+        log(/insufficient|余额/i.test(why) ? '⛔ 任务已暂停,请充值后继续' : '⛔ 任务已停止,请稍后重试');
         coworkLog('WARN', 'binanceRepost', `[${accountId}] repost_video charge failed: ${why}`);
         setAccountStatus(accountId, 'idle');
         return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + why };
@@ -1222,7 +1222,7 @@ export async function runBinanceRepostTask(opts: BinanceRepostTaskOptions): Prom
         if (r.reason && String(r.reason).indexOf('charge_failed') === 0) { stopReason = String(r.reason); break; }
       }
       if (stopReason && stopReason.indexOf('charge_failed') === 0) {
-        for (const id of accIds) opts.onLog?.(id, '⛔ 扣费失败(余额不足或计费异常),任务停止:' + stopReason);
+        for (const id of accIds) opts.onLog?.(id, '⛔ 任务已停止');
         break;
       }
     }

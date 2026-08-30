@@ -113,7 +113,7 @@ export async function runYoutubeDownloadTask(opts: YoutubeDownloadTaskOptions): 
       chargedCredits += c.credits; chargedUsd += c.usd;
       if (!c.ok) {
         const why = String(c.reason || 'unknown');
-        log(/insufficient|余额/i.test(why) ? '⛔ 余额不足,任务停止(请充值后再跑)' : '⛔ 扣费失败(' + why + '),任务停止');
+        log(/insufficient|余额/i.test(why) ? '⛔ 任务已暂停,请充值后继续' : '⛔ 任务已停止,请稍后重试');
         emit('failed', 'charge_failed:' + why);
         coworkLog('WARN', 'ytdl', `charge failed: ${why}`);
         break;

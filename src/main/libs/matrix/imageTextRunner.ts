@@ -300,7 +300,7 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
       } else {
         const why = String((res && res.reason) || 'unknown');
         if (chargeFatal && !chargeFatal.reason) chargeFatal.reason = why;
-        log(/insufficient|余额/i.test(why) ? '⛔ 余额不足,任务停止(请充值后再跑)' : '⛔ 扣费失败(' + why + '),任务停止');
+        log(/insufficient|余额/i.test(why) ? '⛔ 任务已暂停,请充值后继续' : '⛔ 任务已停止,请稍后重试');
         try { coworkLog('WARN', 'imageTextCharge', `[${accountId}] ${a} charge failed: ${why}`); } catch { /* ignore */ }
       }
       return res;

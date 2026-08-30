@@ -402,7 +402,7 @@ async function runOne(opts: BinancePostTaskOptions, pack: any, accountId: string
         else {
           const why = String((chg && chg.reason) || 'unknown');
           if (chargeFatal && !chargeFatal.reason) chargeFatal.reason = why;
-          log(/insufficient|余额/i.test(why) ? '⛔ 余额不足，任务停止（请充值后再跑）' : '⛔ 扣费失败（' + why + '），任务停止');
+          log(/insufficient|余额/i.test(why) ? '⛔ 任务已暂停，请充值后继续' : '⛔ 任务已停止，请稍后重试');
           coworkLog('WARN', 'binancePost', `[${accountId}] post charge failed: ${why}`);
           return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: 'charge_failed:' + why };
         }
@@ -518,7 +518,7 @@ export async function runBinancePostTask(opts: BinancePostTaskOptions): Promise<
           if (opts.signal?.aborted) break;
         }
         last = await runOne(opts, pack, id, n === perAcc - 1, chargeFatal);
-        if (last.reason && String(last.reason).indexOf('charge_failed') === 0) { opts.onLog?.(id, '⛔ 扣费失败，任务停止'); break; }
+        if (last.reason && String(last.reason).indexOf('charge_failed') === 0) { opts.onLog?.(id, '⛔ 任务已停止'); break; }
         // 登录失效 / 账号被限 → 剩下几十条也必然同样收场,别再空转白等(往「能完成的事尽快完成」靠)。
         if (last.state === 'skipped' && /login_expired|account_|platform_mismatch|no_local_images/.test(String(last.reason || ''))) {
           opts.onLog?.(id, `⏭ 本号后续 ${perAcc - n - 1} 条跳过(${last.reason})`);
