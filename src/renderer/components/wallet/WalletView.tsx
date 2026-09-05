@@ -732,7 +732,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY',
   ): Promise<string | null> => {
     setError('');
+    // 过场:下单请求在飞时整页盖一层「正在创建安全订单」,不然点完支付方式到浏览器弹出之间是一段无反馈的空白。
+    setLoading(true);
     const result = await noobClawApi.createSubscriptionOrder(planCode, period, chain);
+    setLoading(false);
     if (result?.order) {
       const order = result.order;
       // 网页支付(银行卡/微信/支付宝):后端给 payUrl → 系统浏览器打开,本页进等待态(同充值)。按响应判,不按 chain 判。
@@ -1690,6 +1693,17 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         `}</style>
       )}
       {header}
+      {/* 下单过场:点了支付方式 → 后端建单 → 系统浏览器打开支付页。中间这一两秒(跨境接口更久)
+          原来没有任何反馈,用户以为卡住。loading 只在建单请求期间为 true。 */}
+      {loading && (
+        <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/55 backdrop-blur-[2px]">
+          <div className="rounded-2xl px-8 py-7 text-center shadow-2xl border dark:border-primary/20 border-primary/15 dark:bg-claude-darkSurface bg-white min-w-[280px]">
+            <div className="w-12 h-12 mx-auto mb-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-bold dark:text-claude-darkText text-claude-text mb-1">{i18nService.t('payCreatingTitle')}</p>
+            <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('payCreatingHint')}</p>
+          </div>
+        </div>
+      )}
       {copyToast && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-primary text-black text-xs font-medium shadow-lg animate-fade-in">
           {i18nService.t('walletCopiedToClipboard')}
