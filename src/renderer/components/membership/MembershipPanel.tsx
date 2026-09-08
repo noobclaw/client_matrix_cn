@@ -173,6 +173,7 @@ const MembershipPanel: React.FC<{
   const [shopOpen, setShopOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');   // 中性提示(取消自动续费的进度/结果),别用红色的 error 框
   // 会员码兑换
   const [redeemInput, setRedeemInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
@@ -221,6 +222,31 @@ const MembershipPanel: React.FC<{
 
   // 订阅下单交给 WalletView,复用「购买积分」那套支付步骤(QR/倒计时/轮询/取消)。失败回错误串在此显示。
   // ⚠️ period 原样传后端 —— 'once'(单月购买)后端有独立定价 + 一次性 product,绝不能折算成 'month'。
+  // 取消自动续费。支付宝(周期扣款):协议在支付站,后端给一个确认页地址 → 系统浏览器打开,用户在页面上确认,
+  //   支付站解约后回调后端;这里每 5s 拉一次会员状态,看到 autoRenew 变 false 即停。Dodo:本地确认后直接调取消接口。
+  const cancelAutoRenew = async () => {
+    setError(''); setInfo('');
+    setBusy(true);
+    try {
+      const r = await noobClawApi.getAutoRenewCancelUrl();
+      if (r && !r.ok) { setError(r.message || r.error || i18nService.t('subCancelRenewFailed')); return; }
+      if (r && r.url) {
+        window.electron?.shell?.openExternal(r.url);
+        setInfo(i18nService.t('subCancelRenewOpened'));
+        for (let i = 0; i < 36; i++) {
+          await new Promise((ok) => setTimeout(ok, 5000));
+          const data = await noobClawApi.getPlanConfig();
+          if (data && data.current && !data.current.autoRenew) { setCfg(data); writeCachedPlanConfig(data); setInfo(i18nService.t('subCancelRenewDone')); return; }
+        }
+        return;
+      }
+      if (!window.confirm(i18nService.t('subCancelRenewConfirm'))) return;
+      const c = await noobClawApi.cancelSubscription();
+      if (c && c.ok) { setInfo(i18nService.t('subCancelRenewDone')); await load(); }
+      else setError((c && (c.message || c.error)) || i18nService.t('subCancelRenewFailed'));
+    } finally { setBusy(false); }
+  };
+
   const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY', autoRenewSel?: boolean) => {
     if (!onPay) return;
     setBusy(true); setError('');
@@ -283,6 +309,7 @@ const MembershipPanel: React.FC<{
 
 
       {error && <div className="mb-3 p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-red-400">{error}</div>}
+      {info && <div className="mb-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-400">{info}</div>}
       {/* 中性提示条(不是报错)—— 例如「取消自动续费请在官网完成」 */}
 
       {/* 套餐卡(4 档,免费版第一) */}
@@ -347,7 +374,7 @@ const MembershipPanel: React.FC<{
               ) : isFree ? (
                 <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{!subActive ? i18nService.t('mpCurrentPlan') : i18nService.t('mpFree')}</button>
               ) : isCurActive && autoOn ? (
-                <button disabled title={i18nService.t('subAutoRenewHint')} className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{cta}</button>
+                <button disabled={busy} title={i18nService.t('subAutoRenewHint')} onClick={() => cancelAutoRenew()} className="mt-3 py-2 rounded-lg text-xs font-bold text-center dark:text-claude-darkTextSecondary text-claude-textSecondary hover:brightness-125 disabled:opacity-50" style={{ background: 'rgba(255,255,255,0.06)' }}>{i18nService.t('subManageAutoRenew')}</button>
               ) : (
                 <button disabled={busy} onClick={() => choosePlan(plan.code)} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{cta}</button>
               )}

@@ -284,6 +284,22 @@ class NoobClawApiService {
 
 
   /**
+   * 「取消自动续费」按钮点了以后去哪:支付宝周期扣款 → 后端给支付站确认页地址(url),系统浏览器打开、
+   *   用户在页面上确认,支付站解约后回调后端;Dodo/未开 → url 为 null,走 cancelSubscription() 直接取消。
+   */
+  async getAutoRenewCancelUrl(): Promise<{ ok: boolean; url?: string | null; provider?: string | null; message?: string; error?: string } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/plan/subscription/cancel-url`, { headers: this.getAuthHeaders() });
+      const data = await res.json();
+      if (res.status === 404) return { ok: true, url: null };   // 老后端没有这个接口:按直接取消处理
+      if (!res.ok) return { ok: false, error: data.error, message: data.message };
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * 取消自动续费(银行卡订阅)。语义是【到期取消】:当前周期已付费,剩余天数照用到底,
    *   只是不再自动扣下一期 —— 提示文案必须说清楚,别让用户以为立刻失去会员。
    */
