@@ -763,6 +763,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     if (result?.code === 'PENDING_LIMIT') return i18nService.t('walletPendingLimitError');
     if (result?.code === 'TRON_DISABLED') return i18nService.t('wvTronDisabledSub');
     if (result?.code === 'WXPAY_DISABLED' || result?.code === 'WXPAY_CREATE_FAILED') return i18nService.t('wxpayCreateFailed');
+    // 自动续费开关相关的新错误码:后端 message 是中文,这里按语言本地化。
+    if (result?.code === 'AUTORENEW_UNSUPPORTED') return i18nService.t('payAutoRenewUnsupported');
+    if (result?.code === 'DODO_ONE_TIME_UNAVAILABLE') return i18nService.t('payOneTimeUnavailable');
+    if (result?.code === 'CARD_PROVIDER_UNAVAILABLE' || result?.code === 'CARD_DISABLED') return i18nService.t('payCardProviderUnavailable');
+    if (result?.code === 'MONTH_CARD_ONLY') return i18nService.t('payMonthCardOnly');
     return result?.error || i18nService.t('walletCreateOrderFailed');
   };
 
