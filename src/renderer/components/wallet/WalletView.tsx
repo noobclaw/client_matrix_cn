@@ -730,11 +730,12 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     //   并映射到 Dodo 的一次性 product。折算成 'month' 会少收钱且开成自动续费,性质完全错。
     period: 'month' | 'quarter' | 'half' | 'year' | 'once',
     chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY',
+    autoRenew?: boolean,
   ): Promise<string | null> => {
     setError('');
     // 过场:下单请求在飞时整页盖一层「正在创建安全订单」,不然点完支付方式到浏览器弹出之间是一段无反馈的空白。
     setLoading(true);
-    const result = await noobClawApi.createSubscriptionOrder(planCode, period, chain);
+    const result = await noobClawApi.createSubscriptionOrder(planCode, period, chain, autoRenew);
     setLoading(false);
     if (result?.order) {
       const order = result.order;
@@ -2009,7 +2010,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <MembershipPanel onPay={startSubscriptionPay} payMethods={payMethodsEff} usdCnyRate={paymentInfo?.usdCnyRate} />
+          <MembershipPanel onPay={startSubscriptionPay} payMethods={payMethodsEff} autoRenew={paymentInfo?.autoRenew} usdCnyRate={paymentInfo?.usdCnyRate} />
         </div>
         )}
 
@@ -2157,13 +2158,14 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   {showM('card') && (
                     <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => handlePayPackageWith('CARD', payPkg.usd)} />
                   )}
-                  {showM('wxpay') && (
-                    <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('WXPAY', payPkg.usd)} />
-                  )}
                   {showM('alipay') && (
                     <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('ALIPAY', payPkg.usd)} />
                   )}
-                  {showM('shop') && (
+                  {showM('wxpay') && (
+                    <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('WXPAY', payPkg.usd)} />
+                  )}
+                  {/* 顺序(产品定):银行卡 → 支付宝 → 微信 → 国际版:USDT → BNB → 店铺;国内版:店铺 → USDT → BNB。每行显示与否由后端 payMethods 决定。 */}
+                  {HIDE_WEB3 && showM('shop') && (
                     <MethodRow
                       icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
                       title={i18nService.t('payShopTitle')}
@@ -2172,7 +2174,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       onClick={() => handlePayPackageWith('SHOP', payPkg.usd)}
                     />
                   )}
-                  {!HIDE_WEB3 && showM('usdt') && (
+                  {showM('usdt') && (
                     <MethodRow
                       icon={<ChainLogo chain="TRON" size={22} />}
                       title="USDT · TRC20"
@@ -2183,7 +2185,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       onClick={() => handlePayPackageWith('TRON', payPkg.usd)}
                     />
                   )}
-                  {!HIDE_WEB3 && showM('bnb') && (
+                  {showM('bnb') && (
                     <MethodRow
                       icon={<ChainLogo chain="BSC" size={22} />}
                       title="BNB · BSC"
@@ -2192,6 +2194,15 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                         : i18nService.t('payBnbRateLoading')}
                       disabled={!(bnbPrice > 0)}
                       onClick={() => handlePayPackageWith('BSC', payPkg.usd)}
+                    />
+                  )}
+                  {!HIDE_WEB3 && showM('shop') && (
+                    <MethodRow
+                      icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
+                      title={i18nService.t('payShopTitle')}
+                      desc={redeemInfo ? i18nService.t('payShopDescTopup') : i18nService.t('payUnavailable')}
+                      disabled={!redeemInfo}
+                      onClick={() => handlePayPackageWith('SHOP', payPkg.usd)}
                     />
                   )}
                 </div>

@@ -5,7 +5,7 @@ import { i18nService } from '../../services/i18n';
 import { HIDE_WEB3 } from '../../buildFlags';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
-import type { PayMethods } from '../../services/noobclawApi';
+import type { PayMethods, AutoRenewFlags } from '../../services/noobclawApi';
 import { readCachedPlanConfig, writeCachedPlanConfig } from '../../services/paymentInfoCache';
 
 // 嵌入「我的充值」页「会员订阅」tab 的会员面板(无独立页面 chrome)。
@@ -89,11 +89,14 @@ function cnyRef(usd?: number | null, rate?: number | null): string {
 const MethodRow: React.FC<{
   icon: React.ReactNode; title: string; desc: string; badge?: string;
   disabled?: boolean; onClick: () => void;
-}> = ({ icon, title, desc, badge, disabled, onClick }) => (
-  <button
-    type="button"
-    disabled={disabled}
+  /** 「自动续费」切换钮(只在后端 autoRenew.<方式> 为 true 时给)。点钮只切开关,不触发下单。 */
+  renew?: { on: boolean; onToggle: (v: boolean) => void };
+}> = ({ icon, title, desc, badge, disabled, onClick, renew }) => (
+  <div
+    role="button"
+    tabIndex={disabled ? -1 : 0}
     onClick={disabled ? undefined : onClick}
+    onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(); } }}
     className={`w-full flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all ${disabled
       ? 'opacity-40 cursor-not-allowed dark:border-claude-darkBorder border-claude-border'
       : 'dark:border-claude-darkBorder border-claude-border hover:border-primary/60 hover:bg-primary/5 cursor-pointer'}`}
@@ -106,8 +109,20 @@ const MethodRow: React.FC<{
       </span>
       <span className="block text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">{desc}</span>
     </span>
+    {renew && (
+      <span
+        className="shrink-0 flex items-center gap-1.5 mr-1"
+        onClick={(e) => { e.stopPropagation(); renew.onToggle(!renew.on); }}
+        title={i18nService.t('payAutoRenewHint')}
+      >
+        <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('payAutoRenew')}</span>
+        <span className={`relative inline-block w-9 h-5 rounded-full transition-colors ${renew.on ? 'bg-primary' : 'bg-gray-400/60'}`}>
+          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${renew.on ? 'left-[18px]' : 'left-0.5'}`} />
+        </span>
+      </span>
+    )}
     <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">›</span>
-  </button>
+  </div>
 );
 
 // ⚠️ 用函数【每次调用求值】i18n —— 模块级 const 会在加载时(语言默认中文)冻结,切英文/小语种后周期文案仍中文。
@@ -133,12 +148,14 @@ function fmtCredits(n: number): string {
 }
 
 const MembershipPanel: React.FC<{
-  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY') => Promise<string | null>;
+  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY', autoRenew?: boolean) => Promise<string | null>;
   /** 各支付方式显示开关(后端 /payment/info 的 payMethods,admin 可配)。缺省(老后端)= 全部显示。 */
   payMethods?: PayMethods;
+  /** 哪些方式给「自动续费」切换钮(后端 /payment/info 的 autoRenew)。缺省 = 都不给。 */
+  autoRenew?: AutoRenewFlags;
   /** 美元→人民币参考汇率(后端 /payment/info 下发)。 */
   usdCnyRate?: number;
-}> = ({ onPay, payMethods, usdCnyRate }) => {
+}> = ({ onPay, payMethods, autoRenew, usdCnyRate }) => {
   // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
   // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
@@ -147,6 +164,11 @@ const MembershipPanel: React.FC<{
   const [period, setPeriod] = useState<Period>('quarter');
   // 支付方式弹窗:非 null = 正在为这个档位选支付方式。
   const [methodPlan, setMethodPlan] = useState<string | null>(null);
+  // 每个支付方式行上的「自动续费」切换钮状态。默认开(能续的就默认续),用户可关。
+  const [renewOn, setRenewOn] = useState<Record<string, boolean>>({ card: true, alipay: true, wxpay: true });
+  const renewProps = (k: 'card' | 'alipay' | 'wxpay') => (autoRenew && autoRenew[k]
+    ? { on: renewOn[k] !== false, onToggle: (v: boolean) => setRenewOn((s) => ({ ...s, [k]: v })) }
+    : undefined);
   // 官方店铺(卡密)弹窗:去店铺按钮 + 兑换框同窗 —— 直接跳走的话用户买完回来不知道在哪填码。
   const [shopOpen, setShopOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -199,10 +221,10 @@ const MembershipPanel: React.FC<{
 
   // 订阅下单交给 WalletView,复用「购买积分」那套支付步骤(QR/倒计时/轮询/取消)。失败回错误串在此显示。
   // ⚠️ period 原样传后端 —— 'once'(单月购买)后端有独立定价 + 一次性 product,绝不能折算成 'month'。
-  const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY') => {
+  const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY', autoRenewSel?: boolean) => {
     if (!onPay) return;
     setBusy(true); setError('');
-    const err = await onPay(planCode, period, chain);
+    const err = await onPay(planCode, period, chain, autoRenewSel);
     if (err) setError(err);
     setBusy(false);
   };
@@ -210,7 +232,10 @@ const MembershipPanel: React.FC<{
   const payWith = (m: PayMethod, planCode: string) => {
     setMethodPlan(null);
     if (m === 'SHOP') { setRedeemMsg({ text: '', color: '' }); setShopOpen(true); return; }
-    subscribe(planCode, m);
+    // 有切换钮的方式把开关状态带上;没有的(USDT/BNB,或后端没开)不带 → 服务端沿用老语义。
+    const k = m === 'CARD' ? 'card' : m === 'ALIPAY' ? 'alipay' : m === 'WXPAY' ? 'wxpay' : null;
+    const sel = k && autoRenew && autoRenew[k] ? renewOn[k] !== false : undefined;
+    subscribe(planCode, m, sel);
   };
 
   const submitRedeem = async () => {
@@ -359,16 +384,18 @@ const MembershipPanel: React.FC<{
             <div className="space-y-2.5">
               {/* 顺序是产品定的:银行卡 → 微信 → 支付宝 → 官方店铺 → USDT → BNB。
                   国内版(HIDE_WEB3)照旧不露出 USDT/BNB。前三个下单后跳【支付站】(域名 admin 可配)付款;每一行显示与否由后端 payMethods 决定。 */}
+              {/* 顺序(产品定):银行卡 → 支付宝 → 微信 → 国际版:USDT → BNB → 店铺;国内版:店铺 → USDT → BNB。
+                  每行显示与否由后端 payMethods(admin)决定;银行卡/支付宝/微信在后端 autoRenew 放行时多一个「自动续费」切换钮。 */}
               {showM('card') && (
-                <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => payWith('CARD', methodPlan)} />
-              )}
-              {showM('wxpay') && (
-                <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => payWith('WXPAY', methodPlan)} />
+                <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} renew={renewProps('card')} onClick={() => payWith('CARD', methodPlan)} />
               )}
               {showM('alipay') && (
-                <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} onClick={() => payWith('ALIPAY', methodPlan)} />
+                <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} renew={renewProps('alipay')} onClick={() => payWith('ALIPAY', methodPlan)} />
               )}
-              {showM('shop') && (
+              {showM('wxpay') && (
+                <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} renew={renewProps('wxpay')} onClick={() => payWith('WXPAY', methodPlan)} />
+              )}
+              {HIDE_WEB3 && showM('shop') && (
                 <MethodRow
                   icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
                   title={i18nService.t('payShopTitle')}
@@ -376,11 +403,19 @@ const MembershipPanel: React.FC<{
                   onClick={() => payWith('SHOP', methodPlan)}
                 />
               )}
-              {!HIDE_WEB3 && showM('usdt') && (
+              {showM('usdt') && (
                 <MethodRow icon={<ChainLogo chain="TRON" size={22} />} title="USDT · TRC20" desc={i18nService.t('payChainAuto')} onClick={() => payWith('TRON', methodPlan)} />
               )}
-              {!HIDE_WEB3 && showM('bnb') && (
+              {showM('bnb') && (
                 <MethodRow icon={<ChainLogo chain="BSC" size={22} />} title="BNB · BSC" desc={i18nService.t('payChainAuto')} onClick={() => payWith('BSC', methodPlan)} />
+              )}
+              {!HIDE_WEB3 && showM('shop') && (
+                <MethodRow
+                  icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
+                  title={i18nService.t('payShopTitle')}
+                  desc={i18nService.t('payShopDescSub')}
+                  onClick={() => payWith('SHOP', methodPlan)}
+                />
               )}
             </div>
           </div>

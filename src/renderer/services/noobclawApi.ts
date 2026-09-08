@@ -57,6 +57,8 @@ export interface ChainBlock {
 
 /** 各支付方式的显示开关(后端 admin 可配,随 /payment/info 下发)。字段缺省 = 显示。 */
 export interface PayMethods { card?: boolean; wxpay?: boolean; alipay?: boolean; shop?: boolean; usdt?: boolean; bnb?: boolean }
+/** 各方式是否给「自动续费」切换钮(后端 admin 开关 && 通道真能续)。 */
+export interface AutoRenewFlags { card?: boolean; alipay?: boolean; wxpay?: boolean }
 
 export interface PaymentInfo {
   treasuryWallet: string;
@@ -74,6 +76,9 @@ export interface PaymentInfo {
   purchaseNoobPerDollarMax?: number;
   /** 各支付方式显示开关。老后端没有这个字段 → 客户端按全部显示处理。 */
   payMethods?: PayMethods;
+  autoRenew?: AutoRenewFlags;
+  /** 银行卡走哪家收单(dodo / paysite / stripe / creem),仅展示用,分流在服务端。 */
+  cardProvider?: string;
   /**
    * 美元→人民币参考汇率。国内版拿它把美元标价折成「≈¥」显示。
    * 顶层下发(不在 WXPAY 块里)—— 微信通道关掉后那块整块不下发,汇率会跟着没,
@@ -260,12 +265,14 @@ class NoobClawApiService {
     planCode: string,
     period: 'month' | 'quarter' | 'half' | 'year' | 'once',
     chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = 'TRON',
+    // 自动续费开关(支付方式行上的切换钮)。带上后服务端按它归一周期:开 → 连续包月;关 → 一次性买断。
+    autoRenew?: boolean,
   ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; payUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chain, productType: 'subscription', planCode, period }),
+        body: JSON.stringify({ chain, productType: 'subscription', planCode, period, ...(typeof autoRenew === 'boolean' ? { autoRenew } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) return { error: data.message || data.error, code: data.code };
