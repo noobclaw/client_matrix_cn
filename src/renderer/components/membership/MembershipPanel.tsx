@@ -426,7 +426,7 @@ const MembershipPanel: React.FC<{
                 <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} renew={renewProps('card')} onClick={() => payWith('CARD', methodPlan)} />
               )}
               {showM('alipay') && (
-                <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} renew={renewProps('alipay')} onClick={() => payWith('ALIPAY', methodPlan)} />
+                <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} renew={renewProps('alipay')} onClick={() => payWith('ALIPAY', methodPlan)} />
               )}
               {showM('wxpay') && (
                 <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} renew={renewProps('wxpay')} onClick={() => payWith('WXPAY', methodPlan)} />

@@ -2164,7 +2164,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => handlePayPackageWith('CARD', payPkg.usd)} />
                   )}
                   {showM('alipay') && (
-                    <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('ALIPAY', payPkg.usd)} />
+                    <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => handlePayPackageWith('ALIPAY', payPkg.usd)} />
                   )}
                   {showM('wxpay') && (
                     <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('WXPAY', payPkg.usd)} />
