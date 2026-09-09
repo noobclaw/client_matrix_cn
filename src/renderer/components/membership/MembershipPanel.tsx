@@ -108,19 +108,20 @@ const MethodRow: React.FC<{
         {badge && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary text-black">{badge}</span>}
       </span>
       <span className="block text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">{desc}</span>
-    </span>
-    {renew && (
-      <span
-        className="shrink-0 flex items-center gap-1.5 mr-1"
-        onClick={(e) => { e.stopPropagation(); renew.onToggle(!renew.on); }}
-        title={i18nService.t('payAutoRenewHint')}
-      >
-        <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('payAutoRenew')}</span>
-        <span className={`relative inline-block w-9 h-5 rounded-full transition-colors ${renew.on ? 'bg-primary' : 'bg-gray-400/60'}`}>
-          <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${renew.on ? 'left-[18px]' : 'left-0.5'}`} />
+      {renew && (
+        // 「自动续费」放在说明文字下方,做成低调的小开关(不抢主按钮的视觉),点它只切开关不触发下单
+        <span
+          className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary opacity-80 hover:opacity-100 select-none"
+          onClick={(e) => { e.stopPropagation(); renew.onToggle(!renew.on); }}
+          title={i18nService.t('payAutoRenewHint')}
+        >
+          <span className={`relative inline-block w-7 h-4 rounded-full transition-colors ${renew.on ? 'bg-primary/80' : 'bg-gray-400/40'}`}>
+            <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white/95 shadow-sm transition-all ${renew.on ? 'left-[14px]' : 'left-0.5'}`} />
+          </span>
+          <span>{i18nService.t('payAutoRenew')}</span>
         </span>
-      </span>
-    )}
+      )}
+    </span>
     <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">›</span>
   </div>
 );
