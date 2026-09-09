@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { i18nService } from '../../services/i18n';
 
-import { HIDE_WEB3 } from '../../buildFlags';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import type { PayMethods, AutoRenewFlags } from '../../services/noobclawApi';
@@ -421,7 +420,7 @@ const MembershipPanel: React.FC<{
             <div className="space-y-2.5">
               {/* 顺序是产品定的:银行卡 → 微信 → 支付宝 → 官方店铺 → USDT → BNB。
                   国内版(HIDE_WEB3)照旧不露出 USDT/BNB。前三个下单后跳【支付站】(域名 admin 可配)付款;每一行显示与否由后端 payMethods 决定。 */}
-              {/* 顺序(产品定):银行卡 → 支付宝 → 微信 → 国际版:USDT → BNB → 店铺;国内版:店铺 → USDT → BNB。
+              {/* 顺序(产品定):银行卡 → 支付宝 → 微信 → 国际版:USDT → BNB → 店铺;国内版与国际版一致(2026-09-09 起)。
                   每行显示与否由后端 payMethods(admin)决定;银行卡/支付宝/微信在后端 autoRenew 放行时多一个「自动续费」切换钮。 */}
               {showM('card') && (
                 <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} renew={renewProps('card')} onClick={() => payWith('CARD', methodPlan)} />
@@ -432,21 +431,13 @@ const MembershipPanel: React.FC<{
               {showM('wxpay') && (
                 <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} renew={renewProps('wxpay')} onClick={() => payWith('WXPAY', methodPlan)} />
               )}
-              {HIDE_WEB3 && showM('shop') && (
-                <MethodRow
-                  icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
-                  title={i18nService.t('payShopTitle')}
-                  desc={i18nService.t('payShopDescSub')}
-                  onClick={() => payWith('SHOP', methodPlan)}
-                />
-              )}
               {showM('usdt') && (
                 <MethodRow icon={<ChainLogo chain="TRON" size={22} />} title="USDT · TRC20" desc={i18nService.t('payChainAuto')} onClick={() => payWith('TRON', methodPlan)} />
               )}
               {showM('bnb') && (
                 <MethodRow icon={<ChainLogo chain="BSC" size={22} />} title="BNB · BSC" desc={i18nService.t('payChainAuto')} onClick={() => payWith('BSC', methodPlan)} />
               )}
-              {!HIDE_WEB3 && showM('shop') && (
+              {showM('shop') && (
                 <MethodRow
                   icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
                   title={i18nService.t('payShopTitle')}

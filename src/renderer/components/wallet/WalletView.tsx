@@ -2169,16 +2169,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   {showM('wxpay') && (
                     <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('WXPAY', payPkg.usd)} />
                   )}
-                  {/* 顺序(产品定):银行卡 → 支付宝 → 微信 → 国际版:USDT → BNB → 店铺;国内版:店铺 → USDT → BNB。每行显示与否由后端 payMethods 决定。 */}
-                  {HIDE_WEB3 && showM('shop') && (
-                    <MethodRow
-                      icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
-                      title={i18nService.t('payShopTitle')}
-                      desc={redeemInfo ? i18nService.t('payShopDescTopup') : i18nService.t('payUnavailable')}
-                      disabled={!redeemInfo}
-                      onClick={() => handlePayPackageWith('SHOP', payPkg.usd)}
-                    />
-                  )}
+                  {/* 顺序(产品定):银行卡 → 支付宝 → 微信 → 国际版:USDT → BNB → 店铺;国内版与国际版一致(2026-09-09 起)。每行显示与否由后端 payMethods 决定。 */}
                   {showM('usdt') && (
                     <MethodRow
                       icon={<ChainLogo chain="TRON" size={22} />}
@@ -2201,7 +2192,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       onClick={() => handlePayPackageWith('BSC', payPkg.usd)}
                     />
                   )}
-                  {!HIDE_WEB3 && showM('shop') && (
+                  {showM('shop') && (
                     <MethodRow
                       icon={<span style={{ fontSize: 20, lineHeight: 1, color: '#facc15', fontWeight: 'bold' }}>¥</span>}
                       title={i18nService.t('payShopTitle')}
