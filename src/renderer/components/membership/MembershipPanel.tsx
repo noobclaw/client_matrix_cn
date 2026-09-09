@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { i18nService } from '../../services/i18n';
 
@@ -174,6 +174,9 @@ const MembershipPanel: React.FC<{
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');   // 中性提示(取消自动续费的进度/结果),别用红色的 error 框
+  const [polling, setPolling] = useState(false);   // 取消页确认中:只禁「取消」按钮本身,别把整个面板的 busy 吊住 3 分钟
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   // 会员码兑换
   const [redeemInput, setRedeemInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
@@ -233,18 +236,24 @@ const MembershipPanel: React.FC<{
       if (r && r.url) {
         window.electron?.shell?.openExternal(r.url);
         setInfo(i18nService.t('subCancelRenewOpened'));
-        for (let i = 0; i < 36; i++) {
-          await new Promise((ok) => setTimeout(ok, 5000));
-          const data = await noobClawApi.getPlanConfig();
-          if (data && data.current && !data.current.autoRenew) { setCfg(data); writeCachedPlanConfig(data); setInfo(i18nService.t('subCancelRenewDone')); return; }
-        }
+        setBusy(false); setPolling(true);
+        try {
+          for (let i = 0; i < 36; i++) {
+            await new Promise((ok) => setTimeout(ok, 5000));
+            if (!mountedRef.current) return;   // 用户切走了:别再打接口、别往已卸载组件 setState
+            const data = await noobClawApi.getPlanConfig();
+            if (!mountedRef.current) return;
+            if (data && data.current && !data.current.autoRenew) { setCfg(data); writeCachedPlanConfig(data); setInfo(i18nService.t('subCancelRenewDone')); return; }
+          }
+          setInfo(i18nService.t('subCancelRenewTimeout'));
+        } finally { if (mountedRef.current) setPolling(false); }
         return;
       }
       if (!window.confirm(i18nService.t('subCancelRenewConfirm'))) return;
       const c = await noobClawApi.cancelSubscription();
       if (c && c.ok) { setInfo(i18nService.t('subCancelRenewDone')); await load(); }
       else setError((c && (c.message || c.error)) || i18nService.t('subCancelRenewFailed'));
-    } finally { setBusy(false); }
+    } finally { if (mountedRef.current) setBusy(false); }
   };
 
   const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY', autoRenewSel?: boolean) => {
@@ -374,7 +383,7 @@ const MembershipPanel: React.FC<{
               ) : isFree ? (
                 <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{!subActive ? i18nService.t('mpCurrentPlan') : i18nService.t('mpFree')}</button>
               ) : isCurActive && autoOn ? (
-                <button disabled={busy} title={i18nService.t('subAutoRenewHint')} onClick={() => cancelAutoRenew()} className="mt-3 py-2 rounded-lg text-xs font-bold text-center dark:text-claude-darkTextSecondary text-claude-textSecondary hover:brightness-125 disabled:opacity-50" style={{ background: 'rgba(255,255,255,0.06)' }}>{i18nService.t('subManageAutoRenew')}</button>
+                <button disabled={busy || polling} title={i18nService.t('subAutoRenewHint')} onClick={() => cancelAutoRenew()} className="mt-3 py-2 rounded-lg text-xs font-bold text-center dark:text-claude-darkTextSecondary text-claude-textSecondary hover:brightness-125 disabled:opacity-50" style={{ background: 'rgba(255,255,255,0.06)' }}>{i18nService.t('subManageAutoRenew')}</button>
               ) : (
                 <button disabled={busy} onClick={() => choosePlan(plan.code)} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{cta}</button>
               )}

@@ -290,12 +290,12 @@ class NoobClawApiService {
   async getAutoRenewCancelUrl(): Promise<{ ok: boolean; url?: string | null; provider?: string | null; message?: string; error?: string } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/plan/subscription/cancel-url`, { headers: this.getAuthHeaders() });
+      if (res.status === 404) return { ok: true, url: null };   // 老后端没有这个接口(返回的是 HTML,不能先 json()):按直接取消处理
       const data = await res.json();
-      if (res.status === 404) return { ok: true, url: null };   // 老后端没有这个接口:按直接取消处理
       if (!res.ok) return { ok: false, error: data.error, message: data.message };
       return data;
     } catch {
-      return null;
+      return { ok: false, error: 'network' };   // 网络异常要报错,不能落成「弹确认框直接取消」
     }
   }
 
