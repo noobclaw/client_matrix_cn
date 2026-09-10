@@ -295,6 +295,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     return cached?.chains?.TRON ? 'TRON' : 'BSC';
   });
   const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
+  // 成功页显示【本单到账】的积分(后端 /status 的 order.tokens_purchased),不是账户总余额;订阅单为 0 时退回显示余额。
+  const [successTokens, setSuccessTokens] = useState<number>(0);
   // 顶部卡片下的两个 tab:会员订阅 / 购买积分。初始值来自 openWallet() 指定的目标 tab。
   const [topTab, setTopTab] = useState<'subscription' | 'topup'>(getPendingWalletTab());
   const [loading, setLoading] = useState(false);
@@ -580,6 +582,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     const interval = setInterval(async () => {
       const result = await noobClawApi.pollOrderStatus(pendingOrderNo);
       if (result?.order?.status === 'completed') {
+        setSuccessTokens(Number(result.order.tokens_purchased) || 0);
         await noobClawAuth.refreshBalance();
         setStep('success');
       } else if (result?.order?.status === 'expired' || result?.order?.status === 'cancelled') {
@@ -2487,7 +2490,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               </div>
               <p className="font-bold text-primary mb-1">{i18nService.t('walletPaymentConfirmed')}</p>
               <p className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary mb-4">{i18nService.t('walletTokensAdded')}</p>
-              <p className="text-xl font-bold dark:text-claude-darkText text-claude-text">{(authState.tokenBalance / 1_000_000).toFixed(2)}{i18nService.t('walletMTokenUnit')}</p>
+              <p className="text-xl font-bold dark:text-claude-darkText text-claude-text">{((successTokens > 0 ? successTokens : authState.tokenBalance) / 1_000_000).toFixed(2)}{i18nService.t('walletMTokenUnit')}</p>
               <button onClick={() => { resetPayState(); loadData(); }} className="mt-4 text-sm text-primary hover:underline">
                 {i18nService.t('walletBackToWallet')}
               </button>
