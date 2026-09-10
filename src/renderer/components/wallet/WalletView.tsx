@@ -121,7 +121,7 @@ function getStatusColor(status: string): string {
 
 // Network logo for the deposit-chain selector + order rows. Inline SVG so we
 // have a single source of truth and no extra asset fetch. Sizes are square px.
-const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'; size?: number }> = ({ chain, size = 18 }) => {
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY'; size?: number }> = ({ chain, size = 18 }) => {
   if (chain === 'WXPAY') {
     // 微信支付绿气泡(简化标)
     return (
@@ -220,12 +220,12 @@ function amountForDisplay(chain: string, order: any, result: any): string {
     if (cny != null && !isNaN(parseFloat(String(cny)))) return String(parseFloat(String(cny)));
     return String(parseFloat(order?.usd_amount ?? 0));
   }
-  if (chain === 'DODO') return String(parseFloat(order?.usd_amount));
+  if (chain === 'DODO' || chain === 'CREEM') return String(parseFloat(order?.usd_amount));
   if (chain === 'TRON') return String(parseFloat(order?.usdt_amount));
   return String(parseFloat(order?.bnb_amount));
 }
 
-function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY') {
+function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY') {
   if (!info) return null;
   const fromChains: any = info.chains && (info.chains as any)[chain];
   if (fromChains) return fromChains;
@@ -274,7 +274,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // right unit + treasury address. Kept as a single string + chain rather
   // than two separate states to avoid drift between the two on chain switch.
   const [pendingAmount, setPendingAmount] = useState('');
-  const [pendingChain, setPendingChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'>('BSC');
+  const [pendingChain, setPendingChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY'>('BSC');
   const [pendingCreatedAt, setPendingCreatedAt] = useState('');
   // 微信 Native 下单返回的 weixin:// 付款链接(渲染成二维码)。只在下单响应里有,
   // 为了让「充值记录 → 查看待支付订单」也能重新展示,同时落一份 localStorage
@@ -287,7 +287,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // USDT is the more common new-user path. lazy-init reads the cached
   // paymentInfo so on second-and-later visits the picker doesn't flash
   // BSC for one frame before flipping to TRON.
-  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'>(() => {
+  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY'>(() => {
     const cached = readCachedPaymentInfo();
     // 银行卡覆盖面最广且是推荐渠道 → 有就默认选它。
     if (cached?.chains?.DODO) return 'DODO';
@@ -631,7 +631,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     };
   }, [partnerColor]);
 
-  const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = currentChain) => {
+  const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY' = currentChain) => {
     setLoading(true);
     setError('');
     const result = await noobClawApi.createOrder(amount, chain);
@@ -729,7 +729,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     // ⚠️ 'once'(单月购买)原样传后端 —— 后端对它有独立定价(price_usd_once,比连续包月贵)
     //   并映射到 Dodo 的一次性 product。折算成 'month' 会少收钱且开成自动续费,性质完全错。
     period: 'month' | 'quarter' | 'half' | 'year' | 'once',
-    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY',
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY',
     autoRenew?: boolean,
   ): Promise<string | null> => {
     setError('');
@@ -801,11 +801,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
   const handleViewPendingOrder = (order: any) => {
     const rawChain = (order.chain || 'BSC').toUpperCase();
-    const chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = rawChain === 'TRON' ? 'TRON' : rawChain === 'WXPAY' ? 'WXPAY'
-      : rawChain === 'CARD' ? 'CARD' : rawChain === 'ALIPAY' ? 'ALIPAY' : rawChain === 'DODO' ? 'DODO' : 'BSC';
+    const chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY' = rawChain === 'TRON' ? 'TRON' : rawChain === 'WXPAY' ? 'WXPAY'
+      : rawChain === 'CARD' ? 'CARD' : rawChain === 'ALIPAY' ? 'ALIPAY' : rawChain === 'DODO' ? 'DODO' : rawChain === 'CREEM' ? 'CREEM' : 'BSC';
     const amountStr = (chain === 'WXPAY' || chain === 'CARD' || chain === 'ALIPAY')
       ? String(parseFloat(order.face_value_rmb ?? order.usd_amount ?? 0))
-      : chain === 'DODO' ? String(parseFloat(order.usd_amount ?? 0))
+      : (chain === 'DODO' || chain === 'CREEM') ? String(parseFloat(order.usd_amount ?? 0))
       : chain === 'TRON'
       ? String(parseFloat(order.usdt_amount))
       : String(parseFloat(order.bnb_amount));
@@ -1071,7 +1071,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 // 银行卡(Dodo)订单:chain='DODO',bnb/usdt 同样都为 NULL —— 必须和 WXPAY 一样
                 //   先于卡密的第 4 条兜底判掉,否则信用卡买的订阅/积分会被标成「CNY 卡密」。
                 // 银行卡/支付宝(支付站)订单与 Dodo 同形:bnb/usdt 都为 NULL,同样要先于卡密兜底判掉。
-                const isDodo = ['DODO', 'CARD', 'ALIPAY'].indexOf(String(order.chain || '').toUpperCase()) >= 0;
+                // 银行卡走 Dodo 或 Creem 两家收单,同形(bnb/usdt 都 NULL、面值在 usd_amount)—— 漏掉 CREEM 会掉进卡密兜底被标成「CNY 卡密」。
+                const isDodo = ['DODO', 'CREEM', 'CARD', 'ALIPAY'].indexOf(String(order.chain || '').toUpperCase()) >= 0;
                 const isRedeem = !isWxpay && !isDodo && (order.payment_method === 'redeem'
                   || order.kind === 'redeem'
                   || /^RD/i.test(orderNo)

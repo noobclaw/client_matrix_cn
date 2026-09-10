@@ -200,7 +200,7 @@ class NoobClawApiService {
    */
   async createOrder(
     amount: number,
-    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = 'BSC',
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY' = 'BSC',
   ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; payUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {
     try {
       // WXPAY 的 amount 也是 USDT 档位数(后端按 usdt_to_cny_rate 折人民币),
@@ -264,7 +264,7 @@ class NoobClawApiService {
   async createSubscriptionOrder(
     planCode: string,
     period: 'month' | 'quarter' | 'half' | 'year' | 'once',
-    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY' = 'TRON',
+    chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY' = 'TRON',
     // 自动续费开关(支付方式行上的切换钮)。带上后服务端按它归一周期:开 → 连续包月;关 → 一次性买断。
     autoRenew?: boolean,
   ): Promise<{ order?: any; treasuryWallet?: string; codeUrl?: string; checkoutUrl?: string; payUrl?: string; cnyAmount?: number; error?: string; code?: string } | null> {

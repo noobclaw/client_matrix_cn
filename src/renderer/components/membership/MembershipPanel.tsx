@@ -21,7 +21,7 @@ type PayMethod = 'CARD' | 'WXPAY' | 'ALIPAY' | 'TRON' | 'BSC' | 'SHOP';
 
 // 币种图标(对齐购买积分那排支付方式 tab)。本地复制自 WalletView 的 ChainLogo:
 // WalletView 已 import 本组件,反向 import 会形成循环依赖,故按矩阵惯例就地复制两枚 SVG。
-const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY'; size?: number }> = ({ chain, size = 16 }) => {
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY'; size?: number }> = ({ chain, size = 16 }) => {
   if (chain === 'ALIPAY') {
     // 支付宝:蓝底「支」(简化标,与 WalletView 同款)
     return (
@@ -148,7 +148,7 @@ function fmtCredits(n: number): string {
 }
 
 const MembershipPanel: React.FC<{
-  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY', autoRenew?: boolean) => Promise<string | null>;
+  onPay?: (planCode: string, period: Period, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY', autoRenew?: boolean) => Promise<string | null>;
   /** 各支付方式显示开关(后端 /payment/info 的 payMethods,admin 可配)。缺省(老后端)= 全部显示。 */
   payMethods?: PayMethods;
   /** 哪些方式给「自动续费」切换钮(后端 /payment/info 的 autoRenew)。缺省 = 都不给。 */
@@ -256,7 +256,7 @@ const MembershipPanel: React.FC<{
     } finally { if (mountedRef.current) setBusy(false); }
   };
 
-  const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CARD' | 'ALIPAY', autoRenewSel?: boolean) => {
+  const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY', autoRenewSel?: boolean) => {
     if (!onPay) return;
     setBusy(true); setError('');
     const err = await onPay(planCode, period, chain, autoRenewSel);
