@@ -210,6 +210,9 @@ const MembershipPanel: React.FC<{
   //   ① 返回 Promise 恒真 → 没确认就直接开了支付弹窗;② 调用被 ACL 拒 → 冒成全局「Unhandled」错误提示
   //   (用户 2026-08-23 截图)。MatrixView 的 confirmDlg 就是为同一个坑改的,这里照做。
   const [upgradeAsk, setUpgradeAsk] = useState<{ planCode: string; text: string } | null>(null);
+  // 取消自动续费的确认弹窗。⚠️ 不能用 window.confirm:Tauri 把它换成了异步对话框插件,权限清单(ACL)没放行时
+  //   它返回一个被拒绝的 Promise(恒为真)—— 表现为「没弹确认就直接取消 + 红色 dialog|confirm not allowed 报错」。
+  const [cancelAsk, setCancelAsk] = useState(false);
 
   // 点套餐卡片 → 先确认「升级会从今天重算周期」,再开支付方式弹窗。
   const choosePlan = (planCode: string) => {
@@ -227,7 +230,7 @@ const MembershipPanel: React.FC<{
   // ⚠️ period 原样传后端 —— 'once'(单月购买)后端有独立定价 + 一次性 product,绝不能折算成 'month'。
   // 取消自动续费。支付宝(周期扣款):协议在支付站,后端给一个确认页地址 → 系统浏览器打开,用户在页面上确认,
   //   支付站解约后回调后端;这里每 5s 拉一次会员状态,看到 autoRenew 变 false 即停。Dodo:本地确认后直接调取消接口。
-  const cancelAutoRenew = async () => {
+  const cancelAutoRenew = async (confirmed = false) => {
     setError(''); setInfo('');
     setBusy(true);
     try {
@@ -249,7 +252,7 @@ const MembershipPanel: React.FC<{
         } finally { if (mountedRef.current) setPolling(false); }
         return;
       }
-      if (!window.confirm(i18nService.t('subCancelRenewConfirm'))) return;
+      if (!confirmed) { setCancelAsk(true); return; }   // 先弹应用内确认,确认后再以 confirmed=true 重进
       const c = await noobClawApi.cancelSubscription();
       if (c && c.ok) { setInfo(i18nService.t('subCancelRenewDone')); await load(); }
       else setError((c && (c.message || c.error)) || i18nService.t('subCancelRenewFailed'));
@@ -401,6 +404,18 @@ const MembershipPanel: React.FC<{
           顺序即推荐序:银行卡(推荐,走 Dodo,连续订阅)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。
           ⚠️ portal 到 body —— 合伙人金色卡片的 filter/glow 会成为 position:fixed 的包含块,
              不 portal 会把全屏遮罩裁进卡片里。 */}
+      {cancelAsk && createPortal(
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setCancelAsk(false)}>
+          <div className="w-full max-w-md rounded-2xl p-6 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="text-sm leading-relaxed whitespace-pre-line mb-6 dark:text-claude-darkText text-claude-text">{i18nService.t('subCancelRenewConfirm')}</div>
+            <div className="flex justify-end gap-2.5">
+              <button onClick={() => setCancelAsk(false)} className="px-4 py-2 text-sm rounded-lg border dark:border-white/15 border-black/15 dark:text-claude-darkText text-claude-text">{i18nService.t('mvCancel')}</button>
+              <button onClick={() => { setCancelAsk(false); void cancelAutoRenew(true); }} className="px-4 py-2 text-sm rounded-lg text-white bg-red-500 hover:bg-red-600">{i18nService.t('mvOk')}</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       {upgradeAsk && createPortal(
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setUpgradeAsk(null)}>
           <div className="w-full max-w-md rounded-2xl p-6 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={e => e.stopPropagation()}>
