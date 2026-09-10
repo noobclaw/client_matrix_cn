@@ -303,6 +303,9 @@ const MembershipPanel: React.FC<{
     if (!payMethods) return k !== 'card' && k !== 'alipay';
     return payMethods[k] !== false;
   };
+  // 「推荐」角标 + 银行卡/支付宝先后顺序由后端 payMethods.recommended 决定(admin pay_method_recommended);老后端没下发时按银行卡。
+  const recM = String((payMethods && payMethods.recommended) || 'card');
+  const badgeM = (k: string) => (recM === k ? i18nService.t('payBadgeBest') : undefined);
   const isOnce = period === 'once';
 
   return (
@@ -422,12 +425,15 @@ const MembershipPanel: React.FC<{
                   国内版(HIDE_WEB3)照旧不露出 USDT/BNB。前三个下单后跳【支付站】(域名 admin 可配)付款;每一行显示与否由后端 payMethods 决定。 */}
               {/* 顺序(产品定):银行卡 → 支付宝 → 微信 → 国际版:USDT → BNB → 店铺;国内版与国际版一致(2026-09-09 起)。
                   每行显示与否由后端 payMethods(admin)决定;银行卡/支付宝/微信在后端 autoRenew 放行时多一个「自动续费」切换钮。 */}
-              {showM('card') && (
-                <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} renew={renewProps('card')} onClick={() => payWith('CARD', methodPlan)} />
-              )}
-              {showM('alipay') && (
-                <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} renew={renewProps('alipay')} onClick={() => payWith('ALIPAY', methodPlan)} />
-              )}
+              {(() => {
+                const _c = showM('card') && (
+                <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={badgeM('card')} renew={renewProps('card')} onClick={() => payWith('CARD', methodPlan)} />
+              );
+                const _a = showM('alipay') && (
+                <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={badgeM('alipay')} renew={renewProps('alipay')} onClick={() => payWith('ALIPAY', methodPlan)} />
+              );
+                return recM === 'alipay' ? <>{_a}{_c}</> : <>{_c}{_a}</>;
+              })()}
               {showM('wxpay') && (
                 <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} renew={renewProps('wxpay')} onClick={() => payWith('WXPAY', methodPlan)} />
               )}

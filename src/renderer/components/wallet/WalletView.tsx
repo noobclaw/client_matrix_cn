@@ -705,6 +705,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     shop: true,
   };
   const showM = (k: keyof PayMethods) => payMethodsEff[k] !== false;
+  // 「推荐」角标 + 银行卡/支付宝先后顺序由后端 payMethods.recommended 决定(admin pay_method_recommended);老后端没下发时按银行卡。
+  const recM = String(payMethodsEff.recommended || 'card');
+  const badgeM = (k: string) => (recM === k ? i18nService.t('payBadgeBest') : undefined);
   const handlePayPackageWith = (m: 'DODO' | 'CARD' | 'WXPAY' | 'ALIPAY' | 'TRON' | 'BSC' | 'SHOP', usd: number) => {
     setPayPkg(null);
     setError('');
@@ -2161,12 +2164,15 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="space-y-2.5">
                   {/* 顺序是产品定的:银行卡 → 微信 → 支付宝 → 官方店铺 → USDT → BNB。
                       国内版(HIDE_WEB3)照旧不露出 USDT/BNB。前三个下单后跳支付站(域名 admin 可配)付款;每一行显示与否由后端 payMethods 决定。 */}
-                  {showM('card') && (
-                    <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => handlePayPackageWith('CARD', payPkg.usd)} />
-                  )}
-                  {showM('alipay') && (
-                    <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={i18nService.t('payBadgeBest')} onClick={() => handlePayPackageWith('ALIPAY', payPkg.usd)} />
-                  )}
+                  {(() => {
+                    const _c = showM('card') && (
+                    <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={badgeM('card')} onClick={() => handlePayPackageWith('CARD', payPkg.usd)} />
+                  );
+                    const _a = showM('alipay') && (
+                    <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={badgeM('alipay')} onClick={() => handlePayPackageWith('ALIPAY', payPkg.usd)} />
+                  );
+                    return recM === 'alipay' ? <>{_a}{_c}</> : <>{_c}{_a}</>;
+                  })()}
                   {showM('wxpay') && (
                     <MethodRow icon={<ChainLogo chain="WXPAY" size={22} />} title={i18nService.t('payMethodWx')} desc={i18nService.t('payWebDesc')} onClick={() => handlePayPackageWith('WXPAY', payPkg.usd)} />
                   )}

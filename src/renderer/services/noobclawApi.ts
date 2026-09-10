@@ -56,7 +56,7 @@ export interface ChainBlock {
 }
 
 /** 各支付方式的显示开关(后端 admin 可配,随 /payment/info 下发)。字段缺省 = 显示。 */
-export interface PayMethods { card?: boolean; wxpay?: boolean; alipay?: boolean; shop?: boolean; usdt?: boolean; bnb?: boolean }
+export interface PayMethods { card?: boolean; wxpay?: boolean; alipay?: boolean; shop?: boolean; usdt?: boolean; bnb?: boolean; recommended?: string }
 /** 各方式是否给「自动续费」切换钮(后端 admin 开关 && 通道真能续)。 */
 export interface AutoRenewFlags { card?: boolean; alipay?: boolean; wxpay?: boolean }
 
