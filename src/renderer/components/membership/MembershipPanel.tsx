@@ -259,6 +259,16 @@ const MembershipPanel: React.FC<{
     } finally { if (mountedRef.current) setBusy(false); }
   };
 
+  // 恢复自动续费:撤销「到期取消」,不重新付款。后端按收单商分流(Stripe / Creem 支持;不支持则提示到期后再开)。
+  const resumeAutoRenew = async () => {
+    setError(''); setInfo(''); setBusy(true);
+    try {
+      const c = await noobClawApi.resumeSubscription();
+      if (c && c.ok) { setInfo(i18nService.t('subResumeRenewDone')); await load(); }
+      else setError((c && (c.message || c.error)) || i18nService.t('subResumeRenewFailed'));
+    } finally { if (mountedRef.current) setBusy(false); }
+  };
+
   const subscribe = async (planCode: string, chain: 'TRON' | 'BSC' | 'WXPAY' | 'DODO' | 'CREEM' | 'CARD' | 'ALIPAY', autoRenewSel?: boolean) => {
     if (!onPay) return;
     setBusy(true); setError('');
@@ -337,8 +347,10 @@ const MembershipPanel: React.FC<{
           // 自动续费(银行卡)的当前档不能再给「续费」—— 它自己会扣款,再点会开出
           //   第二笔订阅并行扣钱。改为展示「自动续费中」并禁用。
           const autoOn = !!cur?.autoRenew;
+          // 取消后本期未到期且后端说能恢复(Stripe / Creem)→ 当前档按钮变「恢复自动续费」,点了不付钱只撤销取消标记。
+          const canResume = isCurActive && !autoOn && !!(cur as any)?.canResume;
           const cta = isCurActive
-            ? (autoOn ? i18nService.t('mpCurrentPlanActive') : i18nService.t('mpCtaRenew'))
+            ? (autoOn ? i18nService.t('mpCurrentPlanActive') : canResume ? i18nService.t('subResumeRenew') : i18nService.t('mpCtaRenew'))
             : (subActive ? i18nService.t('mpCtaUpgrade') : i18nService.t('mpCtaSubscribe'));
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
@@ -388,6 +400,8 @@ const MembershipPanel: React.FC<{
                 <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }} title={i18nService.t('mpNoDowngradeTip')}>{i18nService.t('mpBelowCurrent')}</button>
               ) : isFree ? (
                 <button disabled className="mt-3 py-2 rounded-lg text-xs font-bold text-center cursor-not-allowed dark:text-claude-darkTextSecondary text-claude-textSecondary" style={{ background: 'rgba(255,255,255,0.06)' }}>{!subActive ? i18nService.t('mpCurrentPlan') : i18nService.t('mpFree')}</button>
+              ) : canResume ? (
+                <button disabled={busy} onClick={() => resumeAutoRenew()} className="mt-3 py-2 rounded-lg text-xs font-bold text-black disabled:opacity-50 hover:brightness-95" style={{ background: tier }}>{i18nService.t('subResumeRenew')}</button>
               ) : isCurActive && autoOn ? (
                 <button disabled={busy || polling} title={i18nService.t('subAutoRenewHint')} onClick={() => cancelAutoRenew()} className="mt-3 py-2 rounded-lg text-xs font-bold text-center dark:text-claude-darkTextSecondary text-claude-textSecondary hover:brightness-125 disabled:opacity-50" style={{ background: 'rgba(255,255,255,0.06)' }}>{i18nService.t('subManageAutoRenew')}</button>
               ) : (

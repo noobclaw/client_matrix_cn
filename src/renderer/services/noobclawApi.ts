@@ -303,6 +303,22 @@ class NoobClawApiService {
    * 取消自动续费(银行卡订阅)。语义是【到期取消】:当前周期已付费,剩余天数照用到底,
    *   只是不再自动扣下一期 —— 提示文案必须说清楚,别让用户以为立刻失去会员。
    */
+  /** 恢复自动续费(撤销到期取消,不重新付款)。后端按收单商分流;不支持时 409 resume_unsupported。 */
+  async resumeSubscription(): Promise<{ ok: boolean; message?: string; periodEnd?: string; error?: string } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/plan/subscription/resume`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, error: data.error, message: data.message };
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
   async cancelSubscription(): Promise<{ ok: boolean; message?: string; periodEnd?: string; error?: string } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/plan/subscription/cancel`, {
