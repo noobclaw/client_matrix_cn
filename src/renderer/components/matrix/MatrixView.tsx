@@ -805,9 +805,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     onNavigate?.('tasks');
   };
   // 「自动回复粉丝」向导保存:type='reply_fan' + funnel(无配额)。与 engage 同平台可并存(不同 type)。
-  const saveTaskFromReplyWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount?: Record<string, { funnel_phrase: string; funnel_probability: number }> | null; maxReplyPerComment?: number }) => {
+  const saveTaskFromReplyWizard = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount?: Record<string, { funnel_phrase: string; funnel_probability: number }> | null; maxReplyPerComment?: number; dailyReplyCap?: number }) => {
     if (!requireLogin()) throw new Error(i18nService.t('mvLoginFirst'));
-    const r = await M()?.saveTask({ id: replyEditId || undefined, platform, type: 'reply_fan', maxReplyPerComment: input.maxReplyPerComment, name: input.name, accountIds: input.accountIds, funnel: input.funnel, funnelByAccount: input.funnelByAccount, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await M()?.saveTask({ id: replyEditId || undefined, platform, type: 'reply_fan', maxReplyPerComment: input.maxReplyPerComment, dailyReplyCap: input.dailyReplyCap, name: input.name, accountIds: input.accountIds, funnel: input.funnel, funnelByAccount: input.funnelByAccount, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) throw new Error(({ platform_task_limit: i18nService.t('mvTaskLimit'), duplicate_type: i18nService.t('mvDuplicateReply'), task_not_found: i18nService.t('mvTaskNotFound') } as any)[r?.error] || r?.error || i18nService.t('mvSaveFailed'));
     await reloadTasks(); setNotice(i18nService.t('mvTaskSaved'));
     setShowReplyEditModal(false); setReplyEditId(null);

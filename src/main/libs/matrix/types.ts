@@ -347,6 +347,8 @@ export interface MatrixTask {
   funnelByAccount?: Record<string, ReplyFanConfig>;
   // 单个用户评论最大回复数(1~5,仅抖音回复粉丝)。没配 = 1 = 老行为「回过就不再回」。
   maxReplyPerComment?: number;
+  // 每号每日回复上限(1~300,仅抖音回复粉丝)。没配 = 剧本按 100 兜底(抖音单账号一天评论条数有限,到顶就停,防风控)。
+  dailyReplyCap?: number;
   imageText?: ImageTextConfig;     // 仅 image_text 用:图文创作配置
   viralRewrite?: ViralRewriteConfig; // 仅 viral_rewrite 用:爆款仿写配置
   tweetPost?: TweetPostConfig;     // 仅 x_post 用:自动发推配置

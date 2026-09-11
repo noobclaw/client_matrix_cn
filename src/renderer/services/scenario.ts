@@ -289,6 +289,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     funnel_by_account: (isReply || isEngage || isLead) ? (t.funnelByAccount || undefined) : undefined,
     // 单个用户评论最大回复数（仅抖音回复粉丝）—— 同上，必须透传。
     max_reply_per_comment: isReply ? (t as any).maxReplyPerComment : undefined,
+    // 每号每日回复上限(仅抖音回复粉丝)—— 同上,必须透传。
+    daily_reply_cap: isReply ? (t as any).dailyReplyCap : undefined,
     account_ids: t.accountIds || [],
     created_at: t.createdAt || 0,
     updated_at: t.createdAt || 0,
@@ -317,6 +319,7 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       funnelByAccount: input.funnel_by_account,
       // 同上：不写回的话，在「我的任务」里改个启用开关都会把它抹掉。
       maxReplyPerComment: (input as any).max_reply_per_comment,
+      dailyReplyCap: (input as any).daily_reply_cap,
       concurrency: accountIds.length,
       frequency: input.run_interval || 'daily_random',
       enabled: input.enabled !== false,

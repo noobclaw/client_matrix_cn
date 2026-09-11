@@ -132,6 +132,8 @@ export interface EngageTaskOptions {
   funnelByAccount?: Record<string, { funnel_phrase?: string; funnel_probability?: number }>;
   // 单个用户评论最大回复数(仅抖音回复粉丝剧本读它;不传 → 剧本回落 1 = 老行为)
   maxReplyPerComment?: number;
+  // 每号每日回复上限(仅抖音回复粉丝剧本读它;不传 → 剧本按 100 兜底、按账号+日期记账本跨运行累计)
+  dailyReplyCap?: number;
   urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
   concurrency?: number;
   jitterMinMs?: number; jitterMaxMs?: number;
@@ -476,6 +478,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       })(),
       // 回复粉丝:单个用户评论最大回复数(仅抖音向导有这个选项)。
       max_reply_per_comment: opts.maxReplyPerComment,
+      // 回复粉丝:每号每日回复上限(1~300;剧本用 readState/writeState('reply_daily') 按账号+日期累计)。
+      daily_reply_cap: opts.dailyReplyCap,
       // video_download 剧本读 task.urls(用户粘贴的待下载链接清单)。
       urls: Array.isArray(opts.urls) ? opts.urls : [],
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
