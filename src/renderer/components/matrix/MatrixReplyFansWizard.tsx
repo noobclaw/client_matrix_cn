@@ -34,7 +34,7 @@ interface Props {
   accountsLoading?: boolean;
   initialTask?: any | null;                // 编辑时传入矩阵任务
   onCancel: () => void;
-  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount: Record<string, { funnel_phrase: string; funnel_probability: number }> | null; maxReplyPerComment?: number; dailyReplyCap?: number }) => Promise<void> | void;
+  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; funnel: { funnel_phrase: string; funnel_probability: number }; funnelByAccount: Record<string, { funnel_phrase: string; funnel_probability: number }> | null; maxReplyPerComment?: number; maxRepliesPerRun?: number }) => Promise<void> | void;
 }
 
 const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
@@ -50,11 +50,11 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [maxReplyPerComment, setMaxReplyPerComment] = useState<number>(
     typeof (initialTask as any)?.maxReplyPerComment === 'number'
       ? Math.min(5, Math.max(1, (initialTask as any).maxReplyPerComment)) : 1);
-  // 每号每日回复上限(仅抖音):抖音单账号一天能发的评论条数有限,超了后面全发不出去还在傻发。
-  //   默认 100、可选 1~300;剧本按账号+日期记账本,到顶当天就停。老任务没配 → 显示/存 100。
-  const [dailyReplyCap, setDailyReplyCap] = useState<number>(
-    typeof (initialTask as any)?.dailyReplyCap === 'number'
-      ? Math.min(300, Math.max(1, Math.round((initialTask as any).dailyReplyCap))) : 100);
+  // 每号本次运行最多回复几条(仅抖音):抖音单账号一天能发的评论条数有限,超了后面全发不出去还在傻发。
+  //   默认 100、可选 1~300;只管本次运行,到数就收工。老任务没配 → 显示/存 100。
+  const [maxRepliesPerRun, setDailyReplyCap] = useState<number>(
+    typeof (initialTask as any)?.maxRepliesPerRun === 'number'
+      ? Math.min(300, Math.max(1, Math.round((initialTask as any).maxRepliesPerRun))) : 100);
   const ccNameZh = platform === 'kuaishou' ? i18nService.t('wzReplyCcKuaishou')
     : platform === 'bilibili' ? i18nService.t('wzReplyCcBilibili')
     : platform === 'xhs' ? i18nService.t('wzReplyCcXhs')
@@ -130,7 +130,7 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
         })() : null,
         // 只有抖音会用到;其余平台不传 → 剧本回落 1 = 老行为。
         maxReplyPerComment: showMaxReply ? maxReplyPerComment : undefined,
-        dailyReplyCap: showMaxReply ? dailyReplyCap : undefined,
+        maxRepliesPerRun: showMaxReply ? maxRepliesPerRun : undefined,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || i18nService.t('wzReplyErrSaveFailed'));
@@ -233,25 +233,25 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </div>
             )}
 
-            {/* 每号每日回复上限(仅抖音)。默认 100、1~300;到顶当天不再回,防抖音评论风控。 */}
+            {/* 每号本次运行最多回复几条(仅抖音)。默认 100、1~300;到数本次收工,防抖音评论风控。 */}
             {showMaxReply && (
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                  {i18nService.currentLanguage === 'zh' ? '每个账号每日回复上限' : 'Daily reply cap per account'}
+                  {i18nService.currentLanguage === 'zh' ? '每个账号本次运行最多回复' : 'Max replies per account per run'}
                   <span className="text-xs text-gray-400 font-normal ml-1">
                     {i18nService.currentLanguage === 'zh'
-                      ? `每号每天最多回 ${dailyReplyCap} 条,到顶当天不再回(抖音限制单账号每日评论数,防风控;1~300,默认 100)`
-                      : `at most ${dailyReplyCap} replies per account per day, then stop for the day (Douyin caps daily comments; 1-300, default 100)`}
+                      ? `每个账号每次运行最多回 ${maxRepliesPerRun} 条,到数就收工(抖音限制单账号每日评论数,防风控;1~300,默认 100)`
+                      : `at most ${maxRepliesPerRun} replies per account per run, then stop (Douyin caps daily comments; 1-300, default 100)`}
                   </span>
                 </label>
                 <div className="flex items-center gap-3">
-                  <input type="range" min={1} max={300} step={1} value={dailyReplyCap} disabled={saving}
+                  <input type="range" min={1} max={300} step={1} value={maxRepliesPerRun} disabled={saving}
                     onChange={(e) => setDailyReplyCap(Math.min(300, Math.max(1, parseInt(e.target.value, 10) || 1)))}
                     className="flex-1 accent-fuchsia-500" />
-                  <input type="number" min={1} max={300} step={1} value={dailyReplyCap} disabled={saving}
+                  <input type="number" min={1} max={300} step={1} value={maxRepliesPerRun} disabled={saving}
                     onChange={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) setDailyReplyCap(Math.min(300, Math.max(1, v))); }}
                     className="w-20 px-2 py-1.5 rounded-lg text-sm border border-gray-300 dark:border-gray-700 bg-transparent dark:text-gray-200 text-right" />
-                  <span className="text-xs text-gray-400">{i18nService.currentLanguage === 'zh' ? '条/天' : '/day'}</span>
+                  <span className="text-xs text-gray-400">{i18nService.currentLanguage === 'zh' ? '条/次' : '/run'}</span>
                 </div>
               </div>
             )}

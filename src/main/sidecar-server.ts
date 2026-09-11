@@ -539,8 +539,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           funnelByAccount: task.funnelByAccount,
           // 回复粉丝:单个用户评论最大回复数(仅抖音)。不传 → 剧本回落 1 = 老行为。
           maxReplyPerComment: task.maxReplyPerComment,
-          // 回复粉丝:每号每日回复上限(仅抖音向导有)。不传 → 剧本按 100 兜底。
-          dailyReplyCap: task.dailyReplyCap,
+          // 回复粉丝:每号本次运行最多回复几条(仅抖音向导有)。不传 → 剧本按 100 兜底。
+          maxRepliesPerRun: task.maxRepliesPerRun,
           urls: isVideoDownload ? task.urls : undefined,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         });
