@@ -784,7 +784,18 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     await save({ ...proxy, ...geoFields, health: 'ok' });
   };
 
+  // 表单全空 = 不用代理:保存即清除该账号的代理,改用本机 IP(用户 2026-09-11:配过就删不掉)。
+  const proxyFormEmpty = () => !proxyForm.host.trim() && !proxyForm.port.trim() && !proxyForm.username.trim() && !proxyForm.password.trim();
+  const clearProxyForm = () => { setProxyForm({ protocol: 'socks5', host: '', port: '', username: '', password: '', geo: '' }); setProxyMsg(null); setPendingProxySave(null); };
   const saveProxy = async () => {
+    if (proxyFormEmpty()) {
+      setProxyBusy(true);
+      try {
+        await M()?.setAccountProxy({ id: proxyFor, proxy: null });
+        setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); await reload(); setNotice(i18nService.t('mvProxyCleared'));
+      } finally { setProxyBusy(false); }
+      return;
+    }
     const proxy = buildProxyFromForm(); if (!proxy) return;
     const acc = accounts.find((x) => x.id === proxyFor);
     await guardProxyThen(proxy, proxyFor || undefined, acc?.platform || '', acc?.loginScope, async (p) => {
@@ -1649,8 +1660,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             {proxyMsg && (<div className={`text-xs whitespace-pre-line mb-2 ${proxyMsg.kind === 'ok' ? 'text-green-500' : proxyMsg.kind === 'checking' ? 'text-gray-400' : proxyMsg.kind === 'warn' ? 'text-amber-500' : 'text-red-500'}`}>{proxyMsg.text}{proxyMsg.tunGuide && (<> <button type="button" onClick={() => { const zh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW'; try { (window as any).electron?.shell?.openExternal(zh ? 'https://docs.noobclaw.com/zhong-wen-ban/ju-zhen-hao-she-zhi' : 'https://docs.noobclaw.com/english/matrix-setting'); } catch { /* ignore */ } }} className="text-claude-accent hover:underline font-medium">{i18nService.t('mvHowToEnableTun')}</button></>)}</div>)}
             <div className="flex justify-end gap-2">
               <button onClick={() => { setProxyFor(null); setProxyMsg(null); setPendingProxySave(null); }} className="px-3 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15">{i18nService.t('mvCancel')}</button>
+              {/* 清除:把所有字段清空;再点保存 = 不用代理、走本机 IP。 */}
+              <button onClick={clearProxyForm} disabled={proxyBusy} className="px-3 py-1.5 text-sm rounded-lg border border-amber-500/60 text-amber-500" title={i18nService.t('mvProxyClearHint')}>{i18nService.t('mvProxyClear')}</button>
               {pendingProxySave && (<button onClick={() => pendingProxySave()} className="px-3 py-1.5 text-sm rounded-lg border border-red-500/60 text-red-500">{i18nService.t('mvSaveAnyway')}</button>)}
-              <button onClick={saveProxy} disabled={proxyBusy} className={`px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white ${proxyBusy ? 'opacity-60 cursor-wait' : ''}`}>{proxyBusy ? i18nService.t('mvValidating') : i18nService.t('mvValidateAndSave')}</button>
+              <button onClick={saveProxy} disabled={proxyBusy} className={`px-3 py-1.5 text-sm rounded-lg bg-claude-accent text-white ${proxyBusy ? 'opacity-60 cursor-wait' : ''}`}>{proxyBusy ? i18nService.t('mvValidating') : proxyFormEmpty() ? i18nService.t('mvProxySaveLocal') : i18nService.t('mvValidateAndSave')}</button>
             </div>
           </div>
         </div>

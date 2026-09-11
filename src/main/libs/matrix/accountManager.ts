@@ -239,9 +239,11 @@ export function proxyBadgeInfo(id: string): { text: string; duplicate: boolean; 
   };
 }
 
-export function setAccountProxy(id: string, proxy: Proxy): void {
+export function setAccountProxy(id: string, proxy: Proxy | null | undefined): void {
   const a = getAccount(id);
   if (!a) return;
+  // 传空 = 清除代理,该账号改用本机 IP(用户 2026-09-11:配过就删不掉)。下次启动内核生效。
+  if (!proxy || !proxy.host) { delete a.proxy; persist(); return; }
   a.proxy = proxy;                       // 绑定后视为固定,不应再换 host/port
   persist();
 }
