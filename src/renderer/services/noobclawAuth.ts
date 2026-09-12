@@ -14,6 +14,16 @@ async function browserFingerprint(): Promise<string> {
   return __fpPromise;
 }
 
+// 客户端自报身份 `matrix/<版本>`,随注册/登录/设备上报发给后端 —— admin 用户列表据此显示「🖥️ 客户端 vX · Windows/macOS」,
+//   与浏览器用户区分开(系统从 UA 里解析)。版本取不到也不影响,只是不带这项。
+let __clientTag: string | null = null;
+async function clientTag(): Promise<string> {
+  if (__clientTag !== null) return __clientTag;
+  try { const v = await (window as any).electron?.appInfo?.getVersion?.(); __clientTag = v ? `matrix/${v}` : ''; }
+  catch { __clientTag = ''; }
+  return __clientTag;
+}
+
 export interface AuthState {
   isAuthenticated: boolean;
   walletAddress: string | null;
@@ -258,6 +268,8 @@ class NoobClawAuthService {
       if (mac) payload.macAddress = mac;
       const fingerprint = await browserFingerprint();
       if (fingerprint) payload.fingerprint = fingerprint;
+      const ct = await clientTag();
+      if (ct) payload.clientInfo = ct;
       const res = await fetch(`${this.backendUrl}/api/auth/${kind}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -283,7 +295,7 @@ class NoobClawAuthService {
       await fetch(`${this.backendUrl}/api/auth/device-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ macAddress: mac || undefined, fingerprint: fingerprint || undefined }),
+        body: JSON.stringify({ macAddress: mac || undefined, fingerprint: fingerprint || undefined, clientInfo: (await clientTag()) || undefined }),
       });
     } catch { /* ignore */ }
   }
