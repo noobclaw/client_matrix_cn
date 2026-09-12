@@ -1,6 +1,7 @@
 import React from 'react';
 import { noobClawAuth } from '../services/noobclawAuth';
 import { i18nService } from '../services/i18n';
+import { getBackendApiUrl } from '../services/endpoints';
 
 interface LoginWallProps {
   onDismiss?: () => void;
@@ -26,6 +27,26 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
   const [err, setErr] = React.useState('');
 
   const t = (k: string) => i18nService.t(k);
+  // 注册礼角标数字后端下发(/api/auth/signup-gift,读 admin initial_free_tokens + 人数分档);拿不到就不显示数字。
+  const [giftLabel, setGiftLabel] = React.useState('');
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`${getBackendApiUrl()}/api/auth/signup-gift`);
+        const d = await r.json();
+        const tok = d && d.ok ? Number(d.tokens) : 0;
+        if (!alive || !(tok > 0)) return;
+        const lang = i18nService.currentLanguage || 'en';
+        let n: string;
+        if (/^zh/.test(lang) || lang.startsWith('ja')) n = (tok / 10000) + '万';
+        else if (lang.startsWith('ko')) n = (tok / 10000) + '만';
+        else n = tok >= 1000000 ? (tok / 1000000) + 'M' : tok >= 1000 ? (tok / 1000) + 'K' : String(tok);
+        setGiftLabel(t('pwRegGift').replace('{n}', n));
+      } catch { /* 拿不到就不显示,不误报数字 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const submit = async () => {
     setErr('');
@@ -104,9 +125,9 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
           >
             {t('pwRegisterTab')}
             {/* 礼包角标常驻注册 tab:登录页也能看到(用户要求 2026-08-10;原在提交按钮上) */}
-            <span className="absolute -top-2.5 -right-1 px-2 py-1 rounded-full text-[10px] font-bold leading-none text-white whitespace-nowrap" style={{ background: 'linear-gradient(135deg, #ff006e, #ff9500)', boxShadow: '0 2px 12px rgba(255,0,110,0.5)' }}>
-              {t('pwRegGift')}
-            </span>
+            {giftLabel ? <span className="absolute -top-2.5 -right-1 px-2 py-1 rounded-full text-[10px] font-bold leading-none text-white whitespace-nowrap" style={{ background: 'linear-gradient(135deg, #ff006e, #ff9500)', boxShadow: '0 2px 12px rgba(255,0,110,0.5)' }}>
+              {giftLabel}
+            </span> : null}
           </button>
         </div>
 
