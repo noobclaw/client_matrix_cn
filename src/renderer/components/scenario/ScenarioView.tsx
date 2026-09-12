@@ -361,6 +361,18 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 指纹浏览器内核守卫:没装内核时弹「去下载」,后续流程不走(创建/运行矩阵任务都先过这关)。
   const [matrixKernelMissing, setMatrixKernelMissing] = useState(false);
   const [matrixKernelBusy, setMatrixKernelBusy] = useState(false);
+  // 下载进度(用户 2026-09-12:任务页这个弹窗以前只有「下载中…」没有进度条)。走与「我的矩阵账号」页同一条
+  //   matrix:kernel SSE(安装器每 300ms 推一次 pct/msg,done=true 收尾);轮询 kernelStatus 仍保留作兜底。
+  const [matrixKernelPct, setMatrixKernelPct] = useState(0);
+  const [matrixKernelMsg, setMatrixKernelMsg] = useState('');
+  useEffect(() => {
+    const off = (window as any).electron?.matrix?.onKernel?.((p: any) => {
+      if (typeof p?.pct === 'number') setMatrixKernelPct(p.pct);
+      if (typeof p?.msg === 'string') setMatrixKernelMsg(p.msg);
+      if (p?.done) { setMatrixKernelBusy(false); if (p?.path) setMatrixKernelMissing(false); }
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
   // 重复任务提示:某平台已有同类型任务时,关掉向导并弹此提示,给「去查看 / 编辑」入口跳对应管理 tab。
   const [dupNotice, setDupNotice] = useState<{ platform: string; label: string } | null>(null);
   // 一个平台每种任务只允许 1 个(taskStore duplicate_type)。点「创建」时先查重:已有同类型任务
@@ -389,7 +401,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     return false;
   };
   const downloadMatrixKernel = async () => {
-    setMatrixKernelBusy(true);
+    setMatrixKernelBusy(true); setMatrixKernelPct(0); setMatrixKernelMsg('');
     try {
       await (window as any).electron?.matrix?.ensureKernel?.();
       // 下载在后台,ensureKernel 可能先返回 → 轮询到装好为止(最多 ~4min)。
@@ -2607,6 +2619,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           <div className="w-[28rem] max-w-full rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-base font-semibold mb-2 dark:text-white">🧬 {i18nService.t('svKernelTitle')}</div>
             <div className="text-sm text-gray-600 dark:text-gray-300 mb-5 leading-relaxed">{i18nService.t('svKernelBody')}</div>
+            {(matrixKernelBusy || matrixKernelPct > 0 || matrixKernelMsg) && (
+              <div className="mb-4">
+                <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"><div className="h-full bg-violet-500 transition-all duration-200" style={{ width: `${Math.max(2, matrixKernelPct)}%` }} /></div>
+                <div className={`text-xs mt-1 ${!matrixKernelBusy && matrixKernelPct === 0 && matrixKernelMsg ? 'text-red-500' : 'opacity-60'}`}>{matrixKernelMsg || i18nService.t('svDownloading')}{matrixKernelBusy ? ` · ${matrixKernelPct}%` : ''}</div>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button onClick={() => setMatrixKernelMissing(false)} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg border dark:border-white/15 border-black/15 disabled:opacity-50">{i18nService.t('svCancel')}</button>
               <button onClick={downloadMatrixKernel} disabled={matrixKernelBusy} className="px-3.5 py-1.5 text-sm rounded-lg bg-violet-500 hover:bg-violet-600 text-white disabled:opacity-50">{matrixKernelBusy ? i18nService.t('svDownloading') : i18nService.t('svDownloadKernel')}</button>
