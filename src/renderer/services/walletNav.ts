@@ -15,3 +15,8 @@ export function openWallet(tab: WalletTab = 'subscription'): void {
   _pendingTab = tab;
   window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'));
 }
+
+/** 跳到「邀请与分销」页的每日签到卡(头部「签到送积分」链接、积分不足弹窗用)。App 监听 'noobclaw:show-checkin'。 */
+export function openCheckin(): void {
+  window.dispatchEvent(new CustomEvent('noobclaw:show-checkin'));
+}

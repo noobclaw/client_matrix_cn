@@ -629,7 +629,10 @@ const App: React.FC = () => {
   useEffect(() => {
     const handler = () => setMainView('wallet');
     window.addEventListener('noobclaw:show-wallet', handler);
-    return () => window.removeEventListener('noobclaw:show-wallet', handler);
+    // 「签到送积分」链接 → 邀请与分销页的每日签到卡。
+    const checkinHandler = () => setMainView('partners');
+    window.addEventListener('noobclaw:show-checkin', checkinHandler);
+    return () => { window.removeEventListener('noobclaw:show-wallet', handler); window.removeEventListener('noobclaw:show-checkin', checkinHandler); };
   }, []);
 
   // 矩阵号:从深层组件(热搜成片向导「无可用账号」引导)跳到「我的矩阵账号」管理页。

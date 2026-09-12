@@ -1,5 +1,6 @@
 import React from 'react';
 import { i18nService } from '../services/i18n';
+import { openCheckin } from '../services/walletNav';
 
 interface TokenInsufficientDialogProps {
   onConfirm: () => void;        // 充值(永久积分)
@@ -40,6 +41,13 @@ const TokenInsufficientDialog: React.FC<TokenInsufficientDialogProps> = ({ onCon
             {i18nService.t('tokenInsufficientSubscribe')}
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => { onCancel(); openCheckin(); }}
+          className="mt-3 mx-auto block text-sm underline underline-offset-2 decoration-dotted text-green-500 hover:text-green-400 bg-transparent"
+        >
+          {i18nService.t('wbCheckin')}
+        </button>
         <button
           onClick={onCancel}
           className="w-full py-2 rounded-xl dark:text-gray-500 text-gray-400 text-sm hover:dark:text-gray-300 hover:text-gray-600 transition-colors"

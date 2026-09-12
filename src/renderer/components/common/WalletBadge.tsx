@@ -14,7 +14,7 @@
 import React from 'react';
 import { i18nService } from '../../services/i18n';
 import { noobClawAuth } from '../../services/noobclawAuth';
-import { openWallet } from '../../services/walletNav';
+import { openWallet, openCheckin } from '../../services/walletNav';
 import { HIDE_WEB3 } from '../../buildFlags';
 
 function formatAddr(addr: string) {
@@ -121,29 +121,36 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
         </span>
       </span>
 
-      {/* 订阅/升级会员(金色,主 CTA;最高档灰色禁用) */}
+      {/* 购买积分(金色,放前面;用户 2026-09-12 与订阅会员对调位置+配色) */}
+      <button
+        type="button"
+        onClick={() => openWallet('topup')}
+        className="non-draggable rounded font-bold whitespace-nowrap transition-transform hover:scale-[1.03]"
+        style={{ padding: btnPad, fontSize: btnFs, background: 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#3a2400', boxShadow: '0 2px 8px rgba(245,158,11,0.35)' }}
+      >
+        {i18nService.t('wbBuyCredits')}
+      </button>
+      {/* 订阅/升级会员(绿色,放后面;最高档灰色禁用) */}
       <button
         type="button"
         disabled={isMaxTier}
         onClick={isMaxTier ? undefined : () => openWallet('subscription')}
-        className={`non-draggable rounded font-bold whitespace-nowrap ${isMaxTier ? 'cursor-not-allowed' : 'transition-transform hover:scale-[1.03]'}`}
+        className={`non-draggable rounded font-bold whitespace-nowrap text-white transition-colors ${isMaxTier ? 'cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}
         style={isMaxTier
           ? { padding: btnPad, fontSize: btnFs, background: 'rgba(255,255,255,0.08)', color: '#777' }
-          : { padding: btnPad, fontSize: btnFs, background: 'linear-gradient(135deg,#fbbf24,#f59e0b)', color: '#3a2400', boxShadow: '0 2px 8px rgba(245,158,11,0.35)' }}
+          : { padding: btnPad, fontSize: btnFs }}
         title={isMaxTier ? i18nService.t('wbTopTier') : ''}
       >
         {subLabel}
       </button>
-      {/* 购买积分 —— 恒为绿色(订阅会员金 + 购买积分绿,始终一金一绿;
-          不再因低余额/未拉到余额时染黄,避免与金色「订阅会员」撞成两个黄按钮闪变)。
-          低余额提醒改由上面「积分余额」数字标红承担,不动按钮配色。 */}
+      {/* 签到送积分:文字带下划线,不是按钮,放订阅会员之后(用户 2026-09-12)。点了跳邀请与分销页的每日签到卡。 */}
       <button
         type="button"
-        onClick={() => openWallet('topup')}
-        className="non-draggable rounded font-bold whitespace-nowrap text-white transition-colors bg-green-500 hover:bg-green-600"
-        style={{ padding: btnPad, fontSize: btnFs }}
+        onClick={() => openCheckin()}
+        className={`non-draggable ${txt} whitespace-nowrap underline underline-offset-2 decoration-dotted text-green-500 hover:text-green-400 bg-transparent`}
+        style={{ padding: 0 }}
       >
-        {i18nService.t('wbBuyCredits')}
+        {i18nService.t('wbCheckin')}
       </button>
     </div>
   );
