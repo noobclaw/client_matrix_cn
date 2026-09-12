@@ -15,7 +15,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
 
-type WizardStep = 1 | 2 | 3;
+type WizardStep = number;   // 1..totalSteps(抖音 4 步:账号 / 数量 / 引流语 / 频率;其它平台 3 步,无「数量」)
 
 const FUNNEL_PHRASE_MAX = 1000;
 const FUNNEL_PROB_MIN = 1;
@@ -46,6 +46,9 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const isXhs = platform === 'xhs';
   // 「单个用户评论最大回复数」只做抖音(用户 2026-08-25 明确:其余平台的回复粉丝任务不加)。
   const showMaxReply = platform === 'douyin';
+  // 步骤表(用户 2026-09-12:两个数量单独一步、引流语+概率一步):抖音 4 步,其它平台没有数量步 → 3 步。
+  const stepKeys: Array<'accounts' | 'counts' | 'funnel' | 'terms'> = showMaxReply ? ['accounts', 'counts', 'funnel', 'terms'] : ['accounts', 'funnel', 'terms'];
+  const totalSteps = stepKeys.length;
   //   最低 1 —— 回复粉丝任务本来就是要回的,0 没意义;默认 1 = 老行为「回过就不再回」。
   const [maxReplyPerComment, setMaxReplyPerComment] = useState<number>(
     typeof (initialTask as any)?.maxReplyPerComment === 'number'
@@ -105,15 +108,17 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
 
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, funnelPhrase, funnelProb, runInterval]);
 
-  const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: selected.size >= 1, reason: i18nService.t('wzReplyErrSelectAccount') },
-    2: { ok: true },
-    3: { ok: allTermsAccepted, reason: i18nService.t('wzReplyErrAcceptTerms') },
+  const stepKey = stepKeys[Math.min(Math.max(step, 1), totalSteps) - 1];
+  const canAdvance: Record<'accounts' | 'counts' | 'funnel' | 'terms', { ok: boolean; reason?: string }> = {
+    accounts: { ok: selected.size >= 1, reason: i18nService.t('wzReplyErrSelectAccount') },
+    counts: { ok: true },
+    funnel: { ok: true },
+    terms: { ok: allTermsAccepted, reason: i18nService.t('wzReplyErrAcceptTerms') },
   };
 
   const handleSave = async () => {
     if (saving) return;
-    if (!canAdvance[3].ok) { setSaveError(canAdvance[3].reason || ''); return; }
+    if (!canAdvance.terms.ok) { setSaveError(canAdvance.terms.reason || ''); return; }
     setSaving(true);
     try {
       await onSave({
@@ -147,13 +152,13 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="text-base font-semibold dark:text-white">💌 {editing ? i18nService.t('wzReplyTitleEdit').replace('{platform}', platformLabel) : i18nService.t('wzReplyTitleCreate').replace('{platform}', platformLabel)}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-fuchsia-500/40 text-fuchsia-500 bg-fuchsia-500/5">{i18nService.t('wzReplyStepCounter').replace('{n}', String(step))}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-fuchsia-500/40 text-fuchsia-500 bg-fuchsia-500/5">{i18nService.t('wzReplyStepCounter').replace('{n}', String(step)).replace('{total}', String(totalSteps))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-        {step === 1 && (
+        {stepKey === 'accounts' && (
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-fuchsia-500/30 bg-fuchsia-500/5 text-fuchsia-700 dark:text-fuchsia-300">
               💌 {i18nService.t('wzReplyIntroP1')}<strong>{i18nService.t('wzReplyIntroFingerprintBrowser')}</strong>{i18nService.t('wzReplyIntroP2')}<strong>{ccNameZh}</strong>{isXhs ? <>{i18nService.t('wzReplyIntroEntryXhs')}</> : <>{i18nService.t('wzReplyIntroEntryOther')}</>}{i18nService.t('wzReplyIntroP3')}<strong>{i18nService.t('wzReplyIntroSkip')}</strong>{i18nService.t('wzReplyIntroP4').replace('{item}', itemZh)}<strong>{i18nService.t('wzReplyIntroPersona')}</strong>{i18nService.t('wzReplyIntroP5')}
@@ -209,7 +214,7 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
           </>
         )}
 
-        {step === 2 && (
+        {stepKey === 'counts' && (
           <>
             {/* 单个用户评论最大回复数(仅抖音)。默认 1 = 老行为「同一条评论回过就不再回」。 */}
             {showMaxReply && (
@@ -245,17 +250,19 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
                   </span>
                 </label>
                 <div className="flex items-center gap-3">
-                  <input type="range" min={1} max={300} step={1} value={maxRepliesPerRun} disabled={saving}
-                    onChange={(e) => setDailyReplyCap(Math.min(300, Math.max(1, parseInt(e.target.value, 10) || 1)))}
-                    className="flex-1 accent-fuchsia-500" />
                   <input type="number" min={1} max={300} step={1} value={maxRepliesPerRun} disabled={saving}
                     onChange={(e) => { const v = parseInt(e.target.value, 10); if (!Number.isNaN(v)) setDailyReplyCap(Math.min(300, Math.max(1, v))); }}
-                    className="w-20 px-2 py-1.5 rounded-lg text-sm border border-gray-300 dark:border-gray-700 bg-transparent dark:text-gray-200 text-right" />
+                    className="w-28 px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 bg-transparent dark:text-gray-200 text-right" />
                   <span className="text-xs text-gray-400">{i18nService.currentLanguage === 'zh' ? '条/次' : '/run'}</span>
                 </div>
               </div>
             )}
 
+          </>
+        )}
+
+        {stepKey === 'funnel' && (
+          <>
             {/* 引流语配置:共用一份 / 各账号各自(点账号卡逐号配,未配=该号回复不带引流)。 */}
             <MatrixFunnelConfig
               accounts={selectedAccounts}
@@ -278,7 +285,7 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
           </>
         )}
 
-        {step === 3 && (
+        {stepKey === 'terms' && (
           <>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-2 block">⏰ {i18nService.t('wzReplyRunIntervalLabel')}</label>
@@ -323,11 +330,11 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzReplyCancel')}</button>
         <div className="flex-1" />
         {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzReplyPrevStep')}</button>}
-        {step < 3 ? (
+        {step < totalSteps ? (
           <button type="button" onClick={() => {
-            if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; }
+            if (!canAdvance[stepKey].ok) { setSaveError(canAdvance[stepKey].reason || ''); return; }
             // 各账号模式下还有账号没配引流语 → 弹确认(返回配置 / 不管了下一步),新建与编辑同拦。
-            if (step === 2 && funnelPerMode) {
+            if (stepKey === 'funnel' && funnelPerMode) {
               const unset = countUnconfigured(selectedAccounts, funnelPerMap);
               if (unset > 0) { setFunnelUnsetConfirm(unset); return; }
             }
