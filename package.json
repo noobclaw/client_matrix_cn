@@ -51,6 +51,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
     "@electron/remote": "^2.0.12",
+    "@fingerprintjs/fingerprintjs": "^3.4.2",
     "@grammyjs/runner": "^2.0.0",
     "@headlessui/react": "^1.7.18",
     "@heroicons/react": "^2.1.1",

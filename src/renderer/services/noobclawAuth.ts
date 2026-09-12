@@ -1,6 +1,19 @@
 // NoobClaw Auth Service - Wallet-based authentication
 import { getBackendApiUrl, getWebsiteUrl } from './endpoints';
 
+// 浏览器指纹(FingerprintJS v3 开源版,MIT),注册 / 登录 / 上报设备时随请求带上;后端据此判「同一设备重复注册」不发注册礼
+//   (与官网同一套库,用户 2026-09-12 拍板)。算一次缓存一次;4 秒没算出来就发空串,后端按没有指纹处理。
+let __fpPromise: Promise<string> | null = null;
+async function browserFingerprint(): Promise<string> {
+  if (__fpPromise) return __fpPromise;
+  __fpPromise = new Promise<string>((resolve) => {
+    let done = false; const finish = (v: string) => { if (!done) { done = true; resolve(v || ''); } };
+    setTimeout(() => finish(''), 4000);
+    import('@fingerprintjs/fingerprintjs').then((m) => m.load()).then((fp) => fp.get()).then((r) => finish(r.visitorId)).catch(() => finish(''));
+  });
+  return __fpPromise;
+}
+
 export interface AuthState {
   isAuthenticated: boolean;
   walletAddress: string | null;
@@ -243,6 +256,8 @@ class NoobClawAuthService {
       try { mac = (await window.electron?.noobclaw?.getMacAddress()) || ''; } catch { /* ignore */ }
       const payload: Record<string, string> = { ...body };
       if (mac) payload.macAddress = mac;
+      const fingerprint = await browserFingerprint();
+      if (fingerprint) payload.fingerprint = fingerprint;
       const res = await fetch(`${this.backendUrl}/api/auth/${kind}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -263,11 +278,12 @@ class NoobClawAuthService {
   private async reportDeviceInfo(token: string) {
     try {
       const mac = await window.electron?.noobclaw?.getMacAddress();
-      if (!mac) return;
+      const fingerprint = await browserFingerprint();
+      if (!mac && !fingerprint) return;
       await fetch(`${this.backendUrl}/api/auth/device-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ macAddress: mac }),
+        body: JSON.stringify({ macAddress: mac || undefined, fingerprint: fingerprint || undefined }),
       });
     } catch { /* ignore */ }
   }
