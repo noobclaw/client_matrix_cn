@@ -989,6 +989,12 @@ const App: React.FC = () => {
   // v6.x: 菜单拆分 ——「一键涨粉」(新建页)= 'scenarioCreate';「我的涨粉任务」(管理页)= 'quickuse'。
   // 「一键涨粉」create 页(可带平台,落到对应平台的新建 tab)。
   const handleShowScenarioCreate = (platform?: 'xhs' | 'x' | 'binance' | 'bitget' | 'bybit' | 'gate' | 'okx' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'instagram' | 'facebook' | 'reddit' | 'video') => {
+    // 矩阵版:旧版「一键涨粉」新建页(scenarioCreate,matrixMode=false)早已被真·矩阵新建页
+    //   (matrixTaskNew,matrixMode=true)取代。任何还连着本 handler 的入口(活动卡「使用一次涨粉
+    //   任务」= PartnersView onShowXhs / AI 对话去涨粉 / 活动与合作等)在矩阵版都必须落到 matrixTaskNew,
+    //   否则会进旧版页 —— 未迁移的平台(facebook/reddit/instagram/okx/bitget/bybit/gate)会显示
+    //   旧版遗留的「即将推出·仅小红书工作流已上线」占位。矩阵任务体系(matrixTaskNew/Tasks/Runs)不受影响。
+    if (MATRIX_EDITION) { setMatrixPlatform(platform || ''); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); return; }
     setQuickUseInitialPlatform(platform);
     setMainView('scenarioCreate');
     setScenarioNavNonce((n) => n + 1);
@@ -996,6 +1002,9 @@ const App: React.FC = () => {
   // 带平台调用(首页快捷入口「立即在 X 平台涨粉」)→ 直接进新建页;无参(侧栏
   // 「我的涨粉任务」)→ 管理页。
   const handleShowQuickUse = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili') => {
+    // 矩阵版:同上,旧版 quickuse(管理页,matrixMode=false)已被 matrixTasks 取代。
+    //   带平台=去新建(matrixTaskNew),不带平台=去「我的涨粉任务」(matrixTasks)。
+    if (MATRIX_EDITION) { setMatrixPlatform(platform || ''); setMainView(platform ? 'matrixTaskNew' : 'matrixTasks'); setScenarioNavNonce((n) => n + 1); return; }
     if (platform) { handleShowScenarioCreate(platform); return; }
     setQuickUseInitialPlatform(undefined);
     setMainView('quickuse');
@@ -1003,6 +1012,8 @@ const App: React.FC = () => {
   };
   // v6.x:「涨粉运行记录」独立菜单(原 manage 内的「运行记录」L1 段拆出来)。
   const handleShowScenarioRuns = () => {
+    // 矩阵版:旧版「涨粉运行记录」(scenarioRuns,matrixMode=false)已被 matrixRuns 取代。
+    if (MATRIX_EDITION) { setMatrixPlatform(''); setMainView('matrixRuns'); setScenarioNavNonce((n) => n + 1); return; }
     setQuickUseInitialPlatform(undefined);
     setMainView('scenarioRuns');
     setScenarioNavNonce((n) => n + 1);
