@@ -270,6 +270,7 @@ class NoobClawAuthService {
       if (fingerprint) payload.fingerprint = fingerprint;
       const ct = await clientTag();
       if (ct) payload.clientInfo = ct;
+      try { payload.lang = (await import('./i18n')).i18nService.currentLanguage; } catch { /* 后端回落英文 */ }  // 本地化「已被注册」等提示
       const res = await fetch(`${this.backendUrl}/api/auth/${kind}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -297,8 +298,11 @@ class NoobClawAuthService {
     try {
       let lang: string | undefined;
       try { lang = (await import('./i18n')).i18nService.currentLanguage; } catch { /* 拿不到就让后端回落英文 */ }
+      // 登录态下带上 token:后端据此判「本人绑定」→ 允许验证自己已有邮箱;邮箱属于别人则拦下。未登录(注册)不带。
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (this.state.authToken) headers.Authorization = `Bearer ${this.state.authToken}`;
       const res = await fetch(`${this.backendUrl}/api/auth/send-email-code`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers,
         body: JSON.stringify({ purpose, ...args, lang }),
       });
       const data: any = await res.json().catch(() => ({}));
