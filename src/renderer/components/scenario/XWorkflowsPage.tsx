@@ -223,7 +223,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           badge={isZh ? '互动涨粉' : 'Engage & Grow'}
           titleZh="推特 · 互动涨粉"
           titleEn="X Engage & Grow"
-          descZh="锁定 Web3 KOL 池跟踪 alpha，AI 给已关注大佬的新推写有观点的回复，再去推荐流抓爆点跟评，全程模拟真人节奏自然冒泡，被算法标记的概率更低。"
+          descZh="锁定 Web3 KOL 池跟踪 alpha，AI 给已关注大佬的新推写有观点的回复，再去推荐流抓爆点跟评，以自然的操作节奏参与互动。"
           descEn="Locks onto your Web3 KOL pool for fresh alpha — AI drops opinionated replies under followed accounts and pounces on viral takes in the For You feed, paced like a real human to dodge algo flags."
           loading={loading}
           scenario={autoEngage}
@@ -288,7 +288,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           {[
             { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
             { icon: '💰', zh: '成本超低（百篇好文<$1）', en: 'Ultra-low cost (<$1 for 100 posts)' },
-            { icon: '🛡️', zh: '严风控,完全模拟人类行为(动作间隔时间 + 随机)', en: 'Strict anti-detection, fully human-like (jittered intervals + randomization)' },
+            { icon: '🛡️', zh: '拟人化操作节奏(动作间隔 + 随机)', en: 'Natural pacing (jittered intervals + randomization)' },
             { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement = rapid follow gains)' },
             { icon: '🤝', zh: '1000+ web3 KOL 池', en: '1000+ Web3 KOL pool' },
           ].map((p, i) => (

@@ -28,7 +28,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "哔哩哔哩 互动涨粉",
     "name_en": "Bilibili Engage & Grow",
-    "description_zh": "任务运行时自动跳转到哔哩哔哩，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔模拟真人，评论由 AI 按视频标题与热门评论生成，默认中文。",
+    "description_zh": "任务运行时自动跳转到哔哩哔哩，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔、节奏自然，评论由 AI 按视频标题与热门评论生成，默认中文。",
     "description_en": "Auto-navigates to Bilibili, then searches by your selected track's keywords and runs the configured quota of likes / follows / comments. Randomized intervals mimic a real user; comments are AI-generated from title + top comments (default Chinese).",
     "icon": "📺",
     "default_config": {
@@ -1163,7 +1163,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "抖音 互动涨粉",
     "name_en": "Douyin Engage & Grow",
-    "description_zh": "任务运行时自动跳转到抖音首页，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔模拟真人，评论由 AI 按视频文案与置顶评论生成，默认中文。",
+    "description_zh": "任务运行时自动跳转到抖音首页，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔、节奏自然，评论由 AI 按视频文案与置顶评论生成，默认中文。",
     "description_en": "Auto-navigates to the Douyin home page, then searches by your selected track's keywords and runs the configured quota of likes / follows / comments. Randomized intervals mimic a real user; comments are AI-generated from caption + top comments (default Chinese).",
     "icon": "🎶",
     "default_config": {
@@ -1871,7 +1871,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "快手 互动涨粉",
     "name_en": "Kuaishou Engage & Grow",
-    "description_zh": "任务运行时自动跳转到快手，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔模拟真人，评论由 AI 按视频文案与置顶评论生成，默认中文。",
+    "description_zh": "任务运行时自动跳转到快手，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔、节奏自然，评论由 AI 按视频文案与置顶评论生成，默认中文。",
     "description_en": "Auto-navigates to Kuaishou, then searches by your selected track's keywords and runs the configured quota of likes / follows / comments. Randomized intervals mimic a real user; comments are AI-generated from caption + top comments (default Chinese).",
     "icon": "🎬",
     "default_config": {
@@ -2656,7 +2656,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "TikTok 互动涨粉",
     "name_en": "TikTok Engage & Grow",
-    "description_zh": "任务运行时自动跳转到 TikTok 首页，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔模拟真人,评论由 AI 按视频原文+置顶评论的语言自动匹配。",
+    "description_zh": "任务运行时自动跳转到 TikTok 首页，按你选的赛道关键词搜索视频，按配额随机做点赞 / 关注 / 评论。每个动作之间随机间隔、节奏自然,评论由 AI 按视频原文+置顶评论的语言自动匹配。",
     "description_en": "Auto-navigates to the TikTok home page, then searches by your selected track's keywords and runs the configured quota of likes / follows / comments. Randomized intervals mimic a real user; comments are AI-generated and language-matched to the video caption + top comments.",
     "icon": "🎵",
     "default_config": {
@@ -6853,7 +6853,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "推特互动涨粉",
     "name_en": "X Engage & Grow",
-    "description_zh": "锁定 Web3 KOL 池跟踪 alpha，AI 给已关注大佬的新推写有观点的回复，再去推荐流抓爆点跟评，全程模拟真人节奏自然冒泡，被算法标记的概率更低。",
+    "description_zh": "锁定 Web3 KOL 池跟踪 alpha，AI 给已关注大佬的新推写有观点的回复，再去推荐流抓爆点跟评，以自然的操作节奏参与互动。",
     "description_en": "Locks onto your Web3 KOL pool for fresh alpha — AI drops opinionated replies under followed accounts and pounces on viral takes in the For You feed, paced like a real human to dodge algo flags.",
     "icon": "🐦",
     "default_config": {
@@ -7039,7 +7039,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "小红书互动涨粉",
     "name_en": "XHS Engage & Grow",
-    "description_zh": "按你的赛道关键词智能挖近一周高互动爆文，AI 一次写出「走心评论 + 子楼层回复」组合拳，全程模拟真人节奏随机抖动安全互动。可选顺手关注高潜作者，被动涨粉不留痕。",
+    "description_zh": "按你的赛道关键词智能挖近一周高互动爆文，AI 一次写出「走心评论 + 子楼层回复」组合拳，以自然的操作节奏进行互动。可选关注高潜作者，稳步积累粉丝。",
     "description_en": "Mines this week's viral notes in your niche, AI crafts heartfelt replies plus per-comment responses, paced like a real human to stay under the radar. Optionally auto-follow promising authors — hands-free growth, no fingerprints.",
     "icon": "💬",
     "default_config": {
@@ -7176,7 +7176,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "小红书 · 自动回复粉丝",
     "name_en": "Xiaohongshu Reply Fan Comments",
-    "description_zh": "自动给你已发布笔记下的粉丝评论一一回复。AI 按评论内容写回应，可选在结尾按概率自然衔接你的引流文案。已回复过的、自己留的评论自动跳过。打开创作者中心 → 逐篇笔记 → 读粉丝评论 → AI 生成回复 → 模拟真人节奏发送，全程不碰主笔记输入框。",
+    "description_zh": "自动给你已发布笔记下的粉丝评论一一回复。AI 按评论内容写回应，可选在结尾按概率自然衔接你的引流文案。已回复过的、自己留的评论自动跳过。打开创作者中心 → 逐篇笔记 → 读粉丝评论 → AI 生成回复 → 自然的操作节奏发送，全程不碰主笔记输入框。",
     "description_en": "Auto-reply to fan comments under your published Xiaohongshu notes. AI tailors each reply to the comment, with optional probability-based funnel phrase weaving. Skips comments you've already replied to or your own. Iterates note-by-note from Creator Center with human-paced timing.",
     "icon": "💌",
     "default_config": {
@@ -7366,7 +7366,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "YouTube 互动涨粉",
     "name_en": "YouTube Engage & Grow",
-    "description_zh": "任务运行时自动跳转到 YouTube 首页,按你选的赛道关键词搜索视频,按配额随机做点赞 / 订阅 / 评论。每个动作之间随机间隔模拟真人,评论由 AI 按视频原文+置顶评论的语言自动匹配。",
+    "description_zh": "任务运行时自动跳转到 YouTube 首页,按你选的赛道关键词搜索视频,按配额随机做点赞 / 订阅 / 评论。每个动作之间随机间隔、节奏自然,评论由 AI 按视频原文+置顶评论的语言自动匹配。",
     "description_en": "Auto-navigates to the YouTube home page, then searches by your selected track's keywords and runs the configured quota of likes / subscribes / comments. Randomized intervals mimic a real user; comments are AI-generated and language-matched to the video caption + top comments.",
     "icon": "📺",
     "default_config": {

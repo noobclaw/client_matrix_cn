@@ -71,7 +71,7 @@ export const KuaishouWorkflowsPage: React.FC<Props> = ({
     category: 'engagement',
     name_zh: '快手 · 互动涨粉',
     name_en: 'Kuaishou Engage & Grow',
-    description_zh: '每天定时刷快手推荐流，挑出若干视频按你配置的组合做点赞 / 关注 / 评论。三项动作可独立开关，评论由 AI 按视频文案与置顶评论自动生成，行为间隔随机模拟真人。',
+    description_zh: '每天定时刷快手推荐流，挑出若干视频按你配置的组合做点赞 / 关注 / 评论。三项动作可独立开关，评论由 AI 按视频文案与置顶评论自动生成，行为间隔随机、节奏自然。',
     description_en: 'Browses Kuaishou recommend feed on schedule, picks videos and runs your configured mix of like / follow / comment. Each action toggles independently; comments are AI-generated from caption + top comments.',
     icon: '⚡',
     default_config: {
@@ -291,7 +291,7 @@ export const KuaishouWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center">
           {[
-            { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like behavior — no ban risk' },
+            { icon: '🛡️', zh: '拟人化操作节奏', en: 'Natural, human-paced actions' },
             { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement scales)' },
             { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🤖', zh: '全智能控制', en: 'Fully AI-driven' },
@@ -459,7 +459,7 @@ const KuaishouEngageCard: React.FC<CardProps> = ({ loading, scenario: _scenario,
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh
-            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 关注 / 评论各做几次,然后按你的赛道关键词搜索快手视频自动按配额完成。评论由 AI 按视频文案 + 置顶评论自动生成,行为间隔随机模拟真人。'
+            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 关注 / 评论各做几次,然后按你的赛道关键词搜索快手视频自动按配额完成。评论由 AI 按视频文案 + 置顶评论自动生成,行为间隔随机、节奏自然。'
             : 'Each run rolls per-action counts from your random ranges, then searches Kuaishou with your track keywords and works through the quota. Comments are AI-generated from video caption + top comments.'}
         </p>
         <CardActionRow

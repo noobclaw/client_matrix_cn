@@ -361,7 +361,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>{isZh ? `关注默认 0-3 — ${platLabelZh}对自动关注检测最严,长期跑建议保守` : `Follow defaults to 0-3 — ${platLabelEn} flags auto-follow most aggressively, keep low for long-term`}</li>
-                  <li>{isZh ? '动作之间随机停 30 秒-3 分钟,模拟真人节奏' : 'Random 30s-3min between actions to mimic human cadence'}</li>
+                  <li>{isZh ? '动作之间随机停 30 秒-3 分钟,自然的操作节奏' : 'Random 30s-3min between actions to a natural cadence'}</li>
                 </ul>
               </div>
             </>
@@ -400,7 +400,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     {isZh
                       ? '✨ 推荐 — 每天在随机时间触发一次,比固定钟点更像真人,也最不容易被风控判机器人。'
-                      : '✨ Recommended — fires once daily at a randomized time; more human-like and least likely to be flagged.'}
+                      : '✨ Recommended — fires once daily at a randomized time; more natural and least likely to be flagged.'}
                   </p>
                 )}
                 {(runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h') && (
@@ -410,7 +410,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                       const range = isLong ? '1-45' : '1-10';
                       return isZh
                         ? `⚠️ 到点后再加 ${range} 分钟随机延迟,避免精准卡点`
-                        : `⚠️ +${range}min jitter after threshold (anti-detection).`;
+                        : `⚠️ +${range}min jitter after threshold (natural pacing).`;
                     })()}
                   </p>
                 )}

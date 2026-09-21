@@ -108,7 +108,7 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center">
           {[
-            { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like behavior — no ban risk' },
+            { icon: '🛡️', zh: '拟人化操作节奏', en: 'Natural, human-paced actions' },
             { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement scales)' },
             { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🤖', zh: '全智能控制', en: 'Fully AI-driven' },
@@ -201,7 +201,7 @@ const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh
-            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 订阅 / 评论各做几次,然后按你的赛道关键词搜索 YouTube 视频自动按配额完成。评论由 AI 按视频上下文 + 关键词自动生成,行为间隔随机模拟真人。'
+            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 订阅 / 评论各做几次,然后按你的赛道关键词搜索 YouTube 视频自动按配额完成。评论由 AI 按视频上下文 + 关键词自动生成,行为间隔随机、节奏自然。'
             : 'Each run rolls per-action counts from your random ranges, then searches YouTube with your track keywords and works through the quota. Comments are AI-generated from video context + keyword.'}
         </p>
         <CardActionRow

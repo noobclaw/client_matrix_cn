@@ -481,7 +481,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '按你的赛道关键词智能挖近一周高互动爆文，AI 一次写出「走心评论 + 子楼层回复」组合拳，全程模拟真人节奏随机抖动安全互动。可选顺手关注高潜作者，被动涨粉不留痕。'
+                ? '按你的赛道关键词智能挖近一周高互动爆文，AI 一次写出「走心评论 + 子楼层回复」组合拳，以自然的操作节奏进行互动。可选关注高潜作者，稳步积累粉丝。'
                 : 'Mines this week\'s viral notes in your niche, AI crafts heartfelt replies plus per-comment responses, paced like a real human to stay under the radar. Optionally auto-follow promising authors — hands-free growth, no fingerprints.'}
             </p>
             <CardActionRow
@@ -659,7 +659,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         {[
           { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
           { icon: '💰', zh: '成本超低（百篇好文<$1）', en: 'Ultra-low cost (<$1 for 100 posts)' },
-          { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like, no ban risk' },
+          { icon: '🛡️', zh: '拟人化操作节奏', en: 'Natural, human-paced actions' },
           { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement = rapid follow gains)' },
           { icon: '🤖', zh: '全智能控制', en: 'Fully intelligent control' },
           { icon: '🌊', zh: '1万+爆款文池', en: '10,000+ viral note pool' },

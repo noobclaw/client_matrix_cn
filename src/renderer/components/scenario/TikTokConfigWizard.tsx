@@ -356,7 +356,7 @@ export const TikTokConfigWizard: React.FC<Props> = ({
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>{isZh ? '关注默认 0-3 — TikTok 对自动关注检测最严,长期跑建议保守' : 'Follow defaults to 0-3 — TikTok flags auto-follow most aggressively, keep low for long-term'}</li>
-                  <li>{isZh ? '动作之间随机停 30 秒-3 分钟,模拟真人节奏' : 'Random 30s-3min between actions to mimic human cadence'}</li>
+                  <li>{isZh ? '动作之间随机停 30 秒-3 分钟,自然的操作节奏' : 'Random 30s-3min between actions to a natural cadence'}</li>
                 </ul>
               </div>
             </>

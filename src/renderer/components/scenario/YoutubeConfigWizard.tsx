@@ -359,7 +359,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>{isZh ? '订阅默认 0-3 — YouTube 对自动订阅检测最严,长期跑建议保守' : 'Subscribe defaults to 0-3 — YouTube flags auto-subscribe most aggressively, keep low for long-term'}</li>
-                  <li>{isZh ? '动作之间随机停 30 秒-3 分钟,模拟真人节奏;视频数会按需采集' : 'Random 30s-3min between actions; video count auto-derived from quotas'}</li>
+                  <li>{isZh ? '动作之间随机停 30 秒-3 分钟,自然的操作节奏;视频数会按需采集' : 'Random 30s-3min between actions; video count auto-derived from quotas'}</li>
                 </ul>
               </div>
             </>

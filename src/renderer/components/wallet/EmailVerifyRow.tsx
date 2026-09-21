@@ -21,6 +21,7 @@ export const EmailVerifyRow: React.FC<Props> = ({ profile, onVerified }) => {
   const [err, setErr] = React.useState('');
   const [toast, setToast] = React.useState('');
   const [cd, setCd] = React.useState(0);
+  const [successBonus, setSuccessBonus] = React.useState<number | null>(null);  // 非 null = 显示绑定成功领奖弹窗
 
   const accountType = profile?.account_type;
   const isPassword = accountType === 'password';
@@ -54,8 +55,8 @@ export const EmailVerifyRow: React.FC<Props> = ({ profile, onVerified }) => {
     try {
       const r = await noobClawAuth.verifyEmail(email.trim().toLowerCase(), code.trim());
       if (!r.ok) { setErr(r.message || t('pwErrGeneric')); return; }
-      showToast(r.bonus && r.bonus > 0 ? t('pwBonusToast').replace('{n}', r.bonus.toLocaleString()) : t('acctEmailBound'));
       setOpen(false);
+      setSuccessBonus(r.bonus || 0);   // 弹「绑定成功」领奖弹窗(0 则只显示已绑定)
       onVerified?.();
     } finally { setBusy(false); }
   };
@@ -100,6 +101,24 @@ export const EmailVerifyRow: React.FC<Props> = ({ profile, onVerified }) => {
             <button onClick={submit} disabled={busy} className="w-full py-3 rounded-xl bg-green-500 text-white font-semibold hover:bg-green-600 transition-all disabled:opacity-60">
               {busy ? '…' : t('beVerify')}
             </button>
+          </div>
+        </div>
+      )}
+
+      {successBonus !== null && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center backdrop-blur-sm" style={{ background: 'rgba(0,0,0,0.82)' }} onClick={() => setSuccessBonus(null)}>
+          <div className="text-center rounded-2xl w-full max-w-xs mx-4 p-8 relative" style={{ background: 'linear-gradient(160deg,#0f1c15,#0a0e14)', border: '1px solid rgba(34,197,94,0.4)', boxShadow: '0 0 60px rgba(34,197,94,0.28)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 56, lineHeight: 1 }} className="mb-2">🎉</div>
+            <h3 className="text-white text-xl font-bold mb-1">{t('bsTitle')}</h3>
+            <p className="text-xs text-gray-400 mb-5">{successBonus > 0 ? t('bsSub') : t('bsSubNoBonus')}</p>
+            {successBonus > 0 && (
+              <div className="mb-6">
+                <div className="text-[11px] text-gray-400 mb-1">{t('bsReward')}</div>
+                <div className="text-4xl font-extrabold" style={{ color: '#22c55e', textShadow: '0 0 22px rgba(34,197,94,0.55)' }}>+{successBonus.toLocaleString()}</div>
+                <div className="text-xs text-green-400 mt-1">{t('bsCredits')}</div>
+              </div>
+            )}
+            <button onClick={() => setSuccessBonus(null)} className="w-full py-3 rounded-xl bg-green-500 text-white font-semibold hover:bg-green-600 transition-all">{t('bsBtn')}</button>
           </div>
         </div>
       )}

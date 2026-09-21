@@ -1544,7 +1544,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh
                       ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人'
-                      : '✨ Recommended — daily at a randomized time, more human-like'}
+                      : '✨ Recommended — daily at a randomized time, more natural'}
                   </p>
                 )}
                 {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h).
@@ -1557,7 +1557,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       const range = isLong ? '1-45' : '1-10';
                       return isZh
                         ? `⚠️ 到点后再加 ${range} 分钟随机延迟,避免精准卡点`
-                        : `⚠️ +${range}min jitter after threshold (anti-detection).`;
+                        : `⚠️ +${range}min jitter after threshold (natural pacing).`;
                     })()}
                   </p>
                 )}
@@ -1597,7 +1597,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       </div>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                      {isZh ? '前后 ±15 分钟随机偏移模拟人类节奏' : '±15 min random offset for human-like behavior'}
+                      {isZh ? '前后 ±15 分钟随机偏移模拟人类节奏' : '±15 min random offset for natural timing'}
                     </p>
                   </div>
                 );
@@ -1841,8 +1841,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       })()}</li>
                       <li>{(() => {
                         return isZh
-                          ? `· 动作之间间隔 30 秒-10 分钟随机,模拟真人节奏`
-                          : `· 30s-10min random jitter between actions to mimic human pacing`;
+                          ? `· 动作之间间隔 30 秒-10 分钟随机,自然的操作节奏`
+                          : `· 30s-10min random jitter between actions to keep a natural pace`;
                       })()}</li>
                       <li>{isZh ? '· 同一 KOL 7 天内不重复 engage,避免被识别为 follow farming' : '· No re-engaging same KOL within 7 days to avoid follow-farming detection'}</li>
                       <li>{(() => {

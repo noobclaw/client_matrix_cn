@@ -179,7 +179,7 @@ export const ShipinhaoWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center">
           {[
-            { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like behavior — no ban risk' },
+            { icon: '🛡️', zh: '拟人化操作节奏', en: 'Natural, human-paced actions' },
             { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement scales)' },
             { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🤖', zh: '全智能控制', en: 'Fully AI-driven' },

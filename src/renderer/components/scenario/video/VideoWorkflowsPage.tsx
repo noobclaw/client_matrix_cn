@@ -499,9 +499,9 @@ function scriptSummary(input: VideoCreationInput, isZh: boolean): string {
   return s.length > 60 ? s.slice(0, 60) + '…' : s;
 }
 
-// 视频创作卖点标签(空状态 + 新建页都用,改一处即可)。突出:0风险模拟人类、批量日更 100 条低至 $0.04/条、全自动、一键全平台。
+// 视频创作卖点标签(空状态 + 新建页都用,改一处即可)。突出:模拟人类、批量日更 100 条低至 $0.04/条、全自动、一键全平台。
 const VIDEO_FEATURE_PILLS: Array<{ icon: string; zh: string; en: string }> = [
-  { icon: '🛡️', zh: '完全模拟人类行为，0风险', en: 'Fully mimics human behavior — zero risk' },
+  { icon: '🛡️', zh: 'AI 辅助内容创作与运营', en: 'AI-assisted content creation' },
   { icon: '💰', zh: '批量日更 100 条，低至 $0.04/条', en: 'Batch 100 shorts a day · from $0.04 each' },
   { icon: '🎙️', zh: 'AI 写稿 + AI 配音 + 自动字幕,全程零剪辑', en: 'AI script + voiceover + subtitles, zero editing' },
   { icon: '🚀', zh: '一键发抖音 / 小红书 / 快手 / 视频号 等全平台', en: 'One-click to Douyin / XHS / Kuaishou / Channels & more' },
@@ -4804,7 +4804,7 @@ const VideoConfigModal: React.FC<{
                 )}
                 {runInterval === 'daily_random' && (
                   <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                    {isZh ? '✨ 推荐 — 每天随机时间出片一次,最像真人' : '✨ Recommended — once daily at a random time, most human-like'}
+                    {isZh ? '✨ 推荐 — 每天随机时间出片一次,最像真人' : '✨ Recommended — once daily at a random time, most natural'}
                   </p>
                 )}
                 {runInterval !== 'once' && (
@@ -5927,13 +5927,13 @@ export const HotspotVideoModal: React.FC<{
                   ))}
                 </div>
                 {runInterval === 'daily_random' && (
-                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人' : '✨ Recommended — daily at a randomized time, more human-like'}</p>
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人' : '✨ Recommended — daily at a randomized time, more natural'}</p>
                 )}
                 {isShortJitter && (
-                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 1-10 分钟随机延迟,避免精准卡点' : '⚠️ +1-10min jitter after threshold (anti-detection).'}</p>
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 1-10 分钟随机延迟,避免精准卡点' : '⚠️ +1-10min jitter after threshold (natural pacing).'}</p>
                 )}
                 {isLongJitter && (
-                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 1-45 分钟随机延迟,避免精准卡点' : '⚠️ +1-45min jitter after threshold (anti-detection).'}</p>
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 1-45 分钟随机延迟,避免精准卡点' : '⚠️ +1-45min jitter after threshold (natural pacing).'}</p>
                 )}
                 {runInterval !== 'once' && (
                   <p className="mt-2 text-[11px] text-amber-500">{isZh ? '⚠️ 定时到点自动出片并扣费,请保证余额充足 + 应用保持开启。' : '⚠️ Scheduled runs auto-bill — keep balance and app running.'}</p>
@@ -8247,11 +8247,11 @@ const RemixFreqPicker: React.FC<{ isZh: boolean; value: string; onChange: (v: st
       ))}
     </div>
     {value === 'daily_random' && (
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">{isZh ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人' : '✨ Recommended — daily at a randomized time, more human-like'}</p>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">{isZh ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人' : '✨ Recommended — daily at a randomized time, more natural'}</p>
     )}
     {(value === '30min' || value === '1h' || value === '3h' || value === '6h') && (
       <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-        {(() => { const isLong = value === '3h' || value === '6h'; const range = isLong ? '1-45' : '1-10'; return isZh ? `⚠️ 到点后再加 ${range} 分钟随机延迟,避免精准卡点` : `⚠️ +${range}min jitter after threshold (anti-detection).`; })()}
+        {(() => { const isLong = value === '3h' || value === '6h'; const range = isLong ? '1-45' : '1-10'; return isZh ? `⚠️ 到点后再加 ${range} 分钟随机延迟,避免精准卡点` : `⚠️ +${range}min jitter after threshold (natural pacing).`; })()}
       </p>
     )}
   </>

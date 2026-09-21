@@ -652,8 +652,8 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
             </div>
             <label className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
               <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="h-4 w-4 accent-cyan-500 mt-0.5 shrink-0" />
-              <span>{t('我已知悉:采集与互动均模拟真人节奏,潜客名单会保存在本地并长期累积,我将合规使用。',
-                     'I understand collection and outreach mimic human pacing, the lead roster is stored locally and grows over time, and I will use it compliantly.')}</span>
+              <span>{t('我已知悉:采集与互动均自然的操作节奏,潜客名单会保存在本地并长期累积,我将合规使用。',
+                     'I understand collection and outreach keep a natural pace, the lead roster is stored locally and grows over time, and I will use it compliantly.')}</span>
             </label>
           </>
         )}
