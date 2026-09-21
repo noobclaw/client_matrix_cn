@@ -69,7 +69,7 @@ export const EmailVerifyRow: React.FC<Props> = ({ profile, onVerified }) => {
         <span className="truncate">{existing} · <span className="text-primary">{t('acctEmailBound')}</span></span>
       ) : (
         <>
-          <span className="truncate">{existing || t('acctEmailNone')} · <span className="text-yellow-500">{t('acctEmailUnverified')}</span></span>
+          <span className="truncate">{existing ? <>{existing} · <span className="text-yellow-500">{t('acctEmailUnverified')}</span></> : <span className="text-gray-500">{t('acctEmailNone')}</span>}</span>
           <button
             onClick={openModal}
             className="relative shrink-0 px-2 py-0.5 rounded-md text-[11px] font-semibold border border-green-500/40 text-green-400 hover:bg-green-500/10 transition-colors"
