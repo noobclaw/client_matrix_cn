@@ -12,10 +12,10 @@
 
 export function buildInviteShareMessage(inviteLink: string, lang: string): string {
   if (lang === 'zh') {
-    return `我发现一个AI 创作辅助工具 NoobClaw，能帮你在推特、小红书、币安广场、Youtube、抖音、TiktokAI 生成与二创图文/视频内容、辅助日常运营，是很省心的创作助手。教程：https://docs.noobclaw.com  用我的链接免费赠送100万Token ：${inviteLink}`;
+    return `我发现一个AI 创作辅助工具 NoobClaw，能帮你在推特、小红书、币安广场、Youtube、抖音、TikTok 等平台，AI 生成与二创图文/视频内容、辅助日常运营，是很省心的创作助手。教程：https://docs.noobclaw.com  用我的链接免费赠送100万Token ：${inviteLink}`;
   }
   if (lang === 'zh-TW') {
-    return `我發現一個AI 創作輔助工具 NoobClaw，能幫你在推特、小紅書、幣安廣場、Youtube、抖音、TiktokAI 生成與二創圖文/影片內容、輔助日常運營，是很省心的創作助手。教程：https://docs.noobclaw.com  用我的連結免費贈送100萬Token ：${inviteLink}`;
+    return `我發現一個AI 創作輔助工具 NoobClaw，能幫你在推特、小紅書、幣安廣場、Youtube、抖音、TikTok 等平台，AI 生成與二創圖文/影片內容、輔助日常運營，是很省心的創作助手。教程：https://docs.noobclaw.com  用我的連結免費贈送100萬Token ：${inviteLink}`;
   }
   return `I found an AI content tool NoobClaw that helps you create and remix image/text and video content on Twitter, Xiaohongshu, Binance Square, YouTube, Douyin, and TikTok. It is a handy AI content assistant. Tutorial: https://docs.noobclaw.com/english Use my link to get 1M free tokens: ${inviteLink}`;
 }
