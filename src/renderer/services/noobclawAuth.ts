@@ -295,9 +295,11 @@ class NoobClawAuthService {
     args: { email?: string; account?: string },
   ): Promise<{ ok: boolean; message?: string; error?: string; retryAfter?: number }> {
     try {
+      let lang: string | undefined;
+      try { lang = (await import('./i18n')).i18nService.currentLanguage; } catch { /* 拿不到就让后端回落英文 */ }
       const res = await fetch(`${this.backendUrl}/api/auth/send-email-code`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purpose, ...args }),
+        body: JSON.stringify({ purpose, ...args, lang }),
       });
       const data: any = await res.json().catch(() => ({}));
       if (!res.ok) return { ok: false, message: data.message || data.error, error: data.error, retryAfter: data.retryAfter };
