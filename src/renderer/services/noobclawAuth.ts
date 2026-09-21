@@ -260,7 +260,7 @@ class NoobClawAuthService {
   async passwordAuth(
     kind: 'login' | 'register',
     body: Record<string, string>,
-  ): Promise<{ ok: boolean; message?: string }> {
+  ): Promise<{ ok: boolean; message?: string; suggestReset?: boolean; bonus?: number }> {
     try {
       let mac = '';
       try { mac = (await window.electron?.noobclaw?.getMacAddress()) || ''; } catch { /* ignore */ }
@@ -277,13 +277,90 @@ class NoobClawAuthService {
       });
       const data: any = await res.json().catch(() => ({}));
       if (!res.ok || !data.token || !data.walletAddress) {
-        return { ok: false, message: (data && (data.message || data.error)) || `HTTP ${res.status}` };
+        return { ok: false, message: (data && (data.message || data.error)) || `HTTP ${res.status}`, suggestReset: !!(data && data.suggestReset) };
       }
       this.setAuthFromWebsite(data.token, data.walletAddress, data.username || body.username || body.account || '', 'password');
+      const bonus = (Number(data.emailBonus) || 0) + (Number(data.contactBonus) || 0);
+      return { ok: true, bonus };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : 'network error' };
+    }
+  }
+
+  // ── Email verification / forgot-password / contact bonus (2026-09-21) ──
+  // Send a code. purpose 'verify' takes {email}; purpose 'reset' takes {account}.
+  // Backend returns HTTP 400 + retryAfter on cooldown/cap, 403 EMAIL_NOT_VERIFIED for reset on unverified accounts.
+  async sendEmailCode(
+    purpose: 'verify' | 'reset',
+    args: { email?: string; account?: string },
+  ): Promise<{ ok: boolean; message?: string; error?: string; retryAfter?: number }> {
+    try {
+      const res = await fetch(`${this.backendUrl}/api/auth/send-email-code`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purpose, ...args }),
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, message: data.message || data.error, error: data.error, retryAfter: data.retryAfter };
+      return { ok: true, message: data.message };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : 'network error' };
+    }
+  }
+
+  // Verify + bind email for the current logged-in account; grants one-time bonus (server-side anti-abuse gate).
+  async verifyEmail(email: string, code: string): Promise<{ ok: boolean; message?: string; bonus?: number }> {
+    if (!this.state.authToken) return { ok: false, message: 'not logged in' };
+    try {
+      const res = await fetch(`${this.backendUrl}/api/auth/verify-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.state.authToken}` },
+        body: JSON.stringify({ email, code }),
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok || !data.verified) return { ok: false, message: data.message || data.error || `HTTP ${res.status}` };
+      if (typeof data.tokenBalance === 'number') { this.state.tokenBalance = data.tokenBalance; this.notify(); }
+      this.refreshBalance().catch(() => {});
+      return { ok: true, bonus: Number(data.bonus) || 0 };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : 'network error' };
+    }
+  }
+
+  // Self-service password reset (verified-email accounts only; unverified return 403 EMAIL_NOT_VERIFIED).
+  async resetPassword(account: string, code: string, newPassword: string): Promise<{ ok: boolean; message?: string; error?: string }> {
+    try {
+      const res = await fetch(`${this.backendUrl}/api/auth/reset-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account, code, newPassword }),
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok) return { ok: false, message: data.message || data.error, error: data.error };
       return { ok: true };
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : 'network error' };
     }
+  }
+
+  // Fetch the full profile (email verification state for the account card). Returns raw JSON or null.
+  async fetchProfile(): Promise<any | null> {
+    if (!this.state.authToken) return null;
+    try {
+      const res = await fetch(`${this.backendUrl}/api/user/profile`, {
+        headers: { Authorization: `Bearer ${this.state.authToken}` },
+      });
+      if (res.status === 401) { this.handleAuthExpired(); return null; }
+      if (!res.ok) return null;
+      return await res.json();
+    } catch { return null; }
+  }
+
+  // Customer-service contact QR (for the "email not verified → contact support" path). Public endpoint.
+  async fetchContact(): Promise<Record<string, { link?: string; image?: string }>> {
+    try {
+      const res = await fetch(`${this.backendUrl}/api/site/contact`);
+      const j: any = await res.json().catch(() => ({}));
+      return (j && j.contact) || {};
+    } catch { return {}; }
   }
 
   // Report device MAC address to backend

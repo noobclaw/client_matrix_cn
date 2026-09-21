@@ -8,6 +8,7 @@ import { CnyWithdrawModal } from './CnyWithdrawModal';
 import MembershipPanel from '../membership/MembershipPanel';
 import { getPendingWalletTab } from '../../services/walletNav';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
+import { EmailVerifyRow } from './EmailVerifyRow';
 import { readCachedPaymentInfo, writeCachedPaymentInfo, readCachedRedeemInfo, writeCachedRedeemInfo } from '../../services/paymentInfoCache';
 import { HIDE_WEB3 } from '../../buildFlags';
 import { ContactFloatWidget } from '../common/ContactWidgets';
@@ -1893,6 +1894,20 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
                   <span className="truncate">{authState.socialEmail}</span>
                 </div>
+              )}
+              {/* 邮箱认证/绑定行(未验证送 3 万 Token;社交号已带邮箱不显示)。
+                  profile 带回 account_type / email / social_email / emailVerified。 */}
+              {profile && (
+                <EmailVerifyRow
+                  profile={profile}
+                  onVerified={async () => {
+                    const fresh = await noobClawAuth.fetchProfile();
+                    if (fresh) {
+                      setProfile(fresh);
+                      if (authState.walletAddress) writeCachedProfile(authState.walletAddress, fresh);
+                    }
+                  }}
+                />
               )}
               {/* 账密账号:绑定收款钱包(profile 由 /api/user/profile 带回
                   account_type / payout_wallet 两个新字段)。CN 版 HIDE_WEB3 隐藏。 */}
