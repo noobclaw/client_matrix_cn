@@ -834,7 +834,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   </div>
                   <div className="flex justify-between">
                     <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel2_6')}</span>
-                    <span className="dark:text-claude-darkText text-claude-text">10% each</span>
+                    <span className="dark:text-claude-darkText text-claude-text">10%</span>
                   </div>
                 </div>
               </div>
