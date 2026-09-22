@@ -15,6 +15,7 @@ import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { i18nService } from '../../services/i18n';
 import { noobClawAuth } from '../../services/noobclawAuth';
+import { getBackendApiUrl } from '../../services/endpoints';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { DEFAULT_SCENARIOS } from '../../data/defaultScenarios';
 import { XhsWorkflowsPage } from './XhsWorkflowsPage';
@@ -250,6 +251,21 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 矩阵平台标签上的「有任务在跑」绿点。sidecar 的 matrix:listTasks 顺带返回 runningPlatforms
   //   (哪些平台正在跑),这里只取这一项;非矩阵模式不拉。
   const [matrixRunningPlatforms, setMatrixRunningPlatforms] = useState<string[]>([]);
+  // 合规隐藏平台:服务端 /api/matrix/config 按当前用户算好(总开关关 / 命中白名单 → 空数组)。
+  //   拉不到就【不藏】(fail-open,网络抖动不误伤;存量任务本就在后台跑,隐藏只是新建入口)。
+  const [complianceHidden, setComplianceHidden] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${getBackendApiUrl()}/api/matrix/config`, { headers: noobClawAuth.getAuthHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive && Array.isArray(data?.complianceHiddenPlatforms)) setComplianceHidden(data.complianceHiddenPlatforms.map(String));
+      } catch { /* 拉不到 → 不藏 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
   // 「只看运行中」:管理页标题旁的开关(默认关)。开 → 隐藏平台 tab,所有平台运行中的任务卡
   //   聚到一个列表方便追踪;视频创作任务体系独立(videoTaskStore),不混排,以顶部横幅入口代替。
   //   只作用于 manage 菜单的任务列表态;下钻详情/运行记录不受影响。
@@ -1335,6 +1351,16 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setView({ kind: 'main', section: currentSection, platform });
   };
 
+  // 合规隐藏生效后,若当前正停在被隐藏的平台上 → 跳到第一个可见平台(否则停在没有 tab 的空平台)。
+  useEffect(() => {
+    if (!matrixMode || complianceHidden.length === 0) return;
+    if (complianceHidden.includes(currentPlatform)) {
+      const firstVisible = MATRIX_TAB_ORDER.find((id) => !complianceHidden.includes(id));
+      if (firstVisible && firstVisible !== currentPlatform) setPlatform(firstVisible);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complianceHidden, currentPlatform, matrixMode]);
+
   // 进入视频创建流。跟其他平台「新建」一致先过积分门槛(余额 < 10000 弹"积分
   // 不足"提示框,点充值跳钱包页),通过才真正切到 create。两个入口(落地页占位框 /
   // 右上 CTA)都走这里,保证门槛一致。
@@ -1730,8 +1756,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
                 {i18nService.currentLanguage === 'zh'
-                  ? <>采集<strong>同行作品评论区</strong>里的潜在客户,去重存成本地名单,再逐个去他们主页点赞 / 评论 / {LEAD_FOLLOW_WORD(currentPlatform)[0]},把人引回来看你。</>
-                  : <>Harvests potential customers from <strong>competitors' comment sections</strong>, dedupes them into a local roster, then likes / comments / {LEAD_FOLLOW_WORD(currentPlatform)[1]}s each to pull them back to you.</>}
+                  ? <>AI挖掘<strong>同行作品评论区</strong>里的潜在客户,去重存成本地名单,AI辅助您去他们主页点赞 / 评论 / {LEAD_FOLLOW_WORD(currentPlatform)[0]},把人引回来看你。</>
+                  : <>AI surfaces potential customers from <strong>competitors' comment sections</strong>, dedupes them into a local roster, then assists you to like / comment / {LEAD_FOLLOW_WORD(currentPlatform)[1]} each to bring them back to you.</>}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
                 <button
@@ -1815,7 +1841,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">📝 {platLabel} · {i18nService.t('svCardImageTextTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                {i18nService.t('svCardImageTextDesc1')}<strong>{i18nService.t('svUniqueEach')}</strong>{i18nService.t('svCardImageTextDesc2')}
+                {i18nService.t('svCardImageTextDesc1')}<strong>{i18nService.t('svCardImageTextStrong')}</strong>{i18nService.t('svCardImageTextDesc2')}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
@@ -2529,8 +2555,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && !runningOnlyActive && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。
-              国内版:交易所广场五家(币安/OKX/Bitget/Bybit/Gate)【保留】且排在最后 —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录三处都露。 */}
-          {(matrixMode ? MATRIX_TAB_ORDER.filter((id) => !(HIDE_EXCHANGE_SQUARES && WEB3_SQUARE_TABS.includes(id))).map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean) : PLATFORM_TABS).map((tab) => {
+              国内版:交易所广场五家(币安/OKX/Bitget/Bybit/Gate)【保留】且排在最后 —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录三处都露。
+              合规隐藏(complianceHidden)再叠一层过滤。 */}
+          {(matrixMode ? MATRIX_TAB_ORDER.filter((id) => !(HIDE_EXCHANGE_SQUARES && WEB3_SQUARE_TABS.includes(id))).map((id) => PLATFORM_TABS.find((t) => t.id === id)!).filter(Boolean).filter((t) => !complianceHidden.includes(t.id)) : PLATFORM_TABS).map((tab) => {
             const active = currentPlatform === tab.id;
             // 矩阵号:对齐「我的矩阵账号」的简洁 pill 切换(纯文字 + violet 选中,rounded-full),
             // 顺序同账号页(MATRIX_TAB_ORDER 已与 PLATFORMS 一致)。非矩阵(旧视频版)保持原绿卡样式。

@@ -330,6 +330,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [trackPresets, setTrackPresets] = useState<TrackPreset[]>(FALLBACK_TRACK_PRESETS);
   // 赛道下拉是否展开(自绘两列面板,替代原生 select:赛道多,两列更矮)。
   const [trackOpen, setTrackOpen] = useState(false);
+  // 合规隐藏平台:服务端按当前用户算好(总开关关 / 命中白名单 → 空)。拉不到 → 不藏(fail-open)。
+  const [complianceHidden, setComplianceHidden] = useState<string[]>([]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -343,6 +345,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         // 下发的赛道库:校验为非空数组且每条带 name 才采用,否则保留内置兜底。
         const tp = data?.trackPresets;
         if (alive && Array.isArray(tp) && tp.length > 0 && tp.every((t: any) => t && t.name)) setTrackPresets(tp as TrackPreset[]);
+        if (alive && Array.isArray(data?.complianceHiddenPlatforms)) setComplianceHidden(data.complianceHiddenPlatforms.map(String));
       } catch { /* 网络/未登录 → 用兜底 */ }
       // 号数墙以【订阅档位】为准:拉 /api/plan/config 取当前档的单平台上限,覆盖 matrix/config 的全局兜底。
       try {
@@ -372,6 +375,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [platform, setPlatform] = useState<string>(initialPlatform || 'douyin');
   // 从向导「无账号」引导跳来时,落到来源平台 tab(initialPlatform 变化才覆盖,不打断手动切 tab)。
   useEffect(() => { if (initialPlatform) setPlatform(initialPlatform); }, [initialPlatform]);
+  // 合规隐藏生效后,若当前停在被隐藏平台 → 跳到第一个可见平台(否则停在没有 tab 的空平台)。
+  useEffect(() => {
+    if (complianceHidden.length === 0) return;
+    if (complianceHidden.includes(platform)) {
+      const firstVisible = PLATFORMS.find((p) => !complianceHidden.includes(p));
+      if (firstVisible && firstVisible !== platform) setPlatform(firstVisible);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complianceHidden, platform]);
   // 把当前选中平台上报给 App —— 让「新建涨粉任务」的互动向导默认落在这里选的平台(而非写死抖音)。
   useEffect(() => { onPlatformChange?.(platform); }, [platform, onPlatformChange]);
   // kernelPath:调试用的手动内核路径覆盖(UI 已移除输入框,留空即由后端自动解析已装版本)。
@@ -982,7 +994,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             </div>
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {PLATFORMS.map((p) => {
+              {PLATFORMS.filter((p) => !complianceHidden.includes(p)).map((p) => {
                 const expiredCount = expiredCountByPlatform[p] || 0;
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
@@ -1107,7 +1119,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         {screen === 'newTask' && (
           <div className="max-w-6xl mx-auto">
             <div className="flex flex-wrap gap-2 mb-6">
-              {PLATFORMS.map((p) => (
+              {PLATFORMS.filter((p) => !complianceHidden.includes(p)).map((p) => (
                 <button key={p} onClick={() => setPlatform(p)} className={`px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
                   {platLabel(p)}
                 </button>
@@ -1181,7 +1193,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <h2 className="text-lg font-bold dark:text-white">📋 {i18nService.t('mvMyGrowthTasks').replace('{platform}', platLabel(platform))}</h2>
               <div className="flex items-center gap-2">
                 <select value={platform} onChange={(e) => setPlatform(e.target.value)} className="text-sm px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 dark:text-white">
-                  {PLATFORMS.map((p) => <option key={p} value={p}>{platLabel(p)}</option>)}
+                  {PLATFORMS.filter((p) => !complianceHidden.includes(p)).map((p) => <option key={p} value={p}>{platLabel(p)}</option>)}
                 </select>
                 <button onClick={() => onNavigate?.('newTask')} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">🎶 {i18nService.t('mvNewTask')}</button>
               </div>
