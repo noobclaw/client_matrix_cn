@@ -230,7 +230,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   // 把总量按「实际互动人数」平摊,给用户一个直观预期(与剧本 STEP2 的 ceil 口径一致)。
   const perLead = (total: number) => {
     const reach = Math.max(1, clampInt(leadsPerRun, 1, 100));
-    const n = clampInt(total, 0, 500);
+    const n = clampInt(total, 0, 5000);
     return n > 0 ? Math.max(1, Math.ceil(n / reach)) : 0;
   };
   const selectedAccounts = accounts.filter((a) => selected.has(a.id));
@@ -269,7 +269,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     4: { ok: true },
     // 点赞/关注/评论三个总量都填 0 = 采完潜客后挨个打开主页干等、什么也不做(采集那步照样跑)。
     //   这肯定不是用户想要的,拦在第 5 步(评论数是最后一个填的)。
-    5: (clampInt(maxLikes, 0, 500) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 300)) > 0
+    5: (clampInt(maxLikes, 0, 5000) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 300)) > 0
       ? { ok: true }
       : { ok: false, reason: t(`点赞 / ${followWord} / 评论至少要开一项,否则获取到潜客后什么也不会做`, `Enable at least one of like / ${followWord} / comment — otherwise nothing happens after leads are collected`) },
     6: termsAccepted ? { ok: true } : { ok: false, reason: t('请先同意条款', 'Please accept the terms') },
@@ -329,16 +329,16 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           })() : undefined,
           // 关键词跟随账号设置,向导不再提供输入;但老任务里存过的任务级词要原样保留(同上,整体替换)。
           keywords: Array.isArray(le.keywords) ? le.keywords : [],
-          maxLeads: clampInt(maxLeads, 1, 100),
+          maxLeads: clampInt(maxLeads, 1, 5000),
           // 条数 0 = 关闭该动作(开关行已按用户要求删掉,用数量本身表达开关)。
           //   do* 必须跟着算,否则剧本读到 doLike=true 仍会去点 —— 条数为 0 时
           //   剧本内部 nLikeLead 也会是 0,两边一致才不会出现「设了 0 还照做」。
-          maxLikes: clampInt(maxLikes, 0, 500),
+          maxLikes: clampInt(maxLikes, 0, 5000),
           maxFollows: clampInt(maxFollows, 0, 100),
           maxComments: clampInt(maxComments, 0, 300),
           leadsPerRun: clampInt(leadsPerRun, 1, 100),
           // 总量为 0 = 关闭该动作(向导没有单独的开关行,用数量本身表达)。
-          doLike: clampInt(maxLikes, 0, 500) > 0,
+          doLike: clampInt(maxLikes, 0, 5000) > 0,
           doComment: clampInt(maxComments, 0, 300) > 0,
           doFollow: clampInt(maxFollows, 0, 100) > 0,
           // ⚠️ taskStore 对 leadEngage 是整体替换(`input.leadEngage ?? 旧值`),不是逐字段合并。
@@ -559,7 +559,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {/* STEP 3 · 数量 */}
         {step === 3 && (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
-            {numRow(t('本次获取潜客上限', 'New leads per run'), t('（本地已有的不重复收）', '(dedup against the local roster)'), maxLeads, setMaxLeads, 1, 100)}
+            {numRow(t('本次获取潜客上限', 'New leads per run'), t('（本地已有的不重复收）', '(dedup against the local roster)'), maxLeads, setMaxLeads, 1, 5000)}
             {numRow(t('本次最多互动多少潜客', 'Leads to engage per run'), t('新客优先,老客轮转,轮不到的下次接着', 'New leads first, then rotate through existing ones'), leadsPerRun, setLeadsPerRun, 1, 100)}
           </div>
         )}
@@ -575,7 +575,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               {numRow(t('👍 本次点赞最大数量', '👍 Total likes this run'),
                 t(`总量,按实际互动人数平摊 · 每人约 ${perLead(maxLikes)} 条 · 设为 0 = 不点赞`,
                   `Total, spread across the leads reached (~${perLead(maxLikes)} each) · 0 disables liking`),
-                maxLikes, setMaxLikes, 0, 500)}
+                maxLikes, setMaxLikes, 0, 5000)}
               {numRow(t(`${followIcon} 本次${followWord}最大数量`, `${followIcon} Total ${followWord}s this run`),
                 t(`每个潜客终身只${followWord}一次,已${followWord}过的不再重复 · 设为 0 = 不${followWord}`,
                   `Each lead is ${followWord}d once ever · 0 disables it`),
@@ -635,10 +635,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 text-sm space-y-1.5 dark:text-gray-300">
               <div className="flex justify-between"><span className="text-gray-500">{t('执行账号', 'Accounts')}</span><span>{selected.size}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('本次获取潜客上限', 'New leads')}</span><span>{clampInt(maxLeads, 1, 100)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('本次获取潜客上限', 'New leads')}</span><span>{clampInt(maxLeads, 1, 5000)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 100)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次总量', 'Totals')}</span><span>{[
-                clampInt(maxLikes,0,500) > 0 ? `👍${clampInt(maxLikes,0,500)}` : null,
+                clampInt(maxLikes,0,5000) > 0 ? `👍${clampInt(maxLikes,0,5000)}` : null,
                 clampInt(maxComments,0,300) > 0 ? `💬${clampInt(maxComments,0,300)}` : null,
                 clampInt(maxFollows,0,100) > 0 ? `➕${clampInt(maxFollows,0,100)}` : null,
               ].filter(Boolean).join(' · ') || '—'}</span></div>
