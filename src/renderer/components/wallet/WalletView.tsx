@@ -177,14 +177,12 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' |
 
 // 支付方式弹窗里的一行(图标 + 标题 + 副标题 + 可选角标)。禁用时置灰不可点。
 
-// 美元标价旁的人民币参考价。
-//   ⚠️ 只能写「≈」—— 实际走银行卡按美元结算,落地人民币由发卡行按当日汇率定;
-//     usdCnyRate 只是后端 admin 里那个参考汇率(和卡密面值同一个旋钮)。
-//   拿不到汇率就整个不显示 —— 宁可不写,也不能写个错数字。
-function cnyRef(usd?: number | null, rate?: number | null): string {
+// 国内版:积分档位按人民币标价 —— 与后端 /payment/create 收款同一公式(usd × usdt_to_cny_rate,保留两位)。
+//   拿不到汇率返回 '',调用方退回美元。
+function cnyPrice(usd?: number | null, rate?: number | null): string {
   const u = Number(usd), r = Number(rate);
   if (!(r > 0) || !Number.isFinite(u) || u <= 0) return '';
-  return '≈ ¥' + Math.round(u * r);
+  return '¥' + String(+(u * r).toFixed(2));
 }
 
 const MethodRow: React.FC<{
@@ -2037,7 +2035,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <MembershipPanel onPay={startSubscriptionPay} payMethods={payMethodsEff} autoRenew={paymentInfo?.autoRenew} usdCnyRate={paymentInfo?.usdCnyRate} />
+          <MembershipPanel onPay={startSubscriptionPay} payMethods={payMethodsEff} autoRenew={paymentInfo?.autoRenew} usdCnyRate={paymentInfo?.usdCnyRate} alipayMaxCny={paymentInfo?.alipayMaxCny} />
         </div>
         )}
 
@@ -2137,10 +2135,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   </div>
                 ) : usdPackages.map((pkg) => (
                   <div key={`usd-${pkg.usd}`} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
-                    <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1 font-medium">${pkg.usd}</p>
-                    {cnyRef(pkg.usd, paymentInfo?.usdCnyRate) && (
-                      <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{cnyRef(pkg.usd, paymentInfo?.usdCnyRate)}</p>
-                    )}
+                    <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1 font-medium">{cnyPrice(pkg.usd, paymentInfo?.usdCnyRate) || `$${pkg.usd}`}</p>
                     <p className="font-bold dark:text-claude-darkText text-claude-text mb-0.5">{fmtCreditsM(pkg.tokens)}</p>
                     <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">{i18nService.t('walletRedeemCreditsUnit')}</p>
                     <button
@@ -2156,7 +2151,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               )}
             </>
           )}
-          <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('wvPaidCreditsNote')} {i18nService.t('cnyRefNote')}</p>
+          <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('wvPaidCreditsNote')}</p>
         </div>
         )}
 
@@ -2176,8 +2171,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   <button onClick={() => setPayPkg(null)} className="text-lg leading-none dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-red-400">✕</button>
                 </div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-4">
-                  {i18nService.t('walletTopupSummary').replace('{credits}', fmtCreditsM(payPkg.tokens)).replace('{usd}', String(payPkg.usd))}
-                  {cnyRef(payPkg.usd, paymentInfo?.usdCnyRate) ? ` (${cnyRef(payPkg.usd, paymentInfo?.usdCnyRate)})` : ''}
+                  {cnyPrice(payPkg.usd, paymentInfo?.usdCnyRate)
+                    ? i18nService.t('walletTopupSummary').replace('{credits}', fmtCreditsM(payPkg.tokens)).replace('${usd}', cnyPrice(payPkg.usd, paymentInfo?.usdCnyRate))
+                    : i18nService.t('walletTopupSummary').replace('{credits}', fmtCreditsM(payPkg.tokens)).replace('{usd}', String(payPkg.usd))}
                 </div>
                 <div className="space-y-2.5">
                   {/* 顺序是产品定的:银行卡 → 微信 → 支付宝 → 官方店铺 → USDT → BNB。
@@ -2186,7 +2182,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     const _c = showM('card') && (
                     <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={badgeM('card')} onClick={() => handlePayPackageWith('CARD', payPkg.usd)} />
                   );
-                    const _a = showM('alipay') && (
+                    // 支付宝单笔上限:本单人民币超过就不给支付宝。
+                    const _r = Number(paymentInfo?.usdCnyRate) || 0;
+                    const _cny = _r > 0 ? +(payPkg.usd * _r).toFixed(2) : 0;
+                    const _cap = paymentInfo?.alipayMaxCny == null ? 499 : Number(paymentInfo.alipayMaxCny);
+                    const _a = showM('alipay') && !(_cap > 0 && _cny > _cap) && (
                     <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={badgeM('alipay')} onClick={() => handlePayPackageWith('ALIPAY', payPkg.usd)} />
                   );
                     return recM === 'alipay' ? <>{_a}{_c}</> : <>{_c}{_a}</>;

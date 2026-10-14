@@ -85,6 +85,8 @@ export interface PaymentInfo {
    * 而国内版即便只用银行卡也仍要显示人民币参考价。
    */
   usdCnyRate?: number;
+  /** 支付宝单笔上限(¥,0 = 不限)。缺省按 499。 */
+  alipayMaxCny?: number;
   // Optional — present when backend has the multi-chain TRON channel enabled.
   // TRON is keyed only when tron_treasury_address is set in system_config; if
   // missing, the client falls back to BSC-only behavior.

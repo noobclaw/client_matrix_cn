@@ -75,16 +75,6 @@ const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON' | 'WXPAY' | 'DODO' | 'CREEM' |
 
 // 弹窗里的一行支付方式(图标 + 标题 + 副标题 + 可选角标)。禁用时置灰不可点。
 
-// 美元标价旁的人民币参考价。
-//   ⚠️ 只能写「≈」—— 实际走银行卡按美元结算,落地人民币由发卡行按当日汇率定;
-//     usdCnyRate 只是后端 admin 里那个参考汇率(和卡密面值同一个旋钮)。
-//   拿不到汇率就整个不显示 —— 宁可不写,也不能写个错数字。
-function cnyRef(usd?: number | null, rate?: number | null): string {
-  const u = Number(usd), r = Number(rate);
-  if (!(r > 0) || !Number.isFinite(u) || u <= 0) return '';
-  return '≈ ¥' + Math.round(u * r);
-}
-
 const MethodRow: React.FC<{
   icon: React.ReactNode; title: string; desc: string; badge?: string;
   disabled?: boolean; onClick: () => void;
@@ -163,7 +153,9 @@ const MembershipPanel: React.FC<{
   autoRenew?: AutoRenewFlags;
   /** 美元→人民币参考汇率(后端 /payment/info 下发)。 */
   usdCnyRate?: number;
-}> = ({ onPay, payMethods, autoRenew, usdCnyRate }) => {
+  /** 支付宝单笔上限(¥,0 = 不限)。超过的档位不显示支付宝。 */
+  alipayMaxCny?: number;
+}> = ({ onPay, payMethods, autoRenew, alipayMaxCny }) => {
   // 套餐配置:先读 localStorage 缓存秒出(对齐购买积分),后台 fetch 静默覆盖。
   // 有缓存就不显示「加载中…」,只在首次无缓存时才阻塞。
   const [cfg, setCfg] = useState<Awaited<ReturnType<typeof noobClawApi.getPlanConfig>>>(() => readCachedPlanConfig());
@@ -365,16 +357,17 @@ const MembershipPanel: React.FC<{
           const tier = TIER_COLOR[plan.code] || '#9aa0aa';
           // 一律美元展示(支付方式在点卡片后的弹窗里选;Dodo 收银台会按用户本币结算,但标价统一 $)。
           //   'once' 取后端下发的单月购买价(prices.once,比连续包月贵)。
-          const sym = '$';
+          // 国内版:一律人民币标价 + 人民币收款(后端 prices[period].cny 与 /payment/create 收款同一口径)。
+          const sym = '¥';
           const months = PERIOD_MONTHS[period];
           const discount = price?.discount ?? 1;
-          const finalP = isFree ? 0 : (price?.usd ?? plan.price_usd);
-          const origP = plan.price_usd * months;
+          const finalP = isFree ? 0 : (price?.cny ?? plan.price_cny * months);
+          const origP = plan.price_cny * months;
           const hasDiscount = !isFree && discount < 0.999;
           const off = Math.round(discount * 100) / 10; // 0.7→7、0.9→9
           // 连续订阅 vs 单月购买的省钱对比:用后端下发的 once 价减去本周期折合的每月价。
           //   省了才显示 —— 让「连续更划算」一眼可见。
-          const oncePrice = plan.prices?.once?.usd ?? 0;
+          const oncePrice = plan.prices?.once?.cny ?? 0;
           const perMonth = (!isFree && months > 0) ? finalP / months : 0;
           const savePerMo = (!isOnce && oncePrice > 0 && perMonth > 0) ? (oncePrice - perMonth) : 0;
           return (
@@ -393,9 +386,6 @@ const MembershipPanel: React.FC<{
                 {hasDiscount && <span className="text-xs line-through dark:text-claude-darkTextSecondary text-claude-textSecondary">{sym}{Math.round(origP)}</span>}
                 {!isFree && <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">/{periodLabel(period)}</span>}
               </div>
-              {!isFree && cnyRef(finalP, usdCnyRate) && (
-                <div className="mt-0.5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{cnyRef(finalP, usdCnyRate)}</div>
-              )}
               {savePerMo > 0.01 && (
                 <div className="mt-1 text-[11px] font-semibold text-primary">{i18nService.t('mpSaveVsOnce').replace('{n}', savePerMo.toFixed(1))}</div>
               )}
@@ -420,7 +410,7 @@ const MembershipPanel: React.FC<{
         })}
       </div>
 
-      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')} {i18nService.t('cnyRefNote')}</p>
+      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')}</p>
 
       {/* ── 支付方式弹窗:点套餐卡片后选怎么付 ──
           顺序即推荐序:银行卡(推荐,走 Dodo,连续订阅)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。
@@ -466,7 +456,12 @@ const MembershipPanel: React.FC<{
                 const _c = showM('card') && (
                 <MethodRow icon={<ChainLogo chain="CARD" size={22} />} title={i18nService.t('payMethodCard')} desc={i18nService.t('payWebDesc')} badge={badgeM('card')} renew={renewProps('card')} onClick={() => payWith('CARD', methodPlan)} />
               );
-                const _a = showM('alipay') && (
+                // 支付宝单笔上限:本单人民币超过就不给支付宝(只留微信 / 银行卡 / 店铺)。
+                const _mp = plans.find(p => p.code === methodPlan);
+                const _cny = Number(_mp?.prices?.[period]?.cny ?? 0);
+                const _cap = alipayMaxCny == null ? 499 : Number(alipayMaxCny);
+                const _alipayOk = !(_cap > 0 && _cny > _cap);
+                const _a = showM('alipay') && _alipayOk && (
                 <MethodRow icon={<ChainLogo chain="ALIPAY" size={22} />} title={i18nService.t('payMethodAlipay')} desc={i18nService.t('payWebDesc')} badge={badgeM('alipay')} renew={renewProps('alipay')} onClick={() => payWith('ALIPAY', methodPlan)} />
               );
                 return recM === 'alipay' ? <>{_a}{_c}</> : <>{_c}{_a}</>;
