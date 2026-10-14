@@ -138,7 +138,7 @@ const periodLabel = (k: string): string => (({ month: i18nService.t('mpUnitMonth
 const PERIOD_MONTHS: Record<Period, number> = { month: 1, quarter: 3, half: 6, year: 12, once: 1 }; // once=单月购买
 const RECOMMENDED = 'pro';
 // 档位主题色:免费灰 / 基础蓝银 / 进阶金 / 旗舰紫。
-const TIER_COLOR: Record<string, string> = { free: '#9aa0aa', basic: '#60a5fa', pro: '#fbbf24', max: '#a78bfa' };
+const TIER_COLOR: Record<string, string> = { free: '#9aa0aa', basic: '#60a5fa', pro: '#fbbf24', max: '#a78bfa', ultra: '#f5d08a' };
 
 function fmtCredits(n: number): string {
   n = Number(n) || 0;
@@ -346,7 +346,7 @@ const MembershipPanel: React.FC<{
       {/* 中性提示条(不是报错)—— 例如「取消自动续费请在官网完成」 */}
 
       {/* 套餐卡(4 档,免费版第一) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${sorted.length >= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
         {sorted.map(plan => {
           const isFree = plan.code === 'free';
           const isCur = plan.code === curCode;
