@@ -229,7 +229,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   // 把总量按「实际互动人数」平摊,给用户一个直观预期(与剧本 STEP2 的 ceil 口径一致)。
   const perLead = (total: number) => {
-    const reach = Math.max(1, clampInt(leadsPerRun, 1, 100));
+    const reach = Math.max(1, clampInt(leadsPerRun, 1, 5000));
     const n = clampInt(total, 0, 5000);
     return n > 0 ? Math.max(1, Math.ceil(n / reach)) : 0;
   };
@@ -336,7 +336,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           maxLikes: clampInt(maxLikes, 0, 5000),
           maxFollows: clampInt(maxFollows, 0, 100),
           maxComments: clampInt(maxComments, 0, 300),
-          leadsPerRun: clampInt(leadsPerRun, 1, 100),
+          leadsPerRun: clampInt(leadsPerRun, 1, 5000),
           // 总量为 0 = 关闭该动作(向导没有单独的开关行,用数量本身表达)。
           doLike: clampInt(maxLikes, 0, 5000) > 0,
           doComment: clampInt(maxComments, 0, 300) > 0,
@@ -560,7 +560,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {step === 3 && (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
             {numRow(t('本次获取潜客上限', 'New leads per run'), t('（本地已有的不重复收）', '(dedup against the local roster)'), maxLeads, setMaxLeads, 1, 5000)}
-            {numRow(t('本次最多互动多少潜客', 'Leads to engage per run'), t('新客优先,老客轮转,轮不到的下次接着', 'New leads first, then rotate through existing ones'), leadsPerRun, setLeadsPerRun, 1, 100)}
+            {numRow(t('本次最多互动多少潜客', 'Leads to engage per run'), t('新客优先,老客轮转,轮不到的下次接着', 'New leads first, then rotate through existing ones'), leadsPerRun, setLeadsPerRun, 1, 5000)}
           </div>
         )}
 
@@ -636,7 +636,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               <div className="flex justify-between"><span className="text-gray-500">{t('执行账号', 'Accounts')}</span><span>{selected.size}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次获取潜客上限', 'New leads')}</span><span>{clampInt(maxLeads, 1, 5000)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 100)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 5000)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次总量', 'Totals')}</span><span>{[
                 clampInt(maxLikes,0,5000) > 0 ? `👍${clampInt(maxLikes,0,5000)}` : null,
                 clampInt(maxComments,0,300) > 0 ? `💬${clampInt(maxComments,0,300)}` : null,
