@@ -142,8 +142,16 @@ const TIER_COLOR: Record<string, string> = { free: '#9aa0aa', basic: '#60a5fa', 
 
 function fmtCredits(n: number): string {
   n = Number(n) || 0;
-  if (n >= 1e8) return (Math.round(n / 1e7) / 10) + i18nService.t('mpUnitYi');
-  if (n >= 1e4) return Math.round(n / 1e4) + i18nService.t('mpUnitWan');
+  // 万/亿 只给本来就按万、亿计数的语言(中/日/韩)。其它语言以前把「万」翻成 K、「亿」翻成 B,
+  //   于是 600万 显示成 600K(实为 6M)、2亿 显示成 2B(实为 200M),差一个数量级(2026-10-14)。
+  const lang = String(i18nService.currentLanguage || '');
+  if (/^(zh|ja|ko)/.test(lang)) {
+    if (n >= 1e8) return (Math.round(n / 1e7) / 10) + i18nService.t('mpUnitYi');
+    if (n >= 1e4) return Math.round(n / 1e4) + i18nService.t('mpUnitWan');
+    return String(n);
+  }
+  if (n >= 1e6) return (Math.round(n / 1e5) / 10) + 'M';
+  if (n >= 1e3) return Math.round(n / 1e3) + 'K';
   return String(n);
 }
 
