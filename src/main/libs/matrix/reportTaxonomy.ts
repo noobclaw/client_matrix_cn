@@ -3,8 +3,8 @@
  * 纯数据模块,主进程(存盘校验)和渲染层(向导下拉)共用同一份;后端剧本 config.json 里有同一份。
  * 抖音改版改选项时,三处一起改:这里、backend/matrix/scenarios/douyin_report/config.json、(无需改剧本代码)。
  *
- * 「侵犯权益」不在列表里:选它提交后会跳去批量侵权举证页,自动化不支持。
- * 作品(视频/图文):具体类型选填;账号:具体类型必填(抖音不选就不让提交)。
+ * 「侵犯权益」「搬运、抄袭作品」不在列表里:要另外举证(批量侵权页 / 原创链接 + 截图),自动化不支持。
+ * 作品(视频/图文,两种表单选项完全相同):具体类型选填,但「AI生成内容问题」必填;账号:具体类型必填。
  */
 
 export type ReportTargetType = 'content' | 'account';
@@ -13,6 +13,7 @@ export interface ReportReasonDef {
   label: string;      // 抖音表单上的原因原文
   sub: string[];      // 该原因下的「具体类型」原文
   hint?: string;      // 抖音描述框 placeholder(选该原因后显示的提示)
+  subRequired?: boolean; // 该原因单独要求必选具体类型(覆盖分组默认值)
 }
 
 export interface ReportTaxonomyGroup {
@@ -25,7 +26,6 @@ export const REPORT_TAXONOMY: Record<ReportTargetType, ReportTaxonomyGroup> = {
     subRequired: false,
     reasons: [
       { label: '我不喜欢', sub: [], hint: '请详细描述举报原因，便于平台判断违规情况' },
-      { label: '搬运、抄袭作品', sub: [], hint: '请提供可公开访问的原始链接，并确认发布时间早于被举报内容' },
       { label: '引导到站外进行色情、赌博', sub: ['色情服务', '色情资源', '赌博/赌球', '其他引导站外'], hint: '请描述作品中存在的问题，如引导添加外部账号、扫码跳转的方式，或涉及的色情服务、赌博平台信息等' },
       { label: '涉嫌欺诈', sub: ['养老诈骗', '引流欺诈', '情感诈骗', '仿冒欺诈', '财经诈骗', '涉未成年诈骗', '其他诈骗'], hint: '请描述作品中存在的问题，如虚假身份、夸大收益的话术，或引导转账、充值的方式和平台等' },
       { label: '色情低俗', sub: ['色情裸露内容', '未成年低俗'], hint: '请描述存在问题的镜头或内容，如隐私部位暴露' },
@@ -36,7 +36,7 @@ export const REPORT_TAXONOMY: Record<ReportTargetType, ReportTaxonomyGroup> = {
       { label: '网络暴力', sub: ['网暴我', '网暴他人'], hint: '请尽可能详细描述您了解的情况' },
       { label: '危害人身安全', sub: ['危险行为', '自杀/自残'], hint: '请尽可能详细描述您了解的情况' },
       { label: '未成年相关', sub: ['未成年低俗', '未成年不良行为', '色情/恐怖动画', '未成年欺诈'], hint: '请描述存在的问题，如：说脏话、演绎成人动作或传播不良价值观等行为' },
-      { label: 'AI生成内容问题', sub: ['未添加AI标识', '色情低俗', '违法犯罪', '政治敏感', '不实信息', '侵犯权益'], hint: '请描述存在问题的具体画面，及具体画面所涉及的违规信息' },
+      { label: 'AI生成内容问题', subRequired: true, sub: ['未添加AI标识', '色情低俗', '违法犯罪', '政治敏感', '不实信息', '侵犯权益'], hint: '请描述存在问题的具体画面，及具体画面所涉及的违规信息' },
       { label: '以上没有我想举报的类型', sub: ['引人不适', '血腥/恐怖/暴力', '价值观导向不良', '诱导点赞/关注', '其他'], hint: '请描述让您感到不适或存在不良导向的具体内容' },
     ],
   },
@@ -80,7 +80,7 @@ export function validateReportItem(it: { url?: string; targetType?: string; reas
   if (!def) return 'report_invalid_reason';
   const sub = String(it.subReason || '');
   if (sub && !def.sub.includes(sub)) return 'report_invalid_sub_reason';
-  if (!sub && def.sub.length && REPORT_TAXONOMY[type].subRequired) return 'report_sub_reason_required';
+  if (!sub && def.sub.length && (REPORT_TAXONOMY[type].subRequired || def.subRequired)) return 'report_sub_reason_required';
   const d = String(it.description || '').trim();
   if (d.length < 5 || d.length > 200) return 'report_invalid_description';
   return null;

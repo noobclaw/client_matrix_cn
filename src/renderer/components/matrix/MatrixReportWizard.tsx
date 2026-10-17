@@ -163,7 +163,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
 
                   {def && def.sub.length > 0 && (
                     <select value={it.subReason} onChange={(e) => updateItem(idx, { subReason: e.target.value })} disabled={saving} className={inputCls}>
-                      <option value="">{group?.subRequired ? t('rpSubPlaceholderRequired') : t('rpSubPlaceholderOptional')}</option>
+                      <option value="">{(group?.subRequired || def.subRequired) ? t('rpSubPlaceholderRequired') : t('rpSubPlaceholderOptional')}</option>
                       {def.sub.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   )}
