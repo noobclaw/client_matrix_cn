@@ -12,7 +12,7 @@
  * 合规:单账号、手动触发(每次逐条只提交一次,不重试、不定时);可编辑。
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import {
   REPORT_TAXONOMY, REPORT_DEFAULT_HINT, findReportReason, validateReportItem,
