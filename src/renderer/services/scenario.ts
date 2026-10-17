@@ -202,6 +202,14 @@ export function exchangeSquarePlatformKey(platform?: string, scenarioId?: string
   return (p && EXCHANGE_SQUARE_META[p]?.platKey) || null;
 }
 
+// 「举报」剧本(backend/matrix/scenarios/<platform>_report)。白名单功能(admin 配 UID 才可见),目前仅抖音。
+//   单账号、1-4 条链接、只能手动执行一次。同样补快照,否则 scenario_id lookup 不到 platform、任务卡不出现。
+export const MATRIX_REPORT_SCENARIO_ID: Record<string, string> = { douyin: 'douyin_report' };
+const MATRIX_REPORT_ID_TO_PLATFORM: Record<string, string> =
+  Object.fromEntries(Object.entries(MATRIX_REPORT_SCENARIO_ID).map(([p, id]) => [id, p]));
+const MATRIX_REPORT_META: Record<string, { name_zh: string; icon: string }> = {
+  douyin: { name_zh: '抖音 举报', icon: '🚩' },
+};
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
  *  配额映射到 daily_*_min/max 这套 douyin_auto_engage 字段)。 */
 function mxTaskToScenario(t: any): ScenarioTaskIPC {
@@ -221,6 +229,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const isInstagramPost = t?.type === 'instagram_post';
   const isRepost = t?.type === 'binance_repost';
   const isLead = t?.type === 'lead_engage';
+  const isReport = t?.type === 'report';
+  const reportItems: any[] = Array.isArray(t?.reportItems) ? t.reportItems : [];
   const fn = t?.funnel || {};
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
   return {
@@ -232,10 +242,13 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     //   不在客户端注册表里,scenario_id 映射不到)。之前没带 → 过滤后所有任务全部隐身(用户实测)。
     platform: t.platform,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
-    scenario_id: isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : isLead ? `${t.platform}_lead_engage` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
-    track: isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : isLead ? 'lead_engage' : 'matrix',
+    scenario_id: isReport ? `${t.platform}_report` : isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : isLead ? `${t.platform}_lead_engage` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
+    track: isReport ? 'report' : isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : isLead ? 'lead_engage' : 'matrix',
     // 定向获客配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     lead_engage: isLead ? t.leadEngage : undefined,
+    // 举报:条目 + 执行锁时间透传(详情页展示「已执行,不可再运行」、编辑回填)。
+    report_items: isReport ? reportItems : undefined,
+    report_executed_at: isReport ? (t.reportExecutedAt || null) : undefined,
     // image_text / viral_rewrite / x_post / binance_post / facebook_post / reddit_post / instagram_post / binance_repost 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     imageText: isImageText ? t.imageText : undefined,
     viralRewrite: isViral ? t.viralRewrite : undefined,
@@ -258,7 +271,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     persona: '',
     // video_download:粘贴的链接清单(详情页/编辑回填用),daily_count = 链接数。
     urls: isDownload ? dlUrls : undefined,
-    daily_count: isDownload ? (dlUrls.length || 1) : 1,
+    daily_count: isDownload ? (dlUrls.length || 1) : isReport ? (reportItems.length || 1) : 1,
     variants_per_post: 1,
     daily_time: '',
     run_interval: t.frequency,
@@ -300,6 +313,24 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
 /** 旧 createTask/updateTask 入参(ScenarioTaskIPC 形状)→ 矩阵 saveTask 入参。 */
 function scenarioInputToMxSave(input: any, id?: string): any {
   const accountIds: string[] = input.account_ids || [];
+  // 举报(scenario_id 以 _report 结尾):保持 type='report' + 透传条目;频率/启用恒为「仅手动一次」。
+  //   已执行的举报单经 updateTask 兜底写回时,sidecar 会拒(report_already_executed),不会被改动。
+  if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_report')) {
+    const pPlatform = MATRIX_REPORT_ID_TO_PLATFORM[input.scenario_id] || 'douyin';
+    const items: any[] = Array.isArray(input.report_items) ? input.report_items : [];
+    return {
+      id,
+      platform: pPlatform,
+      type: 'report',
+      name: input.name || `${pPlatform}举报 · ${items.length} 条`,
+      accountIds: accountIds.slice(0, 1),
+      quota: {},
+      reportItems: items,
+      concurrency: 1,
+      frequency: 'once',
+      enabled: false,
+    };
+  }
   // 回复粉丝任务(scenario_id 以 _reply_fans_comment 结尾):保持 type='reply_fan' + 透传引流尾巴,
   // 否则经 updateTask(如 MyTasksPage 改启用)兜底回 type='engage' → 任务被错改成互动、引流配置丢。
   if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_reply_fans_comment')) {
@@ -571,6 +602,7 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
   const mk = (id: string, name_zh: string, icon: string) => ({ id, name_zh, name_en: '', icon, platform: p });
   switch (type) {
     case 'reply_fan':      return mk(`${p}_reply_fans_comment`, MATRIX_REPLY_META[p]?.name_zh || '自动回复粉丝', MATRIX_REPLY_META[p]?.icon || '💌');
+    case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '举报', MATRIX_REPORT_META[p]?.icon || '🚩');
     case 'video_download': return mk(`${p}_video_download`, MATRIX_DOWNLOAD_META[p]?.name_zh || '视频下载', MATRIX_DOWNLOAD_META[p]?.icon || '⬇️');
     case 'image_text':     return mk(`${p}_image_text`, MATRIX_IMAGETEXT_META[p]?.name_zh || '图文创作', MATRIX_IMAGETEXT_META[p]?.icon || '📝');
     case 'viral_rewrite':  return mk(`${p}_viral_production_career`, MATRIX_VIRAL_META[p]?.name_zh || '爆款仿写', MATRIX_VIRAL_META[p]?.icon || '🔥');
@@ -730,6 +762,14 @@ class ScenarioService {
           name_zh: MATRIX_DOWNLOAD_META[platform]?.name_zh || sid, name_en: '',
           icon: MATRIX_DOWNLOAD_META[platform]?.icon || '⬇️',
         }));
+      // 同理补「举报」剧本快照(白名单功能,入口另由 reportEnabled 控制;快照只为任务卡能归 tab)。
+      const synthReport = Object.entries(MATRIX_REPORT_SCENARIO_ID)
+        .filter(([, sid]) => !have.has(sid))
+        .map(([platform, sid]) => ({
+          id: sid, version: '1.0.0', platform, workflow_type: 'report', category: 'tool',
+          name_zh: MATRIX_REPORT_META[platform]?.name_zh || sid, name_en: '',
+          icon: MATRIX_REPORT_META[platform]?.icon || '🚩',
+        }));
       // 同理补「图文创作」剧本快照,让 image_text 任务能按 platform 归到对应 tab。
       const synthImageText = Object.entries(MATRIX_IMAGETEXT_SCENARIO_ID)
         .filter(([, sid]) => !have.has(sid))
@@ -771,7 +811,7 @@ class ScenarioService {
           id: rsid, version: '1.0.0', platform, workflow_type: 'binance_repost_creation', category: 'creation',
           name_zh: MATRIX_REPOST_META[platform] || '批量搬运', name_en: '', icon: '♻️',
         }));
-      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost] as unknown as Scenario[];
+      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthReport, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost] as unknown as Scenario[];
     }
     try {
       const res = await window.electron.scenario.listScenarios();

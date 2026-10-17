@@ -218,6 +218,22 @@ async function refreshMaxConcurrent(): Promise<void> {
     }
   } catch { /* 拉不到就维持现值 */ }
 }
+// 举报功能白名单(admin 配 matrix_report_whitelist_uids):问服务端 /api/matrix/config 的 reportEnabled。
+//   不缓存:每次建单/执行都实时问,admin 收回权限立即生效。拉不到/未登录 → 一律当未开通(宁拦不放)。
+async function isReportEnabledForUser(): Promise<boolean> {
+  try {
+    const { getNoobClawAuthToken } = await import('./libs/claudeSettings');
+    const token = getNoobClawAuthToken();
+    if (!token) return false;
+    const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+    const r = await fetch(`${base}/api/matrix/config`, {
+      headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return false;
+    const j: any = await r.json();
+    return j?.reportEnabled === true;
+  } catch { return false; }
+}
 const runningPlatforms = new Set<string>();                 // 正在跑的平台集合(并发锁的键)
 const abortByPlatform = new Map<string, AbortController>();  // 各平台的停止句柄(matrix:stopTask 用)
 const runAccountsByPlatform = new Map<string, string[]>();  // 各平台正在跑的账号(停某平台时强关这些号的窗口,立即止损)
@@ -261,14 +277,23 @@ function broadcastSSE(event: string, data: unknown): void {
 void import('./libs/matrix/accountManager').then((m) => m.setAccountSSEBroadcast?.(broadcastSSE)).catch(() => { /* ignore */ });
 
 // 矩阵任务运行(手动 IPC 与定时调度共用,保证「全局同时只跑一个」+ 进度 SSE 一致)。
-async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{ ok: boolean; error?: string }> {
+// manual:是否用户手动点「运行」触发(定时调度传 false)。举报只允许手动触发。
+async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = false): Promise<{ ok: boolean; error?: string }> {
   // 按【平台】并发:先取任务拿平台,再做「同平台已在跑?」+「并发已满?」检查;check→add 之间无 await(原子占锁,杜绝双跑)。
-  const { getTask, setTaskLastRun } = await import('./libs/matrix/taskStore');
+  const { getTask, setTaskLastRun, claimReportExecution } = await import('./libs/matrix/taskStore');
   const task = getTask(taskId);
   if (!task) return { ok: false, error: 'task_not_found' };
+  // 举报(白名单功能)合规闸:① 只能手动触发 ② 只能执行一次 ③ 只能 1 个账号 ④ 当前用户必须在白名单。
+  //   白名单在占执行锁之前问 —— 没权限时不该把这张单据的唯一一次机会烧掉。
+  if (task.type === 'report') {
+    if (!manual) return { ok: false, error: 'report_manual_only' };
+    if (task.reportExecutedAt) return { ok: false, error: 'report_already_executed' };
+    if ((task.accountIds || []).length !== 1) return { ok: false, error: 'report_requires_single_account' };
+    if (!(await isReportEnabledForUser())) return { ok: false, error: 'report_not_whitelisted' };
+  }
   // engage(互动涨粉)+ reply_fan(自动回复粉丝评论)都由 engageRunner 跑(共用内核/登录/进度链路,
   // 仅剧本与 task 字段不同)。其它类型未支持。
-  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post' && task.type !== 'lead_engage') return { ok: false, error: 'unsupported_task_type' };
+  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post' && task.type !== 'lead_engage' && task.type !== 'report') return { ok: false, error: 'unsupported_task_type' };
   const platform = task.platform;
   // 并发上限由服务端下发,顺手刷一下 —— 【不等它】:拉一次最多要 8s(网络慢就吃满超时),
   //   await 在这儿等于每 10 分钟就有一次点「运行」要干等几秒才动静,而这个值只是微调,
@@ -276,6 +301,8 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string): Promise<{
   void refreshMaxConcurrent();
   if (runningPlatforms.has(platform)) return { ok: false, error: 'another_task_running' };       // 同平台已在跑
   if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return { ok: false, error: 'concurrency_full' }; // 并发已满
+  // 举报执行锁:与平台锁同一同步段内抢占(无 await),双击/并发点运行也只会有一次成功。
+  if (task.type === 'report' && !claimReportExecution(task.id)) return { ok: false, error: 'report_already_executed' };
   runningPlatforms.add(platform);
   // 🚨 立刻把本任务的进度占成 running。liveProgressByTask 里【上一次运行那条 status:'done' 从来不清】,
   //   而真正的 running 要等下面把 live 对象组装好(要先 import 七八个 runner、读账号库、算会员号数墙)
@@ -406,6 +433,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const isRedditPost = task.type === 'reddit_post';
     const isInstagramPost = task.type === 'instagram_post';
     const isBinanceRepost = task.type === 'binance_repost';
+    const isReport = task.type === 'report';
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
     const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number; post?: number }) => {
@@ -526,11 +554,11 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : runEngageTask({
-          platform: task.platform, taskId: task.id, accountIds: runIds, quota: task.quota, concurrency: task.concurrency, kernelPath, signal: abort.signal,
+          platform: task.platform, taskId: task.id, accountIds: isReport ? runIds.slice(0, 1) : runIds, quota: task.quota, concurrency: isReport ? 1 : task.concurrency, kernelPath, signal: abort.signal,
           taskType: task.type as any,
           // 定向获客:把任务级配置透传给 runner(runner 再铺进 orchestrator 的 ctx.task)。
           leadEngage: task.type === 'lead_engage' ? task.leadEngage : undefined,
-          scenarioId: isReplyFan ? `${task.platform}_reply_fans_comment` : isVideoDownload ? `${task.platform}_video_download` : undefined,
+          scenarioId: isReplyFan ? `${task.platform}_reply_fans_comment` : isVideoDownload ? `${task.platform}_video_download` : isReport ? `${task.platform}_report` : undefined,
           // 引流尾巴配置:reply_fan(回复粉丝)+ engage(互动评论)都带上。
           // engage 由客户端 makeAiCall 对 comment_composer 输出按概率融入;reply_fan 走后端剧本。
           // 老任务没配 funnel → undefined → 两条路径都视作未填,行为不变(向后兼容)。
@@ -542,6 +570,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           // 回复粉丝:每号本次运行最多回复几条(仅抖音向导有)。不传 → 剧本按 100 兜底。
           maxRepliesPerRun: task.maxRepliesPerRun,
           urls: isVideoDownload ? task.urls : undefined,
+          // 举报:条目透传给剧本;单账号、单窗口(存盘时已强制),这里再夹一次只取第 1 个号。
+          reportItems: isReport ? (task.reportItems || []) : undefined,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         });
     runP.then((report) => {
@@ -563,6 +593,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
         // 不污染 engage(否则累计/上次完成会多出 📤0/⬇️0)。
         if (isImageText || isTweetPost || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost || isBinanceRepost) totals.post = items.reduce((s, it: any) => s + (it.counts?.post || 0), 0);
         if (isVideoDownload) totals.download = items.reduce((s, it: any) => s + (it.counts?.download || 0), 0);
+        if (isReport) totals.report = items.reduce((s, it: any) => s + (it.counts?.report || 0), 0);
         // 定向获客:除了赞/关注/评论,还要单独统计「获得潜客」和「互动潜客」两个维度。
         //   只给 lead_engage 加键,不污染别的任务类型(否则它们的累计里会多出两个 0)。
         if (task.type === 'lead_engage') {
@@ -2177,6 +2208,10 @@ const server = http.createServer(async (req, res) => {
           }
           case 'matrix:saveTask': {
             const { saveTask } = await import('./libs/matrix/taskStore');
+            // 举报是白名单功能:建/改单据前实时问服务端,非白名单直接拒(UI 本就不显示入口,这里防绕过)。
+            if ((args[0] as any)?.type === 'report' && !(await isReportEnabledForUser())) {
+              return writeJSON(res, 200, { ok: false, error: 'report_not_whitelisted' });
+            }
             return writeJSON(res, 200, saveTask(args[0] as any));
           }
           case 'matrix:removeTask': {
@@ -2205,7 +2240,7 @@ const server = http.createServer(async (req, res) => {
             // 按保存的任务手动跑(定时调度走 sidecar startMatrixScheduler,同一个 helper)。
             try {
               const a = args[0] as any;
-              const r = await runMatrixTaskById(a?.taskId, a?.kernelPath);
+              const r = await runMatrixTaskById(a?.taskId, a?.kernelPath, true);
               return writeJSON(res, 200, r.ok ? { ok: true, status: 'started' } : r);
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });

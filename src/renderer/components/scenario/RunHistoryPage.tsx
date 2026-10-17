@@ -75,6 +75,7 @@ function typeLabelForRecord(rec: RunRecord): { icon: string; label: string; colo
   if (sid === 'douyin_reply_fans_comment')   return { icon: '💬', label: i18nService.t('scnDyReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'xhs_reply_fans_comment')      return { icon: '💌', label: i18nService.t('scnXhsReplyFans'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
   if (sid === 'xhs_video_download')          return { icon: '⬇️', label: i18nService.t('scnXhsDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+  if (sid === 'douyin_report')               return { icon: '🚩', label: i18nService.t('svCardReportTitle'), color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
   if (sid === 'douyin_video_download')       return { icon: '⬇️', label: i18nService.t('scnDyDownload'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   if (sid === 'tiktok_video_download')       return { icon: '⬇️', label: i18nService.t('scnTtDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'kuaishou_auto_engage')        return { icon: '⚡', label: i18nService.t('scnKsEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };

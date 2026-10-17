@@ -301,7 +301,24 @@ export interface BinanceRepostConfig {
 // 自动发推 = x_post(N 个号各自按身份 AI 原创一条推文 + 可选配图 → 发到各自时间线,仅推特);
 // 币安广场自动发帖 = binance_post(N 个号各自抓 web3 资讯 AI 原创一条币安广场图文 + 可选配图 → 发币安广场,仅币安);
 // 币安广场批量搬运 = binance_repost(1 个采集号从源平台搜+下 N 条 → N 个币安号各领一条 AI 仿写 + 配图 → 发币安广场)。
-export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage';
+// 举报 = report(白名单功能,admin 配 UID 才可见;目前仅抖音):1-4 条链接各配原因+描述,
+//   只能选【1 个】账号执行,只能【手动执行一次】(执行后锁定,不可再跑/编辑),不定时、不重试。
+export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report';
+
+/** 举报原因 key(与后端剧本 config.reasons 对齐;展示文案在渲染层 i18n)。 */
+export type ReportReason =
+  | 'porn' | 'illegal' | 'fraud' | 'false_info' | 'abuse' | 'infringement'
+  | 'minors' | 'spam' | 'impersonation' | 'discomfort' | 'other';
+export const REPORT_REASONS: ReportReason[] = ['porn', 'illegal', 'fraud', 'false_info', 'abuse', 'infringement', 'minors', 'spam', 'impersonation', 'discomfort', 'other'];
+
+/** 一条举报:被举报的账号主页或作品链接 + 原因 + 描述(用户手填,原样提交)。 */
+export interface ReportItem {
+  url: string;
+  reason: ReportReason;
+  description: string;
+}
+/** 举报合规上限(客户端存盘校验 + 后端剧本再兜一层)。 */
+export const REPORT_LIMITS = { minItems: 1, maxItems: 4, descMin: 5, descMax: 200 } as const;
 
 /**
  * 定向获客(tiktok_lead_engage 剧本)配置。两段式:采集同行评论者当潜客名单(长期账本)→
@@ -359,6 +376,9 @@ export interface MatrixTask {
   binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
   leadEngage?: LeadEngageConfig;   // 仅 lead_engage 用:定向获客配置
   urls?: string[];                 // 仅 video_download 用:用户粘贴的待下载视频链接清单
+  reportItems?: ReportItem[];      // 仅 report 用:1-4 条举报条目
+  // 仅 report 用:执行锁。一旦开始执行即写入(epoch ms),之后不可再运行、不可编辑(合规:只能手动执行一次)。
+  reportExecutedAt?: number;
   concurrency?: number;            // 同时开窗数(video_download 固定 1,单账号顺序下载)
   frequency: MatrixTaskFrequency;  // 运行频率
   nextPlannedRunAt?: number;       // 下次计划运行(epoch ms;调度器预排,UI 展示)

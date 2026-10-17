@@ -545,6 +545,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'xhs_image_text')               return { icon: '📝', k: 'scnXhsImageText', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
                 if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', k: 'scnXhsReplyFans', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', k: 'scnXhsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'douyin_report')                return { icon: '🚩', k: 'svCardReportTitle', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
                 if (sid === 'douyin_video_download')        return { icon: '⬇️', k: 'scnDyDownload', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', k: 'scnTtDownload', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', k: 'scnKsEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };

@@ -10,6 +10,8 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { nextRunAt } from './matrixSchedule';
+import { REPORT_LIMITS, REPORT_REASONS } from './types';
+import type { ReportItem } from './types';
 import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, LeadEngageConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
 
 /** 任务启用且非 once 才排下次运行;否则清空(手动触发)。 */
@@ -85,20 +87,76 @@ export interface SaveTaskInput {
   binanceRepost?: BinanceRepostConfig; // binance_repost 用:币安广场批量搬运配置
   leadEngage?: LeadEngageConfig;   // lead_engage 用:定向获客配置
   urls?: string[];                 // video_download 用:待下载视频链接清单
+  reportItems?: ReportItem[];      // report 用:1-4 条举报条目
   concurrency?: number;
   frequency: MatrixTaskFrequency;
 }
 export interface SaveTaskResult { ok: boolean; error?: string; task?: MatrixTask }
 
+// ── 举报(report)合规校验 ──────────────────────────────────────────────
+// 产品拍板的硬约束,存盘时就拦死(UI 也会拦,这里是最后一道):
+//   · 目前仅抖音;只能选【1 个】账号;1-4 条链接;每条必须有合法原因 + 5-200 字描述
+//   · 频率恒 'once'、enabled 恒 false(永不进定时调度);同时只开 1 个窗口
+//   · 执行过(reportExecutedAt 有值)的举报任务不可再编辑/再运行
+const REPORT_PLATFORMS = ['douyin'];
+const DOUYIN_URL_RE = /^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i;
+function validateReport(input: SaveTaskInput): { ok: true; items: ReportItem[] } | { ok: false; error: string } {
+  if (!REPORT_PLATFORMS.includes(input.platform)) return { ok: false, error: 'report_platform_unsupported' };
+  const ids = (input.accountIds || []).filter(Boolean);
+  if (ids.length !== 1) return { ok: false, error: 'report_requires_single_account' };
+  const raw = Array.isArray(input.reportItems) ? input.reportItems : [];
+  if (raw.length < REPORT_LIMITS.minItems || raw.length > REPORT_LIMITS.maxItems) return { ok: false, error: 'report_item_count' };
+  const items: ReportItem[] = [];
+  const seen = new Set<string>();
+  for (const it of raw) {
+    const url = String(it?.url || '').trim();
+    const description = String(it?.description || '').trim();
+    if (!DOUYIN_URL_RE.test(url)) return { ok: false, error: 'report_invalid_url' };
+    if (seen.has(url)) return { ok: false, error: 'report_duplicate_url' };
+    seen.add(url);
+    if (!REPORT_REASONS.includes(it?.reason as any)) return { ok: false, error: 'report_invalid_reason' };
+    if (description.length < REPORT_LIMITS.descMin || description.length > REPORT_LIMITS.descMax) return { ok: false, error: 'report_invalid_description' };
+    items.push({ url, reason: it.reason, description });
+  }
+  return { ok: true, items };
+}
+
+/**
+ * 举报执行锁:开始执行前调用。已执行过 → false(调用方拒绝运行);否则写入时间戳并落盘 → true。
+ * 先落锁再跑:即便运行中崩溃/重启,也不会被再执行第二次(合规:只能手动执行一次)。
+ */
+export function claimReportExecution(id: string): boolean {
+  const t = getTask(id);
+  if (!t || t.type !== 'report') return false;
+  if (t.reportExecutedAt) return false;
+  t.reportExecutedAt = Date.now();
+  t.enabled = false;
+  t.nextPlannedRunAt = undefined;
+  persist();
+  return true;
+}
+
 /** 新建/更新任务,带约束校验。 */
 export function saveTask(input: SaveTaskInput): SaveTaskResult {
   const tasks = loadTasks();
 
+  // 举报:先过合规校验,并把调度相关字段强制成「仅手动、仅一次、单窗口」。
+  let reportItems: ReportItem[] | undefined;
+  if (input.type === 'report') {
+    const v = validateReport(input);
+    if (!v.ok) return { ok: false, error: v.error };
+    reportItems = v.items;
+    input = { ...input, reportItems, frequency: 'once', enabled: false, concurrency: 1, quota: {} };
+  }
+
   if (input.id) {
     const i = tasks.findIndex((t) => t.id === input.id);
     if (i < 0) return { ok: false, error: 'task_not_found' };
-    // 改 type 不能撞到同平台已有的别的同类型任务
-    const dup = tasks.find((t) => t.id !== input.id && t.platform === input.platform && t.type === input.type);
+    // 举报任务一旦执行即锁定;别的类型也不能改成/改出举报(类型切换会绕过执行锁)。
+    if (tasks[i].type === 'report' && tasks[i].reportExecutedAt) return { ok: false, error: 'report_already_executed' };
+    if ((tasks[i].type === 'report') !== (input.type === 'report')) return { ok: false, error: 'report_type_change_forbidden' };
+    // 改 type 不能撞到同平台已有的别的同类型任务(举报除外:每次举报是独立的一次性单据,可并存多张)
+    const dup = input.type === 'report' ? undefined : tasks.find((t) => t.id !== input.id && t.platform === input.platform && t.type === input.type);
     if (dup) return { ok: false, error: 'duplicate_type' };
     const updated: MatrixTask = {
       ...tasks[i],
@@ -124,6 +182,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       binanceRepost: input.binanceRepost ?? tasks[i].binanceRepost,
       leadEngage: input.leadEngage ?? tasks[i].leadEngage,
       urls: input.urls ?? tasks[i].urls,
+      reportItems: input.type === 'report' ? reportItems : tasks[i].reportItems,
       concurrency: input.concurrency,
       frequency: input.frequency,
     };
@@ -132,9 +191,12 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     return { ok: true, task: updated };
   }
 
-  const platformTasks = tasks.filter((t) => t.platform === input.platform);
-  if (platformTasks.length >= MAX_PER_PLATFORM) return { ok: false, error: 'platform_task_limit' };
-  if (platformTasks.some((t) => t.type === input.type)) return { ok: false, error: 'duplicate_type' };
+  // 举报单据不占「每平台 5 个任务」名额、也不受同类型唯一限制(一次性单据,执行完即归档)。
+  const platformTasks = tasks.filter((t) => t.platform === input.platform && t.type !== 'report');
+  if (input.type !== 'report') {
+    if (platformTasks.length >= MAX_PER_PLATFORM) return { ok: false, error: 'platform_task_limit' };
+    if (platformTasks.some((t) => t.type === input.type)) return { ok: false, error: 'duplicate_type' };
+  }
 
   const task: MatrixTask = {
     id: `${input.platform}_${input.type}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e4).toString(36)}`,
@@ -158,6 +220,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     binanceRepost: input.binanceRepost,
     leadEngage: input.leadEngage,
     urls: input.urls,
+    reportItems,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',
     createdAt: Date.now(),
@@ -190,6 +253,7 @@ export function pruneAccountFromTasks(accountId: string): void {
 
 export function setTaskEnabled(id: string, enabled: boolean): void {
   const t = getTask(id); if (!t) return;
+  if (t.type === 'report') return; // 举报永不进定时调度
   t.enabled = enabled;
   t.nextPlannedRunAt = planned(t, Date.now(), true);
   persist();
@@ -204,5 +268,5 @@ export function setTaskLastRun(id: string, ts: number): void {
 
 /** 调度器用:到点该自动跑的任务(启用、非 once、已到 nextPlannedRunAt)。 */
 export function dueTasks(now: number): MatrixTask[] {
-  return loadTasks().filter((t) => t.enabled && t.frequency !== 'once' && t.nextPlannedRunAt != null && t.nextPlannedRunAt <= now);
+  return loadTasks().filter((t) => t.type !== 'report' && t.enabled && t.frequency !== 'once' && t.nextPlannedRunAt != null && t.nextPlannedRunAt <= now);
 }
