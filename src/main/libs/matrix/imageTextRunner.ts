@@ -261,6 +261,9 @@ async function runOne(opts: ImageTextTaskOptions, pack: any, accountId: string, 
       // 发布方式:autoPublish=true → 上传并发布(群发);false → 仅本地(不上传,落盘供用户逐条审核后手动发)。
       auto_upload: !!cfg.autoPublish,
       auto_publish: !!cfg.autoPublish,
+      // 抖音 BGM:向导默认勾选;老任务没这个字段 = 按勾选处理。剧本只认 === true,
+      //   所以老客户端(不传)不会突然被加上音乐。
+      douyin_bgm: opts.platform === 'douyin' ? cfg.douyinBgm !== false : false,
     };
 
     const onAiCost = (credits: number, usd: number) => {

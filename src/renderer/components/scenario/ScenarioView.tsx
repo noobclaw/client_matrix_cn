@@ -748,6 +748,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       dailyCount: input.dailyCount,
       aiImageStyle: input.aiImageStyle,
       autoPublish: input.autoPublish,
+      douyinBgm: input.douyinBgm,   // 仅抖音:发布时从收藏音乐前 3 首随机选 1 首
       references: input.references,
       // 内容来源:'reference'(参考文案,老行为)/ 'sources'(数据源选题,多选源每轮随机挑一条)。
       contentSource: input.contentSource,

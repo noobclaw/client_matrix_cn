@@ -141,6 +141,7 @@ export interface ImageTextConfig {
   dailyCount: number;            // 每号每轮生成几篇 1-50
   aiImageStyle?: string;         // AI 生图风格(仅 useRealPhotos=false 用,缺省 'ai_auto')
   autoPublish: boolean;          // true=直接群发,false=仅本地保存(用户逐条审核后手动发)
+  douyinBgm?: boolean;           // 仅抖音:发布时从「我的收藏」音乐前 3 首随机选 1 首当 BGM(向导默认勾选)
   references?: Record<string, string>; // 可选:各账号参考文案 { accountId: text };不填则按身份合成种子
   // 仅【视频号 + 网络图】用:视频号浏览器没登录抖音、游客搜图拿不到 → 选 1 个【已登录抖音】的号当下图号,
   // 用它的浏览器搜+下网络图,再喂给各视频号发布。一个抖音号服务 N 个视频号,故网络图模式整任务串行。

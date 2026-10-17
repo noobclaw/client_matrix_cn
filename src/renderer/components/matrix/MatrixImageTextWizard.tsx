@@ -45,6 +45,8 @@ export interface ImageTextWizardSave {
   imageCount: number;
   aiImageStyle: string;
   autoPublish: boolean;
+  // 仅抖音 + 自动发布:发布时从「我的收藏」音乐里前 3 首随机挑 1 首当 BGM(默认开)。其它平台不带。
+  douyinBgm?: boolean;
   references: Record<string, string>;   // 各号各自参考文案(键=accountId,值可留空);空则该号按身份生成
   // 每号每轮生成几篇(1-20,默认 3)。9a49558 当初按「约定设计」把这个滑杆删了、写死 1 篇,
   //   但字段、runner(imageTextRunner 传 daily_count,上限 50)和剧本(orchestrator 里有
@@ -120,6 +122,9 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   useEffect(() => { let alive = true; fetchImageStyles().then((r) => { if (alive) setStylesList(r.styles); }); return () => { alive = false; }; }, []);
   const isZhStyle = i18nService.currentLanguage.startsWith('zh');
   const [autoPublish, setAutoPublish] = useState<boolean>(it.autoPublish !== false); // 默认群发
+  // 抖音 BGM:默认勾选(老任务没这个字段也按勾选显示)。
+  const [douyinBgm, setDouyinBgm] = useState<boolean>(it.douyinBgm !== false);
+  const isDouyin = platform === 'douyin';
   // 抖音下图号(仅视频号/头条网络图用):默认回填上次选的,否则首个就绪抖音号。
   const [downloadAccountId, setDownloadAccountId] = useState<string>(() => {
     if (it.imageDownloadAccountId) return String(it.imageDownloadAccountId);
@@ -195,6 +200,8 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         dailyCount,
         aiImageStyle,
         autoPublish,
+        // 只有抖音才带;显式 true/false,剧本据此决定(老客户端不带 = 剧本不选 BGM)。
+        douyinBgm: isDouyin ? douyinBgm : undefined,
         references: refsOut,
         // 仅视频号/头条网络图带上下图号(其它平台/AI生图不需要)。
         imageDownloadAccountId: (useRealPhotos && needsDownloadAccount && downloadAccountId) ? downloadAccountId : undefined,
@@ -456,6 +463,17 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               </div>
             </div>
 
+            {/* 抖音 BGM:只在「自动发布」时有意义(仅本地保存不上传,也就不选音乐)。 */}
+            {isDouyin && autoPublish && (
+              <label className="flex items-start gap-2.5 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5 cursor-pointer">
+                <input type="checkbox" className="mt-0.5 accent-emerald-500" checked={douyinBgm} disabled={saving} onChange={(e) => setDouyinBgm(e.target.checked)} />
+                <span className="text-sm dark:text-gray-200">
+                  🎵 {T('使用抖音 BGM', 'Add Douyin BGM')}
+                  <span className="block text-[11px] text-gray-400 mt-0.5">{T('发布时从该账号「我的收藏」音乐里的前 3 首随机选 1 首当背景音乐;收藏为空则不加音乐、照常发布', 'On publish, picks one of the first 3 songs in the account\'s favorited music at random as background music; if there are none, publishes without music')}</span>
+                </span>
+              </label>
+            )}
+
           </>
         )}
 
@@ -475,6 +493,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               <SummaryRow label={i18nService.t('wzImgSummaryImage')} value={imageSource === 'local' ? i18nService.t('wzImgSummaryImageLocal').replace('{n}', String(localImages.length)) : useRealPhotos ? i18nService.t('wzImgSummaryImageWeb').replace('{n}', String(imageCount)) : i18nService.t('wzImgSummaryImageAi').replace('{n}', String(imageCount)).replace('{style}', (() => { const s = stylesList.find((x) => x.id === aiImageStyle); return s ? (isZhStyle ? s.zh : s.en) : aiImageStyle; })())} />
               <SummaryRow label={i18nService.t('wzImgSummaryCount')} value={i18nService.t('wzImgSummaryCountVal').replace('{daily}', String(dailyCount)).replace('{n}', String(selectedIds.length * dailyCount))} />
               <SummaryRow label={i18nService.t('wzImgSummaryPublish')} value={autoPublish ? i18nService.t('wzImgSummaryPublishAuto') : i18nService.t('wzImgSummaryPublishLocal')} />
+              {isDouyin && autoPublish && <SummaryRow label={T('背景音乐', 'BGM')} value={douyinBgm ? T('收藏前 3 首随机 1 首', 'Random 1 of first 3 favorites') : T('不加', 'None')} />}
               {contentSource === 'sources'
                 ? <SummaryRow label={T('数据源', 'Sources')} value={sourceIdsLabel(sourceIds, isZh)} />
                 : <SummaryRow label={i18nService.t('wzImgSummaryRef')} value={i18nService.t('wzImgSummaryRefVal').replace('{filled}', String(selectedIds.filter((id) => (references[id] || '').trim()).length)).replace('{total}', String(selectedIds.length))} />}
