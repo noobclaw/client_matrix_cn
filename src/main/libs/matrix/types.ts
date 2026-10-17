@@ -305,20 +305,26 @@ export interface BinanceRepostConfig {
 //   只能选【1 个】账号执行,只能【手动执行一次】(执行后锁定,不可再跑/编辑),不定时、不重试。
 export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report';
 
-/** 举报原因 key(与后端剧本 config.reasons 对齐;展示文案在渲染层 i18n)。 */
-export type ReportReason =
-  | 'porn' | 'illegal' | 'fraud' | 'false_info' | 'abuse' | 'infringement'
-  | 'minors' | 'spam' | 'impersonation' | 'discomfort' | 'other';
-export const REPORT_REASONS: ReportReason[] = ['porn', 'illegal', 'fraud', 'false_info', 'abuse', 'infringement', 'minors', 'spam', 'impersonation', 'discomfort', 'other'];
-
-/** 一条举报:被举报的账号主页或作品链接 + 原因 + 描述(用户手填,原样提交)。 */
+/** 一条 Report:被举报的作品(视频/图文)或账号链接 + 抖音原文原因/具体类型 + 描述(用户手填,原样提交)。
+ *  reason / subReason 必须是 reportTaxonomy.ts 里的抖音原文选项。 */
 export interface ReportItem {
   url: string;
-  reason: ReportReason;
+  targetType: 'content' | 'account';
+  reason: string;
+  subReason?: string;
   description: string;
+}
+/** 每条链接的执行结果(剧本回传,存到任务上给专属详情页展示)。 */
+export interface ReportItemResult {
+  url: string;
+  status: 'submitted' | 'dry_run_ok' | 'failed';
+  why?: string;          // 失败/跳过原因码(见剧本 error_map)
+  confirmed?: boolean;   // 提交后是否看到平台确认提示
+  ts?: number;
 }
 /** 举报合规上限(客户端存盘校验 + 后端剧本再兜一层)。 */
 export const REPORT_LIMITS = { minItems: 1, maxItems: 4, descMin: 5, descMax: 200 } as const;
+export type { ReportTargetType } from './reportTaxonomy';
 
 /**
  * 定向获客(tiktok_lead_engage 剧本)配置。两段式:采集同行评论者当潜客名单(长期账本)→
@@ -379,6 +385,9 @@ export interface MatrixTask {
   reportItems?: ReportItem[];      // 仅 report 用:1-4 条举报条目
   // 仅 report 用:执行锁。一旦开始执行即写入(epoch ms),之后不可再运行、不可编辑(合规:只能手动执行一次)。
   reportExecutedAt?: number;
+  reportResults?: ReportItemResult[];      // 仅 report:正式执行的逐条结果
+  reportDryRunAt?: number;                 // 仅 report:最近一次试运行时间(试运行不占执行锁、不计费)
+  reportDryRunResults?: ReportItemResult[]; // 仅 report:最近一次试运行的逐条结果
   concurrency?: number;            // 同时开窗数(video_download 固定 1,单账号顺序下载)
   frequency: MatrixTaskFrequency;  // 运行频率
   nextPlannedRunAt?: number;       // 下次计划运行(epoch ms;调度器预排,UI 展示)

@@ -208,7 +208,7 @@ export const MATRIX_REPORT_SCENARIO_ID: Record<string, string> = { douyin: 'douy
 const MATRIX_REPORT_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_REPORT_SCENARIO_ID).map(([p, id]) => [id, p]));
 const MATRIX_REPORT_META: Record<string, { name_zh: string; icon: string }> = {
-  douyin: { name_zh: '抖音 举报', icon: '🚩' },
+  douyin: { name_zh: '抖音Report', icon: '🚩' },
 };
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
  *  配额映射到 daily_*_min/max 这套 douyin_auto_engage 字段)。 */
@@ -249,6 +249,9 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     // 举报:条目 + 执行锁时间透传(详情页展示「已执行,不可再运行」、编辑回填)。
     report_items: isReport ? reportItems : undefined,
     report_executed_at: isReport ? (t.reportExecutedAt || null) : undefined,
+    report_results: isReport ? (t.reportResults || []) : undefined,
+    report_dry_run_at: isReport ? (t.reportDryRunAt || null) : undefined,
+    report_dry_run_results: isReport ? (t.reportDryRunResults || []) : undefined,
     // image_text / viral_rewrite / x_post / binance_post / facebook_post / reddit_post / instagram_post / binance_repost 配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     imageText: isImageText ? t.imageText : undefined,
     viralRewrite: isViral ? t.viralRewrite : undefined,
@@ -322,7 +325,7 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       id,
       platform: pPlatform,
       type: 'report',
-      name: input.name || `${pPlatform}举报 · ${items.length} 条`,
+      name: input.name || `抖音Report · ${items.length} 条`,
       accountIds: accountIds.slice(0, 1),
       quota: {},
       reportItems: items,
@@ -602,7 +605,7 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
   const mk = (id: string, name_zh: string, icon: string) => ({ id, name_zh, name_en: '', icon, platform: p });
   switch (type) {
     case 'reply_fan':      return mk(`${p}_reply_fans_comment`, MATRIX_REPLY_META[p]?.name_zh || '自动回复粉丝', MATRIX_REPLY_META[p]?.icon || '💌');
-    case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '举报', MATRIX_REPORT_META[p]?.icon || '🚩');
+    case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '抖音Report', MATRIX_REPORT_META[p]?.icon || '🚩');
     case 'video_download': return mk(`${p}_video_download`, MATRIX_DOWNLOAD_META[p]?.name_zh || '视频下载', MATRIX_DOWNLOAD_META[p]?.icon || '⬇️');
     case 'image_text':     return mk(`${p}_image_text`, MATRIX_IMAGETEXT_META[p]?.name_zh || '图文创作', MATRIX_IMAGETEXT_META[p]?.icon || '📝');
     case 'viral_rewrite':  return mk(`${p}_viral_production_career`, MATRIX_VIRAL_META[p]?.name_zh || '爆款仿写', MATRIX_VIRAL_META[p]?.icon || '🔥');
@@ -882,6 +885,15 @@ class ScenarioService {
   async deleteTask(id: string): Promise<boolean> {
     if (MATRIX_EDITION) { if (!ensureMatrixLogin()) return false; const r = await MX()?.removeTask?.({ id }); return !!r?.ok; }
     return window.electron.scenario.deleteTask(id);
+  }
+
+  /** 抖音Report 试运行:选原因、填描述,停在提交前;不占执行锁、不计费。 */
+  async runReportDryRun(id: string): Promise<RunOutcome> {
+    if (!ensureMatrixLogin()) return { status: 'skipped', reason: 'login_required' };
+    const r = await MX()?.runTaskById?.({ taskId: id, dryRun: true });
+    if (r?.ok) return { status: 'started' };
+    const reason = (r?.error === 'another_task_running' || r?.error === 'concurrency_full') ? 'concurrency_limit_reached' : (r?.error || 'unknown');
+    return { status: 'skipped', reason };
   }
 
   async runTaskNow(id: string): Promise<RunOutcome> {

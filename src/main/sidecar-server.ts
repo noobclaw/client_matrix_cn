@@ -278,7 +278,8 @@ void import('./libs/matrix/accountManager').then((m) => m.setAccountSSEBroadcast
 
 // 矩阵任务运行(手动 IPC 与定时调度共用,保证「全局同时只跑一个」+ 进度 SSE 一致)。
 // manual:是否用户手动点「运行」触发(定时调度传 false)。举报只允许手动触发。
-async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = false): Promise<{ ok: boolean; error?: string }> {
+// dryRun:仅 report —— 试运行(选原因、填描述,停在提交前),不占执行锁、不计费,可反复跑。
+async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = false, dryRun = false): Promise<{ ok: boolean; error?: string }> {
   // 按【平台】并发:先取任务拿平台,再做「同平台已在跑?」+「并发已满?」检查;check→add 之间无 await(原子占锁,杜绝双跑)。
   const { getTask, setTaskLastRun, claimReportExecution } = await import('./libs/matrix/taskStore');
   const task = getTask(taskId);
@@ -287,7 +288,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = f
   //   白名单在占执行锁之前问 —— 没权限时不该把这张单据的唯一一次机会烧掉。
   if (task.type === 'report') {
     if (!manual) return { ok: false, error: 'report_manual_only' };
-    if (task.reportExecutedAt) return { ok: false, error: 'report_already_executed' };
+    if (task.reportExecutedAt && !dryRun) return { ok: false, error: 'report_already_executed' };
     if ((task.accountIds || []).length !== 1) return { ok: false, error: 'report_requires_single_account' };
     if (!(await isReportEnabledForUser())) return { ok: false, error: 'report_not_whitelisted' };
   }
@@ -302,7 +303,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = f
   if (runningPlatforms.has(platform)) return { ok: false, error: 'another_task_running' };       // 同平台已在跑
   if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return { ok: false, error: 'concurrency_full' }; // 并发已满
   // 举报执行锁:与平台锁同一同步段内抢占(无 await),双击/并发点运行也只会有一次成功。
-  if (task.type === 'report' && !claimReportExecution(task.id)) return { ok: false, error: 'report_already_executed' };
+  if (task.type === 'report' && !dryRun && !claimReportExecution(task.id)) return { ok: false, error: 'report_already_executed' };
   runningPlatforms.add(platform);
   // 🚨 立刻把本任务的进度占成 running。liveProgressByTask 里【上一次运行那条 status:'done' 从来不清】,
   //   而真正的 running 要等下面把 live 对象组装好(要先 import 七八个 runner、读账号库、算会员号数墙)
@@ -455,6 +456,10 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     };
     const cbOnItem = (item: any) => {
         collected.set(item.accountId, item);
+        // Report 逐条结果 → 存到任务上(专属详情页展示);试运行单独存,不覆盖正式结果。
+        if (isReport && Array.isArray(item?.reportResults)) {
+          void import('./libs/matrix/taskStore').then((m) => m.setReportResults(task.id, item.reportResults, dryRun)).catch(() => { /* ignore */ });
+        }
         notifyInsufficient(item?.reason);
         // 聚合 done = 各号最新累计 counts 之和;聚合 cost = 各号最新累计扣费之和(每号是到目前的累计,直接相加不重复)。
         const sum = zero();
@@ -572,6 +577,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           urls: isVideoDownload ? task.urls : undefined,
           // 举报:条目透传给剧本;单账号、单窗口(存盘时已强制),这里再夹一次只取第 1 个号。
           reportItems: isReport ? (task.reportItems || []) : undefined,
+          reportDryRun: isReport ? dryRun : undefined,
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         });
     runP.then((report) => {
@@ -2240,7 +2246,7 @@ const server = http.createServer(async (req, res) => {
             // 按保存的任务手动跑(定时调度走 sidecar startMatrixScheduler,同一个 helper)。
             try {
               const a = args[0] as any;
-              const r = await runMatrixTaskById(a?.taskId, a?.kernelPath, true);
+              const r = await runMatrixTaskById(a?.taskId, a?.kernelPath, true, !!a?.dryRun);
               return writeJSON(res, 200, r.ok ? { ok: true, status: 'started' } : r);
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });

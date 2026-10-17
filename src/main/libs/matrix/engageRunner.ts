@@ -136,7 +136,8 @@ export interface EngageTaskOptions {
   // 每号本次运行最多回复几条(仅抖音回复粉丝剧本读它;不传 → 剧本按 100 兜底;只管本次运行,不跨运行累计)
   maxRepliesPerRun?: number;
   urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
-  reportItems?: Array<{ url: string; reason: string; description: string }>; // 仅 report:举报条目(注入 ctx.task.report_items)
+  reportItems?: Array<{ url: string; targetType: string; reason: string; subReason?: string; description: string }>; // 仅 report:条目(注入 ctx.task.report_items)
+  reportDryRun?: boolean;          // 仅 report:试运行(选原因+填描述,停在提交前;不计费)
   concurrency?: number;
   jitterMinMs?: number; jitterMaxMs?: number;
   kernelPath?: string;
@@ -163,6 +164,8 @@ export interface EngageItemResult {
   chargedCredits?: number;
   chargedUsd?: number;
   reason?: string;
+  // 仅 report:剧本回传的逐条结果(sidecar 存到任务上给专属详情页)
+  reportResults?: Array<{ url: string; status: string; why?: string; confirmed?: boolean; ts?: number }>;
 }
 
 // ── scenario pack 下发(/api/matrix/scenarios/:id)──
@@ -489,7 +492,10 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       // video_download 剧本读 task.urls(用户粘贴的待下载链接清单)。
       urls: Array.isArray(opts.urls) ? opts.urls : [],
       // report 剧本读 task.report_items(1-4 条 {url, reason, description},用户手填原样提交)。
-      report_items: Array.isArray(opts.reportItems) ? opts.reportItems : [],
+      report_items: Array.isArray(opts.reportItems) ? opts.reportItems.map((it) => ({
+        url: it.url, target_type: it.targetType, reason: it.reason, sub_reason: it.subReason || '', description: it.description,
+      })) : [],
+      report_dry_run: !!opts.reportDryRun,
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
       daily_follow_min: q.daily_follow_min, daily_follow_max: q.daily_follow_max,
       daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
@@ -765,7 +771,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
     const code = pack?.orchestrator;
     if (!code) { coworkLog('ERROR', 'engage', `[${accountId}] no_orchestrator`); return { accountId, state: 'failed', reason: 'no_orchestrator' }; }
     const fn = new AsyncFunction('ctx', code);
-    await fn(ctx);
+    const orchRet: any = await fn(ctx);
+    // report 剧本回传逐条结果 → 带在 item 上(其它剧本的返回值不关心,保持原样)
+    const reportResults = opts.taskType === 'report' && Array.isArray(orchRet?.results) ? orchRet.results : undefined;
 
     if (chargeFatal && chargeFatal.reason) {
       setAccountStatus(accountId, 'idle');
@@ -775,7 +783,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
     const fin = finished as { status: string; error?: string } | null;
     if (fin && fin.status === 'error') { coworkLog('ERROR', 'engage', `[${accountId}] finished error: ${fin.error}`); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: fin.error }; }
     coworkLog('INFO', 'engage', `[${accountId}] done 赞${counts.like}/关${counts.follow}/评${counts.comment} · 扣费 ${chargedCredits}积分`);
-    return { accountId, state: 'success', counts, chargedCredits, chargedUsd };
+    return { accountId, state: 'success', counts, chargedCredits, chargedUsd, reportResults };
   } catch (e: any) {
     setAccountStatus(accountId, 'idle');
     const _emsg = String(e?.message || e);

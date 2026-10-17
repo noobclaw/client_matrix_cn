@@ -1515,25 +1515,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     return (map[interval] || i18nService.t('tdDaily')) + i18nService.t('tdScheduledSuffix');
                   })()}
                 </span>
-                {(task as any).report_executed_at ? (
-                  // 举报单已执行:合规锁定,不能再运行/编辑(只保留删除 + 查看记录)。
-                  <span
-                    title={i18nService.t('rpExecutedTip').replace('{time}', new Date((task as any).report_executed_at).toLocaleString())}
-                    className="px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed">
-                    🔒 {i18nService.t('rpExecutedBadge')}
-                  </span>
-                ) : (
-                  <>
-                    <button type="button" onClick={handleRunNow}
-                      className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
-                      {i18nService.t('tdRunNow')}
-                    </button>
-                    <button type="button" onClick={onEdit}
-                      className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                      {i18nService.t('tdEdit')}
-                    </button>
-                  </>
-                )}
+                <button type="button" onClick={handleRunNow}
+                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
+                  {i18nService.t('tdRunNow')}
+                </button>
+                <button type="button" onClick={onEdit}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                  {i18nService.t('tdEdit')}
+                </button>
                 <button type="button" onClick={handleDelete}
                   className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
                     confirmingDelete ? 'border-red-500 bg-red-500 text-white' : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'

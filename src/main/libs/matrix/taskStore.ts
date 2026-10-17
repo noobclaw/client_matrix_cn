@@ -10,8 +10,9 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { nextRunAt } from './matrixSchedule';
-import { REPORT_LIMITS, REPORT_REASONS } from './types';
-import type { ReportItem } from './types';
+import { REPORT_LIMITS } from './types';
+import type { ReportItem, ReportItemResult } from './types';
+import { validateReportItem } from './reportTaxonomy';
 import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, LeadEngageConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
 
 /** 任务启用且非 once 才排下次运行;否则清空(手动触发)。 */
@@ -99,7 +100,6 @@ export interface SaveTaskResult { ok: boolean; error?: string; task?: MatrixTask
 //   · 频率恒 'once'、enabled 恒 false(永不进定时调度);同时只开 1 个窗口
 //   · 执行过(reportExecutedAt 有值)的举报任务不可再编辑/再运行
 const REPORT_PLATFORMS = ['douyin'];
-const DOUYIN_URL_RE = /^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i;
 // 返回值用宽松对象而非判别联合:本项目 tsconfig 不开 strictNullChecks,`ok: true|false` 判别联合不会收窄(CI 报 TS2339)。
 function validateReport(input: SaveTaskInput): { ok: boolean; items?: ReportItem[]; error?: string } {
   if (!REPORT_PLATFORMS.includes(input.platform)) return { ok: false, error: 'report_platform_unsupported' };
@@ -110,14 +110,19 @@ function validateReport(input: SaveTaskInput): { ok: boolean; items?: ReportItem
   const items: ReportItem[] = [];
   const seen = new Set<string>();
   for (const it of raw) {
-    const url = String(it?.url || '').trim();
-    const description = String(it?.description || '').trim();
-    if (!DOUYIN_URL_RE.test(url)) return { ok: false, error: 'report_invalid_url' };
+    // 与渲染层向导同一套规则(reportTaxonomy.validateReportItem):抖音原文原因/具体类型、类型与链接一致、描述 5-200 字
+    const err = validateReportItem(it as any);
+    if (err) return { ok: false, error: err };
+    const url = String(it.url).trim();
     if (seen.has(url)) return { ok: false, error: 'report_duplicate_url' };
     seen.add(url);
-    if (!REPORT_REASONS.includes(it?.reason as any)) return { ok: false, error: 'report_invalid_reason' };
-    if (description.length < REPORT_LIMITS.descMin || description.length > REPORT_LIMITS.descMax) return { ok: false, error: 'report_invalid_description' };
-    items.push({ url, reason: it.reason, description });
+    items.push({
+      url,
+      targetType: it.targetType,
+      reason: String(it.reason),
+      subReason: it.subReason ? String(it.subReason) : undefined,
+      description: String(it.description).trim(),
+    });
   }
   return { ok: true, items };
 }
@@ -135,6 +140,19 @@ export function claimReportExecution(id: string): boolean {
   t.nextPlannedRunAt = undefined;
   persist();
   return true;
+}
+
+/** 保存 Report 逐条结果(剧本回传)。dryRun=试运行结果(不影响执行锁)。 */
+export function setReportResults(id: string, results: ReportItemResult[], dryRun: boolean): void {
+  const t = getTask(id);
+  if (!t || t.type !== 'report') return;
+  const clean = (Array.isArray(results) ? results : []).slice(0, REPORT_LIMITS.maxItems).map((r) => ({
+    url: String(r?.url || ''), status: r?.status, why: r?.why ? String(r.why) : undefined,
+    confirmed: typeof r?.confirmed === 'boolean' ? r.confirmed : undefined, ts: typeof r?.ts === 'number' ? r.ts : Date.now(),
+  })) as ReportItemResult[];
+  if (dryRun) { t.reportDryRunAt = Date.now(); t.reportDryRunResults = clean; }
+  else { t.reportResults = clean; }
+  persist();
 }
 
 /** 新建/更新任务,带约束校验。 */

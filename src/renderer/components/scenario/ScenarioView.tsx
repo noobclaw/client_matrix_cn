@@ -46,6 +46,7 @@ import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 import MatrixLeadEngageWizard from '../matrix/MatrixLeadEngageWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
 import MatrixReportWizard from '../matrix/MatrixReportWizard';
+import ReportTaskDetail from '../matrix/ReportTaskDetail';
 import { MATRIX_REPORT_SCENARIO_ID } from '../../services/scenario';
 import MatrixImageTextWizard, { type ImageTextWizardSave } from '../matrix/MatrixImageTextWizard';
 import MatrixTweetPostWizard, { type TweetPostWizardSave } from '../matrix/MatrixTweetPostWizard';
@@ -735,7 +736,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixReportPlatform(plat);
     await loadReportAccounts(plat);
   };
-  const saveMatrixReportTask = async (input: { name: string; accountIds: string[]; reportItems: Array<{ url: string; reason: string; description: string }> }) => {
+  const saveMatrixReportTask = async (input: { name: string; accountIds: string[]; reportItems: Array<{ url: string; targetType: string; reason: string; subReason?: string; description: string }> }) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
     // type='report':频率恒 once、enabled 恒 false(sidecar taskStore 也会强制),只能在任务详情页手动点「运行」一次。
@@ -1652,6 +1653,18 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           </div>
         );
       }
+      // 抖音Report:专属详情页(链接/原因/逐条结果/试运行/执行一次),不走互动任务的通用详情页。
+      if (matrixMode && /_report$/.test(String(task.scenario_id || ''))) {
+        return (
+          <ReportTaskDetail
+            task={task}
+            onBack={goBack}
+            onEdit={() => { void openMatrixReportWizardEdit(task); }}
+            onChanged={refreshAll}
+            onOpenHistory={() => openHistoryForTask(task.id)}
+          />
+        );
+      }
       const scenario = scenarios.find(s => s.id === task.scenario_id);
       return (
         <TaskDetailPage
@@ -2181,7 +2194,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {i18nService.t('svSectionReport')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🚩 {platLabel} · {i18nService.t('svCardReportTitle')}</div>
+              <div className="text-xl font-bold dark:text-white mb-1">🚩 {i18nService.t('svCardReportTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">{i18nService.t('svCardReportDesc')}</div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
                 <button type="button" onClick={() => openMatrixReportWizard(currentPlatform)}
@@ -2842,7 +2855,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <MatrixReportWizard
-              platformLabel={matrixReportPlatform === 'douyin' ? '抖音' : String(matrixReportPlatform)}
+              platformLabel={i18nService.t('rpBrand')}
               platform={matrixReportPlatform}
               accounts={matrixReportAccounts}
               accountsLoading={matrixReportAccountsLoading}

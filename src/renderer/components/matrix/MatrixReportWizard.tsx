@@ -1,35 +1,34 @@
 /**
- * MatrixReportWizard — 矩阵版「抖音 · 举报」向导(白名单功能,合规优先)。
+ * MatrixReportWizard — 「抖音Report」向导(白名单功能,合规优先)。
  *
- * 只有 admin 白名单(system_config.matrix_report_whitelist_uids)里的 UID 能看到入口;
- * 入口显隐由 ScenarioView 按 /api/matrix/config 的 reportEnabled 控制,sidecar 存盘/执行时再校验一次,
- * 后端剧本下发(/scenarios/douyin_report)对非白名单直接 403。
+ * 入口只对 admin 白名单 UID 显示(ScenarioView 按 /api/matrix/config.reportEnabled);
+ * sidecar 存盘/执行再校验一次;后端剧本下发对非白名单 403。
  *
- *   Step 1 — 填 1-4 个被举报的账号主页 / 作品链接,每条选举报原因 + 写举报描述
- *   Step 2 — 选【1 个】执行举报的抖音账号(单选,不可多选)
- *   Step 3 — 确认摘要 + 合规条款 → 创建
+ *   Step 1 — 1-4 条链接:每条选类型(作品=视频/图文 · 账号)、原因、具体类型、描述
+ *            原因/具体类型 = 抖音表单原文(reportTaxonomy.ts,2026-10-17 真机核对),描述提示也照抄抖音
+ *   Step 2 — 选【1 个】执行账号
+ *   Step 3 — 确认 + 合规条款 → 创建
  *
- * 合规约束:只能 1 个账号、只能手动执行一次(无频率选项、不进定时)、执行后不可编辑/再运行。
+ * 合规:只能 1 个账号、只能手动执行一次(无频率选项),执行后不可编辑/再运行;可先「试运行」(不提交)。
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import {
+  REPORT_TAXONOMY, REPORT_DEFAULT_HINT, findReportReason, guessReportTargetType, validateReportItem,
+  type ReportTargetType,
+} from '../../../main/libs/matrix/reportTaxonomy';
 
 type WizardStep = 1 | 2 | 3;
 
-export const REPORT_REASON_KEYS = ['porn', 'illegal', 'fraud', 'false_info', 'abuse', 'infringement', 'minors', 'spam', 'impersonation', 'discomfort', 'other'] as const;
-export type ReportReasonKey = typeof REPORT_REASON_KEYS[number];
-export interface ReportItemInput { url: string; reason: ReportReasonKey | ''; description: string }
-
 const MAX_ITEMS = 4;
-const DESC_MIN = 5;
 const DESC_MAX = 200;
-const DOUYIN_URL_RE = /^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i;
 
+export interface ReportItemInput { url: string; targetType: ReportTargetType | ''; reason: string; subReason: string; description: string }
 export interface WizardAccount { id: string; displayName: string; status: string; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
 const t = (k: string) => i18nService.t(k);
-export const reportReasonLabel = (k: string) => i18nService.t(`rpReason_${k}`);
+export const reportErrText = (code: string) => { const k = `rpErr_${code}`; const v = i18nService.t(k); return v !== k ? v : code; };
 
 interface Props {
   platformLabel: string;
@@ -38,30 +37,22 @@ interface Props {
   accountsLoading?: boolean;
   initialTask?: any | null;
   onCancel: () => void;
-  onSave: (input: { name: string; accountIds: string[]; reportItems: Array<{ url: string; reason: string; description: string }> }) => Promise<void> | void;
+  onSave: (input: { name: string; accountIds: string[]; reportItems: Array<{ url: string; targetType: ReportTargetType; reason: string; subReason?: string; description: string }> }) => Promise<void> | void;
 }
 
-const emptyItem = (): ReportItemInput => ({ url: '', reason: '', description: '' });
+const emptyItem = (): ReportItemInput => ({ url: '', targetType: '', reason: '', subReason: '', description: '' });
 
-function itemError(it: ReportItemInput, allUrls: string[]): string | null {
-  const url = it.url.trim();
-  if (!url) return t('rpErrUrlEmpty');
-  if (!DOUYIN_URL_RE.test(url)) return t('rpErrUrlInvalid');
-  if (allUrls.filter((u) => u === url).length > 1) return t('rpErrUrlDuplicate');
-  if (!it.reason) return t('rpErrReasonEmpty');
-  const d = it.description.trim();
-  if (d.length < DESC_MIN) return t('rpErrDescShort').replace('{n}', String(DESC_MIN));
-  if (d.length > DESC_MAX) return t('rpErrDescLong').replace('{n}', String(DESC_MAX));
-  return null;
-}
+const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/40';
 
-const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
+const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
 
   const [items, setItems] = useState<ReportItemInput[]>(() => {
     const src: any[] = Array.isArray(initialTask?.reportItems) ? initialTask.reportItems : [];
-    return src.length ? src.slice(0, MAX_ITEMS).map((x) => ({ url: String(x.url || ''), reason: (x.reason || '') as any, description: String(x.description || '') })) : [emptyItem()];
+    return src.length
+      ? src.slice(0, MAX_ITEMS).map((x) => ({ url: String(x.url || ''), targetType: (x.targetType || '') as any, reason: String(x.reason || ''), subReason: String(x.subReason || ''), description: String(x.description || '') }))
+      : [emptyItem()];
   });
   const [selectedId, setSelectedId] = useState<string>(() => (initialTask?.accountIds?.length ? String(initialTask.accountIds[0]) : ''));
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([false, false, false]);
@@ -71,8 +62,15 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
 
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [items, selectedId]);
 
-  const allUrls = useMemo(() => items.map((i) => i.url.trim()), [items]);
-  const errors = useMemo(() => items.map((it) => itemError(it, allUrls)), [items, allUrls]);
+  const errors = useMemo(() => {
+    const urls = items.map((i) => i.url.trim());
+    return items.map((it, i) => {
+      if (!it.url.trim()) return t('rpErrUrlEmpty');
+      if (urls.indexOf(it.url.trim()) !== i) return reportErrText('report_duplicate_url');
+      const code = validateReportItem({ ...it, subReason: it.subReason || undefined });
+      return code ? reportErrText(code) : null;
+    });
+  }, [items]);
   const itemsOk = items.length >= 1 && items.length <= MAX_ITEMS && errors.every((e) => !e);
   const selectedAccount = accounts.find((a) => a.id === selectedId);
 
@@ -83,6 +81,15 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
   };
 
   const updateItem = (idx: number, patch: Partial<ReportItemInput>) => setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  const onUrlChange = (idx: number, url: string) => {
+    const g = guessReportTargetType(url);
+    setItems((prev) => prev.map((it, i) => {
+      if (i !== idx) return it;
+      // 链接能判断类型且与当前不同 → 自动切换并清空原因(两种类型的原因列表不同)
+      if (g && g !== it.targetType) return { ...it, url, targetType: g, reason: '', subReason: '' };
+      return { ...it, url };
+    }));
+  };
   const removeItem = (idx: number) => setItems((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
   const addItem = () => setItems((prev) => (prev.length >= MAX_ITEMS ? prev : [...prev, emptyItem()]));
 
@@ -94,9 +101,9 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || t('rpTaskName').replace('{platform}', platformLabel).replace('{n}', String(items.length)),
+        name: initialTask?.name || t('rpTaskName').replace('{n}', String(items.length)),
         accountIds: [selectedId],
-        reportItems: items.map((it) => ({ url: it.url.trim(), reason: it.reason as string, description: it.description.trim() })),
+        reportItems: items.map((it) => ({ url: it.url.trim(), targetType: it.targetType as ReportTargetType, reason: it.reason, subReason: it.subReason || undefined, description: it.description.trim() })),
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || t('rpErrSaveFailed'));
@@ -106,7 +113,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">🚩 {(editing ? t('rpTitleEdit') : t('rpTitleCreate')).replace('{platform}', platformLabel)}</div>
+        <div className="text-base font-semibold dark:text-white">🚩 {editing ? t('rpTitleEdit') : t('rpTitleCreate')}</div>
         <div className="flex items-center gap-3">
           <span className="text-xs px-2.5 py-1 rounded-full border border-rose-500/40 text-rose-500 bg-rose-500/5">{t('rpStepIndicator').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
@@ -122,6 +129,9 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
             {items.map((it, idx) => {
               const err = errors[idx];
               const touched = !!(it.url || it.reason || it.description);
+              const group = it.targetType ? REPORT_TAXONOMY[it.targetType] : null;
+              const def = it.targetType && it.reason ? findReportReason(it.targetType, it.reason) : undefined;
+              const hint = def?.hint || REPORT_DEFAULT_HINT;
               return (
                 <div key={idx} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
                   <div className="flex items-center justify-between">
@@ -130,37 +140,44 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
                       <button type="button" onClick={() => removeItem(idx)} disabled={saving} className="text-[11px] text-gray-400 hover:text-red-500">{t('rpRemoveItem')}</button>
                     )}
                   </div>
-                  <input
-                    type="text"
-                    value={it.url}
-                    onChange={(e) => updateItem(idx, { url: e.target.value })}
-                    placeholder={t('rpUrlPlaceholder')}
-                    disabled={saving}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-rose-500/40"
-                  />
-                  <select
-                    value={it.reason}
-                    onChange={(e) => updateItem(idx, { reason: e.target.value as ReportReasonKey })}
-                    disabled={saving}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/40"
-                  >
-                    <option value="">{t('rpReasonPlaceholder')}</option>
-                    {REPORT_REASON_KEYS.map((k) => <option key={k} value={k}>{reportReasonLabel(k)}</option>)}
-                  </select>
-                  <div>
-                    <textarea
-                      value={it.description}
-                      onChange={(e) => updateItem(idx, { description: e.target.value.slice(0, DESC_MAX) })}
-                      placeholder={t('rpDescPlaceholder')}
-                      rows={3}
-                      disabled={saving}
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white resize-y focus:outline-none focus:ring-2 focus:ring-rose-500/40"
-                    />
-                    <div className="flex justify-between text-[11px] mt-0.5">
-                      <span className="text-red-500">{touched && err ? err : ''}</span>
-                      <span className="text-gray-400">{it.description.trim().length}/{DESC_MAX}</span>
-                    </div>
+                  <input type="text" value={it.url} onChange={(e) => onUrlChange(idx, e.target.value)} placeholder={t('rpUrlPlaceholder')} disabled={saving} className={`${inputCls} font-mono`} />
+
+                  {/* 类型:作品(视频/图文)/ 账号。链接能识别时自动选,短链需手动选 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('rpTypeLabel')}</span>
+                    {(['content', 'account'] as ReportTargetType[]).map((tp) => (
+                      <button key={tp} type="button" disabled={saving}
+                        onClick={() => { if (it.targetType !== tp) updateItem(idx, { targetType: tp, reason: '', subReason: '' }); }}
+                        className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${it.targetType === tp ? 'border-rose-500 bg-rose-500/10 text-rose-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-rose-500/50'}`}>
+                        {tp === 'content' ? t('rpTypeContent') : t('rpTypeAccount')}
+                      </button>
+                    ))}
                   </div>
+
+                  {group && (
+                    <select value={it.reason} onChange={(e) => updateItem(idx, { reason: e.target.value, subReason: '' })} disabled={saving} className={inputCls}>
+                      <option value="">{t('rpReasonPlaceholder')}</option>
+                      {group.reasons.map((r) => <option key={r.label} value={r.label}>{r.label}</option>)}
+                    </select>
+                  )}
+
+                  {def && def.sub.length > 0 && (
+                    <select value={it.subReason} onChange={(e) => updateItem(idx, { subReason: e.target.value })} disabled={saving} className={inputCls}>
+                      <option value="">{group?.subRequired ? t('rpSubPlaceholderRequired') : t('rpSubPlaceholderOptional')}</option>
+                      {def.sub.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  )}
+
+                  {group && (
+                    <div>
+                      <textarea value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value.slice(0, DESC_MAX) })} placeholder={hint} rows={3} disabled={saving} className={`${inputCls} resize-y`} />
+                      <div className="flex justify-between text-[11px] mt-0.5">
+                        <span className="text-red-500">{touched && err ? err : ''}</span>
+                        <span className="text-gray-400">{it.description.trim().length}/{DESC_MAX}</span>
+                      </div>
+                    </div>
+                  )}
+                  {!group && touched && <div className="text-[11px] text-amber-500">{t('rpErrPickType')}</div>}
                 </div>
               );
             })}
@@ -175,19 +192,16 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
         {step === 2 && (
           <div>
             <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-              {t('rpSelectAccountLabel').replace('{platform}', platformLabel)}
+              {t('rpSelectAccountLabel')}
               <span className="text-xs text-gray-400 font-normal ml-1">{t('rpSelectAccountHint')}</span>
             </label>
             <div className="space-y-1.5 max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 p-2">
               {accounts.length === 0 && accountsLoading && <div className="p-3 text-center text-xs text-gray-400">{t('rpAccountsLoading')}</div>}
               {accounts.length === 0 && !accountsLoading && (
                 <div className="p-3 text-center space-y-2.5">
-                  <div className="text-xs text-gray-400">{t('rpNoAccounts').replace('{platform}', platformLabel)}</div>
-                  <button
-                    type="button"
-                    onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-rose-500 hover:bg-rose-600 active:scale-95"
-                  >{t('rpGoAddAccount')}</button>
+                  <div className="text-xs text-gray-400">{t('rpNoAccounts')}</div>
+                  <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-rose-500 hover:bg-rose-600 active:scale-95">{t('rpGoAddAccount')}</button>
                 </div>
               )}
               {accounts.map((a) => {
@@ -223,8 +237,8 @@ const MatrixReportWizard: React.FC<Props> = ({ platformLabel, platform, accounts
               <div className="space-y-1.5 pt-1">
                 {items.map((it, i) => (
                   <div key={i} className="text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5">
-                    <div className="font-mono break-all text-gray-800 dark:text-gray-200">{i + 1}. {it.url.trim()}</div>
-                    <div className="text-rose-600 dark:text-rose-400">{reportReasonLabel(it.reason)}</div>
+                    <div className="font-mono break-all text-gray-800 dark:text-gray-200">{i + 1}. [{it.targetType === 'account' ? t('rpTypeAccount') : t('rpTypeContent')}] {it.url.trim()}</div>
+                    <div className="text-rose-600 dark:text-rose-400">{it.reason}{it.subReason ? ` › ${it.subReason}` : ''}</div>
                     <div className="text-gray-500 dark:text-gray-400 break-all">{it.description.trim()}</div>
                   </div>
                 ))}
