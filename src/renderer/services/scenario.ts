@@ -203,12 +203,12 @@ export function exchangeSquarePlatformKey(platform?: string, scenarioId?: string
 }
 
 // 「举报」剧本(backend/matrix/scenarios/<platform>_report)。白名单功能(admin 配 UID 才可见),目前仅抖音。
-//   单账号、1-4 条链接、只能手动执行一次。同样补快照,否则 scenario_id lookup 不到 platform、任务卡不出现。
+//   单账号、1-4 条链接、手动触发。同样补快照,否则 scenario_id lookup 不到 platform、任务卡不出现。
 export const MATRIX_REPORT_SCENARIO_ID: Record<string, string> = { douyin: 'douyin_report' };
 const MATRIX_REPORT_ID_TO_PLATFORM: Record<string, string> =
   Object.fromEntries(Object.entries(MATRIX_REPORT_SCENARIO_ID).map(([p, id]) => [id, p]));
 const MATRIX_REPORT_META: Record<string, { name_zh: string; icon: string }> = {
-  douyin: { name_zh: '抖音Report', icon: '🚩' },
+  douyin: { name_zh: '抖音Report', icon: '📋' },
 };
 /** 矩阵任务 → 旧 ScenarioTaskIPC(赛道/关键词在账号上,task 这两个字段留空;
  *  配额映射到 daily_*_min/max 这套 douyin_auto_engage 字段)。 */
@@ -317,7 +317,6 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
 function scenarioInputToMxSave(input: any, id?: string): any {
   const accountIds: string[] = input.account_ids || [];
   // 举报(scenario_id 以 _report 结尾):保持 type='report' + 透传条目;频率/启用恒为「仅手动一次」。
-  //   已执行的举报单经 updateTask 兜底写回时,sidecar 会拒(report_already_executed),不会被改动。
   if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_report')) {
     const pPlatform = MATRIX_REPORT_ID_TO_PLATFORM[input.scenario_id] || 'douyin';
     const items: any[] = Array.isArray(input.report_items) ? input.report_items : [];
@@ -605,7 +604,7 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
   const mk = (id: string, name_zh: string, icon: string) => ({ id, name_zh, name_en: '', icon, platform: p });
   switch (type) {
     case 'reply_fan':      return mk(`${p}_reply_fans_comment`, MATRIX_REPLY_META[p]?.name_zh || '自动回复粉丝', MATRIX_REPLY_META[p]?.icon || '💌');
-    case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '抖音Report', MATRIX_REPORT_META[p]?.icon || '🚩');
+    case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '抖音Report', MATRIX_REPORT_META[p]?.icon || '📋');
     case 'video_download': return mk(`${p}_video_download`, MATRIX_DOWNLOAD_META[p]?.name_zh || '视频下载', MATRIX_DOWNLOAD_META[p]?.icon || '⬇️');
     case 'image_text':     return mk(`${p}_image_text`, MATRIX_IMAGETEXT_META[p]?.name_zh || '图文创作', MATRIX_IMAGETEXT_META[p]?.icon || '📝');
     case 'viral_rewrite':  return mk(`${p}_viral_production_career`, MATRIX_VIRAL_META[p]?.name_zh || '爆款仿写', MATRIX_VIRAL_META[p]?.icon || '🔥');
@@ -771,7 +770,7 @@ class ScenarioService {
         .map(([platform, sid]) => ({
           id: sid, version: '1.0.0', platform, workflow_type: 'report', category: 'tool',
           name_zh: MATRIX_REPORT_META[platform]?.name_zh || sid, name_en: '',
-          icon: MATRIX_REPORT_META[platform]?.icon || '🚩',
+          icon: MATRIX_REPORT_META[platform]?.icon || '📋',
         }));
       // 同理补「图文创作」剧本快照,让 image_text 任务能按 platform 归到对应 tab。
       const synthImageText = Object.entries(MATRIX_IMAGETEXT_SCENARIO_ID)

@@ -255,6 +255,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const isAutoReplyTask =
     (scenario?.workflow_type as any) === 'auto_reply' ||
     /_reply_fans_comment$/.test(scenario?.id || '');
+  // 抖音Report(*_report):复用本页布局,只换文案 —— 不显示赞/关注/评论、输出目录、发布徽章等互动任务专属内容。
+  const isReportTask = /_report$/.test(String(task.scenario_id || ''));
+  // 抖音Report 试运行:走同一条运行链路,只是调 runReportDryRun(停在提交前、不计费)。
+  const dryRunRef = useRef(false);
   // 打开本任务输出目录(报告 / 草稿 / 图片)。头部链接 + 醒目按钮 + 运行明细大按钮共用。
   const openTaskDir = async () => {
     try {
@@ -548,8 +552,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   }, [running, task.id, refreshData]);
 
   // ── Actions ──
-  const handleRunNow = async () => {
+  const handleRunNow = async (dry = false) => {
     if (running) return;
+    dryRunRef.current = dry && isReportTask;
 
     // 1. Wallet check (sync — fast, no perceived lag).
     if (!noobClawAuth.getState().isAuthenticated) {
@@ -625,7 +630,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     //    The actual task runs in the sidecar background; we track it via
     //    getRunProgress polling (already running every 2s while running=true).
     //    When progress.status becomes 'done' or 'error', we stop running.
-    scenarioService.runTaskNow(task.id).then(async (outcome) => {
+    (dryRunRef.current ? scenarioService.runReportDryRun(task.id) : scenarioService.runTaskNow(task.id)).then(async (outcome) => {
       if (!mountedRef.current) return;
       if (outcome.status === 'started' || outcome.status === 'ok') {
         // Task launched (or finished instantly) — progress polling handles the rest
@@ -736,6 +741,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const isToutiaoTask = (scenario?.platform as any) === 'toutiao' || task.scenario_id?.startsWith('toutiao_');
   const typeBadge = (() => {
     const sid = task.scenario_id;
+    if (/_report$/.test(String(sid || ''))) return { icon: '📋', label: i18nService.t('rpBrand'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     // 交易所广场(gate/okx/bitget/bybit × engage/post/repost)。这是第 4 处写死的平台链条,
     // 同样没登记这 12 个 sid → 详情页徽章掉到 tdTypeXhsAutoEngage,OKX 任务显示成
     // 「💬 💬 小红书 · 互动涨粉」(那条文案自带 💬,和 icon 撞成两个,用户实拍)。
@@ -912,7 +918,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <div>
                         <div className="flex items-center gap-3 mb-1.5">
                           <span className="text-gray-400">{i18nService.t('tdAccountsLabel')}</span>
-                          <span className="dark:text-white font-medium">{i18nService.t('tdAccountsSummary').replace('{n}', String(matrixAccountIds.length))}</span>
+                          <span className="dark:text-white font-medium">{(isReportTask ? i18nService.t('rpAccountsSummary') : i18nService.t('tdAccountsSummary')).replace('{n}', String(matrixAccountIds.length))}</span>
                           <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                         </div>
                         {accs.length > 0 ? (
@@ -1456,10 +1462,48 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </>
               );
             })()}
+            {isReportTask && (() => {
+              const rItems: any[] = Array.isArray((task as any).report_items) ? (task as any).report_items : [];
+              const rRes: any[] = Array.isArray((task as any).report_results) ? (task as any).report_results : [];
+              const rDry: any[] = Array.isArray((task as any).report_dry_run_results) ? (task as any).report_dry_run_results : [];
+              const resText = (r: any) => {
+                if (!r) return null;
+                if (r.status === 'submitted') return <span className="text-green-600 dark:text-green-400">✅ {r.confirmed ? i18nService.t('rpResSubmitted') : i18nService.t('rpResSubmittedUnconfirmed')}</span>;
+                if (r.status === 'dry_run_ok') return <span className="text-sky-600 dark:text-sky-400">🧪 {i18nService.t('rpResDryOk')}</span>;
+                const k = `rpWhy_${r.why || ''}`; const v = i18nService.t(k);
+                return <span className="text-amber-600 dark:text-amber-400">⚠️ {v !== k ? v : (r.why || i18nService.t('rpResFailed'))}</span>;
+              };
+              return (
+                <div className="space-y-1.5">
+                  <div>{i18nService.t('rpItemsTitle')}: {rItems.length} {i18nService.t('tdCountUnit')}</div>
+                  {rItems.map((it, i) => {
+                    const real = rRes.find((x) => x.url === it.url);
+                    const dry = rDry.find((x) => x.url === it.url);
+                    return (
+                      <div key={i} className="pl-4 text-[11px] space-y-0.5">
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500 shrink-0">{i + 1}.</span>
+                          <span className="shrink-0 px-1.5 rounded bg-gray-500/10 text-gray-500 dark:text-gray-400">{it.targetType === 'account' ? i18nService.t('rpTypeAccount') : i18nService.t('rpTypeContent')}</span>
+                          <span className="text-gray-400 break-all flex-1 min-w-0">{it.url}</span>
+                        </div>
+                        <div className="pl-5 text-gray-600 dark:text-gray-300">{it.reason}{it.subReason ? ` › ${it.subReason}` : ''} · <span className="text-gray-500">{it.description}</span></div>
+                        {(real || dry) && (
+                          <div className="pl-5 flex gap-3 flex-wrap">
+                            {dry && <span>{i18nService.t('rpColDryRun')}: {resText(dry)}</span>}
+                            {real && <span>{i18nService.t('rpColResult')}: {resText(real)}</span>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             <div>{i18nService.t('tdCreatedLabel')}: {new Date(task.created_at).toLocaleString()}</div>
             {/* Output folder link — for auto_reply this contains the run-report
                 Markdown; for viral_production this contains the rewrite drafts
                 + images. Either way it's the place to look for what was produced. */}
+{!isReportTask && (
             <div className="flex items-center gap-2 flex-wrap">
               <span>{i18nService.t('tdOutputLabel')}</span>
               {/* 点文字也能打开(保留旧交互) */}
@@ -1475,6 +1519,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 📂 {i18nService.t('tdOpen')}
               </button>
             </div>
+            )}
             {/* v1.x: 删了截短 persona preview — 跟上面完整 persona 块 (line ~814) 重复了 */}
           </div>
           <div className="shrink-0 flex items-center gap-2">
@@ -1515,7 +1560,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     return (map[interval] || i18nService.t('tdDaily')) + i18nService.t('tdScheduledSuffix');
                   })()}
                 </span>
-                <button type="button" onClick={handleRunNow}
+                {isReportTask && (
+                  <button type="button" onClick={() => handleRunNow(true)} title={i18nService.t('rpDryRunTip')}
+                    className="px-3 py-2 text-sm font-medium rounded-lg border border-sky-500/50 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10 transition-colors">
+                    🧪 {i18nService.t('rpDryRun')}
+                  </button>
+                )}
+                <button type="button" onClick={() => handleRunNow()}
                   className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
                   {i18nService.t('tdRunNow')}
                 </button>
@@ -1842,7 +1893,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
               <h2 className="text-base font-bold dark:text-white">{i18nService.t('tdCurrentRunDetails')}</h2>
-              {isVideoDownloadTask ? (
+              {isReportTask ? (
+                <span className="text-xs px-2.5 py-1 rounded-full border bg-sky-500/10 text-sky-500 border-sky-500/30">
+                  📋 {i18nService.t('rpRunBadge')}
+                </span>
+              ) : isVideoDownloadTask ? (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-500 border-blue-500/30">
                   {i18nService.t('tdAutoDownloadBadge')}
                 </span>
@@ -1898,6 +1953,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         {(() => {
                           const sid = String(scenario?.id || '');
                           if (/_reply_fans_comment$/.test(sid)) return <>💬 {ap.comment?.done ?? 0} {i18nService.t('tdRepliesWord')}</>;
+                          if (/_report$/.test(sid)) return <>📋 {(ap as any).report?.done ?? 0}/{(ap as any).report?.target ?? 0} {i18nService.t('rpWordSubmitted')}</>;
                           if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {i18nService.t('tdVideoDownloadWord')}</span>;
                           if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {i18nService.t('tdImageTextWord')}</span>;
                           if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {i18nService.t('tdViralRewriteWord')}</span>;
@@ -2187,6 +2243,11 @@ function formatActionBreakdown(
   if (/_(?:re)?post$/.test(sid)) {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
+  }
+  // 抖音Report(*_report):只产生「已提交条数」,不显示赞/关注/评论。
+  if (/_report$/.test(sid)) {
+    const n = counts && typeof (counts as any).report === 'number' ? (counts as any).report : 0;
+    return `📋 ${n} ${i18nService.t('rpWordSubmitted')}`;
   }
   // 视频无水印下载(*_video_download):只产生「下载条数」,显示 ⬇️ N 下载,不显示互动。
   if (/_video_download$/.test(sid)) {

@@ -98,7 +98,7 @@ export interface SaveTaskResult { ok: boolean; error?: string; task?: MatrixTask
 // 产品拍板的硬约束,存盘时就拦死(UI 也会拦,这里是最后一道):
 //   · 目前仅抖音;只能选【1 个】账号;1-4 条链接;每条必须有合法原因 + 5-200 字描述
 //   · 频率恒 'once'、enabled 恒 false(永不进定时调度);同时只开 1 个窗口
-//   · 执行过(reportExecutedAt 有值)的举报任务不可再编辑/再运行
+//   · 只能手动触发,每次触发逐条只提交一次(不重试);可编辑、可再次手动运行
 const REPORT_PLATFORMS = ['douyin'];
 // 返回值用宽松对象而非判别联合:本项目 tsconfig 不开 strictNullChecks,`ok: true|false` 判别联合不会收窄(CI 报 TS2339)。
 function validateReport(input: SaveTaskInput): { ok: boolean; items?: ReportItem[]; error?: string } {
@@ -127,19 +127,14 @@ function validateReport(input: SaveTaskInput): { ok: boolean; items?: ReportItem
   return { ok: true, items };
 }
 
-/**
- * 举报执行锁:开始执行前调用。已执行过 → false(调用方拒绝运行);否则写入时间戳并落盘 → true。
- * 先落锁再跑:即便运行中崩溃/重启,也不会被再执行第二次(合规:只能手动执行一次)。
- */
-export function claimReportExecution(id: string): boolean {
+/** 抖音Report:记录最近一次正式执行时间(展示用;不锁定,任务可编辑、可再次手动运行)。 */
+export function markReportExecuted(id: string): void {
   const t = getTask(id);
-  if (!t || t.type !== 'report') return false;
-  if (t.reportExecutedAt) return false;
+  if (!t || t.type !== 'report') return;
   t.reportExecutedAt = Date.now();
   t.enabled = false;
   t.nextPlannedRunAt = undefined;
   persist();
-  return true;
 }
 
 /** 保存 Report 逐条结果(剧本回传)。dryRun=试运行结果(不影响执行锁)。 */
@@ -171,8 +166,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
   if (input.id) {
     const i = tasks.findIndex((t) => t.id === input.id);
     if (i < 0) return { ok: false, error: 'task_not_found' };
-    // 举报任务一旦执行即锁定;别的类型也不能改成/改出举报(类型切换会绕过执行锁)。
-    if (tasks[i].type === 'report' && tasks[i].reportExecutedAt) return { ok: false, error: 'report_already_executed' };
+    // 别的类型不能改成/改出抖音Report(白名单 + 单账号等约束只对 report 生效,类型切换会绕过)。
     if ((tasks[i].type === 'report') !== (input.type === 'report')) return { ok: false, error: 'report_type_change_forbidden' };
     // 改 type 不能撞到同平台已有的别的同类型任务(举报除外:每次举报是独立的一次性单据,可并存多张)
     const dup = input.type === 'report' ? undefined : tasks.find((t) => t.id !== input.id && t.platform === input.platform && t.type === input.type);

@@ -46,7 +46,6 @@ import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 import MatrixLeadEngageWizard from '../matrix/MatrixLeadEngageWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
 import MatrixReportWizard from '../matrix/MatrixReportWizard';
-import ReportTaskDetail from '../matrix/ReportTaskDetail';
 import { MATRIX_REPORT_SCENARIO_ID } from '../../services/scenario';
 import MatrixImageTextWizard, { type ImageTextWizardSave } from '../matrix/MatrixImageTextWizard';
 import MatrixTweetPostWizard, { type TweetPostWizardSave } from '../matrix/MatrixTweetPostWizard';
@@ -726,8 +725,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
   const openMatrixReportWizardEdit = async (task: any) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
-    // 已执行的举报单锁定:不打开编辑(sidecar 也会拒)。
-    if ((task as any)?.report_executed_at) { window.alert(i18nService.t('rpErr_report_already_executed')); return; }
     if (!reportEnabled) { window.alert(i18nService.t('rpErr_report_not_whitelisted')); return; }
     const plat = (task?.platform as string) || 'douyin';
     setMatrixReportAccounts([]);
@@ -1653,18 +1650,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           </div>
         );
       }
-      // 抖音Report:专属详情页(链接/原因/逐条结果/试运行/执行一次),不走互动任务的通用详情页。
-      if (matrixMode && /_report$/.test(String(task.scenario_id || ''))) {
-        return (
-          <ReportTaskDetail
-            task={task}
-            onBack={goBack}
-            onEdit={() => { void openMatrixReportWizardEdit(task); }}
-            onChanged={refreshAll}
-            onOpenHistory={() => openHistoryForTask(task.id)}
-          />
-        );
-      }
       const scenario = scenarios.find(s => s.id === task.scenario_id);
       return (
         <TaskDetailPage
@@ -2188,18 +2173,18 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {/* 举报(白名单功能)—— 仅白名单 UID 可见;单账号、1-4 条、只能手动执行一次。 */}
+          {/* 抖音Report(白名单功能)—— 仅白名单 UID 可见;单账号、1-4 条、手动触发。 */}
           {matrixMode && reportEnabled && !!MATRIX_REPORT_SCENARIO_ID[currentPlatform] && (
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-500/10 p-6 flex flex-col">
-              <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {i18nService.t('svSectionReport')}
+            <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionReport')}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🚩 {i18nService.t('svCardReportTitle')}</div>
+              <div className="text-xl font-bold dark:text-white mb-1">📋 {i18nService.t('svCardReportTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">{i18nService.t('svCardReportDesc')}</div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
                 <button type="button" onClick={() => openMatrixReportWizard(currentPlatform)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-500 text-white text-sm font-bold hover:bg-rose-600 shadow-sm shadow-rose-500/25 transition-all active:scale-95">
-                  🚩 {i18nService.t('svStartReport')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-bold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95">
+                  📋 {i18nService.t('svStartReport')}
                 </button>
                 <button type="button" onClick={() => onSwitchToManage?.(currentPlatform as any)}
                   className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">

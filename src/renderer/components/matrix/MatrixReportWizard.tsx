@@ -9,7 +9,7 @@
  *   Step 2 — 选【1 个】执行账号
  *   Step 3 — 确认 + 合规条款 → 创建
  *
- * 合规:只能 1 个账号、只能手动执行一次(无频率选项),执行后不可编辑/再运行;可先「试运行」(不提交)。
+ * 合规:只能 1 个账号、只能手动触发(无频率选项,每次逐条只提交一次);可编辑、可先「试运行」(不提交)。
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -42,7 +42,7 @@ interface Props {
 
 const emptyItem = (): ReportItemInput => ({ url: '', targetType: '', reason: '', subReason: '', description: '' });
 
-const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/40';
+const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40';
 
 const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const editing = !!initialTask;
@@ -113,9 +113,9 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">🚩 {editing ? t('rpTitleEdit') : t('rpTitleCreate')}</div>
+        <div className="text-base font-semibold dark:text-white">📋 {editing ? t('rpTitleEdit') : t('rpTitleCreate')}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-rose-500/40 text-rose-500 bg-rose-500/5">{t('rpStepIndicator').replace('{n}', String(step))}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-sky-500/40 text-sky-500 bg-sky-500/5">{t('rpStepIndicator').replace('{n}', String(step))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
@@ -123,8 +123,8 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
         {step === 1 && (
           <>
-            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-rose-500/30 bg-rose-500/5 text-rose-700 dark:text-rose-300">
-              🚩 {t('rpIntro').replace('{n}', String(MAX_ITEMS))}
+            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-300">
+              📋 {t('rpIntro').replace('{n}', String(MAX_ITEMS))}
             </div>
             {items.map((it, idx) => {
               const err = errors[idx];
@@ -148,7 +148,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
                     {(['content', 'account'] as ReportTargetType[]).map((tp) => (
                       <button key={tp} type="button" disabled={saving}
                         onClick={() => { if (it.targetType !== tp) updateItem(idx, { targetType: tp, reason: '', subReason: '' }); }}
-                        className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${it.targetType === tp ? 'border-rose-500 bg-rose-500/10 text-rose-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-rose-500/50'}`}>
+                        className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${it.targetType === tp ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'}`}>
                         {tp === 'content' ? t('rpTypeContent') : t('rpTypeAccount')}
                       </button>
                     ))}
@@ -182,7 +182,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
               );
             })}
             {items.length < MAX_ITEMS && (
-              <button type="button" onClick={addItem} disabled={saving} className="w-full rounded-xl border border-dashed border-rose-500/40 py-2 text-sm text-rose-500 hover:bg-rose-500/5">
+              <button type="button" onClick={addItem} disabled={saving} className="w-full rounded-xl border border-dashed border-sky-500/40 py-2 text-sm text-sky-500 hover:bg-sky-500/5">
                 + {t('rpAddItem').replace('{n}', String(items.length)).replace('{max}', String(MAX_ITEMS))}
               </button>
             )}
@@ -201,7 +201,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
                 <div className="p-3 text-center space-y-2.5">
                   <div className="text-xs text-gray-400">{t('rpNoAccounts')}</div>
                   <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-rose-500 hover:bg-rose-600 active:scale-95">{t('rpGoAddAccount')}</button>
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-sky-500 hover:bg-sky-600 active:scale-95">{t('rpGoAddAccount')}</button>
                 </div>
               )}
               {accounts.map((a) => {
@@ -209,10 +209,10 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
                 const title = a.nickname || a.displayName;
                 return (
                   <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
-                    <input type="radio" name="mx-report-account" checked={selectedId === a.id} onChange={() => ready && setSelectedId(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-rose-500 shrink-0" />
+                    <input type="radio" name="mx-report-account" checked={selectedId === a.id} onChange={() => ready && setSelectedId(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-sky-500 shrink-0" />
                     {a.avatar
                       ? <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-7 h-7 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-                      : <span className="w-7 h-7 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
+                      : <span className="w-7 h-7 rounded-full bg-sky-500/20 text-sky-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="font-medium truncate dark:text-white">{title}</span>
@@ -238,7 +238,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
                 {items.map((it, i) => (
                   <div key={i} className="text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5">
                     <div className="font-mono break-all text-gray-800 dark:text-gray-200">{i + 1}. [{it.targetType === 'account' ? t('rpTypeAccount') : t('rpTypeContent')}] {it.url.trim()}</div>
-                    <div className="text-rose-600 dark:text-rose-400">{it.reason}{it.subReason ? ` › ${it.subReason}` : ''}</div>
+                    <div className="text-sky-600 dark:text-sky-400">{it.reason}{it.subReason ? ` › ${it.subReason}` : ''}</div>
                     <div className="text-gray-500 dark:text-gray-400 break-all">{it.description.trim()}</div>
                   </div>
                 ))}
@@ -248,7 +248,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
               <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('rpTermsTitle')}</div>
               {[t('rpTerm1'), t('rpTerm2'), t('rpTerm3')].map((term, i) => (
                 <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-rose-500 shrink-0" />
+                  <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-sky-500 shrink-0" />
                   <span className="leading-relaxed">{term}</span>
                 </label>
               ))}
@@ -268,9 +268,9 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
         <div className="flex-1" />
         {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{t('rpPrev')}</button>}
         {step < 3 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50">{t('rpNext')}</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50">{t('rpNext')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50">{saving ? t('rpSaving') : (editing ? t('rpSaveEdit') : t('rpCreate'))}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50">{saving ? t('rpSaving') : (editing ? t('rpSaveEdit') : t('rpCreate'))}</button>
         )}
       </div>
     </div>

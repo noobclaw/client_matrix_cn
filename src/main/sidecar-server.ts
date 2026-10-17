@@ -281,14 +281,13 @@ void import('./libs/matrix/accountManager').then((m) => m.setAccountSSEBroadcast
 // dryRun:仅 report —— 试运行(选原因、填描述,停在提交前),不占执行锁、不计费,可反复跑。
 async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = false, dryRun = false): Promise<{ ok: boolean; error?: string }> {
   // 按【平台】并发:先取任务拿平台,再做「同平台已在跑?」+「并发已满?」检查;check→add 之间无 await(原子占锁,杜绝双跑)。
-  const { getTask, setTaskLastRun, claimReportExecution } = await import('./libs/matrix/taskStore');
+  const { getTask, setTaskLastRun, markReportExecuted } = await import('./libs/matrix/taskStore');
   const task = getTask(taskId);
   if (!task) return { ok: false, error: 'task_not_found' };
-  // 举报(白名单功能)合规闸:① 只能手动触发 ② 只能执行一次 ③ 只能 1 个账号 ④ 当前用户必须在白名单。
-  //   白名单在占执行锁之前问 —— 没权限时不该把这张单据的唯一一次机会烧掉。
+  // 抖音Report(白名单功能)合规闸:① 只能手动触发(不进定时) ② 只能 1 个账号 ③ 当前用户必须在白名单。
+  //   每次触发逐条只提交一次、不重试(剧本保证);任务可编辑、可再次手动运行(2026-10-17 用户要求)。
   if (task.type === 'report') {
     if (!manual) return { ok: false, error: 'report_manual_only' };
-    if (task.reportExecutedAt && !dryRun) return { ok: false, error: 'report_already_executed' };
     if ((task.accountIds || []).length !== 1) return { ok: false, error: 'report_requires_single_account' };
     if (!(await isReportEnabledForUser())) return { ok: false, error: 'report_not_whitelisted' };
   }
@@ -302,8 +301,8 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = f
   void refreshMaxConcurrent();
   if (runningPlatforms.has(platform)) return { ok: false, error: 'another_task_running' };       // 同平台已在跑
   if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) return { ok: false, error: 'concurrency_full' }; // 并发已满
-  // 举报执行锁:与平台锁同一同步段内抢占(无 await),双击/并发点运行也只会有一次成功。
-  if (task.type === 'report' && !dryRun && !claimReportExecution(task.id)) return { ok: false, error: 'report_already_executed' };
+  // 抖音Report:记录最近一次正式执行时间(不再锁定;防双击由上面的平台锁保证)。
+  if (task.type === 'report' && !dryRun) markReportExecuted(task.id);
   runningPlatforms.add(platform);
   // 🚨 立刻把本任务的进度占成 running。liveProgressByTask 里【上一次运行那条 status:'done' 从来不清】,
   //   而真正的 running 要等下面把 live 对象组装好(要先 import 七八个 runner、读账号库、算会员号数墙)
@@ -437,8 +436,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const isReport = task.type === 'report';
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
-    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number; post?: number }) => {
-      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0, favorite: t.favorite || 0, lead_new: t.lead_new || 0, lead_engaged: t.lead_engaged || 0, post: t.post || 0 };
+    const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number; post?: number; report?: number }) => {
+      const tg = { like: t.like || 0, follow: t.follow || 0, comment: t.comment || 0, favorite: t.favorite || 0, lead_new: t.lead_new || 0, lead_engaged: t.lead_engaged || 0, post: t.post || 0, report: t.report || 0 };
       live.perAccountTargets[accountId] = tg;
       if (live.perAccount[accountId]) live.perAccount[accountId].targets = tg; // 该号真实随机配额覆盖兜底
       recomputeTargets();
