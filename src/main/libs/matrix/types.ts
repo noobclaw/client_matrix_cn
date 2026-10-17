@@ -138,10 +138,10 @@ export interface ImageTextConfig {
   imageSource?: 'ai' | 'real' | 'local'; // 图源三选一(缺省按 useRealPhotos 映射;'local'=用户本地图)
   localImages?: string[];        // 仅 imageSource='local':本地图片绝对路径(≤6,runner 读盘转 base64 传给 orchestrator)
   imageCount: number;            // 每篇配图张数 2-6
-  dailyCount: number;            // 每号每轮生成几篇 1-50
+  dailyCount: number;            // 每号每轮生成几篇 1-100
   aiImageStyle?: string;         // AI 生图风格(仅 useRealPhotos=false 用,缺省 'ai_auto')
   autoPublish: boolean;          // true=直接群发,false=仅本地保存(用户逐条审核后手动发)
-  douyinBgm?: boolean;           // 仅抖音:发布时从「我的收藏」音乐前 3 首随机选 1 首当 BGM(向导默认勾选)
+  douyinBgm?: boolean;           // 仅抖音:发布时从「我的收藏」音乐前 3 首随机选 1 首当 BGM(新建默认勾选;老任务无此字段=不加)
   references?: Record<string, string>; // 可选:各账号参考文案 { accountId: text };不填则按身份合成种子
   // 仅【视频号 + 网络图】用:视频号浏览器没登录抖音、游客搜图拿不到 → 选 1 个【已登录抖音】的号当下图号,
   // 用它的浏览器搜+下网络图,再喂给各视频号发布。一个抖音号服务 N 个视频号,故网络图模式整任务串行。

@@ -48,7 +48,7 @@ export interface ImageTextWizardSave {
   // 仅抖音 + 自动发布:发布时从「我的收藏」音乐里前 3 首随机挑 1 首当 BGM(默认开)。其它平台不带。
   douyinBgm?: boolean;
   references: Record<string, string>;   // 各号各自参考文案(键=accountId,值可留空);空则该号按身份生成
-  // 每号每轮生成几篇(1-20,默认 3)。9a49558 当初按「约定设计」把这个滑杆删了、写死 1 篇,
+  // 每号每轮生成几篇(1-100,默认 3)。9a49558 当初按「约定设计」把这个滑杆删了、写死 1 篇,
   //   但字段、runner(imageTextRunner 传 daily_count,上限 50)和剧本(orchestrator 里有
   //   Fisher–Yates 洗牌保证不重复、池子用尽才允许重复)【一直都在】—— 删的只是 UI。
   //   用户 2026-08-06 要求恢复可选。
@@ -115,7 +115,8 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const removeLocalImage = (idx: number) => setLocalImages((prev) => prev.filter((_, i) => i !== idx));
   const [imageCount, setImageCount] = useState<number>(Math.max(2, Math.min(6, Number(it.imageCount) || (it.useRealPhotos ? 6 : 4))));
   // 每号每轮几篇。老任务存的是 1(当时写死),编辑时照旧显示 1;新建默认 3。
-  const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(20, Number(it.dailyCount) || 3)));
+  //   回填上限与输入框/runner 一致(100);原来卡 20,编辑大于 20 的老任务一保存就被悄悄改小。
+  const [dailyCount, setDailyCount] = useState<number>(Math.max(1, Math.min(100, Number(it.dailyCount) || 3)));
   const [aiImageStyle, setAiImageStyle] = useState<string>(it.aiImageStyle || 'ai_auto');
   // 全量风格目录(server-side 单源;拉不到回退兜底列表)。
   const [stylesList, setStylesList] = useState<ImageStyle[]>(FALLBACK_IMAGE_STYLES);
