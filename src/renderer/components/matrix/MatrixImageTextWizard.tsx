@@ -122,8 +122,8 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   useEffect(() => { let alive = true; fetchImageStyles().then((r) => { if (alive) setStylesList(r.styles); }); return () => { alive = false; }; }, []);
   const isZhStyle = i18nService.currentLanguage.startsWith('zh');
   const [autoPublish, setAutoPublish] = useState<boolean>(it.autoPublish !== false); // 默认群发
-  // 抖音 BGM:默认勾选(老任务没这个字段也按勾选显示)。
-  const [douyinBgm, setDouyinBgm] = useState<boolean>(it.douyinBgm !== false);
+  // 抖音 BGM:新建任务默认勾选;编辑老任务(没这个字段)= 未勾选,和运行时一致。
+  const [douyinBgm, setDouyinBgm] = useState<boolean>(editing ? it.douyinBgm === true : true);
   const isDouyin = platform === 'douyin';
   // 抖音下图号(仅视频号/头条网络图用):默认回填上次选的,否则首个就绪抖音号。
   const [downloadAccountId, setDownloadAccountId] = useState<string>(() => {
