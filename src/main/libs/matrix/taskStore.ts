@@ -100,7 +100,8 @@ export interface SaveTaskResult { ok: boolean; error?: string; task?: MatrixTask
 //   · 执行过(reportExecutedAt 有值)的举报任务不可再编辑/再运行
 const REPORT_PLATFORMS = ['douyin'];
 const DOUYIN_URL_RE = /^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i;
-function validateReport(input: SaveTaskInput): { ok: true; items: ReportItem[] } | { ok: false; error: string } {
+// 返回值用宽松对象而非判别联合:本项目 tsconfig 不开 strictNullChecks,`ok: true|false` 判别联合不会收窄(CI 报 TS2339)。
+function validateReport(input: SaveTaskInput): { ok: boolean; items?: ReportItem[]; error?: string } {
   if (!REPORT_PLATFORMS.includes(input.platform)) return { ok: false, error: 'report_platform_unsupported' };
   const ids = (input.accountIds || []).filter(Boolean);
   if (ids.length !== 1) return { ok: false, error: 'report_requires_single_account' };
@@ -144,7 +145,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
   let reportItems: ReportItem[] | undefined;
   if (input.type === 'report') {
     const v = validateReport(input);
-    if (!v.ok) return { ok: false, error: v.error };
+    if (!v.ok || !v.items) return { ok: false, error: v.error || 'report_invalid' };
     reportItems = v.items;
     input = { ...input, reportItems, frequency: 'once', enabled: false, concurrency: 1, quota: {} };
   }
