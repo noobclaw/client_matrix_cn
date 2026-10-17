@@ -1,30 +1,28 @@
 /**
- * MatrixReportWizard — 「抖音Report」向导(白名单功能,合规优先)。
+ * MatrixReportWizard — 「抖音Report」向导(白名单功能)。
  *
- * 入口只对 admin 白名单 UID 显示(ScenarioView 按 /api/matrix/config.reportEnabled);
- * sidecar 存盘/执行再校验一次;后端剧本下发对非白名单 403。
+ * 逐步填写,一屏只做一件事(用户 2026-10-17 要求,原来一屏堆 4 条太挤):
+ *   第 1 步      — 选要 Report 几条(1-4)
+ *   第 2..N+1 步 — 每条一步:类型(下拉:作品 / 账号)→ 链接 → 原因(下拉,默认第一个)
+ *                 → 具体类型(有的话)→ 详细描述
+ *   第 N+2 步    — 选【1 个】执行账号
+ *   第 N+3 步    — 确认 + 合规条款 → 创建
  *
- *   Step 1 — 1-4 条链接:每条选类型(作品=视频/图文 · 账号)、原因、具体类型、描述
- *            原因/具体类型 = 抖音表单原文(reportTaxonomy.ts,2026-10-17 真机核对),描述提示也照抄抖音
- *   Step 2 — 选【1 个】执行账号
- *   Step 3 — 确认 + 合规条款 → 创建
- *
- * 合规:只能 1 个账号、只能手动触发(无频率选项,每次逐条只提交一次);可编辑、可先「试运行」(不提交)。
+ * 原因/具体类型 = 抖音表单原文(reportTaxonomy.ts,真机核对),描述框提示照抄抖音。
+ * 合规:单账号、手动触发(每次逐条只提交一次,不重试、不定时);可编辑。
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import {
-  REPORT_TAXONOMY, REPORT_DEFAULT_HINT, findReportReason, guessReportTargetType, validateReportItem,
+  REPORT_TAXONOMY, REPORT_DEFAULT_HINT, findReportReason, validateReportItem,
   type ReportTargetType,
 } from '../../../main/libs/matrix/reportTaxonomy';
-
-type WizardStep = 1 | 2 | 3;
 
 const MAX_ITEMS = 4;
 const DESC_MAX = 200;
 
-export interface ReportItemInput { url: string; targetType: ReportTargetType | ''; reason: string; subReason: string; description: string }
+export interface ReportItemInput { url: string; targetType: ReportTargetType; reason: string; subReason: string; description: string }
 export interface WizardAccount { id: string; displayName: string; status: string; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
 const t = (k: string) => i18nService.t(k);
@@ -40,158 +38,189 @@ interface Props {
   onSave: (input: { name: string; accountIds: string[]; reportItems: Array<{ url: string; targetType: ReportTargetType; reason: string; subReason?: string; description: string }> }) => Promise<void> | void;
 }
 
-const emptyItem = (): ReportItemInput => ({ url: '', targetType: '', reason: '', subReason: '', description: '' });
+/** 某类型下的默认原因 = 第一个;该原因的具体类型必填时默认选第一个具体类型,选填则留空。 */
+function defaultsFor(type: ReportTargetType): { reason: string; subReason: string } {
+  const g = REPORT_TAXONOMY[type];
+  const r = g.reasons[0];
+  const subReq = g.subRequired || !!r.subRequired;
+  return { reason: r.label, subReason: subReq && r.sub.length ? r.sub[0] : '' };
+}
+const newItem = (type: ReportTargetType = 'content'): ReportItemInput => ({ url: '', targetType: type, ...defaultsFor(type), description: '' });
 
 const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40';
+const labelCls = 'text-sm font-medium dark:text-gray-200 mb-1.5 block';
 
 const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const editing = !!initialTask;
-  const [step, setStep] = useState<WizardStep>(1);
 
   const [items, setItems] = useState<ReportItemInput[]>(() => {
     const src: any[] = Array.isArray(initialTask?.reportItems) ? initialTask.reportItems : [];
-    return src.length
-      ? src.slice(0, MAX_ITEMS).map((x) => ({ url: String(x.url || ''), targetType: (x.targetType || '') as any, reason: String(x.reason || ''), subReason: String(x.subReason || ''), description: String(x.description || '') }))
-      : [emptyItem()];
+    if (!src.length) return [newItem()];
+    return src.slice(0, MAX_ITEMS).map((x) => {
+      const type: ReportTargetType = x.targetType === 'account' ? 'account' : 'content';
+      return { url: String(x.url || ''), targetType: type, reason: String(x.reason || defaultsFor(type).reason), subReason: String(x.subReason || ''), description: String(x.description || '') };
+    });
   });
+  const count = items.length;
+  // 步骤:0 = 选条数;1..count = 第 i 条;count+1 = 选账号;count+2 = 确认
+  const [step, setStep] = useState(0);
+  const totalSteps = count + 3;
+  const accountStep = count + 1;
+  const confirmStep = count + 2;
+
   const [selectedId, setSelectedId] = useState<string>(() => (initialTask?.accountIds?.length ? String(initialTask.accountIds[0]) : ''));
-  const [termsAccepted, setTermsAccepted] = useState<boolean[]>([false, false, false]);
+  const [termsAccepted, setTermsAccepted] = useState<boolean[]>([false, false]);
   const allTermsAccepted = termsAccepted.every(Boolean);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [items, selectedId]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [items, selectedId, step]);
 
-  const errors = useMemo(() => {
-    const urls = items.map((i) => i.url.trim());
-    return items.map((it, i) => {
-      if (!it.url.trim()) return t('rpErrUrlEmpty');
-      if (urls.indexOf(it.url.trim()) !== i) return reportErrText('report_duplicate_url');
-      const code = validateReportItem({ ...it, subReason: it.subReason || undefined });
-      return code ? reportErrText(code) : null;
-    });
-  }, [items]);
-  const itemsOk = items.length >= 1 && items.length <= MAX_ITEMS && errors.every((e) => !e);
-  const selectedAccount = accounts.find((a) => a.id === selectedId);
-
-  const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: itemsOk, reason: t('rpErrFixItems') },
-    2: { ok: !!selectedId, reason: t('rpErrSelectAccount') },
-    3: { ok: allTermsAccepted, reason: t('rpErrAcceptTerms') },
-  };
-
+  const setCount = (n: number) => setItems((prev) => {
+    if (n === prev.length) return prev;
+    if (n < prev.length) return prev.slice(0, n);
+    return [...prev, ...Array.from({ length: n - prev.length }, () => newItem())];
+  });
   const updateItem = (idx: number, patch: Partial<ReportItemInput>) => setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-  const onUrlChange = (idx: number, url: string) => {
-    const g = guessReportTargetType(url);
-    setItems((prev) => prev.map((it, i) => {
-      if (i !== idx) return it;
-      // 链接能判断类型且与当前不同 → 自动切换并清空原因(两种类型的原因列表不同)
-      if (g && g !== it.targetType) return { ...it, url, targetType: g, reason: '', subReason: '' };
-      return { ...it, url };
-    }));
+
+  const itemError = (idx: number): string | null => {
+    const it = items[idx];
+    if (!it) return null;
+    if (!it.url.trim()) return t('rpErrUrlEmpty');
+    const dup = items.findIndex((x) => x.url.trim() === it.url.trim());
+    if (dup !== idx) return reportErrText('report_duplicate_url');
+    const code = validateReportItem({ ...it, subReason: it.subReason || undefined });
+    return code ? reportErrText(code) : null;
   };
-  const removeItem = (idx: number) => setItems((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
-  const addItem = () => setItems((prev) => (prev.length >= MAX_ITEMS ? prev : [...prev, emptyItem()]));
+
+  const stepError = (s: number): string | null => {
+    if (s >= 1 && s <= count) return itemError(s - 1);
+    if (s === accountStep) return selectedId ? null : t('rpErrSelectAccount');
+    if (s === confirmStep) return allTermsAccepted ? null : t('rpErrAcceptTerms');
+    return null;
+  };
+
+  const next = () => {
+    const err = stepError(step);
+    if (err) { setSaveError(err); return; }
+    setSaveError(null);
+    setStep((s) => Math.min(s + 1, confirmStep));
+  };
 
   const handleSave = async () => {
     if (saving) return;
-    for (const s of [1, 2, 3] as WizardStep[]) {
-      if (!canAdvance[s].ok) { setSaveError(canAdvance[s].reason || ''); setStep(s); return; }
+    for (let s = 1; s <= confirmStep; s++) {
+      const err = stepError(s);
+      if (err) { setSaveError(err); setStep(s); return; }
     }
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || t('rpTaskName').replace('{n}', String(items.length)),
+        name: initialTask?.name || t('rpTaskName').replace('{n}', String(count)),
         accountIds: [selectedId],
-        reportItems: items.map((it) => ({ url: it.url.trim(), targetType: it.targetType as ReportTargetType, reason: it.reason, subReason: it.subReason || undefined, description: it.description.trim() })),
+        reportItems: items.map((it) => ({ url: it.url.trim(), targetType: it.targetType, reason: it.reason, subReason: it.subReason || undefined, description: it.description.trim() })),
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || t('rpErrSaveFailed'));
     } finally { setSaving(false); }
   };
 
+  const selectedAccount = accounts.find((a) => a.id === selectedId);
+
+  // ── 单条表单(第 1..count 步)──
+  const renderItemStep = (idx: number) => {
+    const it = items[idx];
+    const group = REPORT_TAXONOMY[it.targetType];
+    const def = findReportReason(it.targetType, it.reason);
+    const subReq = group.subRequired || !!def?.subRequired;
+    const hint = def?.hint || REPORT_DEFAULT_HINT;
+    return (
+      <div className="space-y-4">
+        <div className="text-sm font-semibold dark:text-white">{t('rpItemLabel').replace('{n}', String(idx + 1))} <span className="text-xs font-normal text-gray-400">/ {count}</span></div>
+
+        <div>
+          <label className={labelCls}>{t('rpTypeLabel')}</label>
+          <select value={it.targetType} disabled={saving} className={inputCls}
+            onChange={(e) => { const type = e.target.value as ReportTargetType; updateItem(idx, { targetType: type, ...defaultsFor(type) }); }}>
+            <option value="content">{t('rpTypeContent')}</option>
+            <option value="account">{t('rpTypeAccount')}</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={labelCls}>{t('rpLinkLabel')}</label>
+          <input type="text" value={it.url} onChange={(e) => updateItem(idx, { url: e.target.value })} disabled={saving}
+            placeholder={it.targetType === 'account' ? t('rpUrlPlaceholderAccount') : t('rpUrlPlaceholderContent')}
+            className={`${inputCls} font-mono`} />
+        </div>
+
+        <div>
+          <label className={labelCls}>{t('rpReasonLabel')}</label>
+          <select value={it.reason} disabled={saving} className={inputCls}
+            onChange={(e) => {
+              const d = findReportReason(it.targetType, e.target.value);
+              const req = group.subRequired || !!d?.subRequired;
+              updateItem(idx, { reason: e.target.value, subReason: req && d && d.sub.length ? d.sub[0] : '' });
+            }}>
+            {group.reasons.map((r) => <option key={r.label} value={r.label}>{r.label}</option>)}
+          </select>
+        </div>
+
+        {def && def.sub.length > 0 && (
+          <div>
+            <label className={labelCls}>{t('rpSubLabel')}{!subReq && <span className="text-xs text-gray-400 font-normal ml-1">{t('rpOptional')}</span>}</label>
+            <select value={it.subReason} disabled={saving} className={inputCls} onChange={(e) => updateItem(idx, { subReason: e.target.value })}>
+              {!subReq && <option value="">{t('rpSubNone')}</option>}
+              {def.sub.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label className={labelCls}>{t('rpDescLabel')}</label>
+          <textarea value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value.slice(0, DESC_MAX) })} placeholder={hint} rows={4} disabled={saving} className={`${inputCls} resize-y`} />
+          <div className="text-right text-[11px] text-gray-400 mt-0.5">{it.description.trim().length}/{DESC_MAX}</div>
+        </div>
+      </div>
+    );
+  };
+
+  const isLast = step === confirmStep;
+
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
         <div className="text-base font-semibold dark:text-white">📋 {editing ? t('rpTitleEdit') : t('rpTitleCreate')}</div>
         <div className="flex items-center gap-3">
-          <span className="text-xs px-2.5 py-1 rounded-full border border-sky-500/40 text-sky-500 bg-sky-500/5">{t('rpStepIndicator').replace('{n}', String(step))}</span>
+          <span className="text-xs px-2.5 py-1 rounded-full border border-sky-500/40 text-sky-500 bg-sky-500/5">{t('rpStepIndicator').replace('{n}', String(step + 1)).replace('{total}', String(totalSteps))}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-        {step === 1 && (
-          <>
-            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-300">
-              📋 {t('rpIntro').replace('{n}', String(MAX_ITEMS))}
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        {step === 0 && (
+          <div className="space-y-4">
+            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-sky-500/30 bg-sky-500/5 text-sky-700 dark:text-sky-300">📋 {t('rpIntro')}</div>
+            <div>
+              <label className={labelCls}>{t('rpCountLabel')}</label>
+              <div className="flex gap-2">
+                {Array.from({ length: MAX_ITEMS }, (_, i) => i + 1).map((n) => (
+                  <button key={n} type="button" disabled={saving} onClick={() => setCount(n)}
+                    className={`w-14 py-2 rounded-lg text-sm border transition-colors ${count === n ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-semibold' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'}`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{t('rpCountHint')}</p>
             </div>
-            {items.map((it, idx) => {
-              const err = errors[idx];
-              const touched = !!(it.url || it.reason || it.description);
-              const group = it.targetType ? REPORT_TAXONOMY[it.targetType] : null;
-              const def = it.targetType && it.reason ? findReportReason(it.targetType, it.reason) : undefined;
-              const hint = def?.hint || REPORT_DEFAULT_HINT;
-              return (
-                <div key={idx} className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{t('rpItemLabel').replace('{n}', String(idx + 1))}</span>
-                    {items.length > 1 && (
-                      <button type="button" onClick={() => removeItem(idx)} disabled={saving} className="text-[11px] text-gray-400 hover:text-red-500">{t('rpRemoveItem')}</button>
-                    )}
-                  </div>
-                  <input type="text" value={it.url} onChange={(e) => onUrlChange(idx, e.target.value)} placeholder={t('rpUrlPlaceholder')} disabled={saving} className={`${inputCls} font-mono`} />
-
-                  {/* 类型:作品(视频/图文)/ 账号。链接能识别时自动选,短链需手动选 */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">{t('rpTypeLabel')}</span>
-                    {(['content', 'account'] as ReportTargetType[]).map((tp) => (
-                      <button key={tp} type="button" disabled={saving}
-                        onClick={() => { if (it.targetType !== tp) updateItem(idx, { targetType: tp, reason: '', subReason: '' }); }}
-                        className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${it.targetType === tp ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'}`}>
-                        {tp === 'content' ? t('rpTypeContent') : t('rpTypeAccount')}
-                      </button>
-                    ))}
-                  </div>
-
-                  {group && (
-                    <select value={it.reason} onChange={(e) => updateItem(idx, { reason: e.target.value, subReason: '' })} disabled={saving} className={inputCls}>
-                      <option value="">{t('rpReasonPlaceholder')}</option>
-                      {group.reasons.map((r) => <option key={r.label} value={r.label}>{r.label}</option>)}
-                    </select>
-                  )}
-
-                  {def && def.sub.length > 0 && (
-                    <select value={it.subReason} onChange={(e) => updateItem(idx, { subReason: e.target.value })} disabled={saving} className={inputCls}>
-                      <option value="">{(group?.subRequired || def.subRequired) ? t('rpSubPlaceholderRequired') : t('rpSubPlaceholderOptional')}</option>
-                      {def.sub.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  )}
-
-                  {group && (
-                    <div>
-                      <textarea value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value.slice(0, DESC_MAX) })} placeholder={hint} rows={3} disabled={saving} className={`${inputCls} resize-y`} />
-                      <div className="flex justify-between text-[11px] mt-0.5">
-                        <span className="text-red-500">{touched && err ? err : ''}</span>
-                        <span className="text-gray-400">{it.description.trim().length}/{DESC_MAX}</span>
-                      </div>
-                    </div>
-                  )}
-                  {!group && touched && <div className="text-[11px] text-amber-500">{t('rpErrPickType')}</div>}
-                </div>
-              );
-            })}
-            {items.length < MAX_ITEMS && (
-              <button type="button" onClick={addItem} disabled={saving} className="w-full rounded-xl border border-dashed border-sky-500/40 py-2 text-sm text-sky-500 hover:bg-sky-500/5">
-                + {t('rpAddItem').replace('{n}', String(items.length)).replace('{max}', String(MAX_ITEMS))}
-              </button>
-            )}
-          </>
+          </div>
         )}
 
-        {step === 2 && (
+        {step >= 1 && step <= count && renderItemStep(step - 1)}
+
+        {step === accountStep && (
           <div>
-            <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+            <label className={labelCls}>
               {t('rpSelectAccountLabel')}
               <span className="text-xs text-gray-400 font-normal ml-1">{t('rpSelectAccountHint')}</span>
             </label>
@@ -228,32 +257,32 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
           </div>
         )}
 
-        {step === 3 && (
-          <>
+        {step === confirmStep && (
+          <div className="space-y-4">
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-2">
               <div className="font-semibold dark:text-gray-200">{t('rpSummaryTitle')}</div>
               <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 shrink-0 w-16">{t('rpSummaryAccount')}</span><span className="text-gray-800 dark:text-gray-200">{selectedAccount ? (selectedAccount.nickname || selectedAccount.displayName) : '-'}</span></div>
               <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 shrink-0 w-16">{t('rpSummaryRun')}</span><span className="text-gray-800 dark:text-gray-200">{t('rpSummaryRunValue')}</span></div>
               <div className="space-y-1.5 pt-1">
                 {items.map((it, i) => (
-                  <div key={i} className="text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5">
+                  <button key={i} type="button" onClick={() => setStep(i + 1)} className="w-full text-left text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 hover:border-sky-500/50">
                     <div className="font-mono break-all text-gray-800 dark:text-gray-200">{i + 1}. [{it.targetType === 'account' ? t('rpTypeAccount') : t('rpTypeContent')}] {it.url.trim()}</div>
                     <div className="text-sky-600 dark:text-sky-400">{it.reason}{it.subReason ? ` › ${it.subReason}` : ''}</div>
                     <div className="text-gray-500 dark:text-gray-400 break-all">{it.description.trim()}</div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
             <div className="space-y-2">
               <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{t('rpTermsTitle')}</div>
-              {[t('rpTerm1'), t('rpTerm2'), t('rpTerm3')].map((term, i) => (
+              {[t('rpTerm1'), t('rpTerm2')].map((term, i) => (
                 <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-sky-500 shrink-0" />
+                  <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const nx = [...termsAccepted]; nx[i] = e.target.checked; setTermsAccepted(nx); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-sky-500 shrink-0" />
                   <span className="leading-relaxed">{term}</span>
                 </label>
               ))}
             </div>
-          </>
+          </div>
         )}
       </div>
 
@@ -266,9 +295,9 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{t('rpCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{t('rpPrev')}</button>}
-        {step < 3 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50">{t('rpNext')}</button>
+        {step > 0 && <button type="button" onClick={() => { setSaveError(null); setStep(step - 1); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{t('rpPrev')}</button>}
+        {!isLast ? (
+          <button type="button" onClick={next} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50">{t('rpNext')}</button>
         ) : (
           <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50">{saving ? t('rpSaving') : (editing ? t('rpSaveEdit') : t('rpCreate'))}</button>
         )}
