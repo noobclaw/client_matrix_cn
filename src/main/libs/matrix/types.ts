@@ -321,6 +321,7 @@ export interface ReportItemResult {
   why?: string;          // 失败/跳过原因码(见剧本 error_map)
   confirmed?: boolean;   // 提交后是否看到平台确认提示
   ts?: number;
+  accountId?: string;    // 哪个执行账号提交的(多账号时按号区分结果)
 }
 /** 举报合规上限(客户端存盘校验 + 后端剧本再兜一层)。 */
 export const REPORT_LIMITS = { minItems: 1, maxItems: 4, descMin: 5, descMax: 200 } as const;

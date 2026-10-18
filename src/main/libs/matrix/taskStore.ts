@@ -104,7 +104,8 @@ const REPORT_PLATFORMS = ['douyin'];
 function validateReport(input: SaveTaskInput): { ok: boolean; items?: ReportItem[]; error?: string } {
   if (!REPORT_PLATFORMS.includes(input.platform)) return { ok: false, error: 'report_platform_unsupported' };
   const ids = (input.accountIds || []).filter(Boolean);
-  if (ids.length !== 1) return { ok: false, error: 'report_requires_single_account' };
+  // 2026-10-18 用户要求:支持选多个执行账号(每个号各自把这些条目逐条提交一次)
+  if (ids.length < 1) return { ok: false, error: 'report_requires_account' };
   const raw = Array.isArray(input.reportItems) ? input.reportItems : [];
   if (raw.length < REPORT_LIMITS.minItems || raw.length > REPORT_LIMITS.maxItems) return { ok: false, error: 'report_item_count' };
   const items: ReportItem[] = [];
@@ -132,21 +133,25 @@ export function markReportExecuted(id: string): void {
   const t = getTask(id);
   if (!t || t.type !== 'report') return;
   t.reportExecutedAt = Date.now();
+  t.reportResults = []; // 新一轮正式执行:清掉上一轮结果,各号跑完再逐个写入
   t.enabled = false;
   t.nextPlannedRunAt = undefined;
   persist();
 }
 
 /** 保存 Report 逐条结果(剧本回传)。dryRun=试运行结果(不影响执行锁)。 */
-export function setReportResults(id: string, results: ReportItemResult[], dryRun: boolean): void {
+export function setReportResults(id: string, results: ReportItemResult[], dryRun: boolean, accountId?: string): void {
   const t = getTask(id);
   if (!t || t.type !== 'report') return;
   const clean = (Array.isArray(results) ? results : []).slice(0, REPORT_LIMITS.maxItems).map((r) => ({
     url: String(r?.url || ''), status: r?.status, why: r?.why ? String(r.why) : undefined,
     confirmed: typeof r?.confirmed === 'boolean' ? r.confirmed : undefined, ts: typeof r?.ts === 'number' ? r.ts : Date.now(),
+    accountId: accountId ? String(accountId) : undefined,
   })) as ReportItemResult[];
-  if (dryRun) { t.reportDryRunAt = Date.now(); t.reportDryRunResults = clean; }
-  else { t.reportResults = clean; }
+  // 多账号:只替换这个号的结果,保留其它号的
+  const merge = (prev?: ReportItemResult[]) => [...(prev || []).filter((r) => !accountId || r.accountId !== accountId), ...clean];
+  if (dryRun) { t.reportDryRunAt = Date.now(); t.reportDryRunResults = merge(t.reportDryRunResults); }
+  else { t.reportResults = merge(t.reportResults); }
   persist();
 }
 

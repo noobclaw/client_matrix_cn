@@ -338,7 +338,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixDownloadAccounts, setMatrixDownloadAccounts] = useState<WizardAccount[]>([]);
   const [matrixDownloadAccountsLoading, setMatrixDownloadAccountsLoading] = useState(false);
   const [matrixDownloadTask, setMatrixDownloadTask] = useState<any | null>(null);
-  // 「举报」向导(白名单功能;单账号、1-4 条、只能手动执行一次)
+  // 「举报」向导(白名单功能;可多账号、1-4 条、只能手动触发)
   const [matrixReportPlatform, setMatrixReportPlatform] = useState<string | null>(null);
   const [matrixReportAccounts, setMatrixReportAccounts] = useState<WizardAccount[]>([]);
   const [matrixReportAccountsLoading, setMatrixReportAccountsLoading] = useState(false);
@@ -2173,7 +2173,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {/* 抖音Report(白名单功能)—— 仅白名单 UID 可见;单账号、1-4 条、手动触发。 */}
+          {/* 抖音Report(白名单功能)—— 仅白名单 UID 可见;可多账号、1-4 条、手动触发。 */}
           {matrixMode && reportEnabled && !!MATRIX_REPORT_SCENARIO_ID[currentPlatform] && (
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
@@ -2835,7 +2835,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         </div>
       )}
 
-      {/* 矩阵号举报向导(白名单功能;链接+原因+描述 → 单账号 → 合规确认) */}
+      {/* 矩阵号举报向导(白名单功能;链接+原因+描述 → 执行账号(可多选) → 合规确认) */}
       {matrixReportPlatform && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>

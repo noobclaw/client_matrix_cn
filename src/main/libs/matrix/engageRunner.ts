@@ -104,7 +104,7 @@ export interface EngageTaskOptions {
   // 任务类型:'engage'=互动涨粉(点赞/评论/关注,按关键词搜);'reply_fan'=自动回复粉丝评论
   // (抖音创作者中心评论管理,不需关键词、无配额、有引流尾巴);'video_download'=视频无水印下载
   // (单账号,粘贴多个链接逐个下载,不需关键词、无配额)。缺省 'engage' 兼容旧调用。
-  // 'report'=举报(白名单功能,单账号、1-4 条链接、手动执行一次;剧本 *_report 下发需登录 + 白名单)。
+  // 'report'=举报(白名单功能,可多账号逐个顺序执行、1-4 条链接、只能手动触发;剧本 *_report 下发需登录 + 白名单)。
   taskType?: 'engage' | 'reply_fan' | 'video_download' | 'lead_engage' | 'report';
   // 定向获客(lead_engage)配置。任务级(对所有执行账号相同):种子号/关键词/名额等由向导填,
   // 注入到 orchestrator 读的 ctx.task.mode/seed_accounts/max_leads/... 顶层字段。

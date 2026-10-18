@@ -68,13 +68,15 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
   const accountStep = count + 1;
   const confirmStep = count + 2;
 
-  const [selectedId, setSelectedId] = useState<string>(() => (initialTask?.accountIds?.length ? String(initialTask.accountIds[0]) : ''));
+  // 执行账号可多选(2026-10-18):每个号各自把全部条目逐条提交一次,按顺序一个号跑完再跑下一个
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => (initialTask?.accountIds || []).map(String).filter(Boolean));
+  const toggleAccount = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([false, false]);
   const allTermsAccepted = termsAccepted.every(Boolean);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [items, selectedId, step]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [items, selectedIds, step]);
 
   const setCount = (n: number) => setItems((prev) => {
     if (n === prev.length) return prev;
@@ -95,7 +97,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
 
   const stepError = (s: number): string | null => {
     if (s >= 1 && s <= count) return itemError(s - 1);
-    if (s === accountStep) return selectedId ? null : t('rpErrSelectAccount');
+    if (s === accountStep) return selectedIds.some((id) => accounts.some((a) => a.id === id)) ? null : t('rpErrSelectAccount');
     if (s === confirmStep) return allTermsAccepted ? null : t('rpErrAcceptTerms');
     return null;
   };
@@ -117,7 +119,8 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
     try {
       await onSave({
         name: initialTask?.name || t('rpTaskName').replace('{n}', String(count)),
-        accountIds: [selectedId],
+        // 只保留仍在列表里的号(编辑旧任务时某号可能已删除)
+        accountIds: selectedIds.filter((id) => accounts.some((a) => a.id === id)),
         reportItems: items.map((it) => ({ url: it.url.trim(), targetType: it.targetType, reason: it.reason, subReason: it.subReason || undefined, description: it.description.trim() })),
       });
     } catch (err) {
@@ -125,7 +128,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
     } finally { setSaving(false); }
   };
 
-  const selectedAccount = accounts.find((a) => a.id === selectedId);
+  const selectedAccounts = accounts.filter((a) => selectedIds.includes(a.id));
 
   // ── 单条表单(第 1..count 步)──
   const renderItemStep = (idx: number) => {
@@ -238,7 +241,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
                 const title = a.nickname || a.displayName;
                 return (
                   <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
-                    <input type="radio" name="mx-report-account" checked={selectedId === a.id} onChange={() => ready && setSelectedId(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-sky-500 shrink-0" />
+                    <input type="checkbox" checked={selectedIds.includes(a.id)} onChange={() => ready && toggleAccount(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-sky-500 shrink-0" />
                     {a.avatar
                       ? <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-7 h-7 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
                       : <span className="w-7 h-7 rounded-full bg-sky-500/20 text-sky-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</span>}
@@ -261,7 +264,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
           <div className="space-y-4">
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-2">
               <div className="font-semibold dark:text-gray-200">{t('rpSummaryTitle')}</div>
-              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 shrink-0 w-16">{t('rpSummaryAccount')}</span><span className="text-gray-800 dark:text-gray-200">{selectedAccount ? (selectedAccount.nickname || selectedAccount.displayName) : '-'}</span></div>
+              <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 shrink-0 w-16">{t('rpSummaryAccount')}</span><span className="text-gray-800 dark:text-gray-200">{selectedAccounts.length ? selectedAccounts.map((a) => a.nickname || a.displayName).join('、') : '-'}</span></div>
               <div className="flex gap-3 text-xs"><span className="text-gray-500 dark:text-gray-400 shrink-0 w-16">{t('rpSummaryRun')}</span><span className="text-gray-800 dark:text-gray-200">{t('rpSummaryRunValue')}</span></div>
               <div className="space-y-1.5 pt-1">
                 {items.map((it, i) => (

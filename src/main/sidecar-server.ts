@@ -284,11 +284,11 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = f
   const { getTask, setTaskLastRun, markReportExecuted } = await import('./libs/matrix/taskStore');
   const task = getTask(taskId);
   if (!task) return { ok: false, error: 'task_not_found' };
-  // 抖音Report(白名单功能)合规闸:① 只能手动触发(不进定时) ② 只能 1 个账号 ③ 当前用户必须在白名单。
+  // 抖音Report(白名单功能)合规闸:① 只能手动触发(不进定时) ② 至少 1 个账号(可多选,逐个号顺序执行) ③ 当前用户必须在白名单。
   //   每次触发逐条只提交一次、不重试(剧本保证);任务可编辑、可再次手动运行(2026-10-17 用户要求)。
   if (task.type === 'report') {
     if (!manual) return { ok: false, error: 'report_manual_only' };
-    if ((task.accountIds || []).length !== 1) return { ok: false, error: 'report_requires_single_account' };
+    if ((task.accountIds || []).length < 1) return { ok: false, error: 'report_requires_account' };
     if (!(await isReportEnabledForUser())) return { ok: false, error: 'report_not_whitelisted' };
   }
   // engage(互动涨粉)+ reply_fan(自动回复粉丝评论)都由 engageRunner 跑(共用内核/登录/进度链路,
@@ -457,7 +457,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
         collected.set(item.accountId, item);
         // Report 逐条结果 → 存到任务上(专属详情页展示);试运行单独存,不覆盖正式结果。
         if (isReport && Array.isArray(item?.reportResults)) {
-          void import('./libs/matrix/taskStore').then((m) => m.setReportResults(task.id, item.reportResults, dryRun)).catch(() => { /* ignore */ });
+          void import('./libs/matrix/taskStore').then((m) => m.setReportResults(task.id, item.reportResults, dryRun, item.accountId)).catch(() => { /* ignore */ });
         }
         notifyInsufficient(item?.reason);
         // 聚合 done = 各号最新累计 counts 之和;聚合 cost = 各号最新累计扣费之和(每号是到目前的累计,直接相加不重复)。
@@ -558,7 +558,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : runEngageTask({
-          platform: task.platform, taskId: task.id, accountIds: isReport ? runIds.slice(0, 1) : runIds, quota: task.quota, concurrency: isReport ? 1 : task.concurrency, kernelPath, signal: abort.signal,
+          platform: task.platform, taskId: task.id, accountIds: runIds, quota: task.quota, concurrency: isReport ? 1 : task.concurrency, kernelPath, signal: abort.signal,
           taskType: task.type as any,
           // 定向获客:把任务级配置透传给 runner(runner 再铺进 orchestrator 的 ctx.task)。
           leadEngage: task.type === 'lead_engage' ? task.leadEngage : undefined,

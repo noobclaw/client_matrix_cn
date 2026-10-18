@@ -644,7 +644,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         } else if (r === 'concurrency_limit_reached') {
           showToast('warn', i18nService.t('tdConcurrencyLimit'));
         } else if (r.startsWith('report_')) {
-          // 举报单合规闸(白名单/已执行/单账号/仅手动)→ 人话提示
+          // 举报单合规闸(白名单/至少 1 个账号/仅手动)→ 人话提示
           const k = `rpErr_${r}`; const msg = i18nService.t(k);
           showToast('warn', msg !== k ? msg : r);
         } else {
@@ -1463,6 +1463,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             {isReportTask && (() => {
               const rItems: any[] = Array.isArray((task as any).report_items) ? (task as any).report_items : [];
               const rRes: any[] = Array.isArray((task as any).report_results) ? (task as any).report_results : [];
+              const matrixReportAccountCount = Array.isArray((task as any).account_ids) ? (task as any).account_ids.length : 0;
               const resText = (r: any) => {
                 if (!r) return null;
                 if (r.status === 'submitted') return <span className="text-green-600 dark:text-green-400">✅ {r.confirmed ? i18nService.t('rpResSubmitted') : i18nService.t('rpResSubmittedUnconfirmed')}</span>;
@@ -1473,7 +1474,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 <div className="space-y-1.5">
                   <div>{i18nService.t('rpItemsTitle')}: {rItems.length} {i18nService.t('tdCountUnit')}</div>
                   {rItems.map((it, i) => {
-                    const real = rRes.find((x) => x.url === it.url);
+                    // 多账号:每个号各有一条结果,按号列出;单号/旧数据(无 accountId)保持原样
+                    const reals = rRes.filter((x) => x.url === it.url);
+                    const accName = (id?: string) => { const a: any = id ? acctDetails.find((x: any) => x.id === id) : null; return a ? (a.nickname || a.display_name || a.displayName || id) : (id || ''); };
+                    const multi = reals.length > 1 || (matrixReportAccountCount > 1 && reals.some((x) => x.accountId));
                     return (
                       <div key={i} className="pl-4 text-[11px] space-y-0.5">
                         <div className="flex items-start gap-2">
@@ -1482,9 +1486,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           <span className="text-gray-400 break-all flex-1 min-w-0">{it.url}</span>
                         </div>
                         <div className="pl-5 text-gray-600 dark:text-gray-300">{it.reason}{it.subReason ? ` › ${it.subReason}` : ''} · <span className="text-gray-500">{it.description}</span></div>
-                        {real && (
-                          <div className="pl-5">{i18nService.t('rpColResult')}: {resText(real)}</div>
+                        {reals.length > 0 && !multi && (
+                          <div className="pl-5">{i18nService.t('rpColResult')}: {resText(reals[0])}</div>
                         )}
+                        {multi && reals.map((r, j) => (
+                          <div key={j} className="pl-5">{accName(r.accountId)}: {resText(r)}</div>
+                        ))}
                       </div>
                     );
                   })}
