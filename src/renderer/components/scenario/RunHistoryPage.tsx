@@ -55,7 +55,7 @@ function typeLabelForRecord(rec: RunRecord): { icon: string; label: string; colo
   if (sid === 'binance_square_post_creator') return { icon: '🔶', label: i18nService.t('scnBnPost'), color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
   if (sid === 'binance_from_x_repost')       return { icon: '🔁', label: i18nService.t('scnBnRepostX'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
   // v6.x: 3 个新搬运源 — 跟 MyTasksPage label 对齐
-  if (sid === 'binance_from_xhs_viral')      return { icon: '📕', label: i18nService.t('scnBnRepostXhs'), color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+  if (sid === 'binance_from_xhs_viral')      return { icon: '📕', label: i18nService.t('scnBnRepostXhs'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   if (sid === 'binance_from_douyin_viral')   return { icon: '🎵', label: i18nService.t('scnBnRepostDy'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
   if (sid === 'binance_from_tiktok_viral')   return { icon: '🎬', label: i18nService.t('scnBnRepostTt'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'binance_from_x_link')       return { icon: '🔗', label: i18nService.t('scnBnFromXLink'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
@@ -75,6 +75,7 @@ function typeLabelForRecord(rec: RunRecord): { icon: string; label: string; colo
   if (sid === 'douyin_reply_fans_comment')   return { icon: '💬', label: i18nService.t('scnDyReplyFans'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'xhs_reply_fans_comment')      return { icon: '💌', label: i18nService.t('scnXhsReplyFans'), color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
   if (sid === 'xhs_video_download')          return { icon: '⬇️', label: i18nService.t('scnXhsDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+  if (sid === 'douyin_report')               return { icon: '📋', label: i18nService.t('svCardReportTitle'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   if (sid === 'douyin_video_download')       return { icon: '⬇️', label: i18nService.t('scnDyDownload'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   if (sid === 'tiktok_video_download')       return { icon: '⬇️', label: i18nService.t('scnTtDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'kuaishou_auto_engage')        return { icon: '⚡', label: i18nService.t('scnKsEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
@@ -100,7 +101,7 @@ function typeLabelForRecord(rec: RunRecord): { icon: string; label: string; colo
   if (plat === 'x')       return { icon: '🐦', label: i18nService.t('scnXTask'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   // Platform-aware final fallback — old code defaulted everything unknown
   // to "小红书 · 爆款批量仿写" which mislabeled e.g. future Douyin variants.
-  if (plat === 'douyin')  return { icon: '🎵', label: i18nService.t('scnDyTask'), color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+  if (plat === 'douyin')  return { icon: '🎵', label: i18nService.t('scnDyTask'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   if (plat === 'kuaishou') return { icon: '⚡', label: i18nService.t('scnKsTask'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
   if (plat === 'bilibili') return { icon: '📺', label: i18nService.t('scnBiliTask'), color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
   if ((plat as any) === 'shipinhao') return { icon: '📱', label: i18nService.t('scnShipinhaoTask'), color: 'text-green-500 bg-green-500/10 border-green-500/30' };

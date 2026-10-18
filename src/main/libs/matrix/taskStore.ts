@@ -10,6 +10,9 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { nextRunAt } from './matrixSchedule';
+import { REPORT_LIMITS } from './types';
+import type { ReportItem, ReportItemResult } from './types';
+import { validateReportItem } from './reportTaxonomy';
 import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, LeadEngageConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
 
 /** 任务启用且非 once 才排下次运行;否则清空(手动触发)。 */
@@ -85,20 +88,93 @@ export interface SaveTaskInput {
   binanceRepost?: BinanceRepostConfig; // binance_repost 用:币安广场批量搬运配置
   leadEngage?: LeadEngageConfig;   // lead_engage 用:定向获客配置
   urls?: string[];                 // video_download 用:待下载视频链接清单
+  reportItems?: ReportItem[];      // report 用:1-4 条举报条目
   concurrency?: number;
   frequency: MatrixTaskFrequency;
 }
 export interface SaveTaskResult { ok: boolean; error?: string; task?: MatrixTask }
 
+// ── 举报(report)合规校验 ──────────────────────────────────────────────
+// 产品拍板的硬约束,存盘时就拦死(UI 也会拦,这里是最后一道):
+//   · 目前仅抖音;只能选【1 个】账号;1-4 条链接;每条必须有合法原因 + 5-200 字描述
+//   · 频率恒 'once'、enabled 恒 false(永不进定时调度);同时只开 1 个窗口
+//   · 只能手动触发,每次触发逐条只提交一次(不重试);可编辑、可再次手动运行
+const REPORT_PLATFORMS = ['douyin'];
+// 返回值用宽松对象而非判别联合:本项目 tsconfig 不开 strictNullChecks,`ok: true|false` 判别联合不会收窄(CI 报 TS2339)。
+function validateReport(input: SaveTaskInput): { ok: boolean; items?: ReportItem[]; error?: string } {
+  if (!REPORT_PLATFORMS.includes(input.platform)) return { ok: false, error: 'report_platform_unsupported' };
+  const ids = (input.accountIds || []).filter(Boolean);
+  // 2026-10-18 用户要求:支持选多个执行账号(每个号各自把这些条目逐条提交一次)
+  if (ids.length < 1) return { ok: false, error: 'report_requires_account' };
+  const raw = Array.isArray(input.reportItems) ? input.reportItems : [];
+  if (raw.length < REPORT_LIMITS.minItems || raw.length > REPORT_LIMITS.maxItems) return { ok: false, error: 'report_item_count' };
+  const items: ReportItem[] = [];
+  const seen = new Set<string>();
+  for (const it of raw) {
+    // 与渲染层向导同一套规则(reportTaxonomy.validateReportItem):抖音原文原因/具体类型、类型与链接一致、描述 5-200 字
+    const err = validateReportItem(it as any);
+    if (err) return { ok: false, error: err };
+    const url = String(it.url).trim();
+    if (seen.has(url)) return { ok: false, error: 'report_duplicate_url' };
+    seen.add(url);
+    items.push({
+      url,
+      targetType: it.targetType,
+      reason: String(it.reason),
+      subReason: it.subReason ? String(it.subReason) : undefined,
+      description: String(it.description).trim(),
+    });
+  }
+  return { ok: true, items };
+}
+
+/** 抖音Report:记录最近一次正式执行时间(展示用;不锁定,任务可编辑、可再次手动运行)。 */
+export function markReportExecuted(id: string): void {
+  const t = getTask(id);
+  if (!t || t.type !== 'report') return;
+  t.reportExecutedAt = Date.now();
+  t.reportResults = []; // 新一轮正式执行:清掉上一轮结果,各号跑完再逐个写入
+  t.enabled = false;
+  t.nextPlannedRunAt = undefined;
+  persist();
+}
+
+/** 保存 Report 逐条结果(剧本回传)。dryRun=试运行结果(不影响执行锁)。 */
+export function setReportResults(id: string, results: ReportItemResult[], dryRun: boolean, accountId?: string): void {
+  const t = getTask(id);
+  if (!t || t.type !== 'report') return;
+  const clean = (Array.isArray(results) ? results : []).slice(0, REPORT_LIMITS.maxItems).map((r) => ({
+    url: String(r?.url || ''), status: r?.status, why: r?.why ? String(r.why) : undefined,
+    confirmed: typeof r?.confirmed === 'boolean' ? r.confirmed : undefined, ts: typeof r?.ts === 'number' ? r.ts : Date.now(),
+    accountId: accountId ? String(accountId) : undefined,
+  })) as ReportItemResult[];
+  // 多账号:只替换这个号的结果,保留其它号的
+  const merge = (prev?: ReportItemResult[]) => [...(prev || []).filter((r) => !accountId || r.accountId !== accountId), ...clean];
+  if (dryRun) { t.reportDryRunAt = Date.now(); t.reportDryRunResults = merge(t.reportDryRunResults); }
+  else { t.reportResults = merge(t.reportResults); }
+  persist();
+}
+
 /** 新建/更新任务,带约束校验。 */
 export function saveTask(input: SaveTaskInput): SaveTaskResult {
   const tasks = loadTasks();
 
+  // 举报:先过合规校验,并把调度相关字段强制成「仅手动、仅一次、单窗口」。
+  let reportItems: ReportItem[] | undefined;
+  if (input.type === 'report') {
+    const v = validateReport(input);
+    if (!v.ok || !v.items) return { ok: false, error: v.error || 'report_invalid' };
+    reportItems = v.items;
+    input = { ...input, reportItems, frequency: 'once', enabled: false, concurrency: 1, quota: {} };
+  }
+
   if (input.id) {
     const i = tasks.findIndex((t) => t.id === input.id);
     if (i < 0) return { ok: false, error: 'task_not_found' };
-    // 改 type 不能撞到同平台已有的别的同类型任务
-    const dup = tasks.find((t) => t.id !== input.id && t.platform === input.platform && t.type === input.type);
+    // 别的类型不能改成/改出抖音Report(白名单 + 单账号等约束只对 report 生效,类型切换会绕过)。
+    if ((tasks[i].type === 'report') !== (input.type === 'report')) return { ok: false, error: 'report_type_change_forbidden' };
+    // 改 type 不能撞到同平台已有的别的同类型任务(举报除外:每次举报是独立的一次性单据,可并存多张)
+    const dup = input.type === 'report' ? undefined : tasks.find((t) => t.id !== input.id && t.platform === input.platform && t.type === input.type);
     if (dup) return { ok: false, error: 'duplicate_type' };
     const updated: MatrixTask = {
       ...tasks[i],
@@ -124,6 +200,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       binanceRepost: input.binanceRepost ?? tasks[i].binanceRepost,
       leadEngage: input.leadEngage ?? tasks[i].leadEngage,
       urls: input.urls ?? tasks[i].urls,
+      reportItems: input.type === 'report' ? reportItems : tasks[i].reportItems,
       concurrency: input.concurrency,
       frequency: input.frequency,
     };
@@ -132,9 +209,12 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     return { ok: true, task: updated };
   }
 
-  const platformTasks = tasks.filter((t) => t.platform === input.platform);
-  if (platformTasks.length >= MAX_PER_PLATFORM) return { ok: false, error: 'platform_task_limit' };
-  if (platformTasks.some((t) => t.type === input.type)) return { ok: false, error: 'duplicate_type' };
+  // 举报单据不占「每平台 5 个任务」名额、也不受同类型唯一限制(一次性单据,执行完即归档)。
+  const platformTasks = tasks.filter((t) => t.platform === input.platform && t.type !== 'report');
+  if (input.type !== 'report') {
+    if (platformTasks.length >= MAX_PER_PLATFORM) return { ok: false, error: 'platform_task_limit' };
+    if (platformTasks.some((t) => t.type === input.type)) return { ok: false, error: 'duplicate_type' };
+  }
 
   const task: MatrixTask = {
     id: `${input.platform}_${input.type}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e4).toString(36)}`,
@@ -158,6 +238,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     binanceRepost: input.binanceRepost,
     leadEngage: input.leadEngage,
     urls: input.urls,
+    reportItems,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',
     createdAt: Date.now(),
@@ -190,6 +271,7 @@ export function pruneAccountFromTasks(accountId: string): void {
 
 export function setTaskEnabled(id: string, enabled: boolean): void {
   const t = getTask(id); if (!t) return;
+  if (t.type === 'report') return; // 举报永不进定时调度
   t.enabled = enabled;
   t.nextPlannedRunAt = planned(t, Date.now(), true);
   persist();
@@ -204,5 +286,5 @@ export function setTaskLastRun(id: string, ts: number): void {
 
 /** 调度器用:到点该自动跑的任务(启用、非 once、已到 nextPlannedRunAt)。 */
 export function dueTasks(now: number): MatrixTask[] {
-  return loadTasks().filter((t) => t.enabled && t.frequency !== 'once' && t.nextPlannedRunAt != null && t.nextPlannedRunAt <= now);
+  return loadTasks().filter((t) => t.type !== 'report' && t.enabled && t.frequency !== 'once' && t.nextPlannedRunAt != null && t.nextPlannedRunAt <= now);
 }

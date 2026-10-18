@@ -302,7 +302,31 @@ export interface BinanceRepostConfig {
 // 自动发推 = x_post(N 个号各自按身份 AI 原创一条推文 + 可选配图 → 发到各自时间线,仅推特);
 // 币安广场自动发帖 = binance_post(N 个号各自抓 web3 资讯 AI 原创一条币安广场图文 + 可选配图 → 发币安广场,仅币安);
 // 币安广场批量搬运 = binance_repost(1 个采集号从源平台搜+下 N 条 → N 个币安号各领一条 AI 仿写 + 配图 → 发币安广场)。
-export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage';
+// 举报 = report(白名单功能,admin 配 UID 才可见;目前仅抖音):1-4 条链接各配原因+描述,
+//   只能选【1 个】账号执行,只能手动触发(每次逐条只提交一次),不定时、不重试;可编辑、可再次运行。
+export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report';
+
+/** 一条 Report:被举报的作品(视频/图文)或账号链接 + 抖音原文原因/具体类型 + 描述(用户手填,原样提交)。
+ *  reason / subReason 必须是 reportTaxonomy.ts 里的抖音原文选项。 */
+export interface ReportItem {
+  url: string;
+  targetType: 'content' | 'account';
+  reason: string;
+  subReason?: string;
+  description: string;
+}
+/** 每条链接的执行结果(剧本回传,存到任务上给专属详情页展示)。 */
+export interface ReportItemResult {
+  url: string;
+  status: 'submitted' | 'dry_run_ok' | 'failed';
+  why?: string;          // 失败/跳过原因码(见剧本 error_map)
+  confirmed?: boolean;   // 提交后是否看到平台确认提示
+  ts?: number;
+  accountId?: string;    // 哪个执行账号提交的(多账号时按号区分结果)
+}
+/** 举报合规上限(客户端存盘校验 + 后端剧本再兜一层)。 */
+export const REPORT_LIMITS = { minItems: 1, maxItems: 4, descMin: 5, descMax: 200 } as const;
+export type { ReportTargetType } from './reportTaxonomy';
 
 /**
  * 定向获客(tiktok_lead_engage 剧本)配置。两段式:采集同行评论者当潜客名单(长期账本)→
@@ -360,6 +384,12 @@ export interface MatrixTask {
   binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
   leadEngage?: LeadEngageConfig;   // 仅 lead_engage 用:定向获客配置
   urls?: string[];                 // 仅 video_download 用:用户粘贴的待下载视频链接清单
+  reportItems?: ReportItem[];      // 仅 report 用:1-4 条举报条目
+  // 仅 report 用:最近一次正式执行时间(展示用,不锁定)。
+  reportExecutedAt?: number;
+  reportResults?: ReportItemResult[];      // 仅 report:正式执行的逐条结果
+  reportDryRunAt?: number;                 // 仅 report:最近一次试运行时间(试运行不占执行锁、不计费)
+  reportDryRunResults?: ReportItemResult[]; // 仅 report:最近一次试运行的逐条结果
   concurrency?: number;            // 同时开窗数(video_download 固定 1,单账号顺序下载)
   frequency: MatrixTaskFrequency;  // 运行频率
   nextPlannedRunAt?: number;       // 下次计划运行(epoch ms;调度器预排,UI 展示)

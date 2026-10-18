@@ -45,6 +45,8 @@ import MatrixTaskWizard, { type WizardAccount } from '../matrix/MatrixTaskWizard
 import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 import MatrixLeadEngageWizard from '../matrix/MatrixLeadEngageWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
+import MatrixReportWizard from '../matrix/MatrixReportWizard';
+import { MATRIX_REPORT_SCENARIO_ID } from '../../services/scenario';
 import MatrixImageTextWizard, { type ImageTextWizardSave } from '../matrix/MatrixImageTextWizard';
 import MatrixTweetPostWizard, { type TweetPostWizardSave } from '../matrix/MatrixTweetPostWizard';
 import MatrixBinancePostWizard, { type BinancePostWizardSave } from '../matrix/MatrixBinancePostWizard';
@@ -254,6 +256,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 合规隐藏平台:服务端 /api/matrix/config 按当前用户算好(总开关关 / 命中白名单 → 空数组)。
   //   拉不到就【不藏】(fail-open,网络抖动不误伤;存量任务本就在后台跑,隐藏只是新建入口)。
   const [complianceHidden, setComplianceHidden] = useState<string[]>([]);
+  // 举报功能(白名单):服务端按当前 UID 判定 reportEnabled。拉不到 → 不显示(fail-closed,与合规隐藏相反)。
+  const [reportEnabled, setReportEnabled] = useState(false);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -262,6 +266,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         if (!res.ok) return;
         const data = await res.json();
         if (alive && Array.isArray(data?.complianceHiddenPlatforms)) setComplianceHidden(data.complianceHiddenPlatforms.map(String));
+        if (alive) setReportEnabled(data?.reportEnabled === true);
       } catch { /* 拉不到 → 不藏 */ }
     })();
     return () => { alive = false; };
@@ -333,6 +338,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixDownloadAccounts, setMatrixDownloadAccounts] = useState<WizardAccount[]>([]);
   const [matrixDownloadAccountsLoading, setMatrixDownloadAccountsLoading] = useState(false);
   const [matrixDownloadTask, setMatrixDownloadTask] = useState<any | null>(null);
+  // 「举报」向导(白名单功能;可多账号、1-4 条、只能手动触发)
+  const [matrixReportPlatform, setMatrixReportPlatform] = useState<string | null>(null);
+  const [matrixReportAccounts, setMatrixReportAccounts] = useState<WizardAccount[]>([]);
+  const [matrixReportAccountsLoading, setMatrixReportAccountsLoading] = useState(false);
+  const [matrixReportTask, setMatrixReportTask] = useState<any | null>(null);
   // 「图文创作」向导(多账号:勾选 N 个号 + 全局配图/篇数 + 可选参考文案)。
   const [matrixImageTextPlatform, setMatrixImageTextPlatform] = useState<string | null>(null);
   const [matrixImageTextAccounts, setMatrixImageTextAccounts] = useState<WizardAccount[]>([]);
@@ -692,6 +702,52 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixDownloadTask(null);
     await refreshAll();
     // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
+  };
+  // 「举报」向导(白名单功能):账号取主站 scope(同视频下载)。每张举报单是独立一次性单据,不做「同类型已存在」拦截。
+  const loadReportAccounts = async (platform: string) => {
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixReportAccounts(accs.filter((a) => downloadAccountFilter(a, platform)).map(mapWizardAccount));
+    } catch { setMatrixReportAccounts([]); }
+    finally { setMatrixReportAccountsLoading(false); }
+  };
+  const openMatrixReportWizard = async (platform: string) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (!reportEnabled) return;
+    setMatrixReportAccounts([]);
+    setMatrixReportAccountsLoading(true);
+    setMatrixReportTask(null);
+    setMatrixReportPlatform(platform);
+    void ensureMatrixKernel();
+    await loadReportAccounts(platform);
+  };
+  const openMatrixReportWizardEdit = async (task: any) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (!reportEnabled) { window.alert(i18nService.t('rpErr_report_not_whitelisted')); return; }
+    const plat = (task?.platform as string) || 'douyin';
+    setMatrixReportAccounts([]);
+    setMatrixReportAccountsLoading(true);
+    setMatrixReportTask({ id: task.id, name: task.name, accountIds: task.account_ids || [], reportItems: (task as any).report_items || [] });
+    setMatrixReportPlatform(plat);
+    await loadReportAccounts(plat);
+  };
+  const saveMatrixReportTask = async (input: { name: string; accountIds: string[]; reportItems: Array<{ url: string; targetType: string; reason: string; subReason?: string; description: string }> }) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
+    const m = (window as any).electron?.matrix;
+    // type='report':频率恒 once、enabled 恒 false(sidecar taskStore 也会强制),只能在任务详情页手动点「运行」一次。
+    const r = await m?.saveTask?.({ id: matrixReportTask?.id, platform: matrixReportPlatform, type: 'report', name: input.name, accountIds: input.accountIds.slice(0, 1), reportItems: input.reportItems, quota: {}, concurrency: 1, frequency: 'once', enabled: false });
+    if (!r?.ok) {
+      const k = `rpErr_${r?.error || ''}`;
+      const msg = i18nService.t(k);
+      throw new Error(msg !== k ? msg : (r?.error || i18nService.t('rpErrSaveFailed')));
+    }
+    const wasEdit = !!matrixReportTask?.id;
+    const plat = matrixReportPlatform;
+    setMatrixReportPlatform(null);
+    setMatrixReportTask(null);
+    await refreshAll();
     if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「图文创作」向导(多账号):账号取主站 scope(同 replyAccountFilter,douyin 主站登录态即覆盖创作者中心)。
@@ -1602,7 +1658,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_report$/.test(String(task.scenario_id || ''))) { void openMatrixReportWizardEdit(task); } else if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -2115,6 +2171,26 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               >
                 {i18nService.t('svHasTasks')}
               </button>
+              </div>
+            </div>
+          )}
+          {/* 抖音Report(白名单功能)—— 仅白名单 UID 可见;可多账号、1-4 条、手动触发。 */}
+          {matrixMode && reportEnabled && !!MATRIX_REPORT_SCENARIO_ID[currentPlatform] && (
+            <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionReport')}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">📋 {i18nService.t('svCardReportTitle')}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">{i18nService.t('svCardReportDesc')}</div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+                <button type="button" onClick={() => openMatrixReportWizard(currentPlatform)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-bold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95">
+                  📋 {i18nService.t('svStartReport')}
+                </button>
+                <button type="button" onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                  className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
+                  {i18nService.t('svHasTasks')}
+                </button>
               </div>
             </div>
           )}
@@ -2755,6 +2831,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               initialTask={matrixDownloadTask}
               onCancel={() => { setMatrixDownloadPlatform(null); setMatrixDownloadTask(null); }}
               onSave={saveMatrixDownloadTask}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 矩阵号举报向导(白名单功能;链接+原因+描述 → 执行账号(可多选) → 合规确认) */}
+      {matrixReportPlatform && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <MatrixReportWizard
+              platformLabel={i18nService.t('rpBrand')}
+              platform={matrixReportPlatform}
+              accounts={matrixReportAccounts}
+              accountsLoading={matrixReportAccountsLoading}
+              initialTask={matrixReportTask}
+              onCancel={() => { setMatrixReportPlatform(null); setMatrixReportTask(null); }}
+              onSave={saveMatrixReportTask}
             />
           </div>
         </div>

@@ -513,7 +513,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'binance_square_post_creator')    return { icon: '🔶', k: 'scnBnPost', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                 if (sid === 'binance_from_x_repost')          return { icon: '🔁', k: 'scnBnRepostX', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 // v6.x: 3 个新搬运源 — 跟 binance_from_x_repost 同 family,各自独立 label
-                if (sid === 'binance_from_xhs_viral')         return { icon: '📕', k: 'scnBnRepostXhs', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+                if (sid === 'binance_from_xhs_viral')         return { icon: '📕', k: 'scnBnRepostXhs', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'binance_from_douyin_viral')      return { icon: '🎵', k: 'scnBnRepostDy', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', k: 'scnBnRepostTt', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'binance_from_x_link')          return { icon: '🔗', k: 'scnBnFromXLink', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
@@ -542,9 +542,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'douyin_auto_engage')           return { icon: '🎵', k: 'scnDyEngage', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
                 if (sid === 'douyin_image_text')            return { icon: '📝', k: 'scnDyImageText', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'douyin_reply_fans_comment')    return { icon: '💬', k: 'scnDyReplyFans', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                if (sid === 'xhs_image_text')               return { icon: '📝', k: 'scnXhsImageText', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+                if (sid === 'xhs_image_text')               return { icon: '📝', k: 'scnXhsImageText', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', k: 'scnXhsReplyFans', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', k: 'scnXhsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'douyin_report')                return { icon: '📋', k: 'svCardReportTitle', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'douyin_video_download')        return { icon: '⬇️', k: 'scnDyDownload', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', k: 'scnTtDownload', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', k: 'scnKsEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };

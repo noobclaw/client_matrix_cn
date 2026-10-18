@@ -104,7 +104,8 @@ export interface EngageTaskOptions {
   // 任务类型:'engage'=互动涨粉(点赞/评论/关注,按关键词搜);'reply_fan'=自动回复粉丝评论
   // (抖音创作者中心评论管理,不需关键词、无配额、有引流尾巴);'video_download'=视频无水印下载
   // (单账号,粘贴多个链接逐个下载,不需关键词、无配额)。缺省 'engage' 兼容旧调用。
-  taskType?: 'engage' | 'reply_fan' | 'video_download' | 'lead_engage';
+  // 'report'=举报(白名单功能,可多账号逐个顺序执行、1-4 条链接、只能手动触发;剧本 *_report 下发需登录 + 白名单)。
+  taskType?: 'engage' | 'reply_fan' | 'video_download' | 'lead_engage' | 'report';
   // 定向获客(lead_engage)配置。任务级(对所有执行账号相同):种子号/关键词/名额等由向导填,
   // 注入到 orchestrator 读的 ctx.task.mode/seed_accounts/max_leads/... 顶层字段。
   leadEngage?: {
@@ -135,6 +136,8 @@ export interface EngageTaskOptions {
   // 每号本次运行最多回复几条(仅抖音回复粉丝剧本读它;不传 → 剧本按 100 兜底;只管本次运行,不跨运行累计)
   maxRepliesPerRun?: number;
   urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
+  reportItems?: Array<{ url: string; targetType: string; reason: string; subReason?: string; description: string }>; // 仅 report:条目(注入 ctx.task.report_items)
+  reportDryRun?: boolean;          // 仅 report:试运行(选原因+填描述,停在提交前;不计费)
   concurrency?: number;
   jitterMinMs?: number; jitterMaxMs?: number;
   kernelPath?: string;
@@ -154,25 +157,31 @@ export interface EngageItemResult {
   state: 'success' | 'failed' | 'skipped';
   // like/follow/comment 是互动涨粉的维度;post(图文创作发帖数)/download(视频下载条数)是
   // 别的任务类型各自的完成维度,可选。各任务只填自己有的那个。
-  counts?: { like: number; follow: number; comment: number; post?: number; download?: number;
+  counts?: { like: number; follow: number; comment: number; post?: number; download?: number; report?: number;
     // 定向获客专用:本次新增潜客数 / 本次触达潜客数。
     favorite?: number; lead_new?: number; lead_engaged?: number };
   // 该号本次累计实际扣费(积分 + 美元)。每条互动动作扣费后累加,用于「本次/累计消耗」。
   chargedCredits?: number;
   chargedUsd?: number;
   reason?: string;
+  // 仅 report:剧本回传的逐条结果(sidecar 存到任务上给专属详情页)
+  reportResults?: Array<{ url: string; status: string; why?: string; confirmed?: boolean; ts?: number }>;
 }
 
 // ── scenario pack 下发(/api/matrix/scenarios/:id)──
-async function fetchEngagePack(id: string): Promise<any | null> {
+// authToken:举报剧本(*_report)是白名单功能,后端要求带登录 token 校验 UID;其它剧本无鉴权,不带也行。
+//   403 report_not_whitelisted → 返回 { __denied: true }(不重试,告诉用户未开通)。
+async function fetchEngagePack(id: string, authToken?: string): Promise<any | null> {
   // 两次尝试:用户常为 TikTok 等开关 VPN,对 api 的请求会瞬断/超时 —— 一次失败别直接判「后端未部署」,
   // 等 3s 再试一次,大多数抖动都能扛过去。
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
-      const res = await fetch(`${baseUrl()}/api/matrix/scenarios/${id}`, { signal: AbortSignal.timeout(10_000) });
+      const headers: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+      const res = await fetch(`${baseUrl()}/api/matrix/scenarios/${id}`, { headers, signal: AbortSignal.timeout(10_000) });
       if (res.ok) return await res.json();
       coworkLog('WARN', 'engageRunner', 'fetch pack non-ok', { id, status: res.status, attempt });
       if (res.status === 404) return null; // 真没这个剧本,重试无意义
+      if (res.status === 401 || res.status === 403) return { __denied: true, status: res.status }; // 白名单/登录拦截,重试无意义
     } catch (e) {
       coworkLog('WARN', 'engageRunner', 'fetch pack failed', { id, attempt, err: String(e) });
     }
@@ -367,7 +376,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
   //   其它平台(抖音/小红书等按关键词搜的互动)才要。漏掉豁免 → 账号没关键词被静默拦掉、无日志。
   // lead_engage(定向获客)自己处理来源(accounts 模式用种子号、keywords 模式用任务关键词),
   //   不读账号级 acc.keywords → 豁免这里的关键词守卫,否则账号没配关键词会被静默跳过。
-  const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.platform !== 'binance';
+  const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.taskType !== 'report' && opts.platform !== 'binance';
   // 抖音/快手/TikTok 互动支持「刷剧模式」(binge):显式开启 or 关键词为空时,后端剧本走推荐流沉浸式互动,不需要关键词。
   const bingeCapable = ['douyin', 'kuaishou', 'tiktok'].includes(opts.platform) && (opts.taskType === 'engage' || !opts.taskType);
   // 🎯 精准模式的链接是用户给的,跟账号配没配关键词无关 —— 不豁免的话 bilibili/youtube
@@ -390,7 +399,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
   // 全集(grep backend/matrix/scenarios):like/follow/comment/download/post/note。漏 download → 视频下载记录恒 0。
   //   定向获客另加两维:lead_new = 本次新收录的潜客数、lead_engaged = 本次触达过的潜客数。
   //   任务详情页要在点赞/关注/评论上方单独展示这两个数(本次/上次/累计)。
-  const counts = { like: 0, follow: 0, comment: 0, favorite: 0, download: 0, post: 0, note: 0, lead_new: 0, lead_engaged: 0 };
+  const counts = { like: 0, follow: 0, comment: 0, favorite: 0, download: 0, post: 0, note: 0, lead_new: 0, lead_engaged: 0, report: 0 };
   let chargedCredits = 0; // 该号本次累计扣费(积分),每笔互动动作扣费后累加
   let chargedUsd = 0;     // 同上,美元(后端按 token_price_per_million 算好)
   const history = engageHistoryFor(accountId);
@@ -482,6 +491,11 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       max_replies_per_run: opts.maxRepliesPerRun,
       // video_download 剧本读 task.urls(用户粘贴的待下载链接清单)。
       urls: Array.isArray(opts.urls) ? opts.urls : [],
+      // report 剧本读 task.report_items(1-4 条 {url, reason, description},用户手填原样提交)。
+      report_items: Array.isArray(opts.reportItems) ? opts.reportItems.map((it) => ({
+        url: it.url, target_type: it.targetType, reason: it.reason, sub_reason: it.subReason || '', description: it.description,
+      })) : [],
+      report_dry_run: !!opts.reportDryRun,
       daily_like_min: q.daily_like_min, daily_like_max: q.daily_like_max,
       daily_follow_min: q.daily_follow_min, daily_follow_max: q.daily_follow_max,
       daily_comment_min: q.daily_comment_min, daily_comment_max: q.daily_comment_max,
@@ -757,7 +771,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
     const code = pack?.orchestrator;
     if (!code) { coworkLog('ERROR', 'engage', `[${accountId}] no_orchestrator`); return { accountId, state: 'failed', reason: 'no_orchestrator' }; }
     const fn = new AsyncFunction('ctx', code);
-    await fn(ctx);
+    const orchRet: any = await fn(ctx);
+    // report 剧本回传逐条结果 → 带在 item 上(其它剧本的返回值不关心,保持原样)
+    const reportResults = opts.taskType === 'report' && Array.isArray(orchRet?.results) ? orchRet.results : undefined;
 
     if (chargeFatal && chargeFatal.reason) {
       setAccountStatus(accountId, 'idle');
@@ -767,7 +783,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
     const fin = finished as { status: string; error?: string } | null;
     if (fin && fin.status === 'error') { coworkLog('ERROR', 'engage', `[${accountId}] finished error: ${fin.error}`); return { accountId, state: 'failed', counts, chargedCredits, chargedUsd, reason: fin.error }; }
     coworkLog('INFO', 'engage', `[${accountId}] done 赞${counts.like}/关${counts.follow}/评${counts.comment} · 扣费 ${chargedCredits}积分`);
-    return { accountId, state: 'success', counts, chargedCredits, chargedUsd };
+    return { accountId, state: 'success', counts, chargedCredits, chargedUsd, reportResults };
   } catch (e: any) {
     setAccountStatus(accountId, 'idle');
     const _emsg = String(e?.message || e);
@@ -825,7 +841,17 @@ export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageRepo
   const scenarioId = opts.scenarioId
     || (opts.taskType === 'lead_engage' ? `${opts.platform}_lead_engage` : '')
     || ENGAGE_SCENARIO_ID[opts.platform] || `${opts.platform}_auto_engage`;
-  const pack = await fetchEngagePack(scenarioId);
+  // 举报剧本要带登录 token(后端按白名单 UID 放行);其它剧本保持原样不带。
+  const packToken = opts.taskType === 'report' ? (opts.authToken || getNoobClawAuthToken() || undefined) : undefined;
+  const pack = await fetchEngagePack(scenarioId, packToken);
+  if (pack && pack.__denied) {
+    const items = opts.accountIds.map((id) => ({ accountId: id, state: 'skipped' as const, reason: 'report_not_whitelisted' }));
+    for (const it of items) {
+      try { opts.onLog?.(it.accountId, '⛔ 你的账号未开通「举报」功能(需管理员加入白名单),本次未执行'); } catch { /* ignore */ }
+      try { opts.onItem?.(it); } catch { /* ignore */ }
+    }
+    return { platform: opts.platform, total: opts.accountIds.length, success: 0, failed: 0, skipped: opts.accountIds.length, items };
+  }
   if (!pack || !pack.orchestrator) {
     // ⚠️ 必须发日志+item 再返回:这条路以前【静默】返回 → UI 永远停在「已加入运行队列…」装死
     //   (任务实际已完成),用户以为卡住(真机实测,常见诱因是开关 VPN 时对 api 的请求瞬断)。
