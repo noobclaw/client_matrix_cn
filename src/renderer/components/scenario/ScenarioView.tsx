@@ -737,7 +737,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
     // type='report':频率恒 once、enabled 恒 false(sidecar taskStore 也会强制),只能在任务详情页手动点「运行」一次。
-    const r = await m?.saveTask?.({ id: matrixReportTask?.id, platform: matrixReportPlatform, type: 'report', name: input.name, accountIds: input.accountIds.slice(0, 1), reportItems: input.reportItems, quota: {}, concurrency: 1, frequency: 'once', enabled: false });
+    const r = await m?.saveTask?.({ id: matrixReportTask?.id, platform: matrixReportPlatform, type: 'report', name: input.name, accountIds: input.accountIds, reportItems: input.reportItems, quota: {}, concurrency: 1, frequency: 'once', enabled: false });
     if (!r?.ok) {
       const k = `rpErr_${r?.error || ''}`;
       const msg = i18nService.t(k);

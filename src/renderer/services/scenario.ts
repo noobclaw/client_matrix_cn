@@ -325,7 +325,7 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       platform: pPlatform,
       type: 'report',
       name: input.name || `抖音Report · ${items.length} 条`,
-      accountIds: accountIds.slice(0, 1),
+      accountIds,                 // 抖音Report 可多选执行账号(2026-10-18)
       quota: {},
       reportItems: items,
       concurrency: 1,
