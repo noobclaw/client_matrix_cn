@@ -38,16 +38,18 @@ const kwOf = (a: LeadWizardAccount): string[] => {
 };
 
 export interface LeadEngageInput {
-  mode: 'accounts' | 'keywords';
+  mode: 'accounts' | 'keywords' | 'live';
+  liveUrls?: string[];        // live 模式:直播间链接(TikTok / 抖音)
+  liveDwellMinutes?: number;  // live 模式:每个直播间最多停几分钟
   seedAccounts: string[];
   seedByAccount?: Record<string, string[]>;
   keywords: string[];
   maxLeads: number;
   // 本次总量上限(2026-08-21 改定):不再是「每人几条」,每人分到多少由剧本按
   //   「总量 ÷ 实际触达人数」算 —— 优先保证互动人数。
-  maxLikes: number;      // 1-500
-  maxFollows: number;    // 1-100
-  maxComments: number;   // 0-300
+  maxLikes: number;      // 0-5000
+  maxFollows: number;    // 0-100
+  maxComments: number;   // 0-100
   leadsPerRun: number;
   doLike: boolean;
   doComment: boolean;
@@ -169,7 +171,25 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   });
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const [mode, setMode] = useState<'accounts' | 'keywords'>(le.mode === 'keywords' ? 'keywords' : 'accounts');
+  // 直播间获客只有 TikTok / 抖音(2026-10-19)。
+  const liveSupported = platform === 'tiktok' || platform === 'douyin';
+  const [mode, setMode] = useState<'accounts' | 'keywords' | 'live'>(
+    le.mode === 'keywords' ? 'keywords' : (le.mode === 'live' && liveSupported ? 'live' : 'accounts'));
+  const [liveText, setLiveText] = useState<string>(Array.isArray(le.liveUrls) ? le.liveUrls.join('\n') : '');
+  const [liveDwell, setLiveDwell] = useState<number>(typeof le.liveDwellMinutes === 'number' ? le.liveDwellMinutes : 20);
+  const liveList = useMemo(() => {
+    const out: string[] = []; const seen = new Set<string>();
+    for (const raw of liveText.split(/[\n,，\s]+/)) {
+      const v = raw.trim();
+      if (!v) continue;
+      const ok = platform === 'douyin'
+        ? (/live\.douyin\.com\/\d{5,}/i.test(v) || /douyin\.com\/(root\/)?live\/\d{5,}/i.test(v) || /^\d{5,}$/.test(v) || /^https?:\/\/v\.douyin\.com\//i.test(v))
+        : (/tiktok\.com\/@[^/\s]+/i.test(v) || /^@?[\w.]{2,}$/.test(v));
+      if (ok && !seen.has(v)) { seen.add(v); out.push(v); }
+      if (out.length >= 20) break;
+    }
+    return out;
+  }, [liveText, platform]);
   // 回填:只有【裸 handle】且是 @handle 制的平台(TikTok/抖音)才补 @;
   //   存的是整条主页链接就原样显示 —— 否则回填出来是 `@https://www.douyin.com/user/...`
   //   (用户 2026-08-22 截图)。小红书/B站/快手存的是 id,本来就不加。
@@ -195,11 +215,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     setSeedTextByAccount(() => { const m: Record<string, string> = {}; for (const a of selectedAccounts) m[a.id] = v; return m; });
   };
 
-  const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 50);
-  const [leadsPerRun, setLeadsPerRun] = useState<number>(typeof le.leadsPerRun === 'number' ? le.leadsPerRun : 100);
-  const [maxLikes, setMaxLikes] = useState<number>(typeof le.maxLikes === 'number' ? le.maxLikes : 100);
-  const [maxFollows, setMaxFollows] = useState<number>(typeof le.maxFollows === 'number' ? le.maxFollows : 20);
-  const [maxComments, setMaxComments] = useState<number>(typeof le.maxComments === 'number' ? le.maxComments : 100);
+  // 2026-10-19:每个潜客一辈子只做 1 个动作,「获取潜客」和「互动潜客」合并成一个「本次潜客数」(1-5000,默认 300)。
+  const [maxLeads, setMaxLeads] = useState<number>(typeof le.maxLeads === 'number' ? le.maxLeads : 300);
+  const [maxLikes, setMaxLikes] = useState<number>(typeof le.maxLikes === 'number' ? le.maxLikes : 300);
+  const [maxFollows, setMaxFollows] = useState<number>(typeof le.maxFollows === 'number' ? le.maxFollows : 0);
+  const [maxComments, setMaxComments] = useState<number>(typeof le.maxComments === 'number' ? le.maxComments : 0);
 
   // 引流语(评论时按概率融进 AI 评论)。与互动涨粉同一套口径,直接复用 MatrixFunnelConfig。
   const [funnelPerMode, setFunnelPerMode] = useState<boolean>(!!initialTask?.funnelByAccount && Object.keys(initialTask.funnelByAccount).length > 0);
@@ -227,12 +247,6 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // 把总量按「实际互动人数」平摊,给用户一个直观预期(与剧本 STEP2 的 ceil 口径一致)。
-  const perLead = (total: number) => {
-    const reach = Math.max(1, clampInt(leadsPerRun, 1, 1000));
-    const n = clampInt(total, 0, 500);
-    return n > 0 ? Math.max(1, Math.ceil(n / reach)) : 0;
-  };
   const selectedAccounts = accounts.filter((a) => selected.has(a.id));
   // 各账号种子并集(去重)—— 用于任务名「已识别 N」和回落 seedAccounts。
   // 账号数变了（第 1 步勾选变动）或刚切到本步时，渐隐要重算 ——
@@ -257,7 +271,9 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const canAdvance: Record<number, { ok: boolean; reason?: string }> = {
     1: { ok: selected.size >= 1, reason: t('请至少选择一个执行账号', 'Select at least one account') },
-    2: mode === 'accounts'
+    2: mode === 'live'
+      ? (liveList.length >= 1 ? { ok: true } : { ok: false, reason: t('请至少填 1 个直播间链接', 'Add at least one live room link') })
+      : mode === 'accounts'
       ? (seededAcctCount >= 1 ? { ok: true } : { ok: false, reason: t(`请至少给一个执行账号填同行${platformLabel}账号`, 'Fill competitor accounts for at least one executing account') })
       // ⚠️ 账号是弹窗开了之后【异步】填进来的(编辑任务 + sidecar 忙时要等几秒,listAccounts
       //   失败还会一直是空)。此时 selectedAccounts 为空 → `0 < 0` 恒 false → 这一步被判死,
@@ -269,7 +285,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     4: { ok: true },
     // 点赞/关注/评论三个总量都填 0 = 采完潜客后挨个打开主页干等、什么也不做(采集那步照样跑)。
     //   这肯定不是用户想要的,拦在第 5 步(评论数是最后一个填的)。
-    5: (clampInt(maxLikes, 0, 500) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 300)) > 0
+    5: (clampInt(maxLikes, 0, 5000) + clampInt(maxFollows, 0, 100) + clampInt(maxComments, 0, 100)) > 0
       ? { ok: true }
       : { ok: false, reason: t(`点赞 / ${followWord} / 评论至少要开一项,否则获取到潜客后什么也不会做`, `Enable at least one of like / ${followWord} / comment — otherwise nothing happens after leads are collected`) },
     6: termsAccepted ? { ok: true } : { ok: false, reason: t('请先同意条款', 'Please accept the terms') },
@@ -322,6 +338,8 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           mode,
           // seedAccounts 存并集,作为老客户端/回落用;权威是 seedByAccount(每号各自)。
           seedAccounts: mode === 'accounts' ? seedList : [],
+          liveUrls: mode === 'live' ? liveList : (Array.isArray(le.liveUrls) ? le.liveUrls : []),
+          liveDwellMinutes: clampInt(liveDwell, 1, 60),
           seedByAccount: mode === 'accounts' ? (() => {
             const out: Record<string, string[]> = {};
             for (const id of selected) { const list = parseSeedLines(seedTextFor(id), platform); if (list.length) out[id] = list; }
@@ -329,17 +347,17 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           })() : undefined,
           // 关键词跟随账号设置,向导不再提供输入;但老任务里存过的任务级词要原样保留(同上,整体替换)。
           keywords: Array.isArray(le.keywords) ? le.keywords : [],
-          maxLeads: clampInt(maxLeads, 1, 1000),
+          maxLeads: clampInt(maxLeads, 1, 5000),
           // 条数 0 = 关闭该动作(开关行已按用户要求删掉,用数量本身表达开关)。
           //   do* 必须跟着算,否则剧本读到 doLike=true 仍会去点 —— 条数为 0 时
           //   剧本内部 nLikeLead 也会是 0,两边一致才不会出现「设了 0 还照做」。
-          maxLikes: clampInt(maxLikes, 0, 500),
+          maxLikes: clampInt(maxLikes, 0, 5000),
           maxFollows: clampInt(maxFollows, 0, 100),
-          maxComments: clampInt(maxComments, 0, 300),
-          leadsPerRun: clampInt(leadsPerRun, 1, 1000),
+          maxComments: clampInt(maxComments, 0, 100),
+          leadsPerRun: clampInt(maxLeads, 1, 5000),   // 与潜客数合并(2026-10-19)
           // 总量为 0 = 关闭该动作(向导没有单独的开关行,用数量本身表达)。
-          doLike: clampInt(maxLikes, 0, 500) > 0,
-          doComment: clampInt(maxComments, 0, 300) > 0,
+          doLike: clampInt(maxLikes, 0, 5000) > 0,
+          doComment: clampInt(maxComments, 0, 100) > 0,
           doFollow: clampInt(maxFollows, 0, 100) > 0,
           // ⚠️ taskStore 对 leadEngage 是整体替换(`input.leadEngage ?? 旧值`),不是逐字段合并。
           //   这两项已经从向导里去掉了,若硬写空,老任务只要被打开编辑一次(哪怕只改频率)
@@ -438,13 +456,14 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           <>
             {/* 推特只做精准获客:X 的搜索页对未登录/低权重账号限制大、结果噪音也高,
                 与其给一个不稳的入口,不如只留稳的那个(用户 2026-08-23 明确要求)。 */}
-            <div className={`grid gap-2.5 ${platform === 'x' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+            <div className={`grid gap-2.5 ${platform === 'x' ? 'grid-cols-1' : (liveSupported ? 'grid-cols-3' : 'grid-cols-2')}`}>
               {(platform === 'x'
                 ? ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或指定推文链接,采集回复区里的人再逐个互动', 'Competitor accounts or a tweet URL — harvest its repliers, then engage them')]] as const)
                 : ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或指定视频/帖子链接,采集评论区里的人再逐个互动', 'Competitor accounts or a post URL — harvest its commenters, then engage them')],
-                    ['keywords', '🔍', t('关键词获客', 'Keyword'), t('按赛道关键词搜视频,采集评论区里的人', 'From videos found by niche keywords')]] as const)
+                    ['keywords', '🔍', t('关键词获客', 'Keyword'), t('按赛道关键词搜视频,采集评论区里的人', 'From videos found by niche keywords')],
+                    ...(liveSupported ? [['live', '📺', t('直播间获客', 'Live room'), t('停在同行直播间里,收发弹幕/进场的观众再逐个互动', 'Stay in live rooms and collect viewers who chat or join')]] : [])] as const)
               ).map(([m, icon, title, desc]) => (
-                <button key={m} type="button" onClick={() => setMode(m)}
+                <button key={m} type="button" onClick={() => setMode(m as any)}
                   className={`text-left p-3 rounded-xl border transition-colors ${mode === m ? 'border-cyan-500 bg-cyan-500/5' : 'border-gray-200 dark:border-gray-700 hover:border-cyan-500/40'}`}>
                   <div className="text-sm font-semibold dark:text-white mb-0.5">{icon} {title}</div>
                   <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">{desc}</div>
@@ -452,7 +471,26 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               ))}
             </div>
 
-            {mode === 'accounts' ? (
+            {mode === 'live' ? (
+              <div className="space-y-3">
+                <div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                  {platform === 'douyin'
+                    ? t('填抖音直播间链接(如 https://live.douyin.com/123456789),一行一个,最多 20 个。所选执行账号都会去这些直播间收人;执行账号要在网页端登录,否则看不到观众账号。',
+                        'Douyin live room links (e.g. https://live.douyin.com/123456789), one per line, max 20. Executing accounts must be logged in on the web.')
+                    : t('填 TikTok 直播间链接(如 https://www.tiktok.com/@xxx/live)或主播账号,一行一个,最多 20 个。所选执行账号都会去这些直播间收人。',
+                        'TikTok live room links (e.g. https://www.tiktok.com/@xxx/live) or host handles, one per line, max 20.')}
+                </div>
+                <textarea value={liveText} onChange={(e) => setLiveText(e.target.value)} rows={5} disabled={saving}
+                  placeholder={platform === 'douyin' ? 'https://live.douyin.com/123456789' : 'https://www.tiktok.com/@xxx/live'}
+                  className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-3 py-2 font-mono" />
+                <div className="text-[11px] text-gray-500 dark:text-gray-400">{t(`已识别 ${liveList.length} 个直播间`, `${liveList.length} live room(s) recognised`)}</div>
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3">
+                  {numRow(t('每个直播间最多停留(分钟)', 'Max minutes per live room'),
+                    t('收够人数会提前离开;连续 5 分钟没有新观众也会换下一间', 'Leaves early when full, or after 5 minutes with no new viewers'),
+                    liveDwell, setLiveDwell, 1, 60)}
+                </div>
+              </div>
+            ) : mode === 'accounts' ? (
               <div className="space-y-3">
                 <div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
                   {t(`每个执行账号盯自己的一批同行 —— 给下面每个账号分别填${specOf(platform).hint}(一行一个,最多 ${MAX_SEED} 个)。没填的账号本轮不采集。`,
@@ -559,8 +597,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {/* STEP 3 · 数量 */}
         {step === 3 && (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
-            {numRow(t('本次获取潜客上限', 'New leads per run'), t('（本地已有的不重复收）', '(dedup against the local roster)'), maxLeads, setMaxLeads, 1, 1000)}
-            {numRow(t('本次最多互动多少潜客', 'Leads to engage per run'), t('新客优先,老客轮转,轮不到的下次接着', 'New leads first, then rotate through existing ones'), leadsPerRun, setLeadsPerRun, 1, 1000)}
+            {numRow(t('本次潜客数', 'Leads this run'),
+              t('收这么多个新潜客,并对这么多个还没互动过的潜客各做 1 个动作(本地已有的不重复收;新客优先,以前收了没轮到的补上)',
+                'Collect this many new leads and give this many not-yet-engaged leads one action each (new first)'),
+              maxLeads, setMaxLeads, 1, 5000)}
           </div>
         )}
 
@@ -568,17 +608,15 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
         {step === 4 && (
           <>
             <div className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-              {t('逐个打开潜客主页,挑他【还没互动过】的作品做动作。第二次运行会自动换新作品,形成长期互动。',
-                 'Opens each lead\'s profile and acts on videos not touched before; re-runs rotate to fresh ones.')}
+              {t('逐个打开潜客主页,每个潜客【一辈子只做 1 个动作】:点赞 / 评论 / 关注三选一(点赞、评论落在他的第一条作品上),做完就不再碰他。三样的总量按剩余比例轮流分配。',
+                 'Each lead gets exactly one action ever — like, comment or follow (likes/comments on their first post). Totals are shared out in proportion.')}
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3 divide-y divide-gray-100 dark:divide-gray-800">
               {numRow(t('👍 本次点赞最大数量', '👍 Total likes this run'),
-                t(`总量,按实际互动人数平摊 · 每人约 ${perLead(maxLikes)} 条 · 设为 0 = 不点赞`,
-                  `Total, spread across the leads reached (~${perLead(maxLikes)} each) · 0 disables liking`),
-                maxLikes, setMaxLikes, 0, 500)}
+                t('本次最多点赞多少人(每人 1 个赞) · 设为 0 = 不点赞', 'Max leads to like this run (1 like each) · 0 disables liking'),
+                maxLikes, setMaxLikes, 0, 5000)}
               {numRow(t(`${followIcon} 本次${followWord}最大数量`, `${followIcon} Total ${followWord}s this run`),
-                t(`每个潜客终身只${followWord}一次,已${followWord}过的不再重复 · 设为 0 = 不${followWord}`,
-                  `Each lead is ${followWord}d once ever · 0 disables it`),
+                t(`本次最多${followWord}多少人 · 设为 0 = 不${followWord}`, `Max leads to ${followWord} this run · 0 disables it`),
                 maxFollows, setMaxFollows, 0, 100)}
             </div>
           </>
@@ -589,9 +627,9 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           <>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3">
               {numRow(t('💬 本次评论最大数量', '💬 Total comments this run'),
-                t(`总量,按实际互动人数平摊 · 每人约 ${perLead(maxComments)} 条 · 评论由 AI 生成(有 AI 费用) · 设为 0 = 不评论`,
-                  `Total, spread across the leads reached (~${perLead(maxComments)} each) · AI-generated (incurs AI cost) · 0 disables commenting`),
-                maxComments, setMaxComments, 0, 300)}
+                t('本次最多评论多少人(每人 1 条) · 评论由 AI 生成(有 AI 费用) · 设为 0 = 不评论',
+                  'Max leads to comment on this run (1 each) · AI-generated (incurs AI cost) · 0 disables commenting'),
+                maxComments, setMaxComments, 0, 100)}
             </div>
             <MatrixFunnelConfig
               accounts={funnelAccounts}
@@ -634,19 +672,14 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 text-sm space-y-1.5 dark:text-gray-300">
               <div className="flex justify-between"><span className="text-gray-500">{t('执行账号', 'Accounts')}</span><span>{selected.size}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('本次获取潜客上限', 'New leads')}</span><span>{clampInt(maxLeads, 1, 1000)}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('本次最多互动潜客', 'Engage per run')}</span><span>{clampInt(leadsPerRun, 1, 1000)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'live' ? t(`直播间 · ${liveList.length} 个`, `Live · ${liveList.length} rooms`) : mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('本次潜客数', 'Leads')}</span><span>{clampInt(maxLeads, 1, 5000)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次总量', 'Totals')}</span><span>{[
-                clampInt(maxLikes,0,500) > 0 ? `👍${clampInt(maxLikes,0,500)}` : null,
-                clampInt(maxComments,0,300) > 0 ? `💬${clampInt(maxComments,0,300)}` : null,
+                clampInt(maxLikes,0,5000) > 0 ? `👍${clampInt(maxLikes,0,5000)}` : null,
+                clampInt(maxComments,0,100) > 0 ? `💬${clampInt(maxComments,0,100)}` : null,
                 clampInt(maxFollows,0,100) > 0 ? `➕${clampInt(maxFollows,0,100)}` : null,
               ].filter(Boolean).join(' · ') || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('平摊到每人', 'Per lead')}</span><span>{[
-                perLead(maxLikes) > 0 ? `👍≈${perLead(maxLikes)}` : null,
-                perLead(maxComments) > 0 ? `💬≈${perLead(maxComments)}` : null,
-                clampInt(maxFollows,0,100) > 0 ? '➕1' : null,
-              ].filter(Boolean).join(' · ') || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('每个潜客', 'Per lead')}</span><span>{t('只做 1 个动作', 'one action')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('评论引流', 'Funnel')}</span><span>{funnelPerMode ? t(`各账号各自(${funnelAccounts.length - countUnconfigured(funnelAccounts, funnelPerMap)}/${funnelAccounts.length} 已配)`, `per account`) : (funnelPhrase.trim() ? t(`共用 · ${funnelProb}%`, `shared · ${funnelProb}%`) : t('未配置', 'none'))}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('频率', 'Frequency')}</span><span>{intervalLabel}</span></div>
             </div>

@@ -110,7 +110,9 @@ export interface EngageTaskOptions {
   // 注入到 orchestrator 读的 ctx.task.mode/seed_accounts/max_leads/... 顶层字段。
   leadEngage?: {
     seedByAccount?: Record<string, string[]>;
-    mode?: 'accounts' | 'keywords';
+    mode?: 'accounts' | 'keywords' | 'live';
+    liveUrls?: string[];
+    liveDwellMinutes?: number;
     seedAccounts?: string[];
     keywords?: string[];
     maxLeads?: number;
@@ -531,6 +533,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       //   直接赋空数组会把账号关键词冲掉,关键词模式就没词可搜了。
       if (Array.isArray(le.keywords) && le.keywords.length) task.keywords = le.keywords;
       task.max_leads = le.maxLeads;
+      // 直播间获客(2026-10-19):剧本读 live_urls / live_dwell_minutes
+      task.live_urls = Array.isArray(le.liveUrls) ? le.liveUrls : [];
+      if (typeof le.liveDwellMinutes === 'number') task.live_dwell_minutes = le.liveDwellMinutes;
       // 总量口径:每人分到多少由剧本按「总量 / 实际触达人数」算(优先保证互动人数)。
       task.max_likes = le.maxLikes;
       task.max_follows = le.maxFollows;

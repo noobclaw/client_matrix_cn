@@ -333,7 +333,9 @@ export type { ReportTargetType } from './reportTaxonomy';
  * 逐个触达点赞/评论/关注。字段直接对应 orchestrator 读的 ctx.task.*(engageRunner 注入时铺平)。
  */
 export interface LeadEngageConfig {
-  mode: 'accounts' | 'keywords';      // 精准获客(填同行号)/ 关键词获客(赛道搜)
+  mode: 'accounts' | 'keywords' | 'live';      // 精准获客(填同行号)/ 关键词获客(赛道搜)/ 直播间获客(TikTok/抖音)
+  liveUrls?: string[];                // live 模式:直播间链接
+  liveDwellMinutes?: number;          // live 模式:每个直播间最多停几分钟(1-60)
   seedAccounts: string[];             // accounts 模式:同行种子(【共用/回落】—— 老任务或未逐账号配时用)
   // 每个执行账号各自的同行种子(accounts 模式,2026-08-23):键=矩阵账号 id,值=该号盯的同行/视频链接。
   //   有它就每号跑自己的;缺省(老任务)回落 seedAccounts 共用。
@@ -342,9 +344,9 @@ export interface LeadEngageConfig {
   maxLeads: number;                   // 单次【新增】获客上限 1-1000
   // 本次总量上限(2026-08-21 改定):每人分到多少由剧本按「总量 / 实际触达人数」算,
   //   目的是优先保证互动人数。
-  maxLikes: number;                   // 本次点赞总量 0-500(0=不点赞)
+  maxLikes: number;                   // 本次点赞总量 0-5000(0=不点赞)
   maxFollows: number;                 // 本次关注总量 0-100(0=不关注)
-  maxComments: number;                // 本次评论总量 0-300(0=不评论)
+  maxComments: number;                // 本次评论总量 0-100(0=不评论)
   leadsPerRun: number;                // 单次运行最多触达多少人(新旧客轮转)
   doLike: boolean;
   doComment: boolean;
