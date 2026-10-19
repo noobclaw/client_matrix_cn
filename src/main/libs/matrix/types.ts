@@ -339,7 +339,7 @@ export interface LeadEngageConfig {
   //   有它就每号跑自己的;缺省(老任务)回落 seedAccounts 共用。
   seedByAccount?: Record<string, string[]>;
   keywords: string[];                 // keywords 模式:赛道关键词
-  maxLeads: number;                   // 单次【新增】获客上限 1-100
+  maxLeads: number;                   // 单次【新增】获客上限 1-1000
   // 本次总量上限(2026-08-21 改定):每人分到多少由剧本按「总量 / 实际触达人数」算,
   //   目的是优先保证互动人数。
   maxLikes: number;                   // 本次点赞总量 0-500(0=不点赞)
