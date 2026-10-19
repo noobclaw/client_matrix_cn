@@ -87,11 +87,11 @@ const clampInt = (v: number, lo: number, hi: number): number => {
 const SEED_SPEC: Record<string, { host: RegExp; strip: RegExp; allow: RegExp; hint: string; ph: string }> = {
   tiktok: {
     host: /^https?:\/\/(www\.)?tiktok\.com\//i, strip: /^@/, allow: /[^a-z0-9._]/g,
-    hint: '@账号名 或 主页链接 或 指定视频链接', ph: '@competitor1\nhttps://www.tiktok.com/@competitor2\nhttps://www.tiktok.com/@someone/video/7300000000000000000',
+    hint: '同行账号(@账号名 / 主页链接)、指定视频链接 或 直播间链接', ph: 'https://www.tiktok.com/@host/live\n@competitor1\nhttps://www.tiktok.com/@competitor2\nhttps://www.tiktok.com/@someone/video/7300000000000000000',
   },
   douyin: {
     host: /^https?:\/\/(www\.)?douyin\.com\/(user\/)?/i, strip: /^@/, allow: /[^a-zA-Z0-9._\-]/g,
-    hint: '抖音号 或 主页链接 或 指定视频链接', ph: 'https://www.douyin.com/user/MS4wLjABAAAA...\nhttps://www.douyin.com/video/7640000000000000000',
+    hint: '同行主页链接、指定视频/图文链接 或 直播间链接', ph: 'https://live.douyin.com/123456789\nhttps://www.douyin.com/user/MS4wLjABAAAA...\nhttps://www.douyin.com/video/7640000000000000000\nhttps://www.douyin.com/note/7640000000000000000',
   },
   xhs: {
     host: /^https?:\/\/(www\.)?xiaohongshu\.com\/user\/profile\//i, strip: /^@/, allow: /[^a-zA-Z0-9]/g,
@@ -151,6 +151,20 @@ const parseSeedLines = (text: string, platform?: string): string[] => {
   return out;
 };
 
+// 只用来在向导里显示「已识别:直播间 x · 同行 y · 作品 z」,真正的识别在剧本里(见上面 parseSeedLines 的注释)。
+const seedKindOf = (line: string, platform?: string): 'live' | 'work' | 'account' => {
+  const v = String(line || '').trim();
+  if (platform === 'tiktok' && /tiktok\.com\/@[^/?#\s]+\/live/i.test(v)) return 'live';
+  if (platform === 'douyin' && (/live\.douyin\.com\/\d{5,}/i.test(v) || /douyin\.com\/(root\/)?live\/\d{5,}/i.test(v))) return 'live';
+  if (/\/(video|note|p|reel|short-video|status|explore|discovery\/item)\//i.test(v) || /youtube\.com\/watch|bilibili\.com\/video\/|youtu\.be\//i.test(v)) return 'work';
+  return 'account';
+};
+const countSeedKinds = (lines: string[], platform?: string) => {
+  const c = { live: 0, work: 0, account: 0 };
+  for (const l of lines) c[seedKindOf(l, platform)]++;
+  return c;
+};
+
 const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const zh = i18nService.currentLanguage === 'zh';
   const t = (a: string, b: string) => (zh ? a : b);
@@ -173,23 +187,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   // 直播间获客只有 TikTok / 抖音(2026-10-19)。
   const liveSupported = platform === 'tiktok' || platform === 'douyin';
-  const [mode, setMode] = useState<'accounts' | 'keywords' | 'live'>(
-    le.mode === 'keywords' ? 'keywords' : (le.mode === 'live' && liveSupported ? 'live' : 'accounts'));
-  const [liveText, setLiveText] = useState<string>(Array.isArray(le.liveUrls) ? le.liveUrls.join('\n') : '');
+  // 2026-10-19:直播间不再是单独的模式 —— 和同行账号、作品链接混填在「精准获客」的同一个框里,剧本自动识别。
+  //   老任务存的是 mode='live' + liveUrls → 打开编辑时转成精准获客、把直播间铺进各账号的框。
+  const [mode, setMode] = useState<'accounts' | 'keywords'>(le.mode === 'keywords' ? 'keywords' : 'accounts');
   const [liveDwell, setLiveDwell] = useState<number>(typeof le.liveDwellMinutes === 'number' ? le.liveDwellMinutes : 20);
-  const liveList = useMemo(() => {
-    const out: string[] = []; const seen = new Set<string>();
-    for (const raw of liveText.split(/[\n,，\s]+/)) {
-      const v = raw.trim();
-      if (!v) continue;
-      const ok = platform === 'douyin'
-        ? (/live\.douyin\.com\/\d{5,}/i.test(v) || /douyin\.com\/(root\/)?live\/\d{5,}/i.test(v) || /^\d{5,}$/.test(v) || /^https?:\/\/v\.douyin\.com\//i.test(v))
-        : (/tiktok\.com\/@[^/\s]+/i.test(v) || /^@?[\w.]{2,}$/.test(v));
-      if (ok && !seen.has(v)) { seen.add(v); out.push(v); }
-      if (out.length >= 20) break;
-    }
-    return out;
-  }, [liveText, platform]);
   // 回填:只有【裸 handle】且是 @handle 制的平台(TikTok/抖音)才补 @;
   //   存的是整条主页链接就原样显示 —— 否则回填出来是 `@https://www.douyin.com/user/...`
   //   (用户 2026-08-22 截图)。小红书/B站/快手存的是 id,本来就不加。
@@ -201,7 +202,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
       return (atStyle && !/^https?:\/\//i.test(v)) ? '@' + v : v;
     }).join('\n');
   // 每个执行账号各自的同行种子文本。老任务只有共用 seedAccounts → 回落时铺到每个账号框(语义等价:大家原本用同一批)。
-  const sharedSeedText = le.seedByAccount ? '' : seedListToText(le.seedAccounts);
+  const sharedSeedText = le.seedByAccount ? '' : seedListToText(le.mode === 'live' ? le.liveUrls : le.seedAccounts);
   const [seedTextByAccount, setSeedTextByAccount] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     if (le.seedByAccount) for (const k of Object.keys(le.seedByAccount)) init[k] = seedListToText(le.seedByAccount[k]);
@@ -271,9 +272,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const canAdvance: Record<number, { ok: boolean; reason?: string }> = {
     1: { ok: selected.size >= 1, reason: t('请至少选择一个执行账号', 'Select at least one account') },
-    2: mode === 'live'
-      ? (liveList.length >= 1 ? { ok: true } : { ok: false, reason: t('请至少填 1 个直播间链接', 'Add at least one live room link') })
-      : mode === 'accounts'
+    2: mode === 'accounts'
       ? (seededAcctCount >= 1 ? { ok: true } : { ok: false, reason: t(`请至少给一个执行账号填同行${platformLabel}账号`, 'Fill competitor accounts for at least one executing account') })
       // ⚠️ 账号是弹窗开了之后【异步】填进来的(编辑任务 + sidecar 忙时要等几秒,listAccounts
       //   失败还会一直是空)。此时 selectedAccounts 为空 → `0 < 0` 恒 false → 这一步被判死,
@@ -338,7 +337,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           mode,
           // seedAccounts 存并集,作为老客户端/回落用;权威是 seedByAccount(每号各自)。
           seedAccounts: mode === 'accounts' ? seedList : [],
-          liveUrls: mode === 'live' ? liveList : (Array.isArray(le.liveUrls) ? le.liveUrls : []),
+          liveUrls: [],   // 直播间已并进 seedByAccount(老字段留空)
           liveDwellMinutes: clampInt(liveDwell, 1, 60),
           seedByAccount: mode === 'accounts' ? (() => {
             const out: Record<string, string[]> = {};
@@ -456,14 +455,15 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
           <>
             {/* 推特只做精准获客:X 的搜索页对未登录/低权重账号限制大、结果噪音也高,
                 与其给一个不稳的入口,不如只留稳的那个(用户 2026-08-23 明确要求)。 */}
-            <div className={`grid gap-2.5 ${platform === 'x' ? 'grid-cols-1' : (liveSupported ? 'grid-cols-3' : 'grid-cols-2')}`}>
+            <div className={`grid gap-2.5 ${platform === 'x' ? 'grid-cols-1' : 'grid-cols-2'}`}>
               {(platform === 'x'
                 ? ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或指定推文链接,采集回复区里的人再逐个互动', 'Competitor accounts or a tweet URL — harvest its repliers, then engage them')]] as const)
-                : ([['accounts', '🎯', t('精准获客', 'Precise'), t('填同行账号或指定视频/帖子链接,采集评论区里的人再逐个互动', 'Competitor accounts or a post URL — harvest its commenters, then engage them')],
-                    ['keywords', '🔍', t('关键词获客', 'Keyword'), t('按赛道关键词搜视频,采集评论区里的人', 'From videos found by niche keywords')],
-                    ...(liveSupported ? [['live', '📺', t('直播间获客', 'Live room'), t('停在同行直播间里,收发弹幕/进场的观众再逐个互动', 'Stay in live rooms and collect viewers who chat or join')]] : [])] as const)
+                : ([['accounts', '🎯', t('精准获客', 'Precise'), liveSupported
+                      ? t('填同行账号、指定视频/图文链接或直播间链接:收评论区 / 直播间里的人再逐个互动', 'Competitor accounts, post links or live rooms — collect commenters / live viewers, then engage them')
+                      : t('填同行账号或指定视频/帖子链接,采集评论区里的人再逐个互动', 'Competitor accounts or a post URL — harvest its commenters, then engage them')],
+                    ['keywords', '🔍', t('关键词获客', 'Keyword'), t('按赛道关键词搜视频,采集评论区里的人', 'From videos found by niche keywords')]] as const)
               ).map(([m, icon, title, desc]) => (
-                <button key={m} type="button" onClick={() => setMode(m as any)}
+                <button key={m} type="button" onClick={() => setMode(m)}
                   className={`text-left p-3 rounded-xl border transition-colors ${mode === m ? 'border-cyan-500 bg-cyan-500/5' : 'border-gray-200 dark:border-gray-700 hover:border-cyan-500/40'}`}>
                   <div className="text-sm font-semibold dark:text-white mb-0.5">{icon} {title}</div>
                   <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">{desc}</div>
@@ -471,31 +471,19 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               ))}
             </div>
 
-            {mode === 'live' ? (
-              <div className="space-y-3">
-                <div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                  {platform === 'douyin'
-                    ? t('填抖音直播间链接(如 https://live.douyin.com/123456789),一行一个,最多 20 个。所选执行账号都会去这些直播间收人;执行账号要在网页端登录,否则看不到观众账号。',
-                        'Douyin live room links (e.g. https://live.douyin.com/123456789), one per line, max 20. Executing accounts must be logged in on the web.')
-                    : t('填 TikTok 直播间链接(如 https://www.tiktok.com/@xxx/live)或主播账号,一行一个,最多 20 个。所选执行账号都会去这些直播间收人。',
-                        'TikTok live room links (e.g. https://www.tiktok.com/@xxx/live) or host handles, one per line, max 20.')}
-                </div>
-                <textarea value={liveText} onChange={(e) => setLiveText(e.target.value)} rows={5} disabled={saving}
-                  placeholder={platform === 'douyin' ? 'https://live.douyin.com/123456789' : 'https://www.tiktok.com/@xxx/live'}
-                  className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-3 py-2 font-mono" />
-                <div className="text-[11px] text-gray-500 dark:text-gray-400">{t(`已识别 ${liveList.length} 个直播间`, `${liveList.length} live room(s) recognised`)}</div>
-                <div className="rounded-xl border border-gray-200 dark:border-gray-800 px-3">
-                  {numRow(t('每个直播间最多停留(分钟)', 'Max minutes per live room'),
-                    t('收够人数会提前离开;连续 5 分钟没有新观众也会换下一间', 'Leaves early when full, or after 5 minutes with no new viewers'),
-                    liveDwell, setLiveDwell, 1, 60)}
-                </div>
-              </div>
-            ) : mode === 'accounts' ? (
+            {mode === 'accounts' ? (
               <div className="space-y-3">
                 <div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
                   {t(`每个执行账号盯自己的一批同行 —— 给下面每个账号分别填${specOf(platform).hint}(一行一个,最多 ${MAX_SEED} 个)。没填的账号本轮不采集。`,
                      `Each executing account targets its own competitors — fill ${specOf(platform).hint} per account below (one per line, max ${MAX_SEED}). Accounts left blank are skipped this run.`)}
                 </div>
+                {liveSupported && (
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                    {t('📺 直播间链接:收在直播间发弹幕 / 进场的观众;👤 同行账号、🎬 视频/图文链接:收评论区里的人。三种可以混填,会自动识别。'
+                        + (platform === 'douyin' ? '执行账号要在抖音网页端登录,否则直播间里看不到观众账号。' : ''),
+                       'Live room links collect viewers who chat or join; accounts and post links collect commenters. Mix freely — each line is recognised automatically.')}
+                  </div>
+                )}
                 {selectedAccounts.length === 0 ? (
                   <div className="text-[12px] text-amber-500">{t('请先在第 1 步选执行账号', 'Pick executing accounts in step 1 first')}</div>
                 ) : (() => {
@@ -546,7 +534,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
                           <div className="flex items-center justify-between mb-1.5 gap-2">
                             <div className="text-xs text-gray-600 dark:text-gray-300 min-w-0 truncate">
                               {t(`正在给「${act.nickname || act.displayName}」填`, `Editing for ${act.nickname || act.displayName}`)}
-                              <span className={`ml-1.5 ${actCnt ? 'text-gray-400' : 'text-amber-500'}`}>{actCnt ? t(`已识别 ${actCnt} 个`, `${actCnt} parsed`) : t('未填', 'empty')}</span>
+                              <span className={`ml-1.5 ${actCnt ? 'text-gray-400' : 'text-amber-500'}`}>{actCnt ? (() => {
+                                const k = countSeedKinds(parseSeedLines(seedTextFor(act.id), platform), platform);
+                                const parts = [k.live ? t(`📺直播间 ${k.live}`, `📺live ${k.live}`) : '', k.account ? t(`👤同行 ${k.account}`, `👤accounts ${k.account}`) : '', k.work ? t(`🎬作品 ${k.work}`, `🎬posts ${k.work}`) : ''].filter(Boolean);
+                                return t(`已识别:${parts.join(' · ')}`, `Parsed: ${parts.join(' · ')}`);
+                              })() : t('未填', 'empty')}</span>
                             </div>
                             {selectedAccounts.length > 1 && actCnt > 0 && (
                               <button type="button" onClick={() => applySeedToAll(act.id)} className="text-[11px] text-cyan-500 hover:underline shrink-0">{t('复制到全部账号', 'Copy to all')}</button>
@@ -601,6 +593,10 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               t('收这么多个新潜客,并对这么多个还没互动过的潜客各做 1 个动作(本地已有的不重复收;新客优先,以前收了没轮到的补上)',
                 'Collect this many new leads and give this many not-yet-engaged leads one action each (new first)'),
               maxLeads, setMaxLeads, 1, 5000)}
+            {liveSupported && mode === 'accounts' && countSeedKinds(seedList, platform).live > 0 && numRow(
+              t('每个直播间最多停留(分钟)', 'Max minutes per live room'),
+              t('在直播间里收发弹幕/进场的观众;收够人数会提前离开,连续 5 分钟没有新观众也会换下一间', 'Collects viewers who chat or join; leaves early when full or after 5 minutes with no new viewers'),
+              liveDwell, setLiveDwell, 1, 60)}
           </div>
         )}
 
@@ -672,7 +668,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 text-sm space-y-1.5 dark:text-gray-300">
               <div className="flex justify-between"><span className="text-gray-500">{t('执行账号', 'Accounts')}</span><span>{selected.size}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'live' ? t(`直播间 · ${liveList.length} 个`, `Live · ${liveList.length} rooms`) : mode === 'accounts' ? t(`精准 · ${seedList.length} 个同行`, `Precise · ${seedList.length} seeds`) : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t('获客模式', 'Mode')}</span><span>{mode === 'accounts' ? (() => {
+                const k = countSeedKinds(seedList, platform);
+                const parts = [k.live ? t(`直播间 ${k.live}`, `live ${k.live}`) : '', k.account ? t(`同行 ${k.account}`, `accounts ${k.account}`) : '', k.work ? t(`作品 ${k.work}`, `posts ${k.work}`) : ''].filter(Boolean);
+                return t(`精准 · ${parts.join(' · ') || '0'}`, `Precise · ${parts.join(' · ') || '0'}`);
+              })() : t('关键词 · 跟随账号设置', 'Keyword · from account settings')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次潜客数', 'Leads')}</span><span>{clampInt(maxLeads, 1, 5000)}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">{t('本次总量', 'Totals')}</span><span>{[
                 clampInt(maxLikes,0,5000) > 0 ? `👍${clampInt(maxLikes,0,5000)}` : null,
