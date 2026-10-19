@@ -936,6 +936,9 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 <div className="fixed inset-0 z-40" onClick={() => setKernelMenuOpen(false)} />
                 <div className="absolute right-0 mt-1 z-50 w-64 rounded-xl py-1 shadow-xl dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
                   <div className="px-3 py-1.5 text-[11px] opacity-50">{i18nService.t('mvSelectKernelVersion')}</div>
+                  {window.electron.platform === 'win32' && (kernel.available || []).some((a) => !a.installed) && (
+                    <div className="mx-3 mb-1 text-[10px] leading-snug rounded-md px-2 py-1.5 border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">⚠️ {i18nService.t('kernelWinAvTip')}</div>
+                  )}
                   {(kernel.available && kernel.available.length) ? kernel.available.map((a) => {
                     const isSel = a.version === selectedVersion;
                     return (
@@ -1627,6 +1630,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             ) : (
               <>
                 <div className="text-sm opacity-70 my-3">{i18nService.t('mvKernelNeedMsg').replace('{ver}', selectedVersion ? i18nService.t('mvWillDownloadVer').replace('{v}', selectedVersion) : '')}</div>
+                {/* Windows:杀毒软件 / 360 常把内核文件当可疑程序删掉或拦截 → 安装失败(2026-10-19 用户要求提示) */}
+                {window.electron.platform === 'win32' && <div className="text-xs leading-relaxed rounded-lg px-3 py-2 mb-3 border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">⚠️ {i18nService.t('kernelWinAvTip')}</div>}
                 {(kernelBusy || kernelPct > 0) && (
                   <div className="mb-3"><div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"><div className="h-full bg-claude-accent transition-all duration-200" style={{ width: `${Math.max(2, kernelPct)}%` }} /></div><div className="text-xs opacity-60 mt-1">{kernelMsg || i18nService.t('mvPreparing')}{kernelBusy ? ` · ${kernelPct}%` : ''}</div></div>
                 )}

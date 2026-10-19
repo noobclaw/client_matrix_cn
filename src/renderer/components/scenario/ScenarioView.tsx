@@ -2723,6 +2723,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           <div className="w-[28rem] max-w-full rounded-2xl p-6 dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-base font-semibold mb-2 dark:text-white">🧬 {i18nService.t('svKernelTitle')}</div>
             <div className="text-sm text-gray-600 dark:text-gray-300 mb-5 leading-relaxed">{i18nService.t('svKernelBody')}</div>
+            {/* Windows:杀毒软件 / 360 常把内核文件当可疑程序删掉或拦截 → 安装失败(2026-10-19 用户要求提示) */}
+            {window.electron.platform === 'win32' && <div className="text-xs leading-relaxed rounded-lg px-3 py-2 mb-3 border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">⚠️ {i18nService.t('kernelWinAvTip')}</div>}
             {(matrixKernelBusy || matrixKernelPct > 0 || matrixKernelMsg) && (
               <div className="mb-4">
                 <div className="h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden"><div className="h-full bg-violet-500 transition-all duration-200" style={{ width: `${Math.max(2, matrixKernelPct)}%` }} /></div>
