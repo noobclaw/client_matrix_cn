@@ -4,7 +4,7 @@
  * 对应后端 tiktok_comment_like 剧本:每个执行账号逐条打开用户粘贴的作品(视频/图文),
  * 打开评论区逐屏往下翻,给每位留言者的评论点赞,直到本号本次点赞上限或评论翻完。
  *
- *   Step 1 — 粘贴作品链接(每行 1 个,1-20 个)+ 每个账号本次最多点赞数(1-500,默认 100)
+ *   Step 1 — 粘贴作品链接(每行 1 个,1-20 个)+ 每个账号本次最多点赞数(1-5000,默认 100)
  *   Step 2 — 选执行账号(可多选)
  *   Step 3 — 运行频率 + 摘要 + 条款
  *
@@ -19,7 +19,7 @@ type WizardStep = 1 | 2 | 3;
 
 export const COMMENT_LIKE_MAX_LINKS = 20;
 export const COMMENT_LIKE_MAX_MIN = 1;
-export const COMMENT_LIKE_MAX_MAX = 500;
+export const COMMENT_LIKE_MAX_MAX = 5000; // 和 main/libs/matrix/types.ts COMMENT_LIKE_LIMITS.maxMax 一致
 export const COMMENT_LIKE_MAX_DEFAULT = 100;
 
 export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }

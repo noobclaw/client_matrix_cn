@@ -309,7 +309,7 @@ export interface BinanceRepostConfig {
 export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report' | 'comment_like';
 
 /** 作品评论区点赞(comment_like)的约束:客户端存盘校验 + 剧本再兜一层。 */
-export const COMMENT_LIKE_LIMITS = { maxLinks: 20, maxMin: 1, maxMax: 500, maxDefault: 100 } as const;
+export const COMMENT_LIKE_LIMITS = { maxLinks: 20, maxMin: 1, maxMax: 5000, maxDefault: 100 } as const;
 
 /** 一条 Report:被举报的作品(视频/图文)或账号链接 + 抖音原文原因/具体类型 + 描述(用户手填,原样提交)。
  *  reason / subReason 必须是 reportTaxonomy.ts 里的抖音原文选项。 */
@@ -391,7 +391,7 @@ export interface MatrixTask {
   binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
   leadEngage?: LeadEngageConfig;   // 仅 lead_engage 用:定向获客配置
   urls?: string[];                 // video_download:待下载视频链接清单;comment_like:要点赞评论区的作品链接(1-20)
-  commentLikeMax?: number;         // 仅 comment_like 用:每个账号每次运行最多点赞几条评论(1-500,默认 100)
+  commentLikeMax?: number;         // 仅 comment_like 用:每个账号每次运行最多点赞几条评论(1-5000,默认 100)
   reportItems?: ReportItem[];      // 仅 report 用:1-4 条举报条目
   // 仅 report 用:最近一次正式执行时间(展示用,不锁定)。
   reportExecutedAt?: number;

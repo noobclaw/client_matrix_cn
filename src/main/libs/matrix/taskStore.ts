@@ -89,7 +89,7 @@ export interface SaveTaskInput {
   leadEngage?: LeadEngageConfig;   // lead_engage 用:定向获客配置
   urls?: string[];                 // video_download 用:待下载视频链接清单
   reportItems?: ReportItem[];      // report 用:1-4 条举报条目
-  commentLikeMax?: number;         // comment_like 用:每号每次最多点赞数(1-500)
+  commentLikeMax?: number;         // comment_like 用:每号每次最多点赞数(1-5000)
   concurrency?: number;
   frequency: MatrixTaskFrequency;
 }
