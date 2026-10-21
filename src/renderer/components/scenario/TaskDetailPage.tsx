@@ -1960,6 +1960,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           const sid = String(scenario?.id || '');
                           if (/_reply_fans_comment$/.test(sid)) return <>💬 {ap.comment?.done ?? 0} {i18nService.t('tdRepliesWord')}</>;
                           if (/_report$/.test(sid)) return <>📋 {(ap as any).report?.done ?? 0}/{(ap as any).report?.target ?? 0} {i18nService.t('rpWordSubmitted')}</>;
+                          // 作品评论区点赞:只有点赞这一个动作,别画 ➕ 关注 / 💬 评论的 0/0。
+                          if (/_comment_like$/.test(sid)) return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0}</>;
                           if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {i18nService.t('tdVideoDownloadWord')}</span>;
                           if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {i18nService.t('tdImageTextWord')}</span>;
                           if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {i18nService.t('tdViralRewriteWord')}</span>;
