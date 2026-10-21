@@ -48,6 +48,8 @@ const WIN_FFMPEG_URL =
 // (e.g. 8.x) so we never have to chase version numbers. arch token is the
 // site's own: aarch64 -> "arm64", x86_64 -> "amd64".
 const MAC_FFMPEG_BASE = 'https://ffmpeg.martin-riedl.de/redirect/latest/macos';
+// Fallback when martin-riedl.de is down: GitHub-hosted static builds (gzipped single binary).
+const MAC_FFMPEG_FALLBACK_BASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0';
 function macArchToken(triple) {
   if (triple.startsWith('aarch64') || triple.includes('arm64')) return 'arm64';
   return 'amd64'; // x86_64-apple-darwin
@@ -153,17 +155,31 @@ function fetchMac(triple) {
     const extractDir = path.join(tmp, 'ffmpeg-extracted');
     fs.mkdirSync(extractDir, { recursive: true });
 
-    console.log(`[fetch-ffmpeg] Downloading ${url}`);
-    // -L follows the redirect/latest -> versioned download URL.
-    execSync(`curl -L --fail --retry 3 -o "${zipPath}" "${url}"`, { stdio: 'inherit' });
+    let src = null;
+    try {
+      console.log(`[fetch-ffmpeg] Downloading ${url}`);
+      // -L follows the redirect/latest -> versioned download URL.
+      execSync(`curl -L --fail --retry 3 --retry-all-errors --connect-timeout 30 -o "${zipPath}" "${url}"`, { stdio: 'inherit' });
 
-    console.log('[fetch-ffmpeg] Extracting ffmpeg…');
-    // `unzip` is preinstalled on macOS runners (and dev Macs).
-    execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'inherit' });
+      console.log('[fetch-ffmpeg] Extracting ffmpeg…');
+      // `unzip` is preinstalled on macOS runners (and dev Macs).
+      execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'inherit' });
 
-    const src = findFile(extractDir, 'ffmpeg');
-    if (!src) {
-      throw new Error(`ffmpeg not found in the downloaded archive (${url})`);
+      src = findFile(extractDir, 'ffmpeg');
+      if (!src) throw new Error(`ffmpeg not found in the downloaded archive (${url})`);
+    } catch (e) {
+      // 2026-10-21: martin-riedl.de failed on both macOS jobs twice in a row and took the whole
+      // Mac build down. Fall back to the GitHub-hosted static build (eugeneware/ffmpeg-static
+      // b6.0, checked: --enable-gpl --enable-libx264 --enable-libfreetype --enable-libass
+      // --enable-fontconfig, so H.264 / drawtext subtitles / zoompan all work).
+      const fbArch = arch === 'arm64' ? 'arm64' : 'x64';
+      const fbUrl = `${MAC_FFMPEG_FALLBACK_BASE}/ffmpeg-darwin-${fbArch}.gz`;
+      console.warn(`[fetch-ffmpeg] primary source failed (${e && e.message}); falling back to ${fbUrl}`);
+      const gzPath = path.join(tmp, 'ffmpeg-fallback.gz');
+      execSync(`curl -L --fail --retry 3 --retry-all-errors --connect-timeout 30 -o "${gzPath}" "${fbUrl}"`, { stdio: 'inherit' });
+      execSync(`gunzip -f "${gzPath}"`, { stdio: 'inherit' });
+      src = gzPath.replace(/\.gz$/, '');
+      if (!fs.existsSync(src)) throw new Error(`fallback ffmpeg missing after gunzip (${fbUrl})`);
     }
     fs.copyFileSync(src, ffmpegOut);
     fs.chmodSync(ffmpegOut, 0o755); // ensure the bundled binary stays executable
