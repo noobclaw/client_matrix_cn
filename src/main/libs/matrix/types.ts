@@ -304,7 +304,12 @@ export interface BinanceRepostConfig {
 // 币安广场批量搬运 = binance_repost(1 个采集号从源平台搜+下 N 条 → N 个币安号各领一条 AI 仿写 + 配图 → 发币安广场)。
 // 举报 = report(白名单功能,admin 配 UID 才可见;目前仅抖音):1-4 条链接各配原因+描述,
 //   只能选【1 个】账号执行,只能手动触发(每次逐条只提交一次),不定时、不重试;可编辑、可再次运行。
-export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report';
+// 作品评论区点赞 = comment_like(目前仅 TikTok,剧本 tiktok_comment_like):粘贴 1-20 条作品链接(urls),
+//   每个执行账号逐条打开、翻评论区给每位留言者的评论点赞,每号每次最多 commentLikeMax 个。
+export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report' | 'comment_like';
+
+/** 作品评论区点赞(comment_like)的约束:客户端存盘校验 + 剧本再兜一层。 */
+export const COMMENT_LIKE_LIMITS = { maxLinks: 20, maxMin: 1, maxMax: 500, maxDefault: 100 } as const;
 
 /** 一条 Report:被举报的作品(视频/图文)或账号链接 + 抖音原文原因/具体类型 + 描述(用户手填,原样提交)。
  *  reason / subReason 必须是 reportTaxonomy.ts 里的抖音原文选项。 */
@@ -385,7 +390,8 @@ export interface MatrixTask {
   instagramPost?: InstagramPostConfig; // 仅 instagram_post 用:Instagram 自动发帖配置(含数据源,图必带)
   binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
   leadEngage?: LeadEngageConfig;   // 仅 lead_engage 用:定向获客配置
-  urls?: string[];                 // 仅 video_download 用:用户粘贴的待下载视频链接清单
+  urls?: string[];                 // video_download:待下载视频链接清单;comment_like:要点赞评论区的作品链接(1-20)
+  commentLikeMax?: number;         // 仅 comment_like 用:每个账号每次运行最多点赞几条评论(1-500,默认 100)
   reportItems?: ReportItem[];      // 仅 report 用:1-4 条举报条目
   // 仅 report 用:最近一次正式执行时间(展示用,不锁定)。
   reportExecutedAt?: number;

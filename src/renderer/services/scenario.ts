@@ -230,6 +230,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const isRepost = t?.type === 'binance_repost';
   const isLead = t?.type === 'lead_engage';
   const isReport = t?.type === 'report';
+  const isCommentLike = t?.type === 'comment_like';   // 作品评论区点赞(tiktok_comment_like)
   const reportItems: any[] = Array.isArray(t?.reportItems) ? t.reportItems : [];
   const fn = t?.funnel || {};
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
@@ -242,8 +243,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     //   不在客户端注册表里,scenario_id 映射不到)。之前没带 → 过滤后所有任务全部隐身(用户实测)。
     platform: t.platform,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
-    scenario_id: isReport ? `${t.platform}_report` : isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : isLead ? `${t.platform}_lead_engage` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
-    track: isReport ? 'report' : isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : isLead ? 'lead_engage' : 'matrix',
+    scenario_id: isCommentLike ? `${t.platform}_comment_like` : isReport ? `${t.platform}_report` : isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : isLead ? `${t.platform}_lead_engage` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
+    track: isCommentLike ? 'comment_like' : isReport ? 'report' : isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : isLead ? 'lead_engage' : 'matrix',
     // 定向获客配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     lead_engage: isLead ? t.leadEngage : undefined,
     // 举报:条目 + 执行锁时间透传(详情页展示「已执行,不可再运行」、编辑回填)。
@@ -273,8 +274,10 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     keywords: [],
     persona: '',
     // video_download:粘贴的链接清单(详情页/编辑回填用),daily_count = 链接数。
-    urls: isDownload ? dlUrls : undefined,
-    daily_count: isDownload ? (dlUrls.length || 1) : isReport ? (reportItems.length || 1) : 1,
+    urls: (isDownload || isCommentLike) ? dlUrls : undefined,
+    // comment_like:每号本次最多点赞数(详情页展示 + 编辑回填)。
+    comment_like_max: isCommentLike ? (t.commentLikeMax || 100) : undefined,
+    daily_count: (isDownload || isCommentLike) ? (dlUrls.length || 1) : isReport ? (reportItems.length || 1) : 1,
     variants_per_post: 1,
     daily_time: '',
     run_interval: t.frequency,
@@ -378,6 +381,25 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       funnelByAccount: input.funnel_by_account,
       concurrency: accountIds.length,
       frequency: input.run_interval || 'daily_random',
+      enabled: input.enabled !== false,
+    };
+  }
+  // 作品评论区点赞(scenario_id 以 _comment_like 结尾):保持 type='comment_like' + 透传 urls / commentLikeMax,
+  // 否则经 updateTask 兜底(如列表里改启用)会被改成 engage、链接清单丢失。
+  if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_comment_like')) {
+    const cPlatform = input.platform || String(input.scenario_id).replace(/_comment_like$/, '') || 'tiktok';
+    const urls: string[] = Array.isArray(input.urls) ? input.urls : [];
+    return {
+      id,
+      platform: cPlatform,
+      type: 'comment_like',
+      name: input.name || `TikTok 作品评论区点赞 · ${urls.length} 条`,
+      accountIds,
+      quota: {},
+      urls,
+      commentLikeMax: (input as any).comment_like_max,
+      concurrency: (input as any).concurrency || 1,
+      frequency: input.run_interval || 'once',
       enabled: input.enabled !== false,
     };
   }
@@ -604,6 +626,7 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
   const mk = (id: string, name_zh: string, icon: string) => ({ id, name_zh, name_en: '', icon, platform: p });
   switch (type) {
     case 'reply_fan':      return mk(`${p}_reply_fans_comment`, MATRIX_REPLY_META[p]?.name_zh || '自动回复粉丝', MATRIX_REPLY_META[p]?.icon || '💌');
+    case 'comment_like':   return mk(`${p}_comment_like`, 'TikTok 作品评论区点赞', '💗');
     case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '抖音Report', MATRIX_REPORT_META[p]?.icon || '📋');
     case 'video_download': return mk(`${p}_video_download`, MATRIX_DOWNLOAD_META[p]?.name_zh || '视频下载', MATRIX_DOWNLOAD_META[p]?.icon || '⬇️');
     case 'image_text':     return mk(`${p}_image_text`, MATRIX_IMAGETEXT_META[p]?.name_zh || '图文创作', MATRIX_IMAGETEXT_META[p]?.icon || '📝');
@@ -813,7 +836,12 @@ class ScenarioService {
           id: rsid, version: '1.0.0', platform, workflow_type: 'binance_repost_creation', category: 'creation',
           name_zh: MATRIX_REPOST_META[platform] || '批量搬运', name_en: '', icon: '♻️',
         }));
-      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthReport, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost] as unknown as Scenario[];
+      // 「作品评论区点赞」剧本快照(目前仅 TikTok),让 comment_like 任务能归到 TikTok tab、详情页认得出。
+      const synthCommentLike = have.has('tiktok_comment_like') ? [] : [{
+        id: 'tiktok_comment_like', version: '1.0.0', platform: 'tiktok', workflow_type: 'comment_like', category: 'engagement',
+        name_zh: 'TikTok 作品评论区点赞', name_en: 'TikTok Comment Liker', icon: '💗',
+      }];
+      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthReport, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost, ...synthCommentLike] as unknown as Scenario[];
     }
     try {
       const res = await window.electron.scenario.listScenarios();

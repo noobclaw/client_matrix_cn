@@ -470,7 +470,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // 没被算进去,导致它在列表里还显示 track 名 + persona 摘要(其实用户没填,
               // 是 wizard fallback 的默认人设),完全跟 X / XHS link 模式不一致。
               // 引入 isAnyLinkRewrite 后:隐藏 track 行 / 隐藏 persona snippet / 改显 URL 列表。
-              const isAnyLinkRewrite = isLinkRewriteTwitter || isXhsLinkMode || isBinanceLinkRewrite || isVideoDownload;
+              // 作品评论区点赞(comment_like):也是「粘 URL 列表」任务,列表里显示链接;但它可以定时跑,不强制显示「手动」。
+              const isCommentLike = /_comment_like$/.test(String(sid || ''));
+              const isAnyLinkRewrite = isLinkRewriteTwitter || isXhsLinkMode || isBinanceLinkRewrite || isVideoDownload || isCommentLike;
               // v5.x+: 抖音图文创作场景没有 track / persona / keywords 概念,
               // 只看 source_segments[3]。MyTasksPage 跟 TaskDetailPage 对齐,
               // 隐藏 persona snippet 和 track 行(老任务 task.persona 字段还在
@@ -546,6 +548,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', k: 'scnXhsReplyFans', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', k: 'scnXhsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
                 if (sid === 'douyin_report')                return { icon: '📋', k: 'svCardReportTitle', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'tiktok_comment_like')          return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 作品评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 作品留言區按讚' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (sid === 'douyin_video_download')        return { icon: '⬇️', k: 'scnDyDownload', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', k: 'scnTtDownload', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', k: 'scnKsEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
@@ -600,6 +603,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const track = TRACK_META[task.track];
               const subTitle = (() => {
                 if (isVideoDownload) return i18nService.t('subVideoLinks');
+                if (isCommentLike) return i18nService.currentLanguage === 'zh' ? '作品链接 · 翻评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? '作品連結 · 翻留言區按讚' : 'Post links · like every comment';
                 if (isLinkRewriteTwitter) return i18nService.t('subManualTweet');
                 if (isXhsLinkMode) return i18nService.t('subManualXhs');
                 if (track) return trackDisplayName(task.track, i18nService.currentLanguage);
@@ -607,7 +611,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 // 会显示原始英文 id(用户实拍「facebook_post」)。改用已翻译的类型徽章名兜底,任何 UI 语言都可读。
                 return scenario?.name_zh || typeLabelText;
               })();
-              const subIcon = track?.icon || (isVideoDownload ? '⬇️' : (isXhsLinkMode || isLinkRewriteTwitter ? '🔗' : scenario?.icon || '🔥'));
+              const subIcon = track?.icon || (isCommentLike ? '💗' : isVideoDownload ? '⬇️' : (isXhsLinkMode || isLinkRewriteTwitter ? '🔗' : scenario?.icon || '🔥'));
               const personaSnippet = (task.persona || '').trim().split('\n')[0].slice(0, 80);
               const interval = (task as any).run_interval || 'daily_random';
 
@@ -647,7 +651,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                           {i18nService.t('mtxRunning')}
                         </span>
-                      ) : interval === 'once' || isAnyLinkRewrite ? (
+                      ) : interval === 'once' || (isAnyLinkRewrite && !isCommentLike) ? (
                         <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
                           ✋ {i18nService.t('mtxManual')}
                         </span>

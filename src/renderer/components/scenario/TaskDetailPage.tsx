@@ -222,6 +222,12 @@ const replyStepNames = (center: string): string[] =>
 const videoDownloadStepNames = (name: string): string[] =>
   [i18nService.t('tdSnVdFactory0').replace('{name}', name), i18nService.t('tdSnVdFactory1')];
 // 定向获客 3 步(对齐 tiktok_lead_engage orchestrator 的 stepStart 1/2/3)。仅 TikTok 用,内联中英。
+// 作品评论区点赞 2 步(对齐 tiktok_comment_like orchestrator 的 stepStart 1/2)。内联中/繁/英。
+const COMMENT_LIKE_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
+  ? ['打开作品,逐条给留言点赞', '汇总报告']
+  : i18nService.currentLanguage === 'zh-TW'
+    ? ['打開作品,逐則為留言按讚', '彙總報告']
+    : ['Open each post and like every comment', 'Summary']);
 const LEAD_ENGAGE_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
   ? ['采集同行的潜在客户', '逐个触达(点赞 / 评论 / 关注)', '更新名单并生成报告']
   : ['Collect leads from competitors', 'Reach out (like / comment / follow)', 'Update roster & report']);
@@ -332,6 +338,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     //   以前只认 tiktok_lead_engage,另外四家落到下面通用的互动涨粉步骤名,
     //   详情页显示的步骤跟实际在跑的对不上。
     if (/_lead_engage$/.test(String(sid || ''))) return LEAD_ENGAGE_STEP_NAMES();
+    if (/_comment_like$/.test(String(sid || ''))) return COMMENT_LIKE_STEP_NAMES();
     // 快手 / 哔哩哔哩 流程镜像抖音,但步骤名按各自平台名生成(纯展示,scenario.id 独立),
     // 不再复用抖音常量,避免「抖音」字样串台到别的平台页。
     if (sid === 'kuaishou_auto_engage') return engageStepNames(i18nService.t('tdKuaishou'), i18nService.t('tdActsLikeFollowComment'));
@@ -781,6 +788,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       if (sid === 'instagram_lead_engage') return { icon: '🎯', label: leadZh ? 'Instagram 定向获客' : 'Instagram Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       return { icon: '🎯', label: leadZh ? '定向获客' : 'Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
+    if (sid === 'tiktok_comment_like')            return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 作品评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 作品留言區按讚' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: i18nService.t('tdTypeKuaishouAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: i18nService.t('tdTypeKuaishouVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
@@ -1199,6 +1207,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {isLinkMode ? (
                     <>
                       <div>{i18nService.t('tdSourceUrls')}: {taskUrls.length} {i18nService.t('tdCountUnit')}</div>
+                      {/_comment_like$/.test(String(task.scenario_id || '')) && (
+                        <div>💗 {i18nService.currentLanguage === 'zh' ? `每个账号每次最多点赞 ${(task as any).comment_like_max || 100} 条评论` : i18nService.currentLanguage === 'zh-TW' ? `每個帳號每次最多按讚 ${(task as any).comment_like_max || 100} 則留言` : `Up to ${(task as any).comment_like_max || 100} comment likes per account per run`}</div>
+                      )}
                       {taskUrls.map((u, i) => (
                         <div key={i} className="flex items-start gap-2 pl-4 text-[11px]">
                           <span className="text-gray-500 shrink-0 pt-0.5">{i + 1}.</span>
@@ -1863,7 +1874,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         //   还会退化成小红书,于是抖音的获客任务上挂出「自动发布到小红书」(用户 2026-08-21 实测)。
         const isLeadEngageTask = /_lead_engage$/.test(scenario?.id || '')
           || (scenario?.workflow_type as any) === 'lead_engage';
-        const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask && !isLeadEngageTask;
+        // 作品评论区点赞同理:只点赞,没有草稿/发布。
+        const isCommentLikeTask = /_comment_like$/.test(String(task.scenario_id || ''));
+        const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask && !isLeadEngageTask && !isCommentLikeTask;
         const isXhsViral = scenario?.platform === 'xhs';
         const autoUploadLabel = isXhsViral
           ? i18nService.t('tdAutoUploadDrafts')
@@ -2236,6 +2249,11 @@ function formatActionBreakdown(
   if (/_(?:re)?post$/.test(sid)) {
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
+  }
+  // 作品评论区点赞(*_comment_like):只产生「点赞数」,显示 👍 N 点赞,不显示关注/评论。
+  if (/_comment_like$/.test(sid)) {
+    const n = counts && typeof counts.like === 'number' ? counts.like : 0;
+    return `👍 ${n} ${i18nService.t('tdLblLike')}`;
   }
   // 抖音Report(*_report):只产生「已提交条数」,不显示赞/关注/评论。
   if (/_report$/.test(sid)) {

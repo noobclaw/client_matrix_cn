@@ -45,6 +45,7 @@ import MatrixTaskWizard, { type WizardAccount } from '../matrix/MatrixTaskWizard
 import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 import MatrixLeadEngageWizard from '../matrix/MatrixLeadEngageWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
+import MatrixCommentLikeWizard from '../matrix/MatrixCommentLikeWizard';
 import MatrixReportWizard from '../matrix/MatrixReportWizard';
 import { MATRIX_REPORT_SCENARIO_ID } from '../../services/scenario';
 import MatrixImageTextWizard, { type ImageTextWizardSave } from '../matrix/MatrixImageTextWizard';
@@ -98,6 +99,8 @@ const LEAD_FOLLOW_WORD = (p: PlatformId | string): [string, string] =>
 // 抖音(页面 fetch wrapper 签名拿 detail)/快手(读 <video> src)/哔哩哔哩(playurl html5 单文件 mp4)/
 // TikTok(SSR __UNIVERSAL_DATA__ + 多级 fallback,须 VPN 真机)。都走【主站】登录态,取主站号。
 const MATRIX_VIDEO_DOWNLOAD_PLATFORMS = new Set<PlatformId>(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'xhs']);
+// 后端有 <platform>_comment_like「作品评论区点赞」剧本的平台(粘贴作品链接 → 多账号逐条翻评论区给留言点赞)。目前仅 TikTok。
+const MATRIX_COMMENT_LIKE_PLATFORMS = new Set<PlatformId>(['tiktok']);
 // 后端 backend/matrix/scenarios 有 <platform>_image_text「图文创作」剧本的平台(N 号各自生成图文+发布)。
 // 抖音(creator.douyin.com)/小红书(creator.xiaohongshu.com)/视频号(channels.weixin.qq.com 助手「发表新动态」,
 // wujie 微前端 shadowRoot 发布)/头条号(mp.toutiao.com 微头条,byte-design 普通页,无标题/封面)。
@@ -338,6 +341,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixDownloadAccounts, setMatrixDownloadAccounts] = useState<WizardAccount[]>([]);
   const [matrixDownloadAccountsLoading, setMatrixDownloadAccountsLoading] = useState(false);
   const [matrixDownloadTask, setMatrixDownloadTask] = useState<any | null>(null);
+  // 「作品评论区点赞」向导(comment_like,目前仅 TikTok:作品链接 + 每号点赞上限 + 多账号)。
+  const [matrixCommentLikePlatform, setMatrixCommentLikePlatform] = useState<string | null>(null);
+  const [matrixCommentLikeAccounts, setMatrixCommentLikeAccounts] = useState<WizardAccount[]>([]);
+  const [matrixCommentLikeAccountsLoading, setMatrixCommentLikeAccountsLoading] = useState(false);
+  const [matrixCommentLikeTask, setMatrixCommentLikeTask] = useState<any | null>(null);
   // 「举报」向导(白名单功能;可多账号、1-4 条、只能手动触发)
   const [matrixReportPlatform, setMatrixReportPlatform] = useState<string | null>(null);
   const [matrixReportAccounts, setMatrixReportAccounts] = useState<WizardAccount[]>([]);
@@ -702,6 +710,46 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setMatrixDownloadTask(null);
     await refreshAll();
     // 新建成功 → 直接进新任务详情(而不是回平台 tab 的任务列表),用户要求;拿不到新 id 才回退到管理页。
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
+  };
+  // 「作品评论区点赞」向导:执行账号取主站号(同定向获客)。
+  const openMatrixCommentLikeWizard = async (platform: string, editTask?: any) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (!editTask && await hasDupTask(platform, 'comment_like', '作品评论区点赞')) return;
+    setMatrixCommentLikeAccounts([]);
+    setMatrixCommentLikeAccountsLoading(true);
+    setMatrixCommentLikeTask(editTask ? {
+      id: editTask.id,
+      name: editTask.name,
+      accountIds: editTask.account_ids || [],
+      urls: Array.isArray(editTask.urls) ? editTask.urls : [],
+      commentLikeMax: editTask.comment_like_max,
+      concurrency: editTask.concurrency,
+      frequency: editTask.run_interval,
+    } : null);
+    setMatrixCommentLikePlatform(platform);
+    void ensureMatrixKernel();
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixCommentLikeAccounts(accs.filter((a) => leadAccountFilter(a, platform)).map(mapWizardAccount));
+    } catch { setMatrixCommentLikeAccounts([]); }
+    finally { setMatrixCommentLikeAccountsLoading(false); }
+  };
+  const openMatrixCommentLikeWizardEdit = (task: any) => openMatrixCommentLikeWizard((task?.platform as string) || 'tiktok', task);
+  const saveMatrixCommentLikeTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; urls: string[]; commentLikeMax: number }) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
+    const m = (window as any).electron?.matrix;
+    const r = await m?.saveTask?.({ id: matrixCommentLikeTask?.id, platform: matrixCommentLikePlatform, type: 'comment_like', name: input.name, accountIds: input.accountIds, urls: input.urls, commentLikeMax: input.commentLikeMax, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) {
+      if (r?.error === 'duplicate_type') { const dp = matrixCommentLikePlatform; setMatrixCommentLikePlatform(null); setMatrixCommentLikeTask(null); setDupNotice({ platform: dp as string, label: '作品评论区点赞' }); return; }
+      throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', comment_like_link_count: '作品链接需 1-20 条有效的 TikTok 链接', comment_like_no_account: '请至少选 1 个执行账号', comment_like_platform_unsupported: '目前仅支持 TikTok' } as any)[r?.error] || r?.error || '保存失败');
+    }
+    const wasEdit = !!matrixCommentLikeTask?.id;
+    const plat = matrixCommentLikePlatform;
+    setMatrixCommentLikePlatform(null);
+    setMatrixCommentLikeTask(null);
+    await refreshAll();
     if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
   };
   // 「举报」向导(白名单功能):账号取主站 scope(同视频下载)。每张举报单是独立一次性单据,不做「同类型已存在」拦截。
@@ -1658,7 +1706,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { if (/_report$/.test(String(task.scenario_id || ''))) { void openMatrixReportWizardEdit(task); } else if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_report$/.test(String(task.scenario_id || ''))) { void openMatrixReportWizardEdit(task); } else if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else if (/_comment_like$/.test(String(task.scenario_id || ''))) { void openMatrixCommentLikeWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -1823,6 +1871,38 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500 text-white text-sm font-bold hover:bg-cyan-600 shadow-sm shadow-cyan-500/25 transition-all active:scale-95"
                 >
                   🎯 {i18nService.currentLanguage === 'zh' ? '开始获客' : 'Start'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                  className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                >
+                  {i18nService.t('svHasTasks')}
+                </button>
+              </div>
+            </div>
+          )}
+          {/* 作品评论区点赞(目前仅 TikTok)—— 粘贴作品链接,多账号逐条翻评论区给每位留言者点赞。 */}
+          {matrixMode && MATRIX_COMMENT_LIKE_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-pink-500/30 bg-pink-500/5 dark:bg-pink-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-pink-600 dark:text-pink-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-pink-500" /> {i18nService.currentLanguage === 'zh' ? '评论区互动' : i18nService.currentLanguage === 'zh-TW' ? '留言區互動' : 'Comment engagement'}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">💗 {platLabel} · {i18nService.currentLanguage === 'zh' ? '作品评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? '作品留言區按讚' : 'Comment Liker'}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                {i18nService.currentLanguage === 'zh'
+                  ? <>粘贴 TikTok 作品(视频/图文)链接,逐条打开,<strong>翻评论区给每位留言者的评论点赞</strong>。</>
+                  : i18nService.currentLanguage === 'zh-TW'
+                    ? <>貼上 TikTok 作品(影片/圖文)連結,逐則打開,<strong>翻留言區為每位留言者的留言按讚</strong>。</>
+                    : <>Paste TikTok post links; each account opens them and <strong>likes every comment, page by page</strong>.</>}
+              </div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+                <button
+                  type="button"
+                  onClick={() => openMatrixCommentLikeWizard(currentPlatform)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-pink-500 text-white text-sm font-bold hover:bg-pink-600 shadow-sm shadow-pink-500/25 transition-all active:scale-95"
+                >
+                  💗 {i18nService.currentLanguage === 'zh' ? '开始点赞' : i18nService.currentLanguage === 'zh-TW' ? '開始按讚' : 'Start'}
                 </button>
                 <button
                   type="button"
@@ -2816,6 +2896,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               initialTask={matrixLeadTask}
               onCancel={() => { setMatrixLeadPlatform(null); setMatrixLeadTask(null); }}
               onSave={saveMatrixLeadTask}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 矩阵号作品评论区点赞向导(作品链接 + 每号上限 → 多账号 → 频率) */}
+      {matrixCommentLikePlatform && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <MatrixCommentLikeWizard
+              platformLabel={matrixCommentLikePlatform === 'tiktok' ? 'TikTok' : String(matrixCommentLikePlatform)}
+              platform={matrixCommentLikePlatform}
+              accounts={matrixCommentLikeAccounts}
+              accountsLoading={matrixCommentLikeAccountsLoading}
+              initialTask={matrixCommentLikeTask}
+              onCancel={() => { setMatrixCommentLikePlatform(null); setMatrixCommentLikeTask(null); }}
+              onSave={saveMatrixCommentLikeTask}
             />
           </div>
         </div>

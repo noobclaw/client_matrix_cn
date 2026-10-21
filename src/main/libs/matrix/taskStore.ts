@@ -10,7 +10,7 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { nextRunAt } from './matrixSchedule';
-import { REPORT_LIMITS } from './types';
+import { REPORT_LIMITS, COMMENT_LIKE_LIMITS } from './types';
 import type { ReportItem, ReportItemResult } from './types';
 import { validateReportItem } from './reportTaxonomy';
 import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, LeadEngageConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
@@ -89,6 +89,7 @@ export interface SaveTaskInput {
   leadEngage?: LeadEngageConfig;   // lead_engage 用:定向获客配置
   urls?: string[];                 // video_download 用:待下载视频链接清单
   reportItems?: ReportItem[];      // report 用:1-4 条举报条目
+  commentLikeMax?: number;         // comment_like 用:每号每次最多点赞数(1-500)
   concurrency?: number;
   frequency: MatrixTaskFrequency;
 }
@@ -168,6 +169,23 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     input = { ...input, reportItems, frequency: 'once', enabled: false, concurrency: 1, quota: {} };
   }
 
+  // 作品评论区点赞(仅 TikTok):1-20 条 TikTok 作品链接(去重)+ 每号点赞上限夹到 1-500。
+  if (input.type === 'comment_like') {
+    if (input.platform !== 'tiktok') return { ok: false, error: 'comment_like_platform_unsupported' };
+    const seen = new Set<string>();
+    const urls: string[] = [];
+    for (const raw of Array.isArray(input.urls) ? input.urls : []) {
+      const u = String(raw || '').trim();
+      if (!/^https?:\/\/([\w-]+\.)?tiktok\.com\//i.test(u) || seen.has(u)) continue;
+      seen.add(u); urls.push(u);
+    }
+    if (urls.length < 1 || urls.length > COMMENT_LIKE_LIMITS.maxLinks) return { ok: false, error: 'comment_like_link_count' };
+    if (!(input.accountIds || []).filter(Boolean).length) return { ok: false, error: 'comment_like_no_account' };
+    const n = Math.round(Number(input.commentLikeMax));
+    const commentLikeMax = Number.isFinite(n) ? Math.min(COMMENT_LIKE_LIMITS.maxMax, Math.max(COMMENT_LIKE_LIMITS.maxMin, n)) : COMMENT_LIKE_LIMITS.maxDefault;
+    input = { ...input, urls, commentLikeMax, quota: {} };
+  }
+
   if (input.id) {
     const i = tasks.findIndex((t) => t.id === input.id);
     if (i < 0) return { ok: false, error: 'task_not_found' };
@@ -200,6 +218,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       binanceRepost: input.binanceRepost ?? tasks[i].binanceRepost,
       leadEngage: input.leadEngage ?? tasks[i].leadEngage,
       urls: input.urls ?? tasks[i].urls,
+      commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : tasks[i].commentLikeMax,
       reportItems: input.type === 'report' ? reportItems : tasks[i].reportItems,
       concurrency: input.concurrency,
       frequency: input.frequency,
@@ -238,6 +257,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     binanceRepost: input.binanceRepost,
     leadEngage: input.leadEngage,
     urls: input.urls,
+    commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : undefined,
     reportItems,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',

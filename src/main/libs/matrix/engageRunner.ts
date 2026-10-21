@@ -105,7 +105,8 @@ export interface EngageTaskOptions {
   // (抖音创作者中心评论管理,不需关键词、无配额、有引流尾巴);'video_download'=视频无水印下载
   // (单账号,粘贴多个链接逐个下载,不需关键词、无配额)。缺省 'engage' 兼容旧调用。
   // 'report'=举报(白名单功能,可多账号逐个顺序执行、1-4 条链接、只能手动触发;剧本 *_report 下发需登录 + 白名单)。
-  taskType?: 'engage' | 'reply_fan' | 'video_download' | 'lead_engage' | 'report';
+  // 'comment_like'=作品评论区点赞(仅 TikTok,剧本 tiktok_comment_like):注入 ctx.task.urls + comment_like_max。
+  taskType?: 'engage' | 'reply_fan' | 'video_download' | 'lead_engage' | 'report' | 'comment_like';
   // 定向获客(lead_engage)配置。任务级(对所有执行账号相同):种子号/关键词/名额等由向导填,
   // 注入到 orchestrator 读的 ctx.task.mode/seed_accounts/max_leads/... 顶层字段。
   leadEngage?: {
@@ -137,7 +138,8 @@ export interface EngageTaskOptions {
   maxReplyPerComment?: number;
   // 每号本次运行最多回复几条(仅抖音回复粉丝剧本读它;不传 → 剧本按 100 兜底;只管本次运行,不跨运行累计)
   maxRepliesPerRun?: number;
-  urls?: string[];                 // 仅 video_download:待下载视频链接清单(注入 ctx.task.urls)
+  urls?: string[];                 // video_download:待下载视频链接清单;comment_like:作品链接(注入 ctx.task.urls)
+  commentLikeMax?: number;         // 仅 comment_like:每号本次最多点赞数(注入 ctx.task.comment_like_max)
   reportItems?: Array<{ url: string; targetType: string; reason: string; subReason?: string; description: string }>; // 仅 report:条目(注入 ctx.task.report_items)
   reportDryRun?: boolean;          // 仅 report:试运行(选原因+填描述,停在提交前;不计费)
   concurrency?: number;
@@ -378,7 +380,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
   //   其它平台(抖音/小红书等按关键词搜的互动)才要。漏掉豁免 → 账号没关键词被静默拦掉、无日志。
   // lead_engage(定向获客)自己处理来源(accounts 模式用种子号、keywords 模式用任务关键词),
   //   不读账号级 acc.keywords → 豁免这里的关键词守卫,否则账号没配关键词会被静默跳过。
-  const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.taskType !== 'report' && opts.platform !== 'binance';
+  const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.taskType !== 'report' && opts.taskType !== 'comment_like' && opts.platform !== 'binance';
   // 抖音/快手/TikTok 互动支持「刷剧模式」(binge):显式开启 or 关键词为空时,后端剧本走推荐流沉浸式互动,不需要关键词。
   const bingeCapable = ['douyin', 'kuaishou', 'tiktok'].includes(opts.platform) && (opts.taskType === 'engage' || !opts.taskType);
   // 🎯 精准模式的链接是用户给的,跟账号配没配关键词无关 —— 不豁免的话 bilibili/youtube
@@ -493,6 +495,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       max_replies_per_run: opts.maxRepliesPerRun,
       // video_download 剧本读 task.urls(用户粘贴的待下载链接清单)。
       urls: Array.isArray(opts.urls) ? opts.urls : [],
+      // comment_like 剧本读 task.comment_like_max(每号本次最多点赞数;缺省剧本按 100)。
+      comment_like_max: opts.commentLikeMax,
       // report 剧本读 task.report_items(1-4 条 {url, reason, description},用户手填原样提交)。
       report_items: Array.isArray(opts.reportItems) ? opts.reportItems.map((it) => ({
         url: it.url, target_type: it.targetType, reason: it.reason, sub_reason: it.subReason || '', description: it.description,
@@ -845,6 +849,7 @@ export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageRepo
   // 定向获客固定用 tiktok_lead_engage(目前只 TikTok 有这张卡)。
   const scenarioId = opts.scenarioId
     || (opts.taskType === 'lead_engage' ? `${opts.platform}_lead_engage` : '')
+    || (opts.taskType === 'comment_like' ? `${opts.platform}_comment_like` : '')
     || ENGAGE_SCENARIO_ID[opts.platform] || `${opts.platform}_auto_engage`;
   // 举报剧本要带登录 token(后端按白名单 UID 放行);其它剧本保持原样不带。
   const packToken = opts.taskType === 'report' ? (opts.authToken || getNoobClawAuthToken() || undefined) : undefined;
