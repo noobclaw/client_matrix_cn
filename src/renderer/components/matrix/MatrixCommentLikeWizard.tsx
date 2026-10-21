@@ -73,7 +73,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: validLinks.length === 0
-      ? { ok: false, reason: L('请至少粘贴 1 个有效的 TikTok 作品链接', '請至少貼上 1 個有效的 TikTok 作品連結', 'Paste at least one valid TikTok post link') }
+      ? { ok: false, reason: L('请至少粘贴 1 个有效的 TikTok 作品或主页链接', '請至少貼上 1 個有效的 TikTok 作品或主頁連結', 'Paste at least one valid TikTok post or profile link') }
       : validLinks.length > COMMENT_LIKE_MAX_LINKS
         ? { ok: false, reason: L(`最多 ${COMMENT_LIKE_MAX_LINKS} 个链接`, `最多 ${COMMENT_LIKE_MAX_LINKS} 個連結`, `At most ${COMMENT_LIKE_MAX_LINKS} links`) }
         : { ok: true },
@@ -121,19 +121,19 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
           <>
             <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-pink-500/30 bg-pink-500/5 text-pink-700 dark:text-pink-300">
               💗 {L(
-                '粘贴 TikTok 作品(视频/图文)链接。开始后每个执行账号会逐条打开作品,打开评论区一屏一屏往下翻,给每位留言者的评论点赞(已赞过的、自己的留言会跳过)。需要开 VPN。',
-                '貼上 TikTok 作品(影片/圖文)連結。開始後每個執行帳號會逐則打開作品,打開留言區一屏一屏往下翻,為每位留言者的留言按讚(已讚過的、自己的留言會跳過)。需要開 VPN。',
-                'Paste TikTok post (video/photo) links. Each account opens them one by one, scrolls the comment section page by page and likes every commenter\'s comment (already-liked ones and its own are skipped). VPN required.',
+                '粘贴 TikTok 作品(视频/图文)链接,或博主主页链接(会自动打开他的主页、跳过置顶作品,逐条处理他最近的作品,每个主页最多 30 条)。开始后每个执行账号会逐条打开作品,打开评论区一屏一屏往下翻,给每位留言者的评论点赞(已赞过的、自己的留言会跳过)。需要开 VPN。',
+                '貼上 TikTok 作品(影片/圖文)連結,或博主主頁連結(會自動打開他的主頁、跳過置頂作品,逐則處理他最近的作品,每個主頁最多 30 則)。開始後每個執行帳號會逐則打開作品,打開留言區一屏一屏往下翻,為每位留言者的留言按讚(已讚過的、自己的留言會跳過)。需要開 VPN。',
+                'Paste TikTok post (video/photo) links or creator profile links (a profile expands to the creator\'s latest posts, pinned ones skipped, up to 30 per profile). Each account opens them one by one, scrolls the comment section page by page and likes every commenter\'s comment (already-liked ones and its own are skipped). VPN required.',
               )}
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                🔗 {L('作品链接', '作品連結', 'Post links')}<span className="text-xs text-gray-400 font-normal ml-1">{L(`每行 1 个,最多 ${COMMENT_LIKE_MAX_LINKS} 个`, `每行 1 個,最多 ${COMMENT_LIKE_MAX_LINKS} 個`, `one per line, up to ${COMMENT_LIKE_MAX_LINKS}`)}</span>
+                🔗 {L('作品或博主主页链接', '作品或博主主頁連結', 'Post or profile links')}<span className="text-xs text-gray-400 font-normal ml-1">{L(`每行 1 个,最多 ${COMMENT_LIKE_MAX_LINKS} 个`, `每行 1 個,最多 ${COMMENT_LIKE_MAX_LINKS} 個`, `one per line, up to ${COMMENT_LIKE_MAX_LINKS}`)}</span>
               </label>
               <textarea
                 value={linksText}
                 onChange={(e) => setLinksText(e.target.value)}
-                placeholder={'https://www.tiktok.com/@user/video/...\nhttps://www.tiktok.com/@user/photo/...\nhttps://vm.tiktok.com/...'}
+                placeholder={'https://www.tiktok.com/@user/video/...\nhttps://www.tiktok.com/@user/photo/...\nhttps://www.tiktok.com/@user  (博主主页 / profile)\nhttps://vm.tiktok.com/...'}
                 rows={7}
                 className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40 resize-y min-h-[130px] font-mono"
                 disabled={saving}
