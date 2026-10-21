@@ -169,7 +169,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     input = { ...input, reportItems, frequency: 'once', enabled: false, concurrency: 1, quota: {} };
   }
 
-  // 作品评论区点赞(仅 TikTok):1-20 条 TikTok 作品链接(去重)+ 每号点赞上限夹到 1-500。
+  // 作品评论区点赞(仅 TikTok):1-20 条 TikTok 作品链接(去重)+ 每号点赞上限夹到 1-5000。
   if (input.type === 'comment_like') {
     if (input.platform !== 'tiktok') return { ok: false, error: 'comment_like_platform_unsupported' };
     const seen = new Set<string>();
