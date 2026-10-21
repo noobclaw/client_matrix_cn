@@ -63,8 +63,6 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask?.accountIds || []).map(String)));
   const [concurrency, setConcurrency] = useState<number>(() => Math.max(1, Number(initialTask?.concurrency) || 1));
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'once');
-  const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
-  const allTermsAccepted = termsAccepted.every(Boolean);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -80,7 +78,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
         ? { ok: false, reason: L(`最多 ${COMMENT_LIKE_MAX_LINKS} 个链接`, `最多 ${COMMENT_LIKE_MAX_LINKS} 個連結`, `At most ${COMMENT_LIKE_MAX_LINKS} links`) }
         : { ok: true },
     2: { ok: selected.size > 0, reason: L('请至少选 1 个执行账号', '請至少選 1 個執行帳號', 'Select at least one account') },
-    3: { ok: allTermsAccepted, reason: L('请先勾选全部条款', '請先勾選全部條款', 'Please accept all terms') },
+    3: { ok: true },
   };
 
   const handleSave = async () => {
@@ -222,17 +220,6 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
               <SummaryRow label={L('点赞上限', '按讚上限', 'Like cap')} value={L(`每个账号每次最多 ${maxLikes} 个`, `每個帳號每次最多 ${maxLikes} 個`, `${maxLikes} per account per run`)} />
               <SummaryRow label={L('运行频率', '執行頻率', 'Schedule')} value={freqLabel} />
             </div>
-            <div className="space-y-2">
-              {[
-                L('每个点赞按普通点赞计费,只对实际点成功的计费。', '每個讚按一般按讚計費,只對實際按成功的計費。', 'Each like is billed as a normal like; only successful likes are billed.'),
-                L('我会遵守 TikTok 的平台规则,自行控制点赞频率与数量。', '我會遵守 TikTok 的平台規則,自行控制按讚頻率與數量。', 'I will follow TikTok\'s rules and keep the like volume reasonable.'),
-              ].map((term, i) => (
-                <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <input type="checkbox" checked={termsAccepted[i]} onChange={(e) => { const next = [...termsAccepted]; next[i] = e.target.checked; setTermsAccepted(next); }} disabled={saving} className="mt-0.5 h-4 w-4 accent-pink-500 shrink-0" />
-                  <span className="leading-relaxed">{term}</span>
-                </label>
-              ))}
-            </div>
           </>
         )}
       </div>
@@ -250,7 +237,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
         {step < 3 ? (
           <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50">{L('下一步', '下一步', 'Next')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50">{saving ? L('保存中…', '儲存中…', 'Saving…') : (editing ? L('保存修改', '儲存修改', 'Save') : L('创建任务', '建立任務', 'Create task'))}</button>
+          <button type="button" onClick={handleSave} disabled={saving} className="px-5 py-2 rounded-lg text-sm font-semibold bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50">{saving ? L('保存中…', '儲存中…', 'Saving…') : (editing ? L('保存修改', '儲存修改', 'Save') : L('创建任务', '建立任務', 'Create task'))}</button>
         )}
       </div>
     </div>
