@@ -2,37 +2,46 @@ name: Build Tauri
 
 on:
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: '只打 Windows 包(分支测试用,省掉两个 mac 任务)'
+        type: boolean
+        default: false
 
 jobs:
   build-tauri:
     strategy:
       fail-fast: false
+      # windows_only=true 时只跑 Windows(feat/emulator-matrix 分支测试用);否则与原来一样三个平台。
+      # 原 include 清单与各平台说明保留在下方注释里。
       matrix:
-        include:
-          # Windows — pinned to windows-2022 (Visual Studio 2022 / v17). As of
-          # 2026-06, windows-latest redirects to windows-2025-vs2026 (Visual
-          # Studio 18), which node-gyp@11 does not recognize ("find VS unknown
-          # version undefined" → native addon build fails). VS 2022 is fully
-          # supported by node-gyp, so pin until node-gyp gains VS18 support.
-          - platform: windows-2022
-            target: x86_64-pc-windows-msvc
-          # macOS arm64 — Apple Silicon native build on the default
-          # macos-latest runner (M-series).
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-          # macOS Intel — was on macos-13 (last GitHub-hosted Intel runner)
-          # but those runners are essentially dead: builds queued for
-          # 9-10 hours then got cancelled. Switched to macos-latest
-          # (Apple Silicon, plentiful capacity) with cross-compile:
-          #   - Rust: x86_64-apple-darwin target installed via dtolnay
-          #     toolchain action; tauri build --target produces Intel binary
-          #   - Sidecar: SIDECAR_TARGET env var → pkg picks node20-macos-x64
-          #   - Native node addon: arch -x86_64 + --arch=x86_64 forces
-          #     node-gyp to produce x86_64 .node (Rosetta 2 lets Apple
-          #     Silicon runners host x86_64 toolchain)
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-
+        include: ${{ fromJSON(inputs.windows_only && '[{"platform":"windows-2022","target":"x86_64-pc-windows-msvc"}]' || '[{"platform":"windows-2022","target":"x86_64-pc-windows-msvc"},{"platform":"macos-latest","target":"aarch64-apple-darwin"},{"platform":"macos-latest","target":"x86_64-apple-darwin"}]') }}
+      #       matrix:
+      #         include:
+      #           # Windows — pinned to windows-2022 (Visual Studio 2022 / v17). As of
+      #           # 2026-06, windows-latest redirects to windows-2025-vs2026 (Visual
+      #           # Studio 18), which node-gyp@11 does not recognize ("find VS unknown
+      #           # version undefined" → native addon build fails). VS 2022 is fully
+      #           # supported by node-gyp, so pin until node-gyp gains VS18 support.
+      #           - platform: windows-2022
+      #             target: x86_64-pc-windows-msvc
+      #           # macOS arm64 — Apple Silicon native build on the default
+      #           # macos-latest runner (M-series).
+      #           - platform: macos-latest
+      #             target: aarch64-apple-darwin
+      #           # macOS Intel — was on macos-13 (last GitHub-hosted Intel runner)
+      #           # but those runners are essentially dead: builds queued for
+      #           # 9-10 hours then got cancelled. Switched to macos-latest
+      #           # (Apple Silicon, plentiful capacity) with cross-compile:
+      #           #   - Rust: x86_64-apple-darwin target installed via dtolnay
+      #           #     toolchain action; tauri build --target produces Intel binary
+      #           #   - Sidecar: SIDECAR_TARGET env var → pkg picks node20-macos-x64
+      #           #   - Native node addon: arch -x86_64 + --arch=x86_64 forces
+      #           #     node-gyp to produce x86_64 .node (Rosetta 2 lets Apple
+      #           #     Silicon runners host x86_64 toolchain)
+      #           - platform: macos-latest
+      #             target: x86_64-apple-darwin
+      # 
     runs-on: ${{ matrix.platform }}
     # 没有这行时 job 用 GitHub 默认的 6 小时上限。2026-08-13 的 aarch64 构建里
     # codesign 给 sidecar 签名时挂死(等 timestamp.apple.com 无响应,codesign 自身
