@@ -66,13 +66,18 @@ export function maxConcurrentInstances(): number {
 }
 
 let slotsInUse = 0;
-const slotWaiters: Array<() => void> = [];
+const slotWaiters = new Set<() => void>();
 
 /** 占一个「同时运行实例」名额(任务批量跑时用,防止一次起太多把电脑拖死)。 */
 export async function acquireSlot(signal?: AbortSignal): Promise<() => void> {
   while (slotsInUse >= maxConcurrentInstances()) {
     if (signal?.aborted) throw new EmuError('aborted', '已停止');
-    await new Promise<void>((r) => { slotWaiters.push(r); setTimeout(r, 5000); });
+    // 等「有名额释放」或 5s 兜底(防漏唤醒);无论哪个先到都把自己从等待集合里摘掉,集合不会越积越多。
+    await new Promise<void>((r) => {
+      const wake = (): void => { clearTimeout(t); slotWaiters.delete(wake); r(); };
+      const t = setTimeout(wake, 5000);
+      slotWaiters.add(wake);
+    });
   }
   slotsInUse++;
   let released = false;
@@ -80,12 +85,20 @@ export async function acquireSlot(signal?: AbortSignal): Promise<() => void> {
     if (released) return;
     released = true;
     slotsInUse = Math.max(0, slotsInUse - 1);
-    const w = slotWaiters.shift();
+    const w = slotWaiters.values().next().value;
     if (w) w();
   };
 }
 
-export function isEmuBusy(accountId: string): boolean { return busy.has(accountId); }
+export function isEmuBusy(accountId: string): boolean { return busy.has(accountId) || inUse.has(accountId); }
+
+// 任务正在用这个号的模拟器(整段运行期间)。期间面板的停止/删除一律拒绝,免得半路把任务的设备拔掉。
+const inUse = new Set<string>();
+export function markInUse(accountId: string): void { inUse.add(accountId); }
+export function releaseInUse(accountId: string): void { inUse.delete(accountId); }
+function assertNotInUse(accountId: string): void {
+  if (inUse.has(accountId)) throw new EmuError('in_use', '该账号正在跑任务,请先停止任务');
+}
 export function getEmuSession(accountId: string): EmuSession | undefined { return sessions.get(accountId); }
 
 async function withLock<T>(accountId: string, fn: () => Promise<T>): Promise<T> {
@@ -123,7 +136,10 @@ export async function bindAccount(accountId: string, onLog: Log = noop): Promise
 export async function ensureRunning(accountId: string, onLog: Log = noop): Promise<EmuSession> {
   const existing = sessions.get(accountId);
   if (existing) {
-    try { await existing.agent.rpc('ping', [], 5000); return existing; } catch { sessions.delete(accountId); }
+    try { await existing.agent.rpc('ping', [], 5000); return existing; } catch {
+      sessions.delete(accountId);
+      try { await existing.agent.stop(); } catch { /* ignore */ }   // 收掉旧的 adb 子进程和端口转发
+    }
   }
   return withLock(accountId, async () => {
     const ld = await requireLd();
@@ -154,7 +170,7 @@ export async function ensureRunning(accountId: string, onLog: Log = noop): Promi
 
     onLog('启动控制组件…');
     const agent = new U2Agent(adb, serial);
-    await agent.start();
+    try { await agent.start(); } catch (e) { try { await agent.stop(); } catch { /* ignore */ } throw e; }
 
     setAccountEmulator(accountId, { ...acc.emulator, index: inst.index, serial });
     const s: EmuSession = { accountId, index: inst.index, serial, adb, agent, proxyMode: px.mode, startedAt: Date.now() };
@@ -164,10 +180,15 @@ export async function ensureRunning(accountId: string, onLog: Log = noop): Promi
   });
 }
 
-export async function stopInstance(accountId: string): Promise<void> {
+export async function stopInstance(accountId: string, opts?: { force?: boolean }): Promise<void> {
+  if (!opts?.force) assertNotInUse(accountId);
   const s = sessions.get(accountId);
   sessions.delete(accountId);
-  if (s) { try { await s.agent.stop(); } catch { /* ignore */ } }
+  if (s) {
+    // 关之前清掉系统代理:adb reverse 和本机中转随会话消失,留着 http_proxy 会让下次手动开的实例完全没网。
+    try { await s.adb.shell(s.serial, ['settings', 'put', 'global', 'http_proxy', ':0']); } catch { /* ignore */ }
+    try { await s.agent.stop(); } catch { /* ignore */ }
+  }
   const acc = getAccount(accountId);
   if (!acc?.emulator) return;
   const ld = await requireLd();
@@ -177,6 +198,7 @@ export async function stopInstance(accountId: string): Promise<void> {
 
 /** 删除实例(会清掉实例里的登录态和数据)并解绑。只在用户明确点「删除模拟器」时调用。 */
 export async function removeInstance(accountId: string): Promise<void> {
+  assertNotInUse(accountId);
   await withLock(accountId, async () => {
     await stopInstance(accountId).catch((): void => undefined);
     const acc = getAccount(accountId);

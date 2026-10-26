@@ -65,9 +65,13 @@ export async function openTunnel(proxy: Proxy, host: string, port: number, timeo
       resolve();
     };
     const onErr = (e: Error): void => { cleanup(); reject(e); };
-    const cleanup = (): void => { sock.off('data', onData); sock.off('error', onErr); };
+    // 上游不回 CONNECT 就直接断开(只有 end/close 没有 error)→ 也要结束,不然客户端永远挂着。
+    const onClose = (): void => { cleanup(); reject(new Error('upstream_closed')); };
+    const cleanup = (): void => { sock.off('data', onData); sock.off('error', onErr); sock.off('close', onClose); sock.off('end', onClose); };
     sock.on('data', onData);
     sock.once('error', onErr);
+    sock.once('close', onClose);
+    sock.once('end', onClose);
   });
   sock.setTimeout(0);
   return sock;
@@ -96,14 +100,20 @@ function startServer(proxy: Proxy): Promise<number> {
       });
     });
     server.on('connect', (req: http.IncomingMessage, client: net.Socket, head: Buffer) => {
+      // 必须先挂 error:上游握手最长 15s,期间 App 取消请求(ECONNRESET)若无监听会成未捕获异常、打崩 sidecar。
+      let clientGone = false;
+      client.on('error', () => { clientGone = true; try { client.destroy(); } catch { /* ignore */ } });
+      client.on('close', () => { clientGone = true; });
       const { host, port } = parseTarget(req.url || '', 443);
       openTunnel(proxy, host, port).then((up) => {
+        if (clientGone) { try { up.destroy(); } catch { /* ignore */ } return; }
         client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
         if (head && head.length) up.write(head);
         up.pipe(client);
         client.pipe(up);
         up.on('error', () => client.destroy());
         client.on('error', () => up.destroy());
+        client.on('close', () => up.destroy());
       }).catch((e) => {
         coworkLog('WARN', 'emuProxy', 'connect tunnel failed', { host, err: String(e?.message || e) });
         try { client.end('HTTP/1.1 502 Bad Gateway\r\n\r\n'); } catch { /* ignore */ }

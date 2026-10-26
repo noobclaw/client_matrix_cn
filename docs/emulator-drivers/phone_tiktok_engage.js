@@ -124,10 +124,14 @@ while (seen < maxVideos && (done.like < nLike || done.comment < nCmt)) {
     var likeBtn = findRe(await nodes(), 'desc', LIKE_RE, rightRail);
     if (likeBtn && !likeBtn.selected && !/^Liked/i.test(likeBtn.desc)) {
       await pause('before_like_pause', [3000, 8000]);
+      if (ctx.aborted()) break;
       await P.tap(likeBtn.cx, likeBtn.cy);
       await ctx.sleep(1200, 2000);
-      var after = findRe(await nodes(), 'desc', LIKE_RE, rightRail);
-      if (!after || after.selected || /^Liked/i.test(after.desc) || after.desc !== likeBtn.desc) {
+      var nsL = await nodes();
+      var after = findRe(nsL, 'desc', LIKE_RE, rightRail);
+      // 必须有正面证据才算赞成功(按钮变已选中 / 文案变 Liked / 同一个视频上点赞数文案变了),按钮消失不算。
+      var sameVideo = keyOf(videoInfo(nsL)) === key;
+      if (after && (after.selected || /^Liked|已赞|已點讚|已按讚/i.test(after.desc) || (sameVideo && after.desc !== likeBtn.desc))) {
         done.like++; acted = true; ctx.addActionCount('like', 1);
         await ctx.chargeAction('like', 'tiktok');
         say('👍 点赞 ' + done.like + '/' + nLike + (info.author ? ' · ' + info.author : ''));
@@ -140,6 +144,7 @@ while (seen < maxVideos && (done.like < nLike || done.comment < nCmt)) {
     var cmtBtn = findRe(await nodes(), 'desc', CMT_RE, rightRail);
     if (cmtBtn) {
       await pause('before_comment_open_pause', [4000, 10000]);
+      if (ctx.aborted()) break;
       await P.tap(cmtBtn.cx, cmtBtn.cy);
       await pause('comment_panel_pause', [3000, 6000]);
       var text = '';
@@ -159,18 +164,28 @@ while (seen < maxVideos && (done.like < nLike || done.comment < nCmt)) {
         await P.inputText(text);
         await ctx.sleep(1500, 3000);
         var nsS = await nodes();
+        // 发送前确认输入框里真有这段文字(粘贴失败就别发、也别算)。
+        var held = nsS.some(function (n) { return n.visible && /EditText/.test(n.className) && (n.text || '').indexOf(text.slice(0, 12)) >= 0; });
         var send = findRe(nsS, 'desc', '^(Post|Post comment|Send|发送|發送|发布|發佈|送信|게시|Đăng|Publicar)');
         if (!send) send = findRe(nsS, 'text', '^(Post|Send|发送|發送|发布|發佈|送信|게시|Đăng|Publicar)$');
+        if (!held) { say('⚠️ 评论文字没输进去,跳过'); }
+        else if (!ctx.aborted()) {
         if (send) { await P.tap(send.cx, send.cy); } else { await P.enter(); }
         await ctx.sleep(2500, 4000);
         var nsV = await nodes();
-        var stillThere = false;
-        for (var v = 0; v < nsV.length; v++) { if (nsV[v].visible && (nsV[v].text || '') === text && /EditText/.test(nsV[v].className)) { stillThere = true; break; } }
-        if (!stillThere) {
+        var stillThere = false, shown = false;
+        for (var v = 0; v < nsV.length; v++) {
+          var nv = nsV[v];
+          if (!nv.visible) continue;
+          if ((nv.text || '').indexOf(text.slice(0, 12)) >= 0) { if (/EditText/.test(nv.className)) stillThere = true; else shown = true; }
+        }
+        // 正面证据:输入框已清空且评论出现在列表里(或至少输入框里已经没有这段字)。
+        if (!stillThere && (shown || held)) {
           done.comment++; acted = true; ctx.addActionCount('comment', 1);
           await ctx.chargeAction('comment', 'tiktok');
           say('💬 评论 ' + done.comment + '/' + nCmt + ':' + text);
         } else { say('⚠️ 评论好像没发出去,跳过'); }
+        }
       } else if (!input) { say('⚠️ 没找到评论输入框'); }
       await P.back(); await ctx.sleep(800, 1500);
       // 输入法/面板可能要两次返回
@@ -179,12 +194,14 @@ while (seen < maxVideos && (done.like < nLike || done.comment < nCmt)) {
     }
   }
 
-  if (acted && ctx.engageHistory) ctx.engageHistory.remember('phone', key);
+  // 作者和文案都没读到时 key 全一样,记下来会把之后所有没读到的视频都当成「看过」→ 不记。
+  if (acted && ctx.engageHistory && (info.author || info.desc)) ctx.engageHistory.remember('phone', key);
   await (acted ? pause('between_videos_pause', [10000, 40000]) : pause('feed_scroll_pause', [4000, 10000]));
   await nextVideo();
   await ctx.sleep(1500, 3000);
 }
 
+if (ctx.aborted()) { ctx.finish('error', 'user_stopped'); return { status: 'failed', reason: 'user_stopped', done: done }; }
 say('✅ 完成:点赞 ' + done.like + '/' + nLike + ',评论 ' + done.comment + '/' + nCmt + '(看了 ' + seen + ' 个视频)');
 ctx.finish('done');
 return { status: 'done', done: done };

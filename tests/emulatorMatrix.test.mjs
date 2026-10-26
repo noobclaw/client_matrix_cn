@@ -117,3 +117,28 @@ test('ensureHttpBridge:CONNECT 经带账密的 HTTP 上游打通,账密正确才
 
   target.close(); upstream.close();
 });
+
+test('ensureHttpBridge:上游握手期间客户端断开不会打崩进程;上游不回就断开时客户端收到 502', async () => {
+  // 慢上游:收到 CONNECT 后 300ms 才回 200
+  const slow = net.createServer((s) => { s.once('data', () => setTimeout(() => { try { s.write('HTTP/1.1 200 OK\r\n\r\n'); } catch {} }, 300)); s.on('error', () => {}); });
+  const slowPort = await listen(slow);
+  const bridge = await emuProxy.ensureHttpBridge({ protocol: 'http', host: '127.0.0.1', port: slowPort });
+  await new Promise((resolve) => {
+    const c = net.connect(bridge, '127.0.0.1', () => { c.write('CONNECT example.com:443 HTTP/1.1\r\n\r\n'); setTimeout(() => { c.resetAndDestroy ? c.resetAndDestroy() : c.destroy(); resolve(); }, 50); });
+    c.on('error', () => {});
+  });
+  await new Promise((r) => setTimeout(r, 600)); // 进程还活着就算过
+
+  // 哑上游:收到 CONNECT 直接关连接
+  const mute = net.createServer((s) => { s.once('data', () => s.end()); s.on('error', () => {}); });
+  const mutePort = await listen(mute);
+  const bridge2 = await emuProxy.ensureHttpBridge({ protocol: 'http', host: '127.0.0.1', port: mutePort });
+  const reply = await new Promise((resolve, reject) => {
+    const c = net.connect(bridge2, '127.0.0.1', () => c.write('CONNECT example.com:443 HTTP/1.1\r\n\r\n'));
+    c.on('data', (d) => { resolve(d.toString()); c.destroy(); });
+    c.on('error', reject);
+    setTimeout(() => reject(new Error('hung')), 5000);
+  });
+  assert.match(reply, /^HTTP\/1\.1 502/);
+  slow.close(); mute.close();
+});

@@ -82,9 +82,15 @@ export class U2Agent {
   }
 
   /** 启动(或复用)设备上的 u2 服务,返回后即可 rpc。 */
-  async start(): Promise<void> {
+  async start(force = false): Promise<void> {
     if (!this.localPort) this.localPort = await this.adb.forward(this.serial, DEVICE_PORT);
-    if (await this.alive()) return;
+    if (force) {
+      // UiAutomation 断了但 HTTP 还活着(/ping 仍回 pong):对齐 uiautomator2 core.py,先停掉旧服务再起。
+      try { await this.request('GET', '/stop', undefined, 3000); } catch { /* ignore */ }
+      this.stopProc();
+      try { await this.adb.shell(this.serial, ['pkill', '-f', 'com.wetest.uia2.Main']); } catch { /* ignore */ }
+      await sleep(1500);
+    } else if (await this.alive()) return;
     await this.ensureJarOnDevice();
     this.stopProc();
     this.procOutput = '';
@@ -138,7 +144,7 @@ export class U2Agent {
       return await call();
     } catch (e: any) {
       if (e instanceof U2Error && (e.code === 'conn' || e.code === 'uia_disconnected' || e.code.startsWith('http_'))) {
-        await this.start();
+        await this.start(e.code === 'uia_disconnected');
         return call();
       }
       throw e;

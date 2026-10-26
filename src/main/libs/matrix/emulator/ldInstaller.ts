@@ -11,6 +11,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
+import { execFileBuf } from './exec';
 import { coworkLog } from '../../coworkLogger';
 import { detectLdDir, isSupportedPlatform } from './ldplayer';
 import { sleep } from './exec';
@@ -63,37 +64,67 @@ let running: Promise<LdInstallState> | null = null;
 export function ldInstallState(): LdInstallState { return state; }
 
 async function download(url: string, onProgress: (pct: number) => void): Promise<string | null> {
-  let host = '';
-  try { host = new URL(url).hostname; } catch { return null; }
-  if (!ALLOWED_HOST.test(host)) { coworkLog('WARN', 'ldInstaller', 'host not allowed', { url }); return null; }
+  const okUrl = (u: string): boolean => { try { const x = new URL(u); return x.protocol === 'https:' && ALLOWED_HOST.test(x.hostname); } catch { return false; } };
+  if (!okUrl(url)) { coworkLog('WARN', 'ldInstaller', 'url not allowed', { url }); return null; }
   const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(30 * 60_000) });
   if (!res.ok || !res.body) return null;
-  // 跳转后也必须还在官方域名。
-  try { if (!ALLOWED_HOST.test(new URL(res.url).hostname)) return null; } catch { return null; }
+  // 跳转后也必须还是 https + 官方域名。
+  if (!okUrl(res.url)) { coworkLog('WARN', 'ldInstaller', 'redirect not allowed', { url: res.url }); return null; }
   const total = Number(res.headers.get('content-length')) || 0;
   fs.mkdirSync(installerDir(), { recursive: true });
   const file = path.join(installerDir(), `ldplayer_setup_${Date.now().toString(36)}.exe`);
   const out = fs.createWriteStream(file);
+  let writeErr: Error | null = null;
+  out.on('error', (e) => { writeErr = e; });   // 磁盘满/没权限:必须有监听,否则未捕获异常打崩 sidecar
   let got = 0;
   const reader = (res.body as any).getReader();
   try {
     for (;;) {
+      if (writeErr) throw writeErr;
       const { done, value } = await reader.read();
       if (done) break;
       got += value.length;
       out.write(Buffer.from(value));
       if (total) onProgress(Math.min(99, Math.round((got / total) * 100)));
     }
+  } catch (e) {
+    out.destroy();
+    try { fs.unlinkSync(file); } catch { /* ignore */ }
+    throw e;
   } finally {
-    await new Promise<void>((r) => out.end(() => r()));
+    if (!out.destroyed) await new Promise<void>((r) => out.end(() => r()));
   }
+  if (writeErr) { try { fs.unlinkSync(file); } catch { /* ignore */ } return null; }
   // 基本校验:是 Windows 可执行文件、体积合理。
   const fd = fs.openSync(file, 'r');
   const head = Buffer.alloc(2);
   fs.readSync(fd, head, 0, 2, 0);
   fs.closeSync(fd);
   if (head.toString('latin1') !== 'MZ' || got < 300 * 1024) { try { fs.unlinkSync(file); } catch { /* ignore */ } return null; }
+  // 运行前校验 Windows 数字签名必须有效(Authenticode Valid),防止被中间人换包。
+  const sig = await authenticodeStatus(file);
+  if (sig.status !== 'Valid') {
+    coworkLog('WARN', 'ldInstaller', 'installer signature not valid', { file, status: sig.status, signer: sig.signer });
+    try { fs.unlinkSync(file); } catch { /* ignore */ }
+    return null;
+  }
+  coworkLog('INFO', 'ldInstaller', 'installer signature ok', { signer: sig.signer });
   return file;
+}
+
+async function authenticodeStatus(file: string): Promise<{ status: string; signer: string }> {
+  // 路径经环境变量传入,不拼进命令字符串(防注入)。
+  const ps = '$s = Get-AuthenticodeSignature -LiteralPath $env:NC_SIG_FILE; Write-Output ($s.Status.ToString() + "|" + $s.SignerCertificate.Subject)';
+  const prev = process.env.NC_SIG_FILE;
+  process.env.NC_SIG_FILE = file;
+  try {
+    const r = await execFileBuf('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps], { timeoutMs: 30_000 });
+    const out = r.stdout.toString('utf8').trim();
+    const i = out.indexOf('|');
+    return { status: i >= 0 ? out.slice(0, i) : out, signer: i >= 0 ? out.slice(i + 1) : '' };
+  } catch { return { status: 'Unknown', signer: '' }; } finally {
+    if (prev === undefined) delete process.env.NC_SIG_FILE; else process.env.NC_SIG_FILE = prev;
+  }
 }
 
 /** 一键安装:下载官方安装程序 → 打开 → 轮询到装好(最多 40 分钟)。重复调用共享同一次流程。 */

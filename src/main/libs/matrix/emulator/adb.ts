@@ -121,6 +121,7 @@ export async function resolveLdSerial(adb: Adb, index: number, before: string[] 
   await adb.connect(`127.0.0.1:${5555 + index * 2}`);
   s = await has();
   if (s) return s;
-  const fresh = (await adb.onlineSerials()).filter((x) => !before.includes(x));
-  return fresh.length === 1 ? fresh[0] : null;
+  // 不再用「启动前后新出现的那台」兜底:多开同时冷启动时会把 A 号绑到 B 实例上(在错的号上操作)。
+  void before;
+  return null;
 }

@@ -1800,7 +1800,14 @@ const server = http.createServer(async (req, res) => {
                   return writeJSON(res, 200, { ok: true, started: true });
                 }
                 case 'emu:stop': await pool.stopInstance(accountId); return writeJSON(res, 200, { ok: true });
-                case 'emu:show': await pool.showInstance(accountId); return writeJSON(res, 200, { ok: true });
+                case 'emu:show': {
+                  await pool.showInstance(accountId);
+                  // 同时在后台连上并套好代理 —— 用户接着要在窗口里手动登录,登录前网络出口必须已经是该号的代理。
+                  pool.ensureRunning(accountId, progress)
+                    .then((s) => progress('已就绪', { done: true, ok: true, serial: s.serial, proxyMode: s.proxyMode }))
+                    .catch((e) => progress(e?.message || String(e), { done: true, ok: false, code: e?.code }));
+                  return writeJSON(res, 200, { ok: true });
+                }
                 case 'emu:remove': await pool.removeInstance(accountId); return writeJSON(res, 200, { ok: true });
                 case 'emu:exportUi': return writeJSON(res, 200, { ok: true, ...(await pool.exportUiDump(accountId)) });
                 case 'emu:openApp': {

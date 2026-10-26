@@ -380,7 +380,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
   //   其它平台(抖音/小红书等按关键词搜的互动)才要。漏掉豁免 → 账号没关键词被静默拦掉、无日志。
   // lead_engage(定向获客)自己处理来源(accounts 模式用种子号、keywords 模式用任务关键词),
   //   不读账号级 acc.keywords → 豁免这里的关键词守卫,否则账号没配关键词会被静默跳过。
-  const needsKeywords = opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.taskType !== 'report' && opts.taskType !== 'comment_like' && opts.platform !== 'binance';
+  // 模拟器 Facebook 剧本只刷信息流、不按关键词搜 → 豁免关键词守卫(否则没配关键词的号被静默跳过)。
+  const emuFeedOnly = acc?.runtime === 'emulator' && opts.platform === 'facebook';
+  const needsKeywords = !emuFeedOnly && opts.taskType !== 'reply_fan' && opts.taskType !== 'video_download' && opts.taskType !== 'lead_engage' && opts.taskType !== 'report' && opts.taskType !== 'comment_like' && opts.platform !== 'binance';
   // 抖音/快手/TikTok 互动支持「刷剧模式」(binge):显式开启 or 关键词为空时,后端剧本走推荐流沉浸式互动,不需要关键词。
   const bingeCapable = ['douyin', 'kuaishou', 'tiktok'].includes(opts.platform) && (opts.taskType === 'engage' || !opts.taskType);
   // 🎯 精准模式的链接是用户给的,跟账号配没配关键词无关 —— 不豁免的话 bilibili/youtube
@@ -439,6 +441,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       emuStartedByTask = !(await pool.isInstanceRunning(accountId));
       log('📱 启动雷电模拟器');
       await pool.ensureRunning(accountId, (m) => log('   ' + m));
+      pool.markInUse(accountId);   // 整段运行期间锁住:面板的停止/删除会被拒绝
     } else {
     log('启动指纹内核');
     await launchKernel({
@@ -807,7 +810,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       const { buildPhoneCtx, loadPhoneDriver } = await import('./emulator/phoneDriverCtx');
       const key = `phone_${opts.platform}_engage`;
       const phoneCode = await loadPhoneDriver(key);
-      if (!phoneCode) { log('❌ 取不到手机版互动剧本 ' + key); return { accountId, state: 'failed', reason: 'no_phone_driver' }; }
+      if (!phoneCode) { log('❌ 取不到手机版互动剧本 ' + key); setAccountStatus(accountId, 'idle'); return { accountId, state: 'failed', reason: 'no_phone_driver' }; }
       ctx.phone = await buildPhoneCtx(accountId, {}, log);
       orchRet = await new AsyncFunction('ctx', phoneCode)(ctx);
       const finE = finished as { status: string; error?: string } | null;
@@ -852,7 +855,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
     if (isEmu) {
       // 模拟器:本任务开的实例跑完就关(释放内存给排队的号);用户本来开着的留着。名额最后释放。
       try {
-        if (emuStartedByTask) { const pool = await import('./emulator/emulatorPool'); await pool.stopInstance(accountId); }
+        const pool = await import('./emulator/emulatorPool');
+        pool.releaseInUse(accountId);
+        if (emuStartedByTask) await pool.stopInstance(accountId, { force: true });
       } catch { /* ignore */ }
       try { emuRelease?.(); } catch { /* ignore */ }
     } else if (!opts.signal?.aborted) {

@@ -87,6 +87,7 @@ while (screens < maxScreens && (done.like < nLike || done.comment < nCmt)) {
 
   if (done.like < nLike && Math.random() < Math.min(1, (nLike - done.like) / remain * 2.2)) {
     await pause('before_like_pause', [3000, 8000]);
+    if (ctx.aborted()) break;
     await P.tap(btn.cx, btn.cy);
     await ctx.sleep(1500, 2500);
     var nsA = await nodes();
@@ -103,6 +104,7 @@ while (screens < maxScreens && (done.like < nLike || done.comment < nCmt)) {
     var cmt = all(nsB, 'desc', CMT_RE).concat(all(nsB, 'text', CMT_RE)).filter(function (n) { return Math.abs(n.cy - btn.cy) < 60; })[0];
     if (cmt) {
       await pause('before_comment_open_pause', [4000, 10000]);
+      if (ctx.aborted()) break;
       await P.tap(cmt.cx, cmt.cy);
       await pause('comment_panel_pause', [3000, 6000]);
       var text = '';
@@ -113,25 +115,34 @@ while (screens < maxScreens && (done.like < nLike || done.comment < nCmt)) {
         text = String(raw || '').trim().replace(/^["'“”]+|["'“”]+$/g, '').trim().slice(0, 150);
       } catch (e) { say('⚠️ AI 生成评论失败:' + String(e && e.message || e).slice(0, 60)); }
       var nsC = await nodes();
+      // 只认真正的输入框(EditText);「Write a comment」可能只是个占位 TextView,点了也输不进去。
       var input = null;
       for (var k = 0; k < nsC.length; k++) { if (nsC[k].visible && /EditText/.test(nsC[k].className)) { input = nsC[k]; break; } }
-      if (!input) input = first(nsC, 'text', '^(Write a comment|写评论|撰寫留言|留言|Viết bình luận|Escribe un comentario)');
+      if (!input) {
+        var ph = first(nsC, 'text', '^(Write a comment|写评论|撰寫留言|留言|Viết bình luận|Escribe un comentario)');
+        if (ph) { await P.tap(ph.cx, ph.cy); await ctx.sleep(1500, 2500); var nsC2 = await nodes(); for (var k2 = 0; k2 < nsC2.length; k2++) { if (nsC2[k2].visible && /EditText/.test(nsC2[k2].className)) { input = nsC2[k2]; break; } } }
+      }
       if (text && input) {
         await P.tap(input.cx, input.cy);
         await pause('comment_input_focus_pause', [1200, 2500]);
         await P.inputText(text);
         await ctx.sleep(1500, 3000);
         var nsS = await nodes();
-        var send = first(nsS, 'desc', '^(Send|Post|Comment|发送|發送|发布|發佈|留言|Gửi|Enviar)$');
+        var held = nsS.some(function (n) { return n.visible && /EditText/.test(n.className) && (n.text || '').indexOf(text.slice(0, 12)) >= 0; });
+        // 发送按钮只在输入框同一行或下方找,避免点到帖子上的「Comment」按钮。
+        var send = all(nsS, 'desc', '^(Send|Post|Comment|发送|發送|发布|發佈|留言|Gửi|Enviar)$').filter(function (n) { return n.cy >= input.cy - 40; })[0];
+        if (!held) { say('⚠️ 评论文字没输进去,跳过'); }
+        else if (!ctx.aborted()) {
         if (send) { await P.tap(send.cx, send.cy); } else { await P.enter(); }
         await ctx.sleep(3000, 5000);
         var nsV = await nodes();
-        var pending = nsV.some(function (n) { return n.visible && /EditText/.test(n.className) && (n.text || '') === text; });
+        var pending = nsV.some(function (n) { return n.visible && /EditText/.test(n.className) && (n.text || '').indexOf(text.slice(0, 12)) >= 0; });
         if (!pending) {
           done.comment++; acted = true; ctx.addActionCount('comment', 1);
           await ctx.chargeAction('comment', 'facebook');
           say('💬 评论 ' + done.comment + '/' + nCmt + ':' + text);
         } else { say('⚠️ 评论好像没发出去,跳过'); }
+        }
       } else if (!input) { say('⚠️ 没找到评论输入框'); }
       await P.back(); await ctx.sleep(800, 1500);
       if (!(await P.find({ descMatches: LIKE_RE })) && !(await P.find({ textMatches: LIKE_RE }))) { await P.back(); await ctx.sleep(800, 1500); }
@@ -144,6 +155,7 @@ while (screens < maxScreens && (done.like < nLike || done.comment < nCmt)) {
   await ctx.sleep(1500, 3000);
 }
 
+if (ctx.aborted()) { ctx.finish('error', 'user_stopped'); return { status: 'failed', reason: 'user_stopped', done: done }; }
 say('✅ 完成:点赞 ' + done.like + '/' + nLike + ',评论 ' + done.comment + '/' + nCmt + '(刷了 ' + screens + ' 屏)');
 ctx.finish('done');
 return { status: 'done', done: done };
