@@ -1741,6 +1741,100 @@ const server = http.createServer(async (req, res) => {
             removeAccount(args[0]?.id);
             return writeJSON(res, 200, { ok: true });
           }
+          // ── 模拟器矩阵(雷电,feat/emulator-matrix,见 docs/emulator-matrix.md)──
+          // 长操作(启动实例)立即返回,进度走 SSE 'emu:progress' { accountId, msg, done?, ok?, error? }。
+          case 'emu:status': {
+            try {
+              const { isSupportedPlatform, detectLdDir } = await import('./libs/matrix/emulator/ldplayer');
+              const { u2JarReady } = await import('./libs/matrix/emulator/u2Jar');
+              const supported = isSupportedPlatform();
+              const ldDir = supported ? await detectLdDir() : null;
+              return writeJSON(res, 200, { ok: true, supported, ldDir, ldFound: !!ldDir, u2Ready: u2JarReady() });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
+          case 'emu:setLdDir': {
+            const { setLdDir } = await import('./libs/matrix/emulator/ldplayer');
+            const ok = setLdDir(args[0]?.dir ? String(args[0].dir) : null);
+            return writeJSON(res, 200, ok ? { ok: true } : { ok: false, error: '该目录下没有 ldconsole.exe' });
+          }
+          case 'emu:list': {
+            try {
+              const { listEmulatorAccounts } = await import('./libs/matrix/emulator/emulatorPool');
+              return writeJSON(res, 200, { ok: true, items: await listEmulatorAccounts() });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e), items: [] });
+            }
+          }
+          case 'emu:bind':
+          case 'emu:start':
+          case 'emu:stop':
+          case 'emu:show':
+          case 'emu:remove':
+          case 'emu:exportUi':
+          case 'emu:probe':
+          case 'emu:openApp':
+          case 'emu:applyProxy': {
+            const accountId = String(args[0]?.accountId || '');
+            const pool = await import('./libs/matrix/emulator/emulatorPool');
+            const progress = (msg: string, extra?: Record<string, unknown>): void => broadcastSSE('emu:progress', { accountId, msg, ...(extra || {}) });
+            const fail = (e: any) => writeJSON(res, 200, { ok: false, code: e?.code, error: e?.message || String(e) });
+            try {
+              switch (channel) {
+                case 'emu:bind': {
+                  const inst = await pool.bindAccount(accountId, progress);
+                  return writeJSON(res, 200, { ok: true, index: inst.index, name: inst.name });
+                }
+                case 'emu:start': {
+                  // 启动要 30s~3min,不阻塞请求。
+                  pool.ensureRunning(accountId, progress)
+                    .then((s) => progress('已就绪', { done: true, ok: true, serial: s.serial, proxyMode: s.proxyMode }))
+                    .catch((e) => progress(e?.message || String(e), { done: true, ok: false, code: e?.code }));
+                  return writeJSON(res, 200, { ok: true, started: true });
+                }
+                case 'emu:stop': await pool.stopInstance(accountId); return writeJSON(res, 200, { ok: true });
+                case 'emu:show': await pool.showInstance(accountId); return writeJSON(res, 200, { ok: true });
+                case 'emu:remove': await pool.removeInstance(accountId); return writeJSON(res, 200, { ok: true });
+                case 'emu:exportUi': return writeJSON(res, 200, { ok: true, ...(await pool.exportUiDump(accountId)) });
+                case 'emu:openApp': {
+                  const pkg = String(args[0]?.pkg || '');
+                  if (!(await pool.isAppInstalled(accountId, pkg))) return writeJSON(res, 200, { ok: false, code: 'app_not_installed', error: '模拟器里还没装这个 App' });
+                  await pool.appStart(accountId, pkg);
+                  return writeJSON(res, 200, { ok: true });
+                }
+                case 'emu:applyProxy': {
+                  // 改了代理后重新套用:有会话就直接改设备设置,没会话下次启动自动生效。
+                  const s = pool.getEmuSession(accountId);
+                  if (!s) return writeJSON(res, 200, { ok: true, deferred: true });
+                  const { applyDeviceProxy } = await import('./libs/matrix/emulator/emulatorProxy');
+                  const { getAccount } = await import('./libs/matrix/accountManager');
+                  const r = await applyDeviceProxy(s.adb, s.serial, getAccount(accountId)?.proxy);
+                  s.proxyMode = r.mode;
+                  return writeJSON(res, 200, { ok: true, mode: r.mode });
+                }
+                case 'emu:probe': {
+                  const { runPhoneDriver } = await import('./libs/matrix/emulator/phoneDriverCtx');
+                  const r = await runPhoneDriver(accountId, 'phone_probe', { pkg: args[0]?.pkg }, progress);
+                  return writeJSON(res, 200, { ok: true, result: r });
+                }
+              }
+              return writeJSON(res, 200, { ok: false, error: 'unknown_emu_cmd' });
+            } catch (e: any) {
+              return fail(e);
+            }
+          }
+          case 'emu:sortWindows': {
+            try {
+              const { getLdPlayer } = await import('./libs/matrix/emulator/ldplayer');
+              const ld = await getLdPlayer();
+              if (ld) await ld.sortWindows();
+              return writeJSON(res, 200, { ok: !!ld });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
+
           case 'matrix:validateProxy': {
             // 配代理时校验:① 连通性(probeProxy)② 同平台撞 IP(platformKey 同 host 的别的号,创作端/主站分开)。
             try {
@@ -3485,6 +3579,10 @@ function shutdown() {
   // 加载过,import() 对已加载模块在下一微任务即 resolve,够快赶在 exit 前。
   import('./libs/matrix/kernelPool')
     .then((m) => { try { m.killAllKernelsSync(); } catch { /* ignore */ } })
+    .catch(() => { /* ignore */ })
+    // 模拟器:只收我们起的 adb shell 子进程(u2 服务),不关用户的雷电实例(登录态、正在看的窗口都留着)。
+    .then(() => import('./libs/matrix/emulator/emulatorPool'))
+    .then((m) => { try { m.killAllSessionsSync(); } catch { /* ignore */ } })
     .catch(() => { /* ignore */ })
     .finally(() => { try { server.close(); } catch { /* ignore */ } process.exit(0); });
 }

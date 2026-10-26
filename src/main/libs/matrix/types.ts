@@ -40,6 +40,19 @@ export interface Proxy {
   health?: 'ok' | 'leaking' | 'banned' | 'dead';
 }
 
+/**
+ * 模拟器绑定(runtime='emulator' 的号才有)。一号固定一个雷电实例,登录态留在实例里。
+ * 见 docs/emulator-matrix.md。index/serial 只是上次的缓存,每次启动前按 instanceName 重新查。
+ */
+export interface EmulatorBinding {
+  provider: 'ldplayer';
+  instanceName: string;            // nc_<accountId>,建立后固定
+  index?: number;                  // 上次查到的 ldconsole 索引
+  serial?: string;                 // 上次连上的 adb serial
+  packages?: string[];             // 这个实例要用的 App 包名(面板「打开 App」用)
+  createdAt?: number;
+}
+
 /** 一个矩阵账号 = 身份 + 持久 profile + 固定指纹 + 固定代理 + 健康态。 */
 export interface MatrixAccount {
   id: string;
@@ -79,6 +92,9 @@ export interface MatrixAccount {
   // cp.kuaishou.com(视频发布)。快手主站与创作端登录互不覆盖(实测),故拆成两类账号、各自登录。
   // 建号时确定、之后不可改。其它平台不设(主站登录即覆盖创作端 / 同域)。
   loginScope?: 'main' | 'creator';
+  // 执行端:缺省 'browser'(指纹内核,存量号全是这个);'emulator' = 雷电模拟器里的 App(feat/emulator-matrix)。
+  runtime?: 'browser' | 'emulator';
+  emulator?: EmulatorBinding;
 }
 
 /** 互动配额区间(各项在 [min,max] 内随机)。 */

@@ -560,6 +560,24 @@ export function createTauriElectronShim(): typeof window.electron {
       onAccount: (handler: (p: unknown) => void) => onSSE('matrix:account', handler),
     },
 
+    // ── 模拟器矩阵(雷电,feat/emulator-matrix)──
+    emu: {
+      status: () => ipcInvoke('emu:status').then((r: any) => r ?? { ok: false, supported: false }),
+      setLdDir: (dir: string | null) => ipcInvoke('emu:setLdDir', { dir }).then((r: any) => r ?? { ok: false }),
+      list: () => ipcInvoke('emu:list').then((r: any) => r ?? { ok: false, items: [] }),
+      bind: (accountId: string) => ipcInvoke('emu:bind', { accountId }).then((r: any) => r ?? { ok: false }),
+      start: (accountId: string) => ipcInvoke('emu:start', { accountId }).then((r: any) => r ?? { ok: false }),
+      stop: (accountId: string) => ipcInvoke('emu:stop', { accountId }).then((r: any) => r ?? { ok: false }),
+      show: (accountId: string) => ipcInvoke('emu:show', { accountId }).then((r: any) => r ?? { ok: false }),
+      remove: (accountId: string) => ipcInvoke('emu:remove', { accountId }).then((r: any) => r ?? { ok: false }),
+      exportUi: (accountId: string) => ipcInvoke('emu:exportUi', { accountId }).then((r: any) => r ?? { ok: false }),
+      probe: (accountId: string, pkg?: string) => ipcInvoke('emu:probe', { accountId, pkg }).then((r: any) => r ?? { ok: false }),
+      openApp: (accountId: string, pkg: string) => ipcInvoke('emu:openApp', { accountId, pkg }).then((r: any) => r ?? { ok: false }),
+      applyProxy: (accountId: string) => ipcInvoke('emu:applyProxy', { accountId }).then((r: any) => r ?? { ok: false }),
+      sortWindows: () => ipcInvoke('emu:sortWindows').then((r: any) => r ?? { ok: false }),
+      onProgress: (handler: (p: unknown) => void) => onSSE('emu:progress', handler),
+    },
+
     // ── Shell ──
     shell: {
       openPath: (p: string) => ipcInvoke('shell:openPath', p),

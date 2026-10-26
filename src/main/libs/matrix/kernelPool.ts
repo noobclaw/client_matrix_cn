@@ -323,6 +323,11 @@ function buildKernelArgs(opts: LaunchKernelOptions, debugPort: number, bridgePor
 // ── 启动一个号的内核实例(in-flight 去重,杜绝同号双开) ──
 
 export async function launchKernel(opts: LaunchKernelOptions): Promise<KernelSession> {
+  // 模拟器执行端的号不起浏览器内核(feat/emulator-matrix):任务/扫码/刷新等浏览器流程一律明确拒绝,
+  //   免得给它凭空开一个没登录的指纹浏览器。
+  if (getAccount(opts.accountId)?.runtime === 'emulator') {
+    throw new Error('该账号使用雷电模拟器执行,暂不支持浏览器任务');
+  }
   // 占「按账号使用互斥锁」:同号有别的流程正在用 → 在这里【排队等】,直到它 closeKernel 释放。
   //   openLogin(skipLease)不占锁,不阻塞任务。
   if (!opts.skipLease) await acquireLease(opts.accountId);

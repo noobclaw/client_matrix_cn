@@ -47,7 +47,8 @@ export async function runKeepAliveSweep(): Promise<void> {
   try {
     const now = Date.now();
     const due = listAccounts().filter((a) =>
-      !getSession(a.id)                                     // 没有活跃内核会话 = 当前没在被用
+      a.runtime !== 'emulator'                              // 模拟器号的登录态在雷电实例里,不走浏览器保活
+      && !getSession(a.id)                                  // 没有活跃内核会话 = 当前没在被用
       && (
         // idle 且超 3 天没活跃 → 常规保活续期
         (a.status === 'idle' && (now - (a.lastAliveAt || 0)) > ALIVE_THRESHOLD_MS)

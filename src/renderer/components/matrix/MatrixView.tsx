@@ -4,6 +4,7 @@ import { i18nService } from '../../services/i18n';
 import { shortId } from '../../utils/shortId';
 import MatrixTaskWizard from './MatrixTaskWizard';
 import MatrixReplyFansWizard from './MatrixReplyFansWizard';
+import MatrixEmulatorPanel from './MatrixEmulatorPanel';
 import { WalletBadge } from '../common/WalletBadge';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { getBackendApiUrl } from '../../services/endpoints';
@@ -29,6 +30,7 @@ interface MatrixAccount {
   contentLang?: 'zh' | 'en';
   loginScope?: 'main' | 'creator';   // 仅快手:主站 / 创作者中心
   egressIp?: string;                 // 无代理号的真实本机出口 IP(内核侧探到才有,后端 listAccounts 附上)
+  runtime?: 'browser' | 'emulator';  // 执行端(feat/emulator-matrix):缺省浏览器;emulator = 雷电模拟器
 }
 interface MatrixTask {
   id: string; platform: string; type: 'engage' | 'reply_fan'; name: string; enabled: boolean; accountIds: string[];
@@ -417,6 +419,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 账号内容语言(赛道/人设/关键词的语言)。默认按界面语言,建号/编辑弹窗内可切换中/英。
   const [newContentLang, setNewContentLang] = useState<ContentLang>(uiDefaultContentLang());
   const [notice, setNotice] = useState('');
+  // 模拟器矩阵(feat/emulator-matrix):执行端选择 + 面板。仅 Windows(emu.status().supported)才显示入口。
+  const [newRuntime, setNewRuntime] = useState<'browser' | 'emulator'>('browser');
+  const [emuSupported, setEmuSupported] = useState(false);
+  const [emuPanel, setEmuPanel] = useState<{ focus?: string } | null>(null);
+  useEffect(() => {
+    const e = (window as any).electron?.emu;
+    if (!e) return;
+    e.status().then((s: any) => setEmuSupported(!!s?.supported)).catch(() => { /* 非关键 */ });
+  }, []);
   // 顶部 toast 提示 5s 后自动消失(弹窗内的校验提示走 showAdd 常驻,不在这清)。
   useEffect(() => {
     if (!notice || showAdd) return;
@@ -634,11 +645,20 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     const name = newName.trim(); if (!name) { setNotice(i18nService.t('mvFillAccountName')); return; }
     // 建号 +(可选)绑代理,抽成闭包:代理校验通过/跳过后才真正执行。
     const doCreate = async (proxyOut: any | null): Promise<void> => {
-      const r = await m.createAccount({ platform, displayName: name, group, persona, keywords, contentLang: newContentLang, loginScope: platform === 'kuaishou' ? newScope : undefined });
+      const runtime = emuSupported && newRuntime === 'emulator' ? 'emulator' : undefined;
+      const r = await m.createAccount({ platform, displayName: name, group, persona, keywords, contentLang: newContentLang, loginScope: platform === 'kuaishou' ? newScope : undefined, runtime });
       if (r?.ok && r.account && proxyOut) {
         try { await m.setAccountProxy({ id: r.account.id, proxy: proxyOut }); } catch { /* 代理存失败不挡建号 */ }
       }
       setShowAdd(false); setProxyMsg(null);
+      // 模拟器号:建雷电实例 → 打开模拟器面板(登录在模拟器窗口里手动完成),不走扫码/cookie。
+      if (r?.ok && r.account && runtime === 'emulator') {
+        await reload();
+        const b = await (window as any).electron?.emu?.bind(r.account.id);
+        setNotice(b?.ok ? (i18nService.currentLanguage === 'zh' ? `已创建账号「${name}」并新建雷电实例,请在面板里启动并登录` : `Created "${name}" with a new LDPlayer instance — start it and log in from the panel`) : ((i18nService.currentLanguage === 'zh' ? '账号已创建,但新建雷电实例失败:' : 'Account created, but LDPlayer instance failed: ') + (b?.error || '')));
+        setEmuPanel({ focus: r.account.id });
+        return;
+      }
       // 建号后不再直接扫码,而是弹【连接方式选择】(扫码 / 导入 cookie),跟账号卡「连接账号」按钮一致。
       if (r?.ok) { await reload(); setNotice(i18nService.t('mvAccountCreated').replace('{name}', name)); if (thenLogin && r.account) setConnectChoice({ accountId: r.account.id, plat: platform, displayName: name, loginScope: platform === 'kuaishou' ? newScope : undefined }); }
       else setNotice(i18nService.t('mvCreateFailed') + (r?.error || i18nService.t('mvIpcNoResponse')));
@@ -1019,6 +1039,11 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 ))}
               </div>
             )}
+            {emuSupported && (
+              <div className="flex justify-end mb-2 -mt-1">
+                <button onClick={() => setEmuPanel({})} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-claude-accent/50">📱 {i18nService.currentLanguage === 'zh' ? '雷电模拟器' : 'LDPlayer'} <span className="text-amber-600">Beta</span></button>
+              </div>
+            )}
             {platformAccounts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
                 <div className="text-4xl mb-2">📭</div>
@@ -1102,7 +1127,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       {a.status === 'login_required'
                         ? (<>
                             {/* 尚未连接:统一入口「连接账号」→ 弹窗选【扫码连接 / 导入 cookie】,各走各流程(把原来并排两颗按钮收成一个)。 */}
-                            <button onClick={() => setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope })} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{i18nService.currentLanguage === 'zh' ? '连接账号' : 'Connect account'}</button>
+                            <button onClick={() => (a.runtime === 'emulator' ? setEmuPanel({ focus: a.id }) : setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope }))} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{i18nService.currentLanguage === 'zh' ? '连接账号' : 'Connect account'}</button>
                           </>)
                         : (<>
                             {/* 已连接:读真实身份 / 断开(清登录,保留配置) */}
@@ -1452,6 +1477,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       )}
 
       {/* 添加/编辑账号 */}
+      {emuPanel && <MatrixEmulatorPanel focusAccountId={emuPanel.focus} onClose={() => setEmuPanel(null)} onChanged={() => { void reload(); }} />}
       {showAdd && (() => {
         // 平台已有号(无论是否关联)→ 新号走 2 步:第 1 步配账号、第 2 步配代理 IP。首个号 / 编辑保持单步。
         const twoStep = !editId && platformAccounts.length >= 1;
@@ -1505,6 +1531,21 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     })}
                   </div>
                   {!editId && <div className="text-[11px] text-gray-400 mt-1">{newScope === 'creator' ? i18nService.t('mvKsCreatorHint') : i18nService.t('mvKsMainHint')}</div>}
+                </div>
+              )}
+              {/* 执行端(feat/emulator-matrix):仅 Windows 新建时可选;建号后固定(要换需在模拟器面板删除实例)。 */}
+              {!editId && emuSupported && (
+                <div className="mb-3">
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.currentLanguage === 'zh' ? '执行端' : 'Runs on'}<span className="ml-2 font-normal text-gray-400">Beta</span></label>
+                  <div className="flex gap-2">
+                    {([['browser', i18nService.currentLanguage === 'zh' ? '指纹浏览器(网页版)' : 'Browser (web)'], ['emulator', i18nService.currentLanguage === 'zh' ? '雷电模拟器(App)' : 'LDPlayer emulator (app)']] as ['browser' | 'emulator', string][]).map(([key, label]) => (
+                      <button key={key} type="button" onClick={() => setNewRuntime(key)}
+                        className={`flex-1 text-xs px-3 py-2 rounded-lg border transition-colors ${newRuntime === key ? 'border-claude-accent bg-claude-accent/10 text-claude-accent font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-claude-accent/50'}`}>
+                        {newRuntime === key ? '✓ ' : ''}{label}
+                      </button>
+                    ))}
+                  </div>
+                  {newRuntime === 'emulator' && <div className="text-[11px] text-gray-400 mt-1">{i18nService.currentLanguage === 'zh' ? '需先安装雷电模拟器 9。建号后会自动新建一个专属实例,登录在模拟器窗口里手动完成。目前浏览器任务不会在模拟器号上运行。' : 'Requires LDPlayer 9. A dedicated instance is created; log in manually inside it. Browser tasks do not run on emulator accounts yet.'}</div>}
                 </div>
               )}
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvTrackRequired')}<span className="ml-2 font-normal text-gray-400">{i18nService.t('mvTrackHint')}</span></label>

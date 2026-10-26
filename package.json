@@ -16,6 +16,7 @@
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test:memory": "npm run compile:electron && node --test tests/coworkMemoryExtractor.test.mjs",
+    "test:emulator": "npm run compile:electron && node --test tests/emulatorMatrix.test.mjs",
     "preview": "vite preview",
     "compile:electron": "tsc --project electron-tsconfig.json",
     "build:skill:web-search": "npm install --prefix SKILLs/web-search && npx tsc -p SKILLs/web-search/tsconfig.json",

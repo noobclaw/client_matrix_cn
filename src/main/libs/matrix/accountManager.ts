@@ -113,6 +113,7 @@ export function createAccount(args: {
   contentLang?: 'zh' | 'en';          // 内容语言(赛道/人设/关键词的语言),默认由客户端按界面语言给
   kernelVersion?: string;
   loginScope?: 'main' | 'creator';   // 仅快手:主站 / 创作者中心
+  runtime?: 'browser' | 'emulator';  // 执行端,缺省浏览器;模拟器号建号后再由 emulatorPool.bindAccount 建实例
 }): MatrixAccount {
   ensureDirs();
   const accounts = loadAccounts();
@@ -140,6 +141,7 @@ export function createAccount(args: {
     contentLang: args.contentLang === 'en' ? 'en' : 'zh',
     kernelVersion: args.kernelVersion || undefined,
     loginScope: args.platform === 'kuaishou' ? (args.loginScope || 'main') : undefined,
+    runtime: args.runtime === 'emulator' ? 'emulator' : undefined,
   };
   accounts.push(account);
   cache = accounts;
@@ -245,6 +247,16 @@ export function setAccountProxy(id: string, proxy: Proxy | null | undefined): vo
   // 传空 = 清除代理,该账号改用本机 IP(用户 2026-09-11:配过就删不掉)。下次启动内核生效。
   if (!proxy || !proxy.host) { delete a.proxy; persist(); return; }
   a.proxy = proxy;                       // 绑定后视为固定,不应再换 host/port
+  persist();
+}
+
+/** 写入/清除模拟器绑定(feat/emulator-matrix)。binding 为空 = 解绑(号回到浏览器执行端)。 */
+export function setAccountEmulator(id: string, binding: MatrixAccount['emulator'] | null): void {
+  const a = getAccount(id);
+  if (!a) return;
+  if (!binding) { delete a.emulator; delete a.runtime; persist(); return; }
+  a.emulator = binding;
+  a.runtime = 'emulator';
   persist();
 }
 
