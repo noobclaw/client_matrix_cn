@@ -4,8 +4,8 @@
  * 它是手机端的 UiAutomator JSON-RPC 服务:adb push 到 /data/local/tmp 后用 app_process 以 shell 身份起,
  * 不需要在设备上装 App、也不需要开无障碍。不打进安装包(3.7MB,且只有模拟器用户需要)。
  *
- * 下载源按顺序尝试:自家镜像(国内用户连不上 GitHub)→ GitHub Release。自家镜像接口待后端补上,
- * 没有时会 404,自动落到 GitHub。任何来源下来的文件都必须过 sha256。
+ * 来源按顺序:安装包自带(resources/emulator/,正常情况都走这条)→ 自家镜像 → GitHub Release。
+ * 自家镜像接口待后端补上,没有时 404 自动落到 GitHub。任何来源的文件都必须过 sha256。
  */
 
 import crypto from 'crypto';
@@ -43,9 +43,38 @@ export function u2JarReady(): boolean {
 
 let inflight: Promise<string | null> | null = null;
 
+/** 安装包自带的那份(scripts/prepare-tauri-resources.js 第 10 步拷进 resources/emulator/)。 */
+function bundledCandidates(): string[] {
+  const out: string[] = [];
+  try {
+    // 动态 require:platformAdapter 依赖较多,单测/非打包环境拿不到时不影响下载兜底。
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getResourcesPath } = require('../../platformAdapter');
+    const base: string = getResourcesPath();
+    const name = `u2-${U2_JAR_VERSION}.jar`;
+    out.push(path.join(base, 'emulator', name), path.join(base, 'resources', 'emulator', name));
+  } catch { /* ignore */ }
+  return out;
+}
+
+function tryBundled(): string | null {
+  for (const p of bundledCandidates()) {
+    try {
+      const buf = fs.readFileSync(p);
+      if (sha256(buf) !== U2_JAR_SHA256) continue;
+      fs.mkdirSync(path.dirname(u2JarPath()), { recursive: true });
+      fs.writeFileSync(u2JarPath(), buf);
+      return u2JarPath();
+    } catch { /* next */ }
+  }
+  return null;
+}
+
 /** 确保本地有校验通过的 u2.jar,返回路径;全部来源失败返回 null。并发调用共享同一次下载。 */
 export function ensureU2Jar(): Promise<string | null> {
   if (u2JarReady()) return Promise.resolve(u2JarPath());
+  const bundled = tryBundled();
+  if (bundled) return Promise.resolve(bundled);
   if (inflight) return inflight;
   inflight = (async () => {
     try {

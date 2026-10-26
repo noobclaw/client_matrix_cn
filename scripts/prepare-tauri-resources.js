@@ -236,6 +236,20 @@ function main() {
     }
   }
 
+  // 10. 模拟器矩阵(feat/emulator-matrix):u2.jar(openatx android-uiautomator-server,MIT)+ 授权声明。
+  //     vendored 在 resources/emulator/;sidecar 的 emulator/u2Jar.ts 从 getResourcesPath()/emulator/ 读,
+  //     国内用户连不上 GitHub 也能用。
+  {
+    const emuSrc = path.join(ROOT, 'resources', 'emulator');
+    const emuDest = path.join(RESOURCES_DIR, 'emulator');
+    if (fs.existsSync(emuSrc)) {
+      const count = copyDirRecursive(emuSrc, emuDest);
+      console.log(`  emulator: ${count} files`);
+    } else {
+      console.warn('  emulator: NOT FOUND — u2.jar will be downloaded at runtime instead.');
+    }
+  }
+
   console.log(`Done. Resources prepared in ${RESOURCES_DIR}`);
 }
 

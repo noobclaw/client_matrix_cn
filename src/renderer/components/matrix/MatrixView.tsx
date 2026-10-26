@@ -293,6 +293,8 @@ const findCryptoTrack = (presets: TrackPreset[]): TrackPreset | undefined =>
   || presets.find((t) => /web3|加密货币|crypto/i.test(`${t.name || ''} ${t.name_en || ''}`));
 
 const M = () => (window as any).electron?.matrix;
+// 模拟器执行端目前支持的平台(互动:点赞/评论)。见 docs/emulator-matrix.md。
+const EMU_PLATFORMS = ['tiktok', 'facebook'];
 const fmtTime = (ts?: number) => { if (!ts || ts >= Number.MAX_SAFE_INTEGER) return '—'; const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
 interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; initialPlatform?: string; onNavigate?: (s: string, platform?: string) => void; onPlatformChange?: (p: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void; onShowInvite?: () => void }
@@ -577,13 +579,16 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   // 就绪 = 选中的版本已下载到本地(或调试手填了路径)。否则任务/扫码一律拦下弹下载窗。
   const kernelReady = (!!selectedVersion && (kernel.installedVersions || []).includes(selectedVersion)) || !!kernelPath.trim();
   const requireKernel = (): boolean => { if (kernelReady) return true; setShowKernelModal(true); return false; };
+  // 模拟器号(feat/emulator-matrix)不需要指纹内核:给定账号全是模拟器号就放行。
+  const allEmu = (ids: string[]): boolean => ids.length > 0 && ids.every((id) => accounts.find((x) => x.id === id)?.runtime === 'emulator');
   // 未登录则弹登录窗(NoobClaw 账号),拦在所有矩阵操作(建号/编辑/删除/建任务/运行等)前面。
   const requireLogin = (): boolean => { if (noobClawAuth.getState().isAuthenticated) return true; noobClawAuth.requireLoginUI(); return false; };
 
   // ── 账号 ──
   const openAdd = () => {
     if (!requireLogin()) return;
-    if (!requireKernel()) return;
+    // Windows 上可以只用模拟器(不装内核);选浏览器执行端时在 confirmAdd 里再拦内核。
+    if (!emuSupported && !requireKernel()) return;
     // 每个平台账号数上限(快手两端按平台总数合并计):达上限不开弹窗,只提示。上限服务端可调。
     const platformTotal = accounts.filter((a) => a.platform === platform).length;
     // 达套餐上限:弹窗(带「去升级会员」按钮直达会员订阅)而非一次性 toast,引导用户升级。
@@ -644,8 +649,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     if (editId) { await m.updateAccountMeta({ id: editId, displayName: newName.trim() || undefined, group, persona, keywords, contentLang: newContentLang }); setShowAdd(false); await reload(); setNotice(i18nService.t('mvUpdated')); return; }
     const name = newName.trim(); if (!name) { setNotice(i18nService.t('mvFillAccountName')); return; }
     // 建号 +(可选)绑代理,抽成闭包:代理校验通过/跳过后才真正执行。
+    const runtimeSel = emuSupported && newRuntime === 'emulator' && EMU_PLATFORMS.includes(platform) ? 'emulator' : undefined;
+    if (!runtimeSel && !requireKernel()) return;
     const doCreate = async (proxyOut: any | null): Promise<void> => {
-      const runtime = emuSupported && newRuntime === 'emulator' ? 'emulator' : undefined;
+      const runtime = runtimeSel;
       const r = await m.createAccount({ platform, displayName: name, group, persona, keywords, contentLang: newContentLang, loginScope: platform === 'kuaishou' ? newScope : undefined, runtime });
       if (r?.ok && r.account && proxyOut) {
         try { await m.setAccountProxy({ id: r.account.id, proxy: proxyOut }); } catch { /* 代理存失败不挡建号 */ }
@@ -861,7 +868,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     // 余额预检:总积分(永久桶+有效订阅桶)不足阈值 → 弹充值/续费弹窗,不空跑一趟。
     //   与 TaskDetailPage.handleRunNow 口径一致(手动运行都先拦一道)。
     if (!noobClawAuth.hasEnoughBalanceForTask()) return;
-    if (!requireKernel()) return;
+    if (!allEmu(t.accountIds || []) && !requireKernel()) return;
     // 只拦【同一平台】已有任务在跑:同平台共用一套指纹内核会打架,不同平台各跑各的没问题。
     //   原来判的是全局 running —— 任意一个任务在跑就谁也点不了。
     if (runningPlatforms.includes(t.platform)) { setNotice(i18nService.t('mvAnotherTaskRunning')); return; }
@@ -1162,7 +1169,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       <div className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-500 mb-2"><span className="inline-block w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />{i18nService.t('mvEngageGrowth')}</div>
                       <h3 className="text-base font-bold dark:text-white mb-1.5">🎶 {i18nService.t('mvDouyinEngageCard')}</h3>
                       <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">{i18nService.t('mvDouyinEngageDesc')}</p>
-                      <button onClick={() => { if (!requireLogin()) return; if (!requireKernel()) return; setShowNewWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 shadow-lg shadow-violet-500/25">🎶 {i18nService.t('mvStartEngage')}</button>
+                      <button onClick={() => { if (!requireLogin()) return; if (!(emuSupported && EMU_PLATFORMS.includes(platform)) && !requireKernel()) return; setShowNewWizard(true); }} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-violet-500 hover:bg-violet-600 shadow-lg shadow-violet-500/25">🎶 {i18nService.t('mvStartEngage')}</button>
                     </div>
                   </div>
                   {/* 自动回复粉丝(矩阵多账号) */}
@@ -1534,7 +1541,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 </div>
               )}
               {/* 执行端(feat/emulator-matrix):仅 Windows 新建时可选;建号后固定(要换需在模拟器面板删除实例)。 */}
-              {!editId && emuSupported && (
+              {!editId && emuSupported && EMU_PLATFORMS.includes(platform) && (
                 <div className="mb-3">
                   <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.currentLanguage === 'zh' ? '执行端' : 'Runs on'}<span className="ml-2 font-normal text-gray-400">Beta</span></label>
                   <div className="flex gap-2">
@@ -1545,7 +1552,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                       </button>
                     ))}
                   </div>
-                  {newRuntime === 'emulator' && <div className="text-[11px] text-gray-400 mt-1">{i18nService.currentLanguage === 'zh' ? '需先安装雷电模拟器 9。建号后会自动新建一个专属实例,登录在模拟器窗口里手动完成。目前浏览器任务不会在模拟器号上运行。' : 'Requires LDPlayer 9. A dedicated instance is created; log in manually inside it. Browser tasks do not run on emulator accounts yet.'}</div>}
+                  {newRuntime === 'emulator' && <div className="text-[11px] text-gray-400 mt-1">{i18nService.currentLanguage === 'zh' ? '需要雷电模拟器(没装的话模拟器面板里可一键下载安装)。建号后自动新建专属实例,登录在模拟器窗口里手动完成。目前模拟器账号只支持「互动」任务(点赞、评论)。' : 'Requires LDPlayer (the emulator panel can download it). A dedicated instance is created; log in manually inside it. Emulator accounts currently support engage tasks only (likes, comments).'}</div>}
                 </div>
               )}
               <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">{i18nService.t('mvTrackRequired')}<span className="ml-2 font-normal text-gray-400">{i18nService.t('mvTrackHint')}</span></label>

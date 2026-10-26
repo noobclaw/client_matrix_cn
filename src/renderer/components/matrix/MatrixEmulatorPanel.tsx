@@ -38,7 +38,9 @@ interface Props {
 }
 
 const MatrixEmulatorPanel: React.FC<Props> = ({ focusAccountId, onClose, onChanged }) => {
-  const [status, setStatus] = useState<{ supported: boolean; ldFound: boolean; ldDir?: string | null } | null>(null);
+  const [status, setStatus] = useState<{ supported: boolean; ldFound: boolean; ldDir?: string | null; maxConcurrent?: number } | null>(null);
+  const [ldInst, setLdInst] = useState<{ phase: string; pct?: number; msg?: string } | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
   const [items, setItems] = useState<EmuItem[]>([]);
   const [msgs, setMsgs] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
@@ -51,7 +53,7 @@ const MatrixEmulatorPanel: React.FC<Props> = ({ focusAccountId, onClose, onChang
     const e = E(); if (!e) return;
     const s = await e.status();
     if (!mounted.current) return;
-    setStatus({ supported: !!s?.supported, ldFound: !!s?.ldFound, ldDir: s?.ldDir });
+    setStatus({ supported: !!s?.supported, ldFound: !!s?.ldFound, ldDir: s?.ldDir, maxConcurrent: s?.maxConcurrent });
     if (s?.ldFound) {
       const r = await e.list();
       if (mounted.current) setItems(Array.isArray(r?.items) ? r.items : []);
@@ -67,8 +69,10 @@ const MatrixEmulatorPanel: React.FC<Props> = ({ focusAccountId, onClose, onChang
       setMsgs((m) => ({ ...m, [p.accountId]: String(p.msg || '') }));
       if (p.done) { setPending((x) => ({ ...x, [p.accountId]: false })); void refresh(); }
     });
+    const offLd = e?.onLdInstall?.((st: any) => { setLdInst(st); if (st?.phase === 'done') void refresh(); });
+    e?.ldInstallState?.().then((r: any) => { if (r?.state && r.state.phase !== 'idle') setLdInst(r.state); }).catch(() => { /* ignore */ });
     const t = setInterval(() => { void refresh(); }, 8000);
-    return () => { mounted.current = false; clearInterval(t); try { off?.(); } catch { /* ignore */ } };
+    return () => { mounted.current = false; clearInterval(t); try { off?.(); offLd?.(); } catch { /* ignore */ } };
   }, [refresh]);
 
   const act = async (accountId: string, label: string, fn: () => Promise<any>, keepPending = false): Promise<any> => {
@@ -119,7 +123,12 @@ const MatrixEmulatorPanel: React.FC<Props> = ({ focusAccountId, onClose, onChang
 
         {status?.supported && !status.ldFound && (
           <div className="text-sm space-y-3">
-            <div>{tr('没找到雷电模拟器。请先安装雷电 9,安装后回来刷新;装在其它位置的话,在下面填安装目录(里面要有 ldconsole.exe)。', 'LDPlayer not found. Install LDPlayer 9 and refresh, or enter its install folder (must contain ldconsole.exe).')}</div>
+            <div>{tr('没找到雷电模拟器。点下面按钮从雷电官网下载安装程序并打开,在安装窗口里点「安装」即可,装好后这里会自动检测到。', 'LDPlayer not found. Click below to download the official installer and open it; click Install in its window and this panel will detect it automatically.')}</div>
+            <div className="flex items-center gap-2">
+              <button className="text-sm px-4 py-2 rounded-lg bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50" disabled={!!ldInst && (ldInst.phase === 'downloading' || ldInst.phase === 'installing')} onClick={() => { setLdInst({ phase: 'downloading', pct: 0, msg: tr('准备下载…', 'Preparing…') }); void E()?.installLd(); }}>{tr('一键下载安装雷电', 'Download & install LDPlayer')}</button>
+              {ldInst && <span className={`text-xs ${ldInst.phase === 'failed' ? 'text-red-500' : 'text-gray-500'}`}>{ldInst.msg}</span>}
+            </div>
+            <div className="text-xs text-gray-400">{tr('已经装在其它位置?填安装目录(里面要有 ldconsole.exe):', 'Installed elsewhere? Enter its folder (must contain ldconsole.exe):')}</div>
             <div className="flex gap-2">
               <input value={dirInput} onChange={(e) => setDirInput(e.target.value)} placeholder="D:\\LDPlayer\\LDPlayer9" className="flex-1 text-sm px-3 py-2 rounded-lg border dark:border-white/15 border-black/15 bg-transparent" />
               <button className={btn} onClick={saveDir}>{tr('保存', 'Save')}</button>
@@ -132,6 +141,22 @@ const MatrixEmulatorPanel: React.FC<Props> = ({ focusAccountId, onClose, onChang
           <div className="text-xs text-gray-500 mb-3 flex items-center gap-2 flex-wrap">
             <span>{tr('雷电目录:', 'LDPlayer: ')}{status.ldDir}</span>
             <button className={btn} onClick={() => E()?.sortWindows()}>{tr('排列窗口', 'Arrange windows')}</button>
+            {items.length > 0 && (<>
+              <button className={btn} disabled={batchBusy} onClick={async () => {
+                const ids = items.filter((x) => !x.exists).map((x) => x.accountId);
+                if (!ids.length) return;
+                setBatchBusy(true);
+                try { await E()?.bindMany(ids); } finally { setBatchBusy(false); void refresh(); }
+              }}>{tr('全部建立实例', 'Create all instances')}</button>
+              <button className={btn} disabled={batchBusy} onClick={() => {
+                const ids = items.filter((x) => x.exists && !x.connected).map((x) => x.accountId);
+                if (!ids.length) return;
+                setPending((p) => { const n = { ...p }; ids.forEach((id) => { n[id] = true; }); return n; });
+                void E()?.startMany(ids);
+              }}>{tr('全部启动', 'Start all')}</button>
+              <button className={btn} disabled={batchBusy} onClick={() => { void E()?.stopMany(items.filter((x) => x.running).map((x) => x.accountId)).then(() => setTimeout(() => void refresh(), 3000)); }}>{tr('全部停止', 'Stop all')}</button>
+              {status.maxConcurrent ? <span className="text-gray-400">{tr(`本机建议同时开 ≤ ${status.maxConcurrent} 个`, `Up to ${status.maxConcurrent} at once on this PC`)}</span> : null}
+            </>)}
             <span className="ml-auto flex items-center gap-1">
               {tr('App:', 'App:')}
               <select value={app} onChange={(e) => setApp(e.target.value)} className="text-xs px-2 py-1 rounded-lg border dark:border-white/15 border-black/15 bg-transparent">
@@ -142,8 +167,8 @@ const MatrixEmulatorPanel: React.FC<Props> = ({ focusAccountId, onClose, onChang
 
           <div className="text-xs text-gray-500 mb-3 leading-relaxed rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
             {tr(
-              '提示:模拟器和机房 IP 在平台眼中风险较高,账号被限流或要求验证的机率比真手机高。第一期代理用的是安卓系统 HTTP 代理,部分 App 或 UDP 流量可能不走代理。登录请在模拟器窗口里手动完成,登录后点「我已登录」。',
-              'Note: emulators and datacenter IPs are treated as higher-risk by platforms. This beta uses Android\'s system HTTP proxy; some apps or UDP traffic may bypass it. Log in manually in the emulator window, then click "I\'m logged in".',
+              '提示:模拟器和机房 IP 在平台眼中风险较高,账号被限流或要求验证的机率比真手机高。第一期代理用的是安卓系统 HTTP 代理,部分 App 或 UDP 流量可能不走代理。登录请在模拟器窗口里手动完成,登录后点「我已登录」。目前模拟器账号支持 TikTok / Facebook 的「互动」任务(点赞、评论),节奏和每日上限跟网页版一致。',
+              'Note: emulators and datacenter IPs are treated as higher-risk by platforms. This beta uses Android\'s system HTTP proxy; some apps or UDP traffic may bypass it. Log in manually in the emulator window, then click "I\'m logged in". Emulator accounts currently support TikTok / Facebook engage tasks (likes, comments) with the same pacing and daily caps as the web version.',
             )}
           </div>
 
@@ -164,7 +189,7 @@ const MatrixEmulatorPanel: React.FC<Props> = ({ focusAccountId, onClose, onChang
                     <span className={`ml-auto text-xs ${it.connected ? 'text-green-600' : it.running ? 'text-blue-500' : 'text-gray-400'}`}>{state}{it.proxyMode === 'http_bridge' ? tr(' · 代理', ' · proxy') : ''}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {!it.exists && <button className={btn} disabled={busy} onClick={() => act(it.accountId, tr('重建实例', 'Recreate'), () => E().bind(it.accountId))}>{tr('重建实例', 'Recreate')}</button>}
+                    {!it.exists && <button className={btn} disabled={busy} onClick={() => act(it.accountId, tr('建立实例', 'Create instance'), () => E().bind(it.accountId))}>{tr('建立实例', 'Create instance')}</button>}
                     {it.exists && <button className={btn} disabled={busy} onClick={() => act(it.accountId, tr('启动中', 'Starting'), () => E().start(it.accountId), true)}>{tr('启动 / 连接', 'Start / connect')}</button>}
                     {it.exists && <button className={btn} disabled={busy} onClick={() => act(it.accountId, tr('显示窗口', 'Show'), () => E().show(it.accountId))}>{tr('显示窗口', 'Show window')}</button>}
                     {it.connected && <button className={btn} disabled={busy} onClick={() => act(it.accountId, tr('打开 App', 'Open app'), () => E().openApp(it.accountId, app))}>{tr('打开 App', 'Open app')}</button>}

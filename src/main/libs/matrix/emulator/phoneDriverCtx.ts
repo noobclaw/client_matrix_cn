@@ -15,6 +15,7 @@ import { coworkLog } from '../../coworkLogger';
 import { ensureRunning, appStart, appStop, isAppInstalled, pushMedia } from './emulatorPool';
 import { findAll, findOne, parseHierarchy, summarize, UiNode, UiSelector } from './uiTree';
 import { sleep } from './exec';
+import { BUILTIN_DRIVERS } from './builtinDrivers';
 
 function apiBase(): string { return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com'; }
 function localDriverDir(): string {
@@ -24,12 +25,9 @@ function localDriverDir(): string {
 
 let lastGood: Record<string, string> | null = null;
 
-/** 内置脚本(面板「自检」用,后端没下发时兜底)。源码见 docs/emulator-drivers/。 */
-const BUILTIN_DRIVERS: Record<string, string> = {
-  phone_probe: "const pkg = String(ctx.input.pkg || 'com.zhiliaoapp.musically');\nif (!(await ctx.appInstalled(pkg))) return { ok: false, reason: 'app_not_installed:' + pkg };\nctx.log('打开 ' + pkg);\nawait ctx.appStart(pkg);\nawait ctx.sleep(6000);\nconst current = await ctx.appCurrent();\nconst screen = await ctx.screen();\nconst nodes = await ctx.dump();\nconst visible = nodes.filter((n) => n.visible && (n.text || n.desc || n.resourceId));\nctx.log('当前前台:' + current + ',节点 ' + nodes.length + ' 个,有内容 ' + visible.length + ' 个');\nreturn {\n  ok: current === pkg,\n  reason: current === pkg ? undefined : 'foreground_is:' + current,\n  current,\n  screen,\n  nodeCount: nodes.length,\n  sample: visible.slice(0, 40).map((n) => ({ id: n.resourceId, text: n.text.slice(0, 30), desc: n.desc.slice(0, 30), cls: n.className.split('.').pop(), at: [n.cx, n.cy] })),\n};\n",
-};
+// 内置脚本(后端没下发时兜底)。源码在 docs/emulator-drivers/,由 scripts/gen-emulator-drivers.js 生成(BUILTIN_DRIVERS)。
 
-async function loadDriver(key: string): Promise<string | null> {
+export async function loadPhoneDriver(key: string): Promise<string | null> {
   if (!/^phone_[\w]+$/.test(key)) return null;
   const local = path.join(localDriverDir(), `${key}.js`);
   try { if (fs.existsSync(local)) return fs.readFileSync(local, 'utf8'); } catch { /* ignore */ }
@@ -105,7 +103,7 @@ export async function runPhoneDriver(
   onLog: (m: string) => void,
 ): Promise<{ ok: boolean; reason?: string; [k: string]: unknown }> {
   try {
-    const code = await loadDriver(key);
+    const code = await loadPhoneDriver(key);
     if (!code) return { ok: false, reason: 'no_phone_driver:' + key };
     let fn: (ctx: any) => Promise<any>;
     try { fn = new AsyncFunction('ctx', code); } catch (e: any) { return { ok: false, reason: 'compile_failed:' + String(e?.message || e).slice(0, 100) }; }

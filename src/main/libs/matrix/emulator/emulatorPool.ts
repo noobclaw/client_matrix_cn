@@ -57,6 +57,34 @@ export function instanceNameFor(accountId: string): string {
   return `nc_${accountId}`.replace(/[^\w-]/g, '_').slice(0, 60);
 }
 
+// ── 多开并发上限:按内存估算(每个实例约 2~2.5GB,给系统和 NoobClaw 留 4GB)。 ──
+export function maxConcurrentInstances(): number {
+  const env = parseInt(process.env.NOOBCLAW_EMU_MAX || '', 10);
+  if (Number.isFinite(env) && env > 0) return Math.min(env, 20);
+  const gb = os.totalmem() / 1024 ** 3;
+  return Math.max(1, Math.min(12, Math.floor((gb - 4) / 2.5)));
+}
+
+let slotsInUse = 0;
+const slotWaiters: Array<() => void> = [];
+
+/** 占一个「同时运行实例」名额(任务批量跑时用,防止一次起太多把电脑拖死)。 */
+export async function acquireSlot(signal?: AbortSignal): Promise<() => void> {
+  while (slotsInUse >= maxConcurrentInstances()) {
+    if (signal?.aborted) throw new EmuError('aborted', '已停止');
+    await new Promise<void>((r) => { slotWaiters.push(r); setTimeout(r, 5000); });
+  }
+  slotsInUse++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    slotsInUse = Math.max(0, slotsInUse - 1);
+    const w = slotWaiters.shift();
+    if (w) w();
+  };
+}
+
 export function isEmuBusy(accountId: string): boolean { return busy.has(accountId); }
 export function getEmuSession(accountId: string): EmuSession | undefined { return sessions.get(accountId); }
 
@@ -161,6 +189,60 @@ export async function removeInstance(accountId: string): Promise<void> {
   });
 }
 
+/** 实例当前是否在跑(任务据此决定跑完要不要关:任务自己开的才关,用户本来开着的留着)。 */
+export async function isInstanceRunning(accountId: string): Promise<boolean> {
+  const acc = getAccount(accountId);
+  if (!acc?.emulator) return false;
+  const ld = await getLdPlayer();
+  if (!ld) return false;
+  const inst = await ld.findByName(acc.emulator.instanceName);
+  return !!inst && inst.pid > 0;
+}
+
+// ── 批量(多开)──
+
+/** 给一批账号补建实例(已绑定且实例在的跳过)。串行:ldconsole add 并发会互相打架。 */
+export async function bindMany(accountIds: string[], onLog: (accountId: string, msg: string) => void): Promise<{ ok: string[]; failed: Array<{ accountId: string; error: string }> }> {
+  const ok: string[] = [];
+  const failed: Array<{ accountId: string; error: string }> = [];
+  for (const id of accountIds) {
+    try { await bindAccount(id, (m) => onLog(id, m)); ok.push(id); onLog(id, '实例已就绪'); } catch (e: any) {
+      failed.push({ accountId: id, error: e?.message || String(e) });
+      onLog(id, '❌ ' + (e?.message || String(e)));
+    }
+  }
+  return { ok, failed };
+}
+
+/**
+ * 批量启动:同时最多 maxConcurrentInstances() 个在启动,启动之间错开 8 秒(雷电同时冷启动多个会卡死)。
+ * 不阻塞调用方太久的话由 sidecar 放后台跑,进度走 onLog。
+ */
+export async function startMany(accountIds: string[], onLog: (accountId: string, msg: string, extra?: Record<string, unknown>) => void): Promise<void> {
+  const cap = maxConcurrentInstances();
+  let cursor = 0;
+  const lane = async (laneIdx: number): Promise<void> => {
+    await sleep(laneIdx * 8000);
+    for (;;) {
+      const i = cursor++;
+      if (i >= accountIds.length) return;
+      const id = accountIds[i];
+      try {
+        const s = await ensureRunning(id, (m) => onLog(id, m));
+        onLog(id, '已就绪', { done: true, ok: true, serial: s.serial, proxyMode: s.proxyMode });
+      } catch (e: any) {
+        onLog(id, e?.message || String(e), { done: true, ok: false, code: e?.code });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(cap, accountIds.length)) }, (_v, k) => lane(k)));
+  try { const ld = await getLdPlayer(); if (ld) await ld.sortWindows(); } catch { /* ignore */ }
+}
+
+export async function stopMany(accountIds: string[]): Promise<void> {
+  for (const id of accountIds) { try { await stopInstance(id); } catch { /* ignore */ } }
+}
+
 export async function stopAllSessions(): Promise<void> {
   for (const s of sessions.values()) { try { await s.agent.stop(); } catch { /* ignore */ } }
   sessions.clear();
@@ -178,24 +260,26 @@ export async function listEmulatorAccounts(): Promise<Array<{
   index?: number; exists: boolean; running: boolean; androidStarted: boolean; connected: boolean;
   serial?: string; proxyMode?: string; busy: boolean;
 }>> {
-  const accs = listAccounts().filter((a) => a.runtime === 'emulator' && a.emulator);
+  // 建号时雷电还没装(绑定失败)的号也列出来,面板上给「建立实例」。
+  const accs = listAccounts().filter((a) => a.runtime === 'emulator');
   if (!accs.length) return [];
   const ld = await getLdPlayer();
   const insts = ld ? await ld.list() : [];
   return accs.map((a) => {
-    const inst = insts.find((i) => i.name === a.emulator!.instanceName);
+    const instanceName = a.emulator?.instanceName || instanceNameFor(a.id);
+    const inst = insts.find((i) => i.name === instanceName);
     const s = sessions.get(a.id);
     return {
       accountId: a.id,
       displayName: a.nickname || a.displayName,
       platform: a.platform,
-      instanceName: a.emulator!.instanceName,
+      instanceName,
       index: inst?.index,
       exists: !!inst,
       running: !!inst && inst.pid > 0,
       androidStarted: !!inst?.androidStarted,
       connected: !!s,
-      serial: s?.serial || a.emulator!.serial,
+      serial: s?.serial || a.emulator?.serial,
       proxyMode: s?.proxyMode,
       busy: busy.has(a.id),
     };

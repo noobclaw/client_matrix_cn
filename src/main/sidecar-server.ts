@@ -641,12 +641,17 @@ function startMatrixScheduler(): void {
       // 没装指纹浏览器内核 → 定时任务【不跑】(否则每分钟空转 + 每号失败 + 报错刷屏);
       // 用户进「我的矩阵账号」会被提示下载,装好后下个 tick 自然恢复。
       const { installedKernelPath } = await import('./libs/matrix/kernelInstaller');
-      if (!installedKernelPath()) return;
+      // 全是模拟器号的任务(feat/emulator-matrix)不需要内核,照常调度;其它任务没内核就跳过。
+      const kernelOk = !!installedKernelPath();
+      const { getAccount: getAcc } = await import('./libs/matrix/accountManager');
+      const allEmuTask = (t: any): boolean => Array.isArray(t.accountIds) && t.accountIds.length > 0 && t.accountIds.every((id: string) => getAcc(id)?.runtime === 'emulator');
+      if (!kernelOk && !due.some(allEmuTask)) return;
       due.sort((a, b) => (a.nextPlannedRunAt || 0) - (b.nextPlannedRunAt || 0));
       // 按平台并发:每个【平台空闲】的到点任务都起一个(runMatrixTaskById 内部再做原子占锁 + 封顶,races 也安全)。
       for (const t of due) {
         if (runningPlatforms.size >= MATRIX_MAX_CONCURRENT) break;
         if (runningPlatforms.has(t.platform)) continue;
+        if (!kernelOk && !allEmuTask(t)) continue;
         await runMatrixTaskById(t.id);
       }
     } catch (e) { coworkLog('WARN', 'sidecar-server', 'matrix scheduler tick failed', { err: String(e) }); }
@@ -1747,9 +1752,10 @@ const server = http.createServer(async (req, res) => {
             try {
               const { isSupportedPlatform, detectLdDir } = await import('./libs/matrix/emulator/ldplayer');
               const { u2JarReady } = await import('./libs/matrix/emulator/u2Jar');
+              const { maxConcurrentInstances } = await import('./libs/matrix/emulator/emulatorPool');
               const supported = isSupportedPlatform();
               const ldDir = supported ? await detectLdDir() : null;
-              return writeJSON(res, 200, { ok: true, supported, ldDir, ldFound: !!ldDir, u2Ready: u2JarReady() });
+              return writeJSON(res, 200, { ok: true, supported, ldDir, ldFound: !!ldDir, u2Ready: u2JarReady(), maxConcurrent: maxConcurrentInstances() });
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
@@ -1823,6 +1829,38 @@ const server = http.createServer(async (req, res) => {
             } catch (e: any) {
               return fail(e);
             }
+          }
+          case 'emu:installLd': {
+            // 一键下载 + 打开雷电官方安装程序(后台跑,进度走 SSE 'emu:ldInstall')。
+            try {
+              const { installLdPlayer } = await import('./libs/matrix/emulator/ldInstaller');
+              void installLdPlayer((s) => broadcastSSE('emu:ldInstall', s));
+              return writeJSON(res, 200, { ok: true, started: true });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
+          case 'emu:ldInstallState': {
+            const { ldInstallState } = await import('./libs/matrix/emulator/ldInstaller');
+            return writeJSON(res, 200, { ok: true, state: ldInstallState() });
+          }
+          case 'emu:bindMany':
+          case 'emu:startMany':
+          case 'emu:stopMany': {
+            // 多开:批量建实例 / 批量启动(按内存限并发、错峰)/ 批量停止。后台跑,逐号进度走 'emu:progress'。
+            const ids: string[] = Array.isArray(args[0]?.accountIds) ? args[0].accountIds.map(String) : [];
+            const pool = await import('./libs/matrix/emulator/emulatorPool');
+            const prog = (accountId: string, msg: string, extra?: Record<string, unknown>): void => broadcastSSE('emu:progress', { accountId, msg, ...(extra || {}) });
+            if (channel === 'emu:bindMany') {
+              const r = await pool.bindMany(ids, prog);
+              return writeJSON(res, 200, { ok: true, ...r });
+            }
+            if (channel === 'emu:startMany') {
+              void pool.startMany(ids, prog).catch(() => { /* 逐号错误已经走 prog */ });
+              return writeJSON(res, 200, { ok: true, started: true, maxConcurrent: pool.maxConcurrentInstances() });
+            }
+            void pool.stopMany(ids);
+            return writeJSON(res, 200, { ok: true });
           }
           case 'emu:sortWindows': {
             try {

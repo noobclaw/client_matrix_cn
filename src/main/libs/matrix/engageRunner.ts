@@ -413,10 +413,33 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
   // launch 失败时 kernelPool 已回退本次的引用计数/使用锁,finally 不能再 closeKernel ——
   // 否则会错放【别的流程】正持有的锁 / 把它刚开的窗关掉(对齐 keepAliveOne 的 launched 守卫)。
   let kernelLaunched = false;
+  // 模拟器执行端(feat/emulator-matrix):不起指纹内核,改起该号的雷电实例,剧本换成手机版 phone_<平台>_engage。
+  const isEmu = acc.runtime === 'emulator';
+  let emuRelease: (() => void) | null = null;   // 多开名额(按内存限并发)
+  let emuStartedByTask = false;                 // 实例是本任务开的 → 跑完关掉;用户本来开着的不动
 
   try {
     if (opts.signal?.aborted) { return { accountId, state: 'skipped', reason: 'aborted' }; }
+    if (isEmu) {
+      if (opts.taskType && opts.taskType !== 'engage') {
+        log('❌ 模拟器账号目前只支持「互动」任务(点赞/评论),本任务跳过');
+        return { accountId, state: 'skipped', reason: 'emu_unsupported_task' };
+      }
+      if (!['tiktok', 'facebook'].includes(opts.platform)) {
+        log('❌ 模拟器账号目前只支持 TikTok / Facebook 互动,本平台跳过');
+        return { accountId, state: 'skipped', reason: 'emu_unsupported_platform' };
+      }
+    }
     setAccountStatus(accountId, 'running');
+    if (isEmu) {
+      const pool = await import('./emulator/emulatorPool');
+      log('📱 等待模拟器名额(本机最多同时开 ' + pool.maxConcurrentInstances() + ' 个)…');
+      emuRelease = await pool.acquireSlot(opts.signal);
+      if (opts.signal?.aborted) { return { accountId, state: 'skipped', reason: 'aborted' }; }
+      emuStartedByTask = !(await pool.isInstanceRunning(accountId));
+      log('📱 启动雷电模拟器');
+      await pool.ensureRunning(accountId, (m) => log('   ' + m));
+    } else {
     log('启动指纹内核');
     await launchKernel({
       accountId, kernelPath: opts.kernelPath, kernelVersion: acc.kernelVersion,
@@ -460,6 +483,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       return { accountId, state: 'skipped', reason: 'login_expired' };
     }
     markAccountAlive(accountId); // 确认登录有效 → 更新活跃时间,常跑的号不进主动保活名单。
+    } // end !isEmu(模拟器号的登录态由手机剧本在 App 里判断,撞登录页 → finish('error','login_required'))
 
     // orchestrator 需要的 task(配额从 opts.quota,缺省回落 scenario manifest 默认)。
     // reply_fan 剧本读 task.persona / funnel_phrase / funnel_probability;engage 剧本读 keywords/配额/comment_prompt。
@@ -777,10 +801,28 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       log: (m: string) => coworkLog('INFO', 'engage-orch', m),
     };
 
+    let orchRet: any;
+    if (isEmu) {
+      // 手机版剧本:沿用上面整套 ctx(配额/AI 评论/计费/去重/日志),设备操作挂在 ctx.phone 上。
+      const { buildPhoneCtx, loadPhoneDriver } = await import('./emulator/phoneDriverCtx');
+      const key = `phone_${opts.platform}_engage`;
+      const phoneCode = await loadPhoneDriver(key);
+      if (!phoneCode) { log('❌ 取不到手机版互动剧本 ' + key); return { accountId, state: 'failed', reason: 'no_phone_driver' }; }
+      ctx.phone = await buildPhoneCtx(accountId, {}, log);
+      orchRet = await new AsyncFunction('ctx', phoneCode)(ctx);
+      const finE = finished as { status: string; error?: string } | null;
+      if (finE && finE.status === 'error' && /login_required/.test(String(finE.error || ''))) {
+        setAccountStatus(accountId, 'login_required');
+        log('⚠️ App 未登录:请在模拟器面板打开窗口手动登录,再点「我已登录」');
+        return { accountId, state: 'skipped', counts, chargedCredits, chargedUsd, reason: 'login_required' };
+      }
+      if (!finE || finE.status !== 'error') markAccountAlive(accountId);
+    } else {
     const code = pack?.orchestrator;
     if (!code) { coworkLog('ERROR', 'engage', `[${accountId}] no_orchestrator`); return { accountId, state: 'failed', reason: 'no_orchestrator' }; }
     const fn = new AsyncFunction('ctx', code);
-    const orchRet: any = await fn(ctx);
+    orchRet = await fn(ctx);
+    }
     // report 剧本回传逐条结果 → 带在 item 上(其它剧本的返回值不关心,保持原样)
     const reportResults = opts.taskType === 'report' && Array.isArray(orchRet?.results) ? orchRet.results : undefined;
 
@@ -806,8 +848,14 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
   } finally {
     // 完成后留时间让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
     // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
-    const holdMs = inspectHoldMs(finished?.error);
-    if (!opts.signal?.aborted) {
+    const holdMs = isEmu ? 0 : inspectHoldMs(finished?.error);
+    if (isEmu) {
+      // 模拟器:本任务开的实例跑完就关(释放内存给排队的号);用户本来开着的留着。名额最后释放。
+      try {
+        if (emuStartedByTask) { const pool = await import('./emulator/emulatorPool'); await pool.stopInstance(accountId); }
+      } catch { /* ignore */ }
+      try { emuRelease?.(); } catch { /* ignore */ }
+    } else if (!opts.signal?.aborted) {
       await new Promise<void>((resolve) => {
         const t = setTimeout(resolve, holdMs);
         try { opts.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true }); } catch { /* ignore */ }
@@ -838,7 +886,9 @@ export interface EngageReport { platform: string; total: number; success: number
 export async function runEngageTask(opts: EngageTaskOptions): Promise<EngageReport> {
   // 内核校验(手动 + 定时统一兜底):没装指纹浏览器且没显式路径 → 整个任务【不跑】,
   // 抛 NO_KERNEL 让上层弹「去下载」。否则定时任务会空转、每个号都失败。
-  if (!opts.kernelPath && !installedKernelPath()) {
+  // 全是模拟器号(feat/emulator-matrix)时不需要指纹内核。
+  const needKernel = opts.accountIds.some((id) => getAccount(id)?.runtime !== 'emulator');
+  if (needKernel && !opts.kernelPath && !installedKernelPath()) {
     throw new Error(`${NO_KERNEL_ERROR}: 指纹浏览器内核未安装,请先到「我的矩阵账号」下载内核`);
   }
   const k = Math.max(1, Math.min(opts.concurrency ?? 3, 10));

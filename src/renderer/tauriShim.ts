@@ -575,7 +575,13 @@ export function createTauriElectronShim(): typeof window.electron {
       openApp: (accountId: string, pkg: string) => ipcInvoke('emu:openApp', { accountId, pkg }).then((r: any) => r ?? { ok: false }),
       applyProxy: (accountId: string) => ipcInvoke('emu:applyProxy', { accountId }).then((r: any) => r ?? { ok: false }),
       sortWindows: () => ipcInvoke('emu:sortWindows').then((r: any) => r ?? { ok: false }),
+      installLd: () => ipcInvoke('emu:installLd').then((r: any) => r ?? { ok: false }),
+      ldInstallState: () => ipcInvoke('emu:ldInstallState').then((r: any) => r ?? { ok: false }),
+      bindMany: (accountIds: string[]) => ipcInvoke('emu:bindMany', { accountIds }).then((r: any) => r ?? { ok: false }),
+      startMany: (accountIds: string[]) => ipcInvoke('emu:startMany', { accountIds }).then((r: any) => r ?? { ok: false }),
+      stopMany: (accountIds: string[]) => ipcInvoke('emu:stopMany', { accountIds }).then((r: any) => r ?? { ok: false }),
       onProgress: (handler: (p: unknown) => void) => onSSE('emu:progress', handler),
+      onLdInstall: (handler: (p: unknown) => void) => onSSE('emu:ldInstall', handler),
     },
 
     // ── Shell ──
