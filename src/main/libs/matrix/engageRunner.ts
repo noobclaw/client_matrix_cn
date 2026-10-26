@@ -851,7 +851,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
   } finally {
     // 完成后留时间让用户检查浏览器里的结果再关窗(点「停止」立即关、不等)。
     // 普通 20s;撞到登录墙/验证墙留 60s,好让用户当场手动登录/过验证(2026-07-06 用户要求)。
-    const holdMs = isEmu ? 0 : inspectHoldMs(finished?.error);
+    const holdMs = isEmu ? 0 : inspectHoldMs((finished as { status: string; error?: string } | null)?.error);
     if (isEmu) {
       // 模拟器:本任务开的实例跑完就关(释放内存给排队的号);用户本来开着的留着。名额最后释放。
       try {

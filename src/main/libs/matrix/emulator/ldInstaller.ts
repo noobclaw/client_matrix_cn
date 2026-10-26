@@ -60,10 +60,11 @@ export interface LdInstallState {
 
 let state: LdInstallState = { phase: 'idle' };
 let running: Promise<LdInstallState> | null = null;
+let lastFailReason = '';
 
 export function ldInstallState(): LdInstallState { return state; }
 
-async function download(url: string, onProgress: (pct: number) => void): Promise<string | null> {
+async function download(url: string, onProgress: (pct: number | null, mb: number) => void): Promise<string | null> {
   const okUrl = (u: string): boolean => { try { const x = new URL(u); return x.protocol === 'https:' && ALLOWED_HOST.test(x.hostname); } catch { return false; } };
   if (!okUrl(url)) { coworkLog('WARN', 'ldInstaller', 'url not allowed', { url }); return null; }
   const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(30 * 60_000) });
@@ -77,6 +78,7 @@ async function download(url: string, onProgress: (pct: number) => void): Promise
   let writeErr: Error | null = null;
   out.on('error', (e) => { writeErr = e; });   // 磁盘满/没权限:必须有监听,否则未捕获异常打崩 sidecar
   let got = 0;
+  let lastMb = -1;
   const reader = (res.body as any).getReader();
   try {
     for (;;) {
@@ -85,7 +87,8 @@ async function download(url: string, onProgress: (pct: number) => void): Promise
       if (done) break;
       got += value.length;
       out.write(Buffer.from(value));
-      if (total) onProgress(Math.min(99, Math.round((got / total) * 100)));
+      const mb = Math.round(got / 1048576);
+      if (mb !== lastMb) { lastMb = mb; onProgress(total ? Math.min(99, Math.round((got / total) * 100)) : null, mb); }
     }
   } catch (e) {
     out.destroy();
@@ -105,11 +108,29 @@ async function download(url: string, onProgress: (pct: number) => void): Promise
   const sig = await authenticodeStatus(file);
   if (sig.status !== 'Valid') {
     coworkLog('WARN', 'ldInstaller', 'installer signature not valid', { file, status: sig.status, signer: sig.signer });
+    lastFailReason = '安装程序数字签名校验未通过(' + sig.status + ')';
     try { fs.unlinkSync(file); } catch { /* ignore */ }
     return null;
   }
   coworkLog('INFO', 'ldInstaller', 'installer signature ok', { signer: sig.signer });
   return file;
+}
+
+async function openWithShell(file: string): Promise<{ ok: boolean; reason?: string }> {
+  const prev = process.env.NC_LD_SETUP;
+  process.env.NC_LD_SETUP = file;
+  try {
+    const r = await execFileBuf('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command',
+      'try { Start-Process -FilePath $env:NC_LD_SETUP -ErrorAction Stop; Write-Output OK } catch { Write-Output ("ERR " + $_.Exception.Message) }'], { timeoutMs: 120_000 });
+    const out = r.stdout.toString('utf8').trim();
+    if (/^OK/m.test(out)) return { ok: true };
+    // 用户在 UAC 框里点了「否」也会走到这里(The operation was canceled by the user)。
+    return { ok: false, reason: (out.replace(/^ERR\s*/, '') || 'unknown').slice(0, 120) };
+  } catch (e: any) {
+    return { ok: false, reason: String(e?.message || e).slice(0, 120) };
+  } finally {
+    if (prev === undefined) delete process.env.NC_LD_SETUP; else process.env.NC_LD_SETUP = prev;
+  }
 }
 
 async function authenticodeStatus(file: string): Promise<{ status: string; signer: string }> {
@@ -137,23 +158,28 @@ export function installLdPlayer(onState: (s: LdInstallState) => void): Promise<L
       const existing = await detectLdDir();
       if (existing) return (set({ phase: 'done', ldDir: existing, msg: '已安装' }), state);
 
+      lastFailReason = '';
       const urls = [...(await serverUrls()), ...(preferCn() ? [...CN_URLS, ...INTL_URLS] : [...INTL_URLS, ...CN_URLS])];
       let file: string | null = null;
       for (const u of urls) {
         set({ phase: 'downloading', pct: 0, msg: '正在从雷电官网下载安装程序…' });
-        try { file = await download(u, (pct) => set({ phase: 'downloading', pct, msg: `正在下载雷电安装程序 ${pct}%` })); } catch (e: any) {
+        try { file = await download(u, (pct, mb) => set({ phase: 'downloading', pct: pct ?? undefined, msg: pct !== null ? `正在下载雷电安装程序 ${pct}%(${mb}MB)` : `正在下载雷电安装程序 ${mb}MB…` })); } catch (e: any) {
           coworkLog('WARN', 'ldInstaller', 'download failed', { url: u, err: String(e?.message || e) });
         }
         if (file) break;
       }
-      if (!file) return (set({ phase: 'failed', msg: '下载失败,请检查网络,或到雷电官网手动下载安装' }), state);
+      if (!file) return (set({ phase: 'failed', msg: (lastFailReason || '下载失败') + ',请检查网络,或到雷电官网手动下载安装' }), state);
 
-      set({ phase: 'installing', msg: '已打开雷电安装程序,请在安装窗口里点「安装」,装完回来即可(本页会自动检测)' });
-      try {
-        const child = spawn(file, [], { detached: true, stdio: 'ignore', windowsHide: false });
-        child.unref();
-      } catch (e: any) {
-        return (set({ phase: 'failed', msg: '无法打开安装程序:' + String(e?.message || e) }), state);
+      // 雷电安装程序要管理员权限:Node 直接 spawn 会因 ERROR_ELEVATION_REQUIRED(740)失败,而且是异步
+      //   'error' 事件(try/catch 接不住,没监听还会打崩 sidecar)。改用 PowerShell Start-Process(ShellExecute),
+      //   系统会正常弹 UAC 确认框,再出安装界面。路径走环境变量传入,不拼命令字符串。
+      const opened = await openWithShell(file);
+      if (!opened.ok) {
+        // 打不开就把文件在资源管理器里选中,让用户自己双击。
+        try { const c = spawn('explorer.exe', ['/select,', file], { detached: true, stdio: 'ignore' }); c.on('error', () => { /* ignore */ }); c.unref(); } catch { /* ignore */ }
+        set({ phase: 'installing', msg: '安装程序已下载,但没能自动打开(' + opened.reason + ')。已在资源管理器里选中它,请双击运行:' + file });
+      } else {
+        set({ phase: 'installing', msg: '已打开雷电安装程序(可能先弹出管理员确认,请点「是」),在安装窗口里点「安装」,装完回来即可(本页会自动检测)' });
       }
       const t0 = Date.now();
       while (Date.now() - t0 < 40 * 60_000) {
