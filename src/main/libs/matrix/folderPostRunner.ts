@@ -71,7 +71,8 @@ async function chargeAction(authToken: string | undefined, actionType: string, p
 }
 
 /** 发之前先看余额:先发后扣,余额为 0 时扣费会失败,但帖子已经发出去了 —— 不先拦就等于免费发。
- *  只在【确知】余额不够时拦;查不到(断网等)放行,发完扣费失败照常熔断。 */
+ *  只在【确知】余额不够时拦;查不到(断网等)放行,发完扣费失败照常熔断。
+ *  有效会员(基础版及以上)本功能免费(服务端 folder_post 对会员 0 扣)→ 不看余额。 */
 const POST_PRICE_MAX = 2000;
 async function balanceTooLow(authToken: string | undefined): Promise<boolean> {
   if (!authToken) return true;
@@ -80,6 +81,9 @@ async function balanceTooLow(authToken: string | undefined): Promise<boolean> {
     if (res.status === 401) return true;
     if (!res.ok) return false;
     const d: any = await res.json().catch(() => ({}));
+    const member = typeof d?.planCode === 'string' && d.planCode !== 'free' && d?.subStatus === 'active'
+      && !!d?.subPeriodEnd && new Date(d.subPeriodEnd).getTime() > Date.now();
+    if (member) return false;
     const b = Number(d?.tokenBalance);
     return Number.isFinite(b) && b < POST_PRICE_MAX;
   } catch { return false; }
@@ -204,8 +208,8 @@ async function runOne(opts: FolderPostTaskOptions, accountId: string, work: Work
         log(ar.ok ? `✅ 已发布,文件挪到 ${ar.dest}` : `✅ 已发布,但素材「${pick.media.name}」挪不走(被占用 / 只读?)—— 这个号先停发,请手动把它移出「素材」文件夹`);
         // 按条计费(失败退避重试;仍失败 → 熔断整个任务,和其它矩阵任务一致)
         const refId = `folder_post:${opts.taskId}:${ledgerKey}`;
-        let cr: any = await chargeAction(authToken, 'post', 'douyin', refId);
-        for (let ci = 1; ci < 4 && !(cr && cr.ok) && !/insufficient|余额/i.test(String(cr?.reason || '')); ci++) { await sleep(3000 * ci); cr = await chargeAction(authToken, 'post', 'douyin', refId); }
+        let cr: any = await chargeAction(authToken, 'folder_post', 'douyin', refId);
+        for (let ci = 1; ci < 4 && !(cr && cr.ok) && !/insufficient|余额/i.test(String(cr?.reason || '')); ci++) { await sleep(3000 * ci); cr = await chargeAction(authToken, 'folder_post', 'douyin', refId); }
         if (cr && cr.ok) { chargedCredits += cr.charged || 0; chargedUsd += cr.cost_usd || 0; }
         else {
           if (!chargeFatal.reason) chargeFatal.reason = String(cr?.reason || 'unknown');

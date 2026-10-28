@@ -2037,6 +2037,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-teal-500/30 bg-teal-500/5 dark:bg-teal-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-teal-600 dark:text-teal-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> {i18nService.currentLanguage === 'zh' ? '定时发布' : i18nService.currentLanguage === 'zh-TW' ? '定時發布' : 'Scheduled posts'}
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{i18nService.currentLanguage === 'zh' ? '👑 会员免费' : i18nService.currentLanguage === 'zh-TW' ? '👑 會員免費' : '👑 Free for members'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">📅 {platLabel} · {i18nService.currentLanguage === 'zh' ? '文件夹定时发布' : i18nService.currentLanguage === 'zh-TW' ? '資料夾定時發布' : 'Folder Scheduled Posts'}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
@@ -2069,6 +2070,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-red-500/30 bg-red-500/5 dark:bg-red-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-red-600 dark:text-red-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {i18nService.currentLanguage === 'zh' ? '账号工具' : i18nService.currentLanguage === 'zh-TW' ? '帳號工具' : 'Account tools'}
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white">{i18nService.currentLanguage === 'zh' ? '🆓 免费' : i18nService.currentLanguage === 'zh-TW' ? '🆓 免費' : '🆓 Free'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">🚫 {platLabel} · {i18nService.currentLanguage === 'zh' ? '批量拉黑' : i18nService.currentLanguage === 'zh-TW' ? '批量封鎖' : 'Batch Block'}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
@@ -2101,6 +2103,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-pink-500/30 bg-pink-500/5 dark:bg-pink-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-pink-600 dark:text-pink-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-pink-500" /> {i18nService.currentLanguage === 'zh' ? '评论区互动' : i18nService.currentLanguage === 'zh-TW' ? '留言區互動' : 'Comment engagement'}
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{i18nService.currentLanguage === 'zh' ? '👑 会员免费' : i18nService.currentLanguage === 'zh-TW' ? '👑 會員免費' : '👑 Free for members'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">💗 {platLabel} · {i18nService.currentLanguage === 'zh' ? '作品评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? '作品留言區按讚' : 'Comment Liker'}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">

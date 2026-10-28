@@ -397,6 +397,13 @@ class NoobClawAuthService {
    * Returns true when balance is sufficient OR user is unauthenticated
    * (login UI 会先拦在前面,这里不重复弹窗)。
    */
+  /** 基础版及以上、订阅在有效期内(与服务端 charge.ts isActiveMember 同口径)。会员免费功能的前端判断用,
+   *  真正扣不扣费以服务端为准。 */
+  isActiveMember(): boolean {
+    const s = this.state;
+    return !!s.planCode && s.planCode !== 'free' && s.subStatus === 'active' && !!s.subPeriodEnd && new Date(s.subPeriodEnd).getTime() > Date.now();
+  }
+
   hasEnoughBalanceForTask(threshold = 10000): boolean {
     if (!this.state.isAuthenticated) return true;
     // 余额还没首刷到位(刚打开 / 点太快):不拿初始 0 误判不足,后台补刷一次,

@@ -259,7 +259,7 @@ const MatrixFolderPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
               ))}
               {daysLeft !== null && <SummaryRow label={L('现有素材', '現有素材', 'Media now')} value={daysLeft > 0 ? L(`够发 ${daysLeft} 天(按最少的那个时段算)`, `夠發 ${daysLeft} 天(按最少的那個時段算)`, `enough for ${daysLeft} day(s)`) : L('有时段还没放素材,到点会跳过', '有時段還沒放素材,到點會跳過', 'some slots are empty and will be skipped')} />}
               <SummaryRow label={L('补发', '補發', 'Catch-up')} value={L('到点时电脑没开 / 正在跑别的抖音任务,3 小时内补发,超过就算错过', '到點時電腦沒開 / 正在跑別的抖音任務,3 小時內補發,超過就算錯過', 'missed slots are posted within 3 hours, otherwise skipped')} />
-              <SummaryRow label={L('计费', '計費', 'Billing')} value={L('每成功发出一条按「发帖」计费', '每成功發出一條按「發帖」計費', 'charged per successful post')} />
+              <SummaryRow label={L('计费', '計費', 'Billing')} value={L('基础版及以上会员免费;非会员每成功发出一条按「发帖」扣积分', '基礎版及以上會員免費;非會員每成功發出一條按「發帖」扣積分', 'Free for Basic+ members; otherwise charged per successful post')} />
             </div>
           </>
         )}
