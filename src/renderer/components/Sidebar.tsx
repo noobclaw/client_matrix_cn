@@ -39,8 +39,6 @@ interface SidebarProps {
   onShowMatrixRuns?: () => void;
   /** 简洁版(2026-10-28):侧栏只留 首页 / 我的矩阵账号 / 我的任务 / 我的充值 / 邀请返佣 / 联系我们 */
   simple?: boolean;
-  /** 顶部「简洁版 | 专业版」切换 */
-  onSwitchEdition?: (e: 'simple' | 'pro') => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -72,7 +70,6 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowMatrixTasks,
   onShowMatrixRuns,
   simple,
-  onSwitchEdition,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -180,6 +177,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div className="pt-3 pb-3">
         {/* Logo + App Name + Collapse Button */}
         {/* macOS:顶部留一条拖拽区给红绿灯窗控,logo 行下移 → 与下方菜单一样左对齐(不再 pl-68 居中) */}
+        {/* 简洁版:不要 logo / 品牌名 / 收起按钮 */}
+        {!simple && (<>
         {isMac && <div className="draggable h-5" />}
         <div className="draggable sidebar-header-drag h-10 flex items-center justify-between px-3">
           <div className="non-draggable flex items-center gap-2">
@@ -202,31 +201,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SidebarToggleIcon className="h-4 w-4" isCollapsed={isCollapsed} />
           </button>
         </div>
-        {/* 简洁版 / 专业版 切换 —— 放在最显眼的位置,随时切,两版数据完全共用 */}
-        {onSwitchEdition && (
-          <div className="mt-2 px-3">
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-claude-surfaceHover/70 dark:bg-claude-darkSurfaceHover/70 border dark:border-claude-darkBorder border-claude-border">
-              {(['simple', 'pro'] as const).map((e) => {
-                const on = (e === 'simple') === !!simple;
-                const lang = i18nService.currentLanguage;
-                const label = e === 'simple'
-                  ? (lang === 'zh' ? '简洁版' : lang === 'zh-TW' ? '簡潔版' : 'Simple')
-                  : (lang === 'zh' ? '专业版' : lang === 'zh-TW' ? '專業版' : 'Pro');
-                return (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => { if (!on) { setIsSearchOpen(false); onSwitchEdition(e); } }}
-                    className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${on ? 'bg-claude-accent text-white shadow-sm' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText'}`}
-                    aria-pressed={on}
-                  >
-                    {e === 'simple' ? '🌱 ' : '🚀 '}{label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        </>)}
         <div className="mt-3 space-y-1 px-3">
           {/* 首页 — 置顶,默认进入。产品定位 + 三步使用流程 + 涨粉教程 + 开源提示 */}
           <button
@@ -580,7 +555,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
         </div>
-      ) : (
+      ) : simple ? null : (
         <div className="px-3 pb-3 pt-1">
           <button
             type="button"

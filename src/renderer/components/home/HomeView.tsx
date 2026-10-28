@@ -56,7 +56,8 @@ const HomeView: React.FC<HomeViewProps> = ({
   return (
     <div className="flex-1 flex flex-col dark:bg-claude-darkBg bg-claude-bg h-full">
       {/* 右侧「联系我们」悬浮小组件 — 与官网浮窗同源同款(无回到顶部小火箭) */}
-      <ContactFloatWidget />
+      {!simple && <ContactFloatWidget />}
+      {!simple && (<>
       {/* ── 顶栏:与 AI对话首页同款(钱包/余额/充值/登录 + 官网/Twitter/Telegram) ── */}
       <div className="draggable flex h-12 items-center justify-between px-4 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
         <div className="non-draggable h-8 flex items-center gap-2">
@@ -117,10 +118,12 @@ const HomeView: React.FC<HomeViewProps> = ({
       {/* 行情跑马灯 */}
       <TickerMarquee />
 
+      </>)}
       {/* ── 主体 ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="max-w-3xl mx-auto px-5 py-8 space-y-8">
 
+          {!simple && (<>
           {/* Hero / 产品定位 */}
           <div className="text-center space-y-3">
             <img src="logo.png" alt="logo" className="w-14 h-14 mx-auto rounded-2xl shadow-lg" />
@@ -146,6 +149,8 @@ const HomeView: React.FC<HomeViewProps> = ({
             </p>
             {/* 平台标签行已按需求移除(2026-08-09);位置换给下方「视频教程」区 */}
           </div>
+
+          </>)}
 
           {/* 登录引导:未登录时给一个醒目的登录按钮 */}
           {!authState.isAuthenticated && (
@@ -190,6 +195,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">
                 📖 {i18nService.t('hvStepsTitle')}
               </h2>
+              {!simple && (
               <button
                 type="button"
                 onClick={() => openExternal(tutorialHome())}
@@ -198,6 +204,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                 {i18nService.t('hvFullTutorial')}
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -232,6 +239,7 @@ const HomeView: React.FC<HomeViewProps> = ({
           {/* 视频教程横排(与官网首页同款):数据来自 R2 清单,拉不到整个区不渲染 */}
           <HomeVideoTutorials />
 
+          {!simple && (<>
           {/* 开源安全提示 */}
           <div className="flex justify-center">
             <a
@@ -246,6 +254,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               <svg className="w-3 h-3 dark:text-emerald-400 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
             </a>
           </div>
+          </>)}
         </div>
       </div>
     </div>

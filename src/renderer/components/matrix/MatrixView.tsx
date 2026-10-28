@@ -293,7 +293,7 @@ const findCryptoTrack = (presets: TrackPreset[]): TrackPreset | undefined =>
 const M = () => (window as any).electron?.matrix;
 const fmtTime = (ts?: number) => { if (!ts || ts >= Number.MAX_SAFE_INTEGER) return '—'; const d = new Date(ts); return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
-interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; initialPlatform?: string; onNavigate?: (s: string, platform?: string) => void; onPlatformChange?: (p: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void; onShowInvite?: () => void }
+interface Props { screen?: 'accounts' | 'newTask' | 'tasks' | 'runs'; initialPlatform?: string; onNavigate?: (s: string, platform?: string) => void; onPlatformChange?: (p: string) => void; isSidebarCollapsed?: boolean; onToggleSidebar?: () => void; onShowInvite?: () => void; simple?: boolean }
 
 // 任务摘要里的动作部分。精准模式的四个区间是【有意】存成 0 的(动作数在 precise_*),
 //   直接按区间渲染会变成「👍 0-0 · ➕ 0-0 · 💬 0-0」,看着像这个任务不干活。
@@ -320,7 +320,7 @@ function engageQuotaSummary(q: any, zh: boolean): string {
   return parts.join(' · ');
 }
 
-const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onNavigate, onPlatformChange }) => {
+const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onNavigate, onPlatformChange, simple }) => {
   const [accounts, setAccounts] = useState<MatrixAccount[]>([]);
   // 每个平台账号上限:服务端 /api/matrix/config 下发(admin 可调),拉不到/未登录 → 兜底 10。
   const [maxAccountsPerPlatform, setMaxAccountsPerPlatform] = useState<number>(MAX_ACCOUNTS_PER_PLATFORM_FALLBACK);
@@ -451,6 +451,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [kernelPct, setKernelPct] = useState(0);
   const [showKernelModal, setShowKernelModal] = useState(false);
   const [kernelMenuOpen, setKernelMenuOpen] = useState(false);
+  // 简洁版账号卡「⋯ 更多」菜单当前展开的是哪个号
+  const [simpleMoreFor, setSimpleMoreFor] = useState<string | null>(null);
+  // 简洁版平台 tab:默认只显示有账号的平台 + 当前平台,其余收进「＋ 更多平台」
+  const [simpleAllPlats, setSimpleAllPlats] = useState(false);
 
   const reload = useCallback(async () => { const r = await M()?.listAccounts(); if (r?.ok) setAccounts(r.accounts || []); }, []);
   const reloadTasks = useCallback(async () => { const r = await M()?.listTasks?.(); if (r?.ok) { setTasks(r.tasks || []); if (typeof r.running === 'boolean') setRunning(r.running); setRunningPlatforms(Array.isArray(r.runningPlatforms) ? r.runningPlatforms : []); } }, []);
@@ -527,6 +531,12 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
     return () => { if (typeof off === 'function') off(); };
   }, [loadKernel]);
 
+  // 简洁版顶部横条里的选择器选了别的版本 → 这里同步(否则「就绪」判断用的还是旧版本)
+  useEffect(() => {
+    const on = (e: Event) => { const v = (e as CustomEvent)?.detail?.version; if (v) setSelectedVersion(String(v)); loadKernel(); };
+    window.addEventListener('noobclaw:kernel-changed', on);
+    return () => window.removeEventListener('noobclaw:kernel-changed', on);
+  }, [loadKernel]);
   // 切换全局选中版本(已装的才可选);落盘成所有启动路径的唯一来源。
   const chooseVersion = useCallback(async (v: string) => {
     setSelectedVersion(v);
@@ -917,6 +927,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
 
   return (
     <div className="h-full flex flex-col dark:text-claude-darkText text-claude-text">
+      {!simple && (<>
       <div className="flex items-center gap-2 px-5 py-3 border-b dark:border-white/10 border-black/10 flex-wrap">
         <h1 className="text-lg font-medium mr-3">{SCREEN_TITLE[screen] || i18nService.t('mvMatrix')}</h1>
         {/* 钱包(BSC/地址/积分/充值)—— 与新建页一致 */}
@@ -973,6 +984,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
         </div>
       </div>
 
+      </>)}
       {notice && (
         <div className="mx-5 mt-3 text-sm px-3 py-2 rounded-lg bg-claude-accent/10 text-claude-accent flex items-center justify-between">
           <span>{notice}</span><button onClick={() => setNotice('')} className="opacity-60 hover:opacity-100 ml-3">✕</button>
@@ -986,18 +998,18 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
             <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <div className="flex items-center gap-2.5">
                 <h2 className="text-lg font-bold dark:text-white">🧬 {i18nService.t('mvMyMatrixAccounts')}</h2>
-                {/* 涨粉教程(从顶栏挪到标题后,贴着账号页) */}
-                <button type="button" onClick={() => { try { const docs = (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? 'https://docs.noobclaw.com/zhong-wen-ban' : 'https://docs.noobclaw.com/english'; (window as any).electron?.shell?.openExternal(docs); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 {i18nService.t('mvGrowthTutorial')}</button>
+                {/* 涨粉教程(从顶栏挪到标题后,贴着账号页)—— 简洁版不放 */}
+                {!simple && <button type="button" onClick={() => { try { const docs = (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? 'https://docs.noobclaw.com/zhong-wen-ban' : 'https://docs.noobclaw.com/english'; (window as any).electron?.shell?.openExternal(docs); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 {i18nService.t('mvGrowthTutorial')}</button>}
               </div>
               <div className="flex items-center gap-2.5">
                 {/* 当前平台账号数 / 上限(上限服务端可调) */}
-                <span className="text-xs text-gray-400 dark:text-gray-500">{accounts.filter((a) => a.platform === platform).length}/{maxAccountsPerPlatform}</span>
+                {!simple && <span className="text-xs text-gray-400 dark:text-gray-500">{accounts.filter((a) => a.platform === platform).length}/{maxAccountsPerPlatform}</span>}
                 <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">{i18nService.t('mvConnectAccount').replace('{platform}', platLabel(platform))}</button>
               </div>
             </div>
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
             <div className="flex flex-wrap gap-2 mb-4">
-              {PLATFORMS.filter((p) => !complianceHidden.includes(p)).map((p) => {
+              {PLATFORMS.filter((p) => !complianceHidden.includes(p)).filter((p) => !simple || simpleAllPlats || p === platform || accounts.some((a) => a.platform === p)).map((p) => {
                 const expiredCount = expiredCountByPlatform[p] || 0;
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
@@ -1009,6 +1021,13 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 </button>
                 );
               })}
+              {simple && PLATFORMS.filter((p) => !complianceHidden.includes(p)).some((p) => p !== platform && !accounts.some((a) => a.platform === p)) && (
+                <button onClick={() => setSimpleAllPlats((v) => !v)} className="px-3.5 py-1.5 rounded-full text-sm border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-violet-500/60 hover:text-violet-500">
+                  {simpleAllPlats
+                    ? (i18nService.currentLanguage === 'zh' ? '收起' : i18nService.currentLanguage === 'zh-TW' ? '收起' : 'Less')
+                    : (i18nService.currentLanguage === 'zh' ? '＋ 更多平台' : i18nService.currentLanguage === 'zh-TW' ? '＋ 更多平台' : '+ More platforms')}
+                </button>
+              )}
             </div>
             {/* 快手:创作者中心(发布)/ 主站(涨粉)两类账号分开管理(两端登录互不覆盖)。 */}
             {platform === 'kuaishou' && (
@@ -1041,6 +1060,57 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   const stLabel = expired ? i18nService.t('mvStExpired') : statusLabel(a.status);
                   const stDot = expired ? 'bg-red-500' : STATUS_DOT[a.status];
                   const isSuspended = suspendedIds.has(a.id);
+                  // 简洁版账号卡:头像 + 昵称 + 状态 + 关键词一行 + 一个主按钮(没连接 → 连接账号;已连接 → 编辑),
+                  //   其余(配置IP / 刷新信息 / 断开 / 移除)收进「⋯」。
+                  if (simple) {
+                    const kwAll = mergeKw(a.keywords, a.derivedKeywords);
+                    const notConnected = a.status === 'login_required';
+                    const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
+                    const item = 'w-full text-left px-3 py-1.5 text-xs hover:bg-black/5 dark:hover:bg-white/5';
+                    return (
+                      <div key={a.id} className={`relative rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 flex items-center gap-3 bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
+                        <div className="relative shrink-0">
+                          <div className="w-10 h-10 rounded-full bg-violet-500/20 text-violet-500 flex items-center justify-center text-sm font-bold">{(a.nickname || a.displayName || '?').slice(0, 1)}</div>
+                          {a.avatar && <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="absolute inset-0 w-10 h-10 rounded-full object-cover bg-gray-200 dark:bg-gray-700" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-semibold dark:text-white truncate">{a.nickname || a.displayName}</span>
+                            <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-white ${stSolid}`}>{isSuspended ? '⏸️ ' + i18nService.t('mvSuspended') : stLabel}</span>
+                          </div>
+                          <div className="text-[11px] truncate mt-0.5">
+                            {notConnected && !expired
+                              ? <span className="text-amber-500">{SL('还没连接,点右边「连接账号」', '還沒連接,點右邊「連接帳號」', 'Not connected yet — tap Connect')}</span>
+                              : expired
+                                ? <span className="text-red-500">{SL('登录过期了,重新连接一下', '登入過期了,重新連接一下', 'Login expired — reconnect')}</span>
+                                : kwAll.length
+                                  ? <span className="text-gray-500 dark:text-gray-400">🏷️ {kwAll.slice(0, 6).join(' · ')}</span>
+                                  : <span className="text-amber-500">{SL('还没设关键词,点「编辑」加几个', '還沒設關鍵詞,點「編輯」加幾個', 'No keywords yet — tap Edit')}</span>}
+                          </div>
+                        </div>
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          {notConnected
+                            ? <button onClick={() => setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope })} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{SL('连接账号', '連接帳號', 'Connect')}</button>
+                            : <button onClick={() => openEdit(a)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">{i18nService.t('mvEdit')}</button>}
+                          <div className="relative">
+                            <button onClick={() => setSimpleMoreFor(simpleMoreFor === a.id ? null : a.id)} className="w-7 h-7 rounded-lg text-gray-500 hover:bg-black/5 dark:hover:bg-white/10" aria-label={SL('更多', '更多', 'More')}>⋯</button>
+                            {simpleMoreFor === a.id && (
+                              <>
+                                <div className="fixed inset-0 z-40" onClick={() => setSimpleMoreFor(null)} />
+                                <div className="absolute right-0 mt-1 z-50 w-36 rounded-xl py-1 shadow-xl dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
+                                  {notConnected && <button className={item} onClick={() => { setSimpleMoreFor(null); openEdit(a); }}>{i18nService.t('mvEdit')}</button>}
+                                  <button className={item} onClick={() => { setSimpleMoreFor(null); openProxy(a); }}>{i18nService.t('mvConfigIp')}</button>
+                                  {!notConnected && <button className={item} onClick={() => { setSimpleMoreFor(null); refreshIdentity(a); }}>{i18nService.t('mvRefreshInfo')}</button>}
+                                  {!notConnected && <button className={item} onClick={() => { setSimpleMoreFor(null); disconnectAccount(a); }}>{i18nService.t('mvDisconnect')}</button>}
+                                  <button className={item + ' text-red-500'} onClick={() => { setSimpleMoreFor(null); deleteAccount(a); }}>{SL('移除账号', '移除帳號', 'Remove')}</button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                   <div key={a.id} className={`relative h-full rounded-xl border border-gray-200 dark:border-gray-700 p-4 flex flex-col gap-2 transition-colors bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
                     {/* 左上角状态实心角标(更显眼:已连接绿底白字 / 尚未连接黄底白字) */}

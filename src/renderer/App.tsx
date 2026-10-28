@@ -53,6 +53,7 @@ import { noobClawSSE } from './services/noobclawSSE';
 import { MATRIX_EDITION } from './matrixEdition';
 import { useUiEdition, setUiEdition, clearPresetAccounts, type UiEdition } from './uiEdition';
 import EditionChooser from './components/EditionChooser';
+import TopBar from './components/common/TopBar';
 
 const App: React.FC = () => {
   // 原生窗口标题跟随界面语言(tauri.conf 的静态中文 title 只是启动兜底)。
@@ -1102,6 +1103,8 @@ const App: React.FC = () => {
       <ErrorBoundary name="MembershipExpiryModal" fallback={null}>
         <MembershipExpiryModal />
       </ErrorBoundary>
+      {/* 全宽顶部横条:正中「简洁版 | 专业版」;简洁版右侧只放账号 / 积分 / 指纹浏览器 */}
+      {MATRIX_EDITION && uiEdition && <TopBar edition={uiEdition} onSwitch={switchEdition} onShowSettings={() => handleShowSettings()} />}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar
           onShowLogin={handleShowLogin}
@@ -1110,7 +1113,6 @@ const App: React.FC = () => {
              保持「任务详情属于我的涨粉任务」的认知一致;从「所有 AI 对话」列表点进对话详情时,
              高亮仍归到「所有 AI 对话」(coworkHistory);其余情况按真实 mainView 高亮。 */
           simple={simpleUi}
-          onSwitchEdition={MATRIX_EDITION ? switchEdition : undefined}
           activeView={
             simpleUi && mainView === 'matrixTaskNew'
               ? (scenarioInDetail ? 'matrixTasks' : 'home')
@@ -1142,7 +1144,7 @@ const App: React.FC = () => {
           onShowMatrixTasks={handleShowMatrixTasks}
           onShowMatrixRuns={handleShowMatrixRuns}
           onNewChat={handleNewChat}
-          isCollapsed={isSidebarCollapsed}
+          isCollapsed={simpleUi ? false : isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
           updateBadge={!isSidebarCollapsed ? updateBadge : null}
         />
@@ -1289,6 +1291,7 @@ const App: React.FC = () => {
               // 「我的矩阵账号」= 账号管理(增删/登录/配赛道关键词人设),仍走 MatrixView。
               <MatrixView
                 screen={'accounts'}
+                simple={simpleUi}
                 initialPlatform={matrixInitialPlatform}
                 onPlatformChange={setMatrixPlatform}
                 onNavigate={(s: string, platform?: string) => { if (platform) setMatrixPlatform(platform); setMainView(s === 'newTask' ? 'matrixTaskNew' : s === 'tasks' ? 'matrixTasks' : s === 'runs' ? 'matrixRuns' : 'matrix'); }}

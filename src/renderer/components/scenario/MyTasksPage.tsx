@@ -23,6 +23,7 @@ import { shortId } from '../../utils/shortId';
 import { i18nService } from '../../services/i18n';
 import { TRACK_META, trackDisplayName } from '../../services/trackNames';
 import { scenarioService, exchangeSquareBadge, type Scenario, type Task } from '../../services/scenario';
+import { useUiEdition } from '../../uiEdition';
 
 interface Props {
   /** Tasks already filtered to a single platform by the parent. The parent
@@ -330,6 +331,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
 
   // Sort: running first, then by created_at desc. Stable inside each group.
   // runningOnly(「只看运行中」聚合模式)→ 再按运行态过滤,只留运行中的卡。
+  // 简洁版:不要页内标题行(顶部已有「我的任务 + 下拉」),卡片只留 名称 / 状态 / 频率 / 账号数 / 完成数
+  const simple = useUiEdition() === 'simple';
   const sortedTasks = useMemo(() => {
     return [...tasks]
       .map((t, i) => ({ task: t, originalIdx: i, running: runningTaskIds.has(t.id) }))
@@ -347,7 +350,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <section className="mb-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className={`flex items-center justify-between mb-4 ${simple ? 'hidden' : ''}`}>
           <h2 className="text-lg font-bold dark:text-white">
             {/* 聚合模式 platformLabel 为空串 —— 压掉英文 'My  Tasks' 里的双空格 */}
             📋 {i18nService.t('mtpMyTasks').replace('{platform}', platformLabel).replace(/\s{2,}/g, ' ')}
@@ -673,7 +676,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       ("我没填怎么有身份"用户原话),所以这里跳过。
                       v5.x+: 抖音图文创作也不展示 — 老任务可能有 persona 字段(在
                       wizard 删 persona 之前创建的),展示出来跟详情页不一致。 */}
-                  {!isAnyLinkRewrite && !isImageTextTask && !isBinanceSourceViral && personaSnippet && (
+                  {!simple && !isAnyLinkRewrite && !isImageTextTask && !isBinanceSourceViral && personaSnippet && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
                       👤 {localizePersonaPrefix(personaSnippet, isZh)}
                     </div>
@@ -682,7 +685,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       (尤其互动涨粉:靠这些词搜视频/笔记)。镜像 TaskDetailPage 的口径:
                       推特(KOL 池,不按词搜)/ 图文创作 / 链接仿写·下载 不展示;binance 发帖词是
                       Token tag,源平台搬运是搜索词,其余为普通关键词。空则不显示。 */}
-                  {platformId !== 'x' && !isImageTextTask && !isAnyLinkRewrite
+                  {!simple && platformId !== 'x' && !isImageTextTask && !isAnyLinkRewrite
                     && Array.isArray(task.keywords) && task.keywords.length > 0 && (() => {
                     const kwLabel = isBinanceSourceViral ? i18nService.t('mtxKwSearch')
                       : /^binance/.test(sid) ? 'Token'
@@ -722,7 +725,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                   {/* 图文创作(抖音/小红书/视频号/头条):在 frequency 之上展示 3 段参考文案的
                       前 1-2 段预览 —— 跟 TaskDetailPage 一致(详情页对【所有】图文场景都展示,
                       列表以前只对抖音展示,小红书/视频号/头条漏了)。这是该场景的核心输入。 */}
-                  {isImageTextTask && (() => {
+                  {!simple && isImageTextTask && (() => {
                     const segs: string[] = Array.isArray((task as any).source_segments) ? (task as any).source_segments : [];
                     const visible = segs.filter(s => typeof s === 'string' && s.trim().length > 0).slice(0, 2);
                     if (visible.length === 0) return null;
@@ -842,7 +845,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     )}
                     {/* 配置摘要小标签(来源/形态/关键词/语言/配图/发布等),让卡片信息更丰富 */}
                     {(() => {
-                      const chips = taskConfigChips(task);
+                      const chips = simple ? [] : taskConfigChips(task);
                       return chips.length > 0 ? (
                         <div className="flex flex-wrap gap-1 pt-0.5">
                           {chips.map((c, i) => (
@@ -851,7 +854,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         </div>
                       ) : null;
                     })()}
-                    <div className="text-[11px] text-gray-400">
+                    <div className={`text-[11px] text-gray-400 ${simple ? 'hidden' : ''}`}>
                       {i18nService.t('mtxCreatedAt')}
                       {new Date(task.created_at || 0).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
                     </div>

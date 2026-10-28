@@ -2073,7 +2073,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* 批量拉黑(目前仅抖音)—— 名单 / 关键词,多账号逐个拉黑。 */}
-          {matrixMode && MATRIX_BLOCK_PLATFORMS.has(currentPlatform) && (
+          {!simple && matrixMode && MATRIX_BLOCK_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-red-500/30 bg-red-500/5 dark:bg-red-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-red-600 dark:text-red-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {i18nService.currentLanguage === 'zh' ? '账号工具' : i18nService.currentLanguage === 'zh-TW' ? '帳號工具' : 'Account tools'}
@@ -2106,7 +2106,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* 作品评论区点赞(目前仅 TikTok)—— 粘贴作品链接,多账号逐条翻评论区给每位留言者点赞。 */}
-          {matrixMode && MATRIX_COMMENT_LIKE_PLATFORMS.has(currentPlatform) && (
+          {!simple && matrixMode && MATRIX_COMMENT_LIKE_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-pink-500/30 bg-pink-500/5 dark:bg-pink-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-pink-600 dark:text-pink-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-pink-500" /> {i18nService.currentLanguage === 'zh' ? '评论区互动' : i18nService.currentLanguage === 'zh-TW' ? '留言區互動' : 'Comment engagement'}
@@ -2167,7 +2167,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* 爆款批量仿写(矩阵多账号)—— 小红书:每号关键词搜本niche爆款→仿写→AI生图→发布。 */}
-          {MATRIX_VIRAL_PLATFORMS.has(currentPlatform) && (
+          {!simple && MATRIX_VIRAL_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 dark:bg-rose-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {i18nService.t('svSectionViral')}
@@ -2401,7 +2401,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {/* 币安广场批量搬运(矩阵多账号)—— 币安:1 个源平台采集号搜+下素材 → N 个币安号各领一条 AI 仿写 + 配源图 → 发币安广场。 */}
           {/* 交易所广场四家的批量搬运。与币安那张卡分开:描述文案用 svCardExchangeRepostDesc1
               (不含平台名),平台名只由 platLabel 动态给出。 */}
-          {MATRIX_EXCHANGE_REPOST_PLATFORMS.has(currentPlatform) && (
+          {!simple && MATRIX_EXCHANGE_REPOST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> {i18nService.t('svSectionRepost')}
@@ -2416,7 +2416,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {MATRIX_BINANCE_REPOST_PLATFORMS.has(currentPlatform) && (
+          {!simple && MATRIX_BINANCE_REPOST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> {i18nService.t('svSectionRepost')}
@@ -2481,7 +2481,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* 抖音Report(白名单功能)—— 仅白名单 UID 可见;可多账号、1-4 条、手动触发。 */}
-          {matrixMode && reportEnabled && !!MATRIX_REPORT_SCENARIO_ID[currentPlatform] && (
+          {!simple && matrixMode && reportEnabled && !!MATRIX_REPORT_SCENARIO_ID[currentPlatform] && (
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionReport')}
@@ -2693,6 +2693,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       <ErrorBoundary name="LuckyBag">
         <LuckyBag />
       </ErrorBoundary>
+      {!simple && (<>
       {/* Header */}
       <div className="draggable flex h-12 items-center justify-between px-4 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
         <div className="flex items-center space-x-3 h-8">
@@ -2760,6 +2761,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         </div>
       </div>
 
+      </>)}
       {/* L1 — section tabs (Create / My Tasks / History). Hidden when in
           a sub-page (task_detail / sensitive_check) so the user gets a
           full-bleed page without competing nav.
@@ -2786,7 +2788,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // section 临时切到 history)时,补一个「← 返回」回到任务列表,避免没了 L1
         // tab 之后无路可退。
         // 「只看运行中」时不分平台,标题固定用通用的「我的涨粉任务」(哪怕开关前停在视频 tab)。
-        const sectionTitle = isHistory
+        const sectionTitle = (simple && !isHistory)
+          ? SL('📋 我的任务', '📋 我的任務', '📋 My tasks')
+          : isHistory
           ? i18nService.t('svRunHistoryTitle')
           : (isVideo && !runningOnlyActive) ? i18nService.t('svMyVideosTitle')
                     : i18nService.t('svMyTasksTitle');
@@ -2916,7 +2920,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           </div>
           {/* v6.x: 「涨粉教程」入口 → 外部浏览器打开文档站。样式与「我的涨粉任务」
               页一致(琥珀渐变胶囊按钮),靠 justify-between 顶到头部右侧。 */}
-          {mode === 'create' && (() => {
+          {mode === 'create' && !simple && (() => {
             // tab=「多平台视频创作」(currentPlatform==='video')→ 文字「视频教程」+ 视频文档链接(中文/英文分开);
             //   其它 tab 保持原样:「涨粉教程」+ 文档首页(用户要求)。
             const isVideoTab = currentPlatform === 'video';

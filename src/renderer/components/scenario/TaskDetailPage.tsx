@@ -23,6 +23,7 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { FALLBACK_IMAGE_STYLES } from '../../services/imageStyles';
 import { TRACK_META, trackDisplayName, trackIcon } from '../../services/trackNames';
 import { engageCoreActions, scenarioSupportsFavorite } from '../../services/engageActions';
+import { useUiEdition } from '../../uiEdition';
 
 // v4.28.x: 之前只放了 XHS tracks,Twitter / Binance 的 web3_* track 没法在
 // detail 页面被翻译,会回落到原始 ID(如 'web3_alpha'),用户看到「人设: web3_alpha」。
@@ -251,6 +252,8 @@ interface Props {
 }
 
 export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged, onOpenHistory }) => {
+  // 简洁版:统计只留 累计完成 / 上次运行 / 下次运行,不显示输出文件夹
+  const simpleUi = useUiEdition() === 'simple';
   // 链接模式是一次性手动运行，没有"下次运行"的概念
   const isLinkModeForStats = task.track === 'link_mode'
     || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
@@ -1626,7 +1629,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </div>
               );
             })()}
-{!isReportTask && !isBlockTask && !isFolderTask && (
+{!simpleUi && !isReportTask && !isBlockTask && !isFolderTask && (
             <div className="flex items-center gap-2 flex-wrap">
               <span>{i18nService.t('tdOutputLabel')}</span>
               {/* 点文字也能打开(保留旧交互) */}
@@ -1875,23 +1878,29 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         />
         {/* 累计消耗 — credits + USD. token_price_per_million is baked into the
             per-run cost_usd by scenarioManager, so we just sum here. */}
+        {!simpleUi && (
         <StatCard
           label={i18nService.t('tdTotalCost')}
           value={formatCreditsCost(stats?.cumulative_tokens_used || 0, stats?.cumulative_cost_usd || 0)}
           small
         />
+        )}
         {/* 上次完成 — same shape as 累计完成 but only the most recent run. */}
+        {!simpleUi && (
         <StatCard
           label={i18nService.t('tdLastDone')}
           value={formatActionBreakdown(stats?.last_run_action_counts || {}, scenario)}
           small
         />
+        )}
         {/* 上次消耗 — credits + USD for the most recent run. */}
+        {!simpleUi && (
         <StatCard
           label={i18nService.t('tdLastCost')}
           value={formatCreditsCost(stats?.last_run_tokens_used || 0, stats?.last_run_cost_usd || 0)}
           small
         />
+        )}
         <StatCard
           label={i18nService.t('tdLastRun')}
           value={formatRelative(stats?.last_run_at || null)}
