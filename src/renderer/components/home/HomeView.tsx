@@ -206,10 +206,19 @@ const HomeView: React.FC<HomeViewProps> = ({
                   </React.Fragment>
                 ))}
               </div>
-              <button type="button" onClick={onShowMatrixTaskNew}
-                className="inline-flex items-center gap-2 px-10 py-4 rounded-2xl text-lg font-bold bg-claude-accent hover:bg-claude-accentHover text-[#04130B] transition-colors">
-                ＋ {SL('创建任务', '建立任務', 'Create a task')}
-              </button>
+              {/* 创建任务按钮居中;右边一个小字链接「查看已有任务 ›」(同专业版首页步骤卡的「按钮 + 文字」),绝对定位不挤偏按钮 */}
+              <div className="relative">
+                <button type="button" onClick={onShowMatrixTaskNew}
+                  className="inline-flex items-center gap-2 px-10 py-4 rounded-2xl text-lg font-bold bg-claude-accent hover:bg-claude-accentHover text-[#04130B] transition-colors">
+                  ＋ {SL('创建任务', '建立任務', 'Create a task')}
+                </button>
+                {onShowMatrixTasks && (
+                  <button type="button" onClick={onShowMatrixTasks}
+                    className="absolute left-full top-1/2 -translate-y-1/2 ml-5 whitespace-nowrap text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent dark:hover:text-claude-accent hover:underline underline-offset-4">
+                    {SL('查看已有任务', '查看已有任務', 'View my tasks')} ›
+                  </button>
+                )}
+              </div>
               {/* 教学视频:一行,和上面一起在第一屏里 */}
               <div className="w-full pt-2"><HomeVideoTutorials filter={"select"} /></div>
             </div>
