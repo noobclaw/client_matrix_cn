@@ -47,3 +47,18 @@ export function presetAccountIds(platform?: string): string[] {
   return preset.ids.slice();
 }
 export function presetPlatform(): string | null { return preset ? preset.platform : null; }
+
+/** 向导里用:这次是不是用了简洁版预选(只在挂载时判一次)。 */
+export function usePresetUsed(initialTask: unknown, platform?: string): boolean {
+  const [used] = useState<boolean>(() => !initialTask && presetAccountIds(platform).length > 0);
+  return used;
+}
+/** 简洁版预选号:向导自己的账号列表加载完后,剔除不在列表里的号 —— 各向导的账号口径不同
+ *  (如快手「回复粉丝」只列创作者中心号),不剔会把看不见、取消不了的号存进任务。只在用了预选时生效。 */
+export function usePresetPrune(used: boolean, accounts: Array<{ id: string }>, loading: boolean | undefined, prune: (live: Set<string>) => void): void {
+  useEffect(() => {
+    if (!used || loading) return;
+    prune(new Set(accounts.map((a) => a.id)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [used, accounts, loading]);
+}

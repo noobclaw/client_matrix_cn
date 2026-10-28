@@ -14,7 +14,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
-import { presetAccountIds } from '../../uiEdition';
+import { presetAccountIds, usePresetUsed, usePresetPrune } from '../../uiEdition';
 
 type WizardStep = number;   // 1..totalSteps(抖音 4 步:账号 / 数量 / 引流语 / 频率;其它平台 3 步,无「数量」)
 
@@ -73,6 +73,9 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
     if (!initialTask && presetAccountIds(platform).length) return new Set<string>(presetAccountIds(platform));   // 简洁版:创建任务时已选好的号
     return new Set(accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
   });
+  // 简洁版预选号:账号加载完后剔除不在本向导列表里的号(见 usePresetPrune)
+  const presetUsed = usePresetUsed(initialTask, platform);
+  usePresetPrune(presetUsed, accounts, accountsLoading, (live) => setSelected((prev) => { const n = new Set(Array.from(prev).filter((id) => live.has(id))); return n.size === prev.size ? prev : n; }));
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // ── 引流语 + 概率 ──

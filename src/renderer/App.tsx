@@ -683,6 +683,7 @@ const App: React.FC = () => {
   // 简洁版里没有的页面 → 切过去时回首页
   const SIMPLE_VIEWS = ['home', 'matrix', 'matrixTasks', 'matrixTaskNew', 'wallet', 'invite', 'contact'];
   const switchEdition = (e: UiEdition) => {
+    clearPresetAccounts();   // 切版本一律清预选,免得简洁版选的号带进专业版向导
     setUiEdition(e);
     if (e === 'simple' && !SIMPLE_VIEWS.includes(mainView)) setMainView('home');
   };

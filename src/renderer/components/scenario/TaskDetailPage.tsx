@@ -1601,7 +1601,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               const fmt = (ts: number) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
               const up: any[] = folderStat?.upcoming || [];
               const rec: any[] = folderStat?.recent || [];
-              const recText = (r: any) => r.ok === true ? BL('✅ 已发布', '✅ 已發布', '✅ posted') : r.ok === null ? BL('⏳ 发布中', '⏳ 發布中', '⏳ posting') : r.note === 'empty' ? BL('📭 素材用完,跳过', '📭 素材用完,跳過', '📭 no media, skipped') : r.note === 'login_required' ? BL('⚠️ 登录失效,没发', '⚠️ 登入失效,沒發', '⚠️ logged out') : BL('❌ 没发出去', '❌ 沒發出去', '❌ failed') + (r.note ? ' · ' + String(r.note).slice(0, 40) : '');
+              const recText = (r: any) => (r.stuck ? BL('⛔ 素材没挪走,这个号已停发,请手动移走 · ', '⛔ 素材沒移走,這個帳號已停發,請手動移走 · ', '⛔ media not moved, account paused · ') : '')
+                + (r.ok === true ? BL('✅ 已发布', '✅ 已發布', '✅ posted') : r.note === 'crash_unsure' || /not_confirmed/.test(String(r.note || '')) ? BL('⚠️ 可能已发出,已挪到「待确认」,请去抖音核对', '⚠️ 可能已發出,已移到「待確認」,請去抖音核對', '⚠️ maybe posted — check Douyin') : r.ok === null ? BL('⏳ 发布中', '⏳ 發布中', '⏳ posting') : r.note === 'empty' ? BL('📭 素材用完,跳过', '📭 素材用完,跳過', '📭 no media, skipped') : r.note === 'login_required' ? BL('⚠️ 登录失效,没发', '⚠️ 登入失效,沒發', '⚠️ logged out') : BL('❌ 没发出去', '❌ 沒發出去', '❌ failed') + (r.note ? ' · ' + String(r.note).slice(0, 40) : ''));
               return (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1617,7 +1618,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {rec.length > 0 && (
                     <div className="text-[11px]">
                       <div className="text-gray-400 mb-0.5">{BL('最近记录', '最近記錄', 'Recent')}</div>
-                      {rec.slice(0, 8).map((r: any) => { const [aid, sl, dt] = String(r.key).split('|'); return (
+                      {rec.slice(0, 8).map((r: any) => { const [aid, sl, dt0] = String(r.key).split('|'); const dt = /^manual-/.test(String(dt0)) ? BL('手动试发 ', '手動試發 ', 'manual ') + fmt(r.ts) : dt0; return (
                         <div key={r.key} className="pl-3 text-gray-600 dark:text-gray-300">{dt} · {nameOf(aid)} · {BL('时段', '時段', 'slot ')}{sl} · {recText(r)}</div>
                       ); })}
                     </div>

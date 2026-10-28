@@ -22,7 +22,7 @@ import MatrixFunnelConfig, {
 } from './MatrixFunnelConfig';
 import { NumRow } from './NumberStepper';
 import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
-import { presetAccountIds } from '../../uiEdition';
+import { presetAccountIds, usePresetUsed, usePresetPrune } from '../../uiEdition';
 
 export interface LeadWizardAccount {
   id: string; displayName: string; status: string;
@@ -182,6 +182,9 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     if (!initialTask && presetAccountIds(platform).length) return new Set<string>(presetAccountIds(platform));   // 简洁版:创建任务时已选好的号
     return new Set<string>(accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
   });
+  // 简洁版预选号:账号加载完后剔除不在本向导列表里的号(见 usePresetPrune)
+  const presetUsed = usePresetUsed(initialTask, platform);
+  usePresetPrune(presetUsed, accounts, accountsLoading, (live) => setSelected((prev) => { const n = new Set(Array.from(prev).filter((id) => live.has(id))); return n.size === prev.size ? prev : n; }));
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   // 直播间获客只有 TikTok / 抖音(2026-10-19)。

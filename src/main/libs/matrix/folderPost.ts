@@ -138,8 +138,10 @@ export function archiveUsed(accDir: string, n: number, used: { media: MediaItem;
   const m = used.media;
   let isDir = false;
   try { isDir = fs.statSync(m.path).isDirectory(); } catch { /* gone */ }
-  const totalImgs = isDir ? list(m.path).filter((x) => x.isFile() && IMAGE_EXT.has(path.extname(x.name).toLowerCase())).length : 0;
-  if (isDir && m.files.length && totalImgs > m.files.length) {
+  // 文件夹里还有【不在这次用过的清单里】的图(>35 张没用完 / 恢复时只剩一部分)→ 只挪用过的那几张,别整夹搬走
+  const usedSet = new Set(m.files.map((f) => path.resolve(f)));
+  const hasUnused = isDir && m.files.length > 0 && list(m.path).some((x) => x.isFile() && IMAGE_EXT.has(path.extname(x.name).toLowerCase()) && !usedSet.has(path.resolve(path.join(m.path, x.name))));
+  if (hasUnused) {
     const sub = path.join(dest, SUB_MEDIA + '_' + path.basename(m.path));
     try { fs.mkdirSync(sub, { recursive: true }); } catch { return { dest, ok: false }; }
     mediaOk = m.files.every((f) => move(f, path.join(sub, path.basename(f))));

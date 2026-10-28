@@ -227,6 +227,11 @@ const platformDisplayName = (id: string): string => {
 
 /** 走「自动发帖」向导的平台判定(币安广场 + 交易所广场三家)。它们共用 binancePostRunner:
  *  后端剧本 id 一律是 `${platform}_post`,所以这里加平台不需要改 runner。 */
+/** 这个平台的新建页里有没有免费卡片(无水印下载、批量拉黑;有效会员另含评论区点赞、文件夹定时发布)。 */
+const platformHasFreeCard = (p: PlatformId): boolean =>
+  MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(p) || p === 'youtube' || MATRIX_BLOCK_PLATFORMS.has(p)
+  || ((MATRIX_COMMENT_LIKE_PLATFORMS.has(p) || MATRIX_FOLDER_POST_PLATFORMS.has(p)) && noobClawAuth.isActiveMember());
+
 const isSquarePostScenario = (scenarioId: string): boolean =>
   /^(binance|gate|bitget|bybit|okx)_post$/.test(String(scenarioId || ''));
 
@@ -1583,7 +1588,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   /** 进入某平台的新建流。create 模式留在本实例切 create 段;manage 模式切到
    *  「一键涨粉」create 菜单(干净拆分)。两条路都先过积分门槛。 */
   const goCreatePlatform = (platform: PlatformId) => {
-    if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+    // 有免费卡片的平台(无水印下载 / 批量拉黑;会员另有评论区点赞 / 文件夹定时发布)不拦 —— 余额 0 也能进去建免费任务,
+    //   收费任务在「运行」时照样过积分门槛(TaskDetailPage)。
+    if (!(matrixMode && platformHasFreeCard(platform)) && !noobClawAuth.hasEnoughBalanceForTask()) return;
     if (mode === 'create') { setView({ kind: 'main', section: 'create', platform }); return; }
     onSwitchToCreate?.(platform);
   };
@@ -1857,7 +1864,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           platformId="xhs"
           onOpenTask={openTask}
           onRefresh={refreshAll}
-          onGoCreate={() => { if (noobClawAuth.hasEnoughBalanceForTask()) onSwitchToCreate?.(); }}
+          onGoCreate={() => { onSwitchToCreate?.(); }}
           runningOnly={simpleFilter === 'running'}
         />
       );
@@ -2846,7 +2853,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+              // 简洁版:进的是「选平台」页,可能去建免费任务 → 不在入口拦(收费任务运行时再过门槛)
+              if (!simple && !noobClawAuth.hasEnoughBalanceForTask()) return;
               onSwitchToCreate?.();
             }}
             className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap active:scale-95 text-white shadow-md shadow-green-500/30 bg-green-500 hover:bg-green-600 border border-green-500"

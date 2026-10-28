@@ -12,7 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
-import { presetAccountIds } from '../../uiEdition';
+import { presetAccountIds, usePresetUsed, usePresetPrune } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -75,6 +75,9 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
     const first = accounts.find((a) => a.status !== 'banned' && a.status !== 'login_required');
     return first ? first.id : '';
   });
+  // 简洁版预选号:账号加载完后剔除不在本向导列表里的号(见 usePresetPrune)
+  const presetUsed = usePresetUsed(initialTask, platform);
+  usePresetPrune(presetUsed, accounts, accountsLoading, (live) => setSelectedId((prev) => (prev && !live.has(prev) ? '' : prev)));
 
   // ── 链接清单(textarea,逐行) ── 按平台校验。
   const isValidLink = useMemo(() => linkValidatorFor(platform), [platform]);

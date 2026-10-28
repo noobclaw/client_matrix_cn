@@ -16,7 +16,7 @@ import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../servi
 import MatrixLocalImagePicker from './MatrixLocalImagePicker';
 import { NumBox } from './NumberStepper';
 import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
-import { presetAccountIds } from '../../uiEdition';
+import { presetAccountIds, usePresetUsed, usePresetPrune } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -58,6 +58,9 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
     if (!initialTask && presetAccountIds(platform).length) return presetAccountIds(platform);   // 简洁版:创建任务时已选好的号
     return accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id);
   });
+  // 简洁版预选号:账号加载完后剔除不在本向导列表里的号(见 usePresetPrune)
+  const presetUsed = usePresetUsed(initialTask, platform);
+  usePresetPrune(presetUsed, accounts, accountsLoading, (live) => setSelectedIds((prev) => { const n = prev.filter((id) => live.has(id)); return n.length === prev.length ? prev : n; }));
   const toggle = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   // 账号加载好后剔除【幽灵 id】(已删除的号残留在 accountIds 里,查不到就不渲染却仍计数 → 计数虚高,用户实测)。
   useEffect(() => {

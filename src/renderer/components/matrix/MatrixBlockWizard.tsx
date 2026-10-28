@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { AccountTabRow, AccountKeywordEditor, effectiveKw, accountAvatar, type KwAccount } from './MatrixAccountKeywords';
-import { presetAccountIds } from '../../uiEdition';
+import { presetAccountIds, usePresetUsed, usePresetPrune } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
 export type BlockMode = 'precise' | 'keyword';
@@ -58,6 +58,9 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
   const preciseMode = mode === 'precise';
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask ? (initialTask.accountIds || []) : presetAccountIds(platform)).map(String)));
+  // 简洁版预选号:账号加载完后剔除不在本向导列表里的号(见 usePresetPrune)
+  const presetUsed = usePresetUsed(initialTask, platform);
+  usePresetPrune(presetUsed, accounts, accountsLoading, (live) => setSelected((prev) => { const n = new Set(Array.from(prev).filter((id) => live.has(id))); return n.size === prev.size ? prev : n; }));
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'once');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
