@@ -16,10 +16,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
 import { NumBox } from './NumberStepper';
+import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
-export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
+export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; derivedKeywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条',
   gate: 'Gate广场', bitget: 'Bitget Insight', bybit: 'Bybit Byx', okx: 'OKX星球' };
@@ -125,7 +126,10 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
   useEffect(() => {
     if (sourceAccountId && !sourceCandidates.some((a) => a.id === sourceAccountId)) setSourceAccountId('');
   }, [sourcePlatform]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, sourcePlatform, sourceAccountId, withImage, language, runInterval]);
+  // 向导里当场改过的账号关键词(已写回矩阵账号)+ 正在改的账号 —— 必须在下面 useEffect 之前声明。
+  const [kwOverride, setKwOverride] = useState<Record<string, string[]>>({});
+  const [kwEditingId, setKwEditingId] = useState<string | null>(null);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, sourcePlatform, sourceAccountId, withImage, language, runInterval, kwOverride, kwEditingId]);
 
   // 同 MatrixBinancePostWizard:四家交易所广场共用本向导,而这些文案在 9 种语言里都把
   // 「币安广场」写死了(标题/发布说明/任务名/账号提示),Gate 页面打开显示的还是币安。
@@ -138,9 +142,14 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
     .replace(/币安|幣安/g, platformLabel)
     .replace(/Binance/g, platformLabel);
 
+  const RL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: selectedIds.length > 0, reason: tp('wzBnRepostReasonSelectAccount') },
-    2: { ok: !!sourceAccountId, reason: i18nService.t('wzBnRepostReasonPickSource') },
+    2: !sourceAccountId
+      ? { ok: false, reason: i18nService.t('wzBnRepostReasonPickSource') }
+      : kwEditingId
+        ? { ok: false, reason: RL('还有关键词没保存,先保存或取消', '還有關鍵詞沒儲存,先儲存或取消', 'Save or cancel the keywords you are editing first') }
+        : { ok: true },
     3: { ok: true },
     4: { ok: allTermsAccepted, reason: i18nService.t('wzBnRepostReasonAcceptTerms') },
   };
@@ -187,14 +196,15 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
     const out: string[] = [];
     for (const id of selectedIds) {
       const a = accounts.find((x) => x.id === id);
-      if (!a || !Array.isArray(a.keywords)) continue;
-      for (const k of a.keywords) {
+      if (!a) continue;
+      // 与 runner 同口径:发布号的 effectiveKeywords(原始 + 衍生),向导里改过的以改过的为准。
+      for (const k of effectiveKw(a, kwOverride)) {
         const kk = String(k || '').trim();
         if (kk && out.indexOf(kk) < 0) out.push(kk);
       }
     }
     return out;
-  }, [selectedIds, accounts]);
+  }, [selectedIds, accounts, kwOverride]);
 
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
@@ -319,6 +329,23 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
                   ? publishKeywords.join('、')
                   : <span className="text-amber-500">{i18nService.t('wzBnRepostNoKeywords')}</span>}
               </div>
+              {selectedIds.length > 0 && (
+                <div className="mt-2.5">
+                  <AccountKeywordTabs
+                    accounts={accounts.filter((a) => selectedIds.includes(a.id))}
+                    overrides={kwOverride}
+                    onSaved={(id, list) => setKwOverride((prev) => ({ ...prev, [id]: list }))}
+                    editingId={kwEditingId}
+                    onEditingIdChange={setKwEditingId}
+                    accent="amber"
+                    disabled={saving}
+                    intro={<div className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">✏️ {RL('上面的搜索词 = 各发布号关键词合起来。点下面的发布号可以直接改它的关键词 —— 和「我的矩阵账号」是同一份,这里改了那边也跟着改。',
+                      '上面的搜尋詞 = 各發布號關鍵詞合起來。點下面的發布號可以直接改它的關鍵詞 —— 和「我的矩陣帳號」是同一份,這裡改了那邊也跟著改。',
+                      'The search terms above are all publishing accounts\' keywords combined. Pick an account below to edit its keywords — same keywords as My Matrix Accounts.')}</div>}
+                    emptyHint={RL('这个发布号没配关键词(不影响搬运,只是不贡献搜索词)', '這個發布號沒設定關鍵詞(不影響搬運,只是不貢獻搜尋詞)', 'No keywords on this account (repost still runs; it just adds no search terms)')}
+                  />
+                </div>
+              )}
             </div>
 
           </>
@@ -409,7 +436,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzBnRepostCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzBnRepostPrev')}</button>}
+        {step > 1 && <button type="button" onClick={() => { setKwEditingId(null); setStep((step - 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzBnRepostPrev')}</button>}
         {step < 4 ? (
           <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">{i18nService.t('wzBnRepostNext')}</button>
         ) : (

@@ -21,6 +21,7 @@ import MatrixFunnelConfig, {
   type FunnelValue,
 } from './MatrixFunnelConfig';
 import { NumRow } from './NumberStepper';
+import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
 
 export interface LeadWizardAccount {
   id: string; displayName: string; status: string;
@@ -28,14 +29,7 @@ export interface LeadWizardAccount {
   group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string;
 }
 
-// 与运行时 effectiveKeywords(accountManager) 同口径:原始词 + AI 衍生词。
-//   只看 acc.keywords 会把「只有衍生词」的账号误判成未配关键词。
-const kwOf = (a: LeadWizardAccount): string[] => {
-  const seen = new Set<string>();
-  return [...(a.keywords || []), ...(a.derivedKeywords || [])]
-    .map((k) => String(k || '').trim())
-    .filter((k) => k && !seen.has(k) && seen.add(k));
-};
+// 账号关键词口径(原始词 + AI 衍生词,与运行时 effectiveKeywords 一致)统一走 MatrixAccountKeywords.effectiveKw。
 
 export interface LeadEngageInput {
   mode: 'accounts' | 'keywords' | 'live';
@@ -168,6 +162,9 @@ const countSeedKinds = (lines: string[], platform?: string) => {
 const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const zh = i18nService.currentLanguage === 'zh';
   const t = (a: string, b: string) => (zh ? a : b);
+  // 关键词模式:向导里改过的关键词(已写回矩阵账号,与账号编辑框同一份)+ 正在改的账号。
+  const [kwOverride, setKwOverride] = useState<Record<string, string[]>>({});
+  const [kwEditingId, setKwEditingId] = useState<string | null>(null);
   const editing = !!initialTask;
   // YouTube 的「关注」在平台上叫【订阅】。用户 2026-08-23:每个平台的卡片/向导/详情都要
   //   说自己平台的词。剧本侧计数键仍是 follow(跨平台统一),只有给人看的文案按平台走。
@@ -264,7 +261,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [seedTextByAccount, sharedSeedText, selected, accounts, platform]);
   // 关键词模式下真正会用到的词 = 各账号自己配的关键词(与互动涨粉一致)。
-  const acctsWithoutKw = selectedAccounts.filter((a) => kwOf(a).length === 0);
+  const acctsWithoutKw = selectedAccounts.filter((a) => effectiveKw(a, kwOverride).length === 0);
   const funnelAccounts = selectedAccounts.map((a) => ({
     id: a.id, title: a.nickname || a.displayName, group: a.group,
     platformName: platformLabel, avatar: a.avatar,
@@ -277,9 +274,11 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
       // ⚠️ 账号是弹窗开了之后【异步】填进来的(编辑任务 + sidecar 忙时要等几秒,listAccounts
       //   失败还会一直是空)。此时 selectedAccounts 为空 → `0 < 0` 恒 false → 这一步被判死,
       //   用户看到「所选账号都没配关键词」且永远过不去。账号没到位时先放行,别拿未知当错误。
-      : (selectedAccounts.length === 0 || acctsWithoutKw.length < selectedAccounts.length
-        ? { ok: true }
-        : { ok: false, reason: t('所选账号都没有配关键词 —— 请先去「我的矩阵账号」给账号设置关键词', 'None of the selected accounts has keywords - set them in My Accounts first') }),
+      : kwEditingId
+        ? { ok: false, reason: t('还有关键词没保存,先保存或取消', 'Save or cancel the keywords you are editing first') }
+        : (selectedAccounts.length === 0 || acctsWithoutKw.length < selectedAccounts.length
+          ? { ok: true }
+          : { ok: false, reason: t('所选账号都没有配关键词 —— 点上面的账号直接补上', 'None of the selected accounts has keywords - pick one above and add some') }),
     3: { ok: true },
     4: { ok: true },
     // 点赞/关注/评论三个总量都填 0 = 采完潜客后挨个打开主页干等、什么也不做(采集那步照样跑)。
@@ -310,7 +309,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
     setSeedUnsetConfirm(null);
     setStep((s) => Math.min(TOTAL_STEPS, s + 1));
   };
-  const back = () => { setSaveError(null); setFunnelUnsetConfirm(null); setSeedUnsetConfirm(null); setStep((s) => Math.max(1, s - 1)); };
+  const back = () => { setKwEditingId(null); setSaveError(null); setFunnelUnsetConfirm(null); setSeedUnsetConfirm(null); setStep((s) => Math.max(1, s - 1)); };
 
   const cleanPerMap = () => {
     const out: Record<string, FunnelValue> = {};
@@ -418,7 +417,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
               {accounts.map((a) => {
                 const ready = a.status !== 'login_required' && a.status !== 'banned';
                 const title = a.nickname || a.displayName;
-                const kwN = kwOf(a).length;
+                const kwN = effectiveKw(a, kwOverride).length;
                 return (
                   <label key={a.id} className={`flex items-center gap-2.5 text-sm px-3 py-2 ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
                     <input type="checkbox" checked={selected.has(a.id)} onChange={() => ready && toggle(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-cyan-500 shrink-0" />
@@ -562,25 +561,19 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
             ) : (
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
                 <div className="text-sm font-medium dark:text-gray-200">{t('赛道关键词', 'Niche keywords')}</div>
-                <div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">
-                  {t('关键词跟随每个账号自己的设置,不在这里单独填 —— 要改请去「我的矩阵账号」编辑该账号的关键词。',
-                     'Keywords follow each account\'s own settings rather than being entered here - edit them in My Accounts to change.')}
-                </div>
-                <div className="space-y-1.5">
-                  {selectedAccounts.map((a) => {
-                    const kws = kwOf(a);
-                    return (
-                      <div key={a.id} className="flex items-start gap-2 text-[12px]">
-                        <span className="shrink-0 dark:text-gray-300">{a.nickname || a.displayName}</span>
-                        <span className={kws.length ? 'text-gray-500 dark:text-gray-400' : 'text-amber-500'}>
-                          {kws.length ? kws.slice(0, 8).join('、') + (kws.length > 8 ? ` …(${kws.length})` : '') : t('未配关键词 —— 该号本轮会失败', 'no keywords - this account will fail')}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
-                  className="text-xs text-cyan-500 underline">{t('去「我的矩阵账号」修改关键词', 'Edit keywords in My Accounts')}</button>
+                <AccountKeywordTabs
+                  accounts={selectedAccounts}
+                  overrides={kwOverride}
+                  onSaved={(id, list) => setKwOverride((prev) => ({ ...prev, [id]: list }))}
+                  editingId={kwEditingId}
+                  onEditingIdChange={setKwEditingId}
+                  accent="cyan"
+                  disabled={saving}
+                  intro={<div className="text-[12px] text-gray-500 dark:text-gray-400 leading-relaxed">{t('每个账号按它自己的关键词去找潜客。点上面的账号可以直接改它的关键词 —— 和「我的矩阵账号」是同一份,这里改了那边也跟着改。',
+                    'Each account finds leads with its own keywords. Pick an account above to edit its keywords - same keywords as My Accounts.')}</div>}
+                  emptyHint={t('没配关键词 —— 这个号本轮会失败,点「修改关键词」补上', 'No keywords - this account will fail this run; click Edit keywords to add some')}
+                  onGoAccounts={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
+                />
               </div>
             )}
           </>

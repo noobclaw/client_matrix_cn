@@ -17,10 +17,11 @@ import { i18nService } from '../../services/i18n';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
 import { POST_SOURCE_OPTIONS, PostSourceSel, defaultSourceIdsFor, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 import { NumBox } from './NumberStepper';
+import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
-export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
+export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; derivedKeywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
 
@@ -153,12 +154,16 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, imageSource, localImages, imageCount, dailyCount, references, contentSource, sourceIds, runInterval]);
+  // 向导里当场改过的账号关键词(已写回矩阵账号)+ 正在改的账号 —— 必须在下面 useEffect 之前声明。
+  const [kwOverride, setKwOverride] = useState<Record<string, string[]>>({});
+  const [kwEditingId, setKwEditingId] = useState<string | null>(null);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, kwOverride, imageSource, localImages, imageCount, dailyCount, references, contentSource, sourceIds, runInterval]);
 
   // 网络图模式要求每个选中号都配了关键词(没词没法搜);AI 生图模式不强制。
+  //   第 3 步网络图模式下可以当场改关键词(写回矩阵账号),改过的存在 kwOverride。
   const selectedNoKeyword = useMemo(
-    () => accounts.filter((a) => selectedIds.includes(a.id) && (!a.keywords || a.keywords.length === 0)),
-    [accounts, selectedIds],
+    () => accounts.filter((a) => selectedIds.includes(a.id) && effectiveKw(a, kwOverride).length === 0),
+    [accounts, selectedIds, kwOverride],
   );
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
@@ -168,8 +173,10 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
       : { ok: true }, // 参考文案全选填,随时可下一步
     3: imageSource === 'local'
       ? (localImages.length > 0 ? { ok: true } : { ok: false, reason: i18nService.t('wzImgErrNoLocalImages') })
+      : useRealPhotos && kwEditingId
+        ? { ok: false, reason: T('还有关键词没保存,先保存或取消', 'Save or cancel the keywords you are editing first') }
       : useRealPhotos && selectedNoKeyword.length > 0
-        ? { ok: false, reason: i18nService.t('wzImgErrNoKeyword').replace('{n}', String(selectedNoKeyword.length)) }
+        ? { ok: false, reason: T(`网络图模式需要每个号都配关键词,还有 ${selectedNoKeyword.length} 个号没配 —— 点下面的账号直接补上`, `Web image mode needs keywords for every account; ${selectedNoKeyword.length} still have none — pick them below and add some`) }
         : (useRealPhotos && needsDownloadAccount && !downloadAccountId)
           ? { ok: false, reason: i18nService.t('wzImgErrNoDownloadAccount').replace('{platform}', platformLabel) }
           : { ok: true },
@@ -255,7 +262,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                   const ready = a.status !== 'login_required' && a.status !== 'banned';
                   const reason = a.status === 'banned' ? i18nService.t('wzImgStateBanned') : a.status === 'login_required' ? i18nService.t('wzImgStateDisconnected') : '';
                   const title = a.nickname || a.displayName;
-                  const noKw = !a.keywords || a.keywords.length === 0;
+                  const noKw = effectiveKw(a, kwOverride).length === 0;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
                       <input type="checkbox" checked={selectedIds.includes(a.id)} onChange={() => ready && toggle(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-emerald-500 shrink-0" />
@@ -385,8 +392,21 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                   <div className="text-[11px] text-gray-400">{i18nService.t('wzImgLocalHint')}</div>
                 </div>
               )}
-              {useRealPhotos && selectedNoKeyword.length > 0 && (
-                <div className="text-[11px] text-amber-500 mt-1.5">⚠ {i18nService.t('wzImgWebNoKeywordWarn').replace('{n}', String(selectedNoKeyword.length))}</div>
+              {useRealPhotos && selectedIds.length > 0 && (
+                <div className="mt-3">
+                  <AccountKeywordTabs
+                    accounts={accounts.filter((a) => selectedIds.includes(a.id))}
+                    overrides={kwOverride}
+                    onSaved={(id, list) => setKwOverride((prev) => ({ ...prev, [id]: list }))}
+                    editingId={kwEditingId}
+                    onEditingIdChange={setKwEditingId}
+                    accent="emerald"
+                    disabled={saving}
+                    intro={<div className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">🏷️ {T('网络图按每个账号自己的关键词搜图。点下面的账号可以直接改关键词 —— 和「我的矩阵账号」是同一份,这里改了那边也跟着改。',
+                      'Web images are searched with each account\'s own keywords. Pick an account below to edit them — same keywords as My Matrix Accounts.')}</div>}
+                    emptyHint={T('没配关键词 —— 网络图模式下没法搜图,点「修改关键词」补上', 'No keywords — web images can\'t be searched; click Edit keywords to add some')}
+                  />
+                </div>
               )}
               {useRealPhotos && needsDownloadAccount && (
                 <div className="mt-3">
@@ -522,7 +542,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzImgCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzImgPrev')}</button>}
+        {step > 1 && <button type="button" onClick={() => { setKwEditingId(null); setStep((step - 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzImgPrev')}</button>}
         {step < 4 ? (
           <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{i18nService.t('wzImgNext')}</button>
         ) : (

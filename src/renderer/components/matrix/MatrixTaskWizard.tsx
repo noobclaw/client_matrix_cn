@@ -11,6 +11,7 @@ import { i18nService } from '../../services/i18n';
 import { platformSupportsFavorite } from '../../services/engageActions';
 import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
 import { NumMinMax, NumRow } from './NumberStepper';
+import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
 
 const LIKE_HARDCAP = 500;
 const FOLLOW_HARDCAP = 100;
@@ -36,7 +37,7 @@ const PRECISE_URL_MAX = 50;
 // 步骤(动态):1 选账号 / 2 点赞+关注 / 3 评论(数量+语言) / [4 引流(平台支持且评论>0 才有)] / 末步 频率+条款。
 // 引流独立成一步:支持「所有账号共用」与「各账号各自配置」两种模式(用户需求 2026-08-09)。
 
-export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
+export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; derivedKeywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
 // 平台 id → 中文名(账号行里标出来,避免「分不清这是抖音还是 YouTube 的号」)。
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok', x: 'X', binance: '币安广场', youtube: 'YouTube', shipinhao: '视频号', toutiao: '头条' };
@@ -87,20 +88,15 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   // 默认勾选所有「可用」账号(配了关键词 + 未封);编辑时用任务已存的账号。
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialTask?.accountIds) return new Set(initialTask.accountIds);
-    return new Set(accounts.filter((a) => a.keywords && a.keywords.length && a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
+    return new Set(accounts.filter((a) => effectiveKw(a).length && a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
   });
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  // 关掉刷剧模式时:无关键词账号在「关键词搜索」下不可用,从已选里剔除 —— 否则保存后
-  //   engage_mode='' 但后端 bingeCapable 仍会因关键词为空自动进 binge,与"关掉刷剧"的意图相悖。
-  const setEngageMode = (m: EngageModeKind) => {
-    setEngageModeRaw(m);
-    // 只有【关键词模式】要求账号配过关键词 —— 切到它时把没词的账号剔掉,否则保存后
-    //   后端 bingeCapable 会因关键词为空自动进刷剧,与用户「我要按关键词搜」的意图相悖。
-    //   精准模式不看关键词(链接是用户给的),不能跟着剔号。
-    if (m === 'search') {
-      setSelected((prev) => new Set([...prev].filter((id) => { const a = accounts.find((x) => x.id === id); return !!(a && a.keywords && a.keywords.length); })));
-    }
-  };
+  // 2026-10-28:关键词模式下没配词的账号也能勾 —— 下一步「关键词」里当场补(改的就是矩阵账号那份),
+  //   补齐前过不了那一步,所以不会出现「没词的号被后端自动转成刷剧」。切模式不再剔号。
+  const setEngageMode = (m: EngageModeKind) => { setEngageModeRaw(m); };
+  // 向导里改过的关键词(已写回矩阵账号);校验/展示都按 effectiveKw(账号, kwOverride) 取。
+  const [kwOverride, setKwOverride] = useState<Record<string, string[]>>({});
+  const [kwEditingId, setKwEditingId] = useState<string | null>(null);
 
   const q = initialTask?.quota || {};
   const [likeMin, setLikeMinRaw] = useState<number>(typeof q.daily_like_min === 'number' ? q.daily_like_min : 3);
@@ -182,15 +178,23 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   // 动态步骤表:精准模式用自己那一步(链接 + 每条做几次),不走关键词模式的区间配额/评论两步。
   const stepNames: string[] = preciseMode
     ? (showFunnel ? ['accounts', 'precise', 'funnel', 'final'] : ['accounts', 'precise', 'final'])
-    : (showFunnel ? ['accounts', 'quota', 'comment', 'funnel', 'final'] : ['accounts', 'quota', 'comment', 'final']);
+    : (showFunnel ? ['accounts', 'keywords', 'quota', 'comment', 'funnel', 'final'] : ['accounts', 'keywords', 'quota', 'comment', 'final']);
   const TOTAL_STEPS = stepNames.length;
   const cur = stepNames[Math.min(step, TOTAL_STEPS) - 1];
   // 已选账号(引流步的卡片列表用;标题/赛道与 Step1 行一致)
   const selectedAccounts = accounts.filter((a) => selected.has(a.id)).map((a) => ({ id: a.id, title: a.nickname || a.displayName, group: a.group, platformName: PLATFORM_NAME[a.platform || ''] || a.platform, avatar: a.avatar }));
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, favMin, favMax, maxCmtPerWork, preciseText, pLike, pFav, pFollow, pComment, funnelPhrase, funnelProb, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, favMin, favMax, maxCmtPerWork, preciseText, pLike, pFav, pFollow, pComment, funnelPhrase, funnelProb, runInterval, kwOverride, kwEditingId]);
 
+  const KL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
+  const kwMissingIds = accounts.filter((a) => selected.has(a.id) && effectiveKw(a, kwOverride).length === 0).map((a) => a.id);
   const canAdvance: Record<string, { ok: boolean; reason?: string }> = {
     accounts: { ok: selected.size >= 1, reason: i18nService.t('wzEngageErrSelectAccount') },
+    // 关键词步(关键词 / 刷剧模式):关键词模式下每个选中号都得有词;刷剧模式词是可选的(用来判断视频对不对题)。
+    keywords: kwEditingId
+      ? { ok: false, reason: KL('还有关键词没保存,先保存或取消', '還有關鍵詞沒儲存,先儲存或取消', 'Save or cancel the keywords you are editing first') }
+      : (!bingeMode && kwMissingIds.length > 0)
+        ? { ok: false, reason: KL(`还有 ${kwMissingIds.length} 个账号没配关键词,点上面的账号补上`, `還有 ${kwMissingIds.length} 個帳號沒設定關鍵詞,點上面的帳號補上`, `${kwMissingIds.length} account(s) have no keywords yet — pick them above and add some`) }
+        : { ok: true },
     quota: { ok: true }, // 点赞+关注:可全 0(只评论也行),校验放到评论那步保证「至少配一种动作」
     // 精准模式:链接和动作都在同一步填,所以两样都在这里卡。
     precise: preciseUrls.length === 0
@@ -334,15 +338,13 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                   </div>
                 )}
                 {accounts.map((a) => {
-                  const hasKw = !!(a.keywords && a.keywords.length);
-                  // 未连接(login_required)/已封 → 不可选(置灰);还要配了关键词。
-                  // 刷剧模式(抖音)开启时不需要关键词 — 无关键词账号也可选,提示改为推荐流互动。
+                  const hasKw = effectiveKw(a, kwOverride).length > 0;
+                  // 未连接(login_required)/已封 → 不可选(置灰)。没配关键词的号也能勾:
+                  //   关键词模式下一步「关键词」里必须补齐;刷剧模式没词就在推荐流里互动;精准模式不看词。
                   const bingeOk = bingeSupported && bingeMode;
                   const linked = a.status !== 'login_required' && a.status !== 'banned';
-                  // 精准模式不看关键词 —— 链接是用户自己给的,跟账号配没配词没关系。
-                  //   漏了它的话没配词的账号是灰的、勾不上,跟 setEngageMode 里的注释自相矛盾。
-                  const ready = (hasKw || bingeOk || preciseMode) && linked;
-                  const reason = a.status === 'banned' ? i18nService.t('wzEngageReasonBanned') : a.status === 'login_required' ? i18nService.t('wzEngageReasonNotConnected') : !hasKw ? (preciseMode ? (i18nService.currentLanguage === 'zh' ? '精准模式 · 不需要关键词' : 'targeted · no keywords needed') : bingeOk ? (i18nService.currentLanguage === 'zh' ? '无关键词 · 推荐流互动' : 'no keywords · feed mode') : i18nService.t('wzEngageReasonNoKeywords')) : '';
+                  const ready = linked;   // 没配词的号也能勾,下一步「关键词」里当场补
+                  const reason = a.status === 'banned' ? i18nService.t('wzEngageReasonBanned') : a.status === 'login_required' ? i18nService.t('wzEngageReasonNotConnected') : !hasKw ? (preciseMode ? (i18nService.currentLanguage === 'zh' ? '精准模式 · 不需要关键词' : 'targeted · no keywords needed') : bingeOk ? (i18nService.currentLanguage === 'zh' ? '无关键词 · 推荐流互动' : 'no keywords · feed mode') : KL('未配关键词 · 下一步补上', '未設定關鍵詞 · 下一步補上', 'no keywords · add next step')) : '';
                   const title = a.nickname || a.displayName;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
@@ -361,7 +363,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                             : reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
                         </div>
                         <div className="text-[11px] text-gray-400 truncate">
-                          {i18nService.t('wzEngageNoteLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}{hasKw ? ` · 🏷️ ${(a.keywords || []).join('/')}` : ''}
+                          {i18nService.t('wzEngageNoteLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}{hasKw ? ` · 🏷️ ${effectiveKw(a, kwOverride).join('/')}` : ''}
                         </div>
                       </div>
                     </label>
@@ -370,6 +372,32 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
               </div>
             </div>
           </>
+        )}
+
+        {cur === 'keywords' && (
+          <AccountKeywordTabs
+            accounts={accounts.filter((a) => selected.has(a.id))}
+            overrides={kwOverride}
+            onSaved={(id, list) => setKwOverride((prev) => ({ ...prev, [id]: list }))}
+            editingId={kwEditingId}
+            onEditingIdChange={setKwEditingId}
+            accent="violet"
+            disabled={saving}
+            intro={
+              <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-violet-500/30 bg-violet-500/5 text-violet-700 dark:text-violet-300">
+                🏷️ {bingeMode
+                  ? KL('刷剧时按账号的关键词判断视频对不对题(没配也能刷,只是不按赛道挑)。点上面的账号可以直接改它的关键词 —— 和「我的矩阵账号」是同一份,这里改了那边也跟着改。',
+                    '刷劇時按帳號的關鍵詞判斷影片對不對題(沒設定也能刷,只是不按賽道挑)。點上面的帳號可以直接改它的關鍵詞 —— 和「我的矩陣帳號」是同一份,這裡改了那邊也跟著改。',
+                    'In binge mode keywords decide which videos match the niche (optional). Pick an account above to edit its keywords — same keywords as My Matrix Accounts.')
+                  : KL('每个账号按它自己的关键词搜视频去互动。点上面的账号可以直接改它的关键词 —— 和「我的矩阵账号」是同一份,这里改了那边也跟着改。每个号都要有关键词才能下一步。',
+                    '每個帳號按它自己的關鍵詞搜影片去互動。點上面的帳號可以直接改它的關鍵詞 —— 和「我的矩陣帳號」是同一份,這裡改了那邊也跟著改。每個帳號都要有關鍵詞才能下一步。',
+                    'Each account searches videos with its own keywords. Pick an account above to edit its keywords — same keywords as My Matrix Accounts. Every account needs keywords to continue.')}
+              </div>
+            }
+            emptyHint={bingeMode
+              ? KL('没配关键词 —— 会在推荐流里随便刷;想按赛道挑就点「修改关键词」补上', '沒設定關鍵詞 —— 會在推薦流裡隨便刷;想按賽道挑就點「修改關鍵詞」補上', 'No keywords — will engage on any feed video; add some to stay on-niche')
+              : KL('没配关键词 —— 点「修改关键词」补上,否则没法搜', '沒設定關鍵詞 —— 點「修改關鍵詞」補上,否則沒法搜', 'No keywords — click Edit keywords to add some, otherwise nothing to search')}
+          />
         )}
 
         {cur === 'quota' && (
@@ -607,7 +635,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzEngageCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzEngagePrev')}</button>}
+        {step > 1 && <button type="button" onClick={() => { setKwEditingId(null); setStep((step - 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzEngagePrev')}</button>}
         {step < TOTAL_STEPS ? (
           <button type="button" onClick={() => {
             if (!canAdvance[cur].ok) { setSaveError(canAdvance[cur].reason || ''); return; }

@@ -12,6 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { AccountTabRow, AccountKeywordEditor, effectiveKw, accountAvatar } from './MatrixAccountKeywords';
 
 type WizardStep = 1 | 2 | 3;
 export type BlockMode = 'precise' | 'keyword';
@@ -25,33 +26,6 @@ const DOUYIN_LINK_RE = /^(https?:\/\/)?([\w-]+\.)?(douyin|iesdouyin)\.com\//i;
 const DOUYIN_ID_RE = /^[\w.\-]{2,40}$/;
 const isTarget = (s: string) => DOUYIN_LINK_RE.test(s) || DOUYIN_ID_RE.test(s);
 const splitLines = (t: string) => String(t || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
-
-// ── 关键词解析/回显:与 MatrixView(我的矩阵账号编辑框)完全同口径,保证两边改的是同一份、格式一致 ──
-// 含空格的词用一对斜杠包起来;空格 / 斜杠 / 换行 / 逗号 / 顿号都是分隔符。
-function keywordsToText(list: string[]): string {
-  return (list || []).map((w) => {
-    const v = String(w || '').trim();
-    if (!v) return '';
-    return /\s/.test(v) ? ('/' + v + '/') : v;
-  }).filter(Boolean).join('\n');
-}
-const KW_TOKEN_RE = /\/([^/]*)\/|([^\s,，、\n/]+)/g;
-function parseKeywords(s: string): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const re = new RegExp(KW_TOKEN_RE.source, KW_TOKEN_RE.flags);
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(String(s || ''))) !== null) {
-    const v = String(m[1] !== undefined ? m[1] : m[2]).trim().replace(/\s+/g, ' ');
-    if (v && !seen.has(v)) { seen.add(v); out.push(v); }
-  }
-  return out;
-}
-// 原始词 + AI 衍生词(= 运行时 effectiveKeywords,所见即所用)
-function mergeKw(base?: string[], derived?: string[]): string[] {
-  const seen = new Set<string>();
-  return [...(base || []), ...(derived || [])].map((k) => String(k || '').trim()).filter((k) => k && !seen.has(k) && seen.add(k));
-}
 
 /** zh / zh-TW / 其它语言(英文)三选一。 */
 const L = (zh: string, tw: string, en: string): string => {
@@ -104,12 +78,9 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
 
   // 关键词模式:本地改过的关键词(保存到矩阵账号后覆盖显示,不必等父组件重新拉账号)。
   const [kwOverride, setKwOverride] = useState<Record<string, string[]>>({});
-  const [kwEditing, setKwEditing] = useState<string | null>(null);
-  const [kwDraft, setKwDraft] = useState('');
-  const [kwSaving, setKwSaving] = useState(false);
-  const [kwError, setKwError] = useState<string | null>(null);
+  const [kwEditing, setKwEditing] = useState<string | null>(null);   // 正在改关键词的账号(改到一半不许切号/下一步)
   const [activeAcc, setActiveAcc] = useState<string | null>(null);   // 第 2 步横排 tab 当前选中的账号
-  const kwOf = (a: WizardAccount): string[] => kwOverride[a.id] ?? mergeKw(a.keywords, a.derivedKeywords);
+  const kwOf = (a: WizardAccount): string[] => effectiveKw(a, kwOverride);
 
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [targetsText, selected, runInterval, mode, kwOverride]);
 
@@ -156,21 +127,6 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
     } finally { setSaving(false); }
   };
 
-  // 关键词保存 → 写回矩阵账号(updateAccountMeta 会把这份当全集、清空 AI 衍生池,和账号编辑框同一口径)。
-  const saveKeywords = async (id: string) => {
-    if (kwSaving) return;
-    const list = parseKeywords(kwDraft);
-    setKwSaving(true); setKwError(null);
-    try {
-      const r = await (window as any).electron?.matrix?.updateAccountMeta?.({ id, keywords: list });
-      if (!r?.ok) throw new Error(L('保存失败', '儲存失敗', 'Save failed'));
-      setKwOverride((prev) => ({ ...prev, [id]: list }));
-      setKwEditing(null);
-    } catch (e) {
-      setKwError(String(e instanceof Error ? e.message : e));
-    } finally { setKwSaving(false); }
-  };
-
   const goAccounts = () => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); };
 
   const freqOptions: Array<[string, string]> = [
@@ -179,13 +135,6 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
     ['daily_random', L('每天随机一次', '每天隨機一次', 'Once a day (random time)')],
   ];
   const freqLabel = (freqOptions.find(([v]) => v === runInterval) || [runInterval, runInterval])[1];
-
-  const avatar = (a: WizardAccount) => {
-    const title = a.nickname || a.displayName;
-    return a.avatar
-      ? <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="w-7 h-7 rounded-full object-cover bg-gray-200 dark:bg-gray-700 shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-      : <span className="w-7 h-7 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center text-xs font-bold shrink-0">{(title || '?').slice(0, 1)}</span>;
-  };
 
   const modeOpts: Array<{ on: BlockMode; icon: string; title: string; desc: string }> = [
     { on: 'precise', icon: '🎯', title: L('精准模式', '精準模式', 'Targeted mode'),
@@ -251,7 +200,7 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
                       <input type="checkbox" checked={selected.has(a.id)} onChange={() => ready && toggle(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-red-500 shrink-0" />
-                      {avatar(a)}
+                      {accountAvatar(a, 'red')}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-medium truncate dark:text-white">{title}</span>
@@ -272,17 +221,14 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
         )}
 
         {step === 2 && (() => {
-          // 账号横排成一行 tab,点哪个就在下面编辑哪个(精准:名单;关键词:关键词)。
+          // 账号横排成一行 tab,点哪个就在下面编辑哪个(精准:名单;关键词:关键词,共用 MatrixAccountKeywords)。
           const cur = selectedAccounts.find((a) => a.id === activeAcc) || selectedAccounts[0];
           if (!cur) return null;
-          const lockTabs = !!kwEditing || kwSaving;   // 关键词改到一半不许切号,免得草稿丢了
           const badge = (a: WizardAccount) => {
             if (preciseMode) { const n = parsedFor(a.id).valid.length; return n ? { t: L(`${n} 条`, `${n} 條`, `${n}`), warn: false } : { t: L('未填', '未填', 'empty'), warn: true }; }
             const n = kwOf(a).length; return n ? { t: L(`${n} 个词`, `${n} 個詞`, `${n} kw`), warn: false } : { t: L('没关键词', '沒關鍵詞', 'no kw'), warn: true };
           };
           const p = parsedFor(cur.id);
-          const kws = kwOf(cur);
-          const isEd = kwEditing === cur.id;
           return (
             <>
               <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300">
@@ -295,72 +241,51 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
                     'Each account searches with its own keywords and blocks the creators posting that content (skips people you follow and unrelated results, 3-15s apart). Pick an account above to edit its keywords — same keywords as My Matrix Accounts. Accounts without keywords are skipped.')}
               </div>
 
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {selectedAccounts.map((a) => {
-                  const on = a.id === cur.id, b = badge(a);
-                  return (
-                    <button key={a.id} type="button" disabled={saving || (lockTabs && !on)} onClick={() => setActiveAcc(a.id)}
-                      title={lockTabs && !on ? L('先保存或取消正在改的关键词', '先儲存或取消正在改的關鍵詞', 'Save or cancel the keywords you are editing first') : undefined}
-                      className={`shrink-0 flex items-center gap-2 rounded-xl border pl-1.5 pr-3 py-1.5 text-left transition-colors ${on ? 'border-red-500 bg-red-500/10 ring-1 ring-red-500/40' : 'border-gray-200 dark:border-gray-700 hover:border-red-500/40'} disabled:opacity-40 disabled:cursor-not-allowed`}>
-                      {avatar(a)}
-                      <span className="min-w-0">
-                        <span className="block text-xs font-medium max-w-[110px] truncate dark:text-white">{a.nickname || a.displayName}</span>
-                        <span className={`block text-[10px] ${b.warn ? 'text-amber-500' : 'text-gray-500 dark:text-gray-400'}`}>{b.t}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <AccountTabRow
+                accounts={selectedAccounts}
+                activeId={cur.id}
+                onPick={setActiveAcc}
+                badge={badge}
+                accent="red"
+                disabled={saving}
+                lockOthers={!!kwEditing}
+                lockTitle={L('先保存或取消正在改的关键词', '先儲存或取消正在改的關鍵詞', 'Save or cancel the keywords you are editing first')}
+              />
 
-              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium text-sm truncate dark:text-white">{cur.nickname || cur.displayName}</span>
-                  {preciseMode
-                    ? (cur.displayId && <span className="text-[11px] text-gray-500 shrink-0">{L('抖音号:', '抖音號:', 'ID: ')}{cur.displayId}</span>)
-                    : (cur.group && <span className="text-[11px] text-gray-500 truncate">· {cur.group}</span>)}
-                  {preciseMode && selectedAccounts.length > 1 && (
-                    <button type="button" disabled={saving || !p.valid.length}
-                      onClick={() => setTargetsText((prev) => { const n = { ...prev }; for (const b of selectedAccounts) n[b.id] = prev[cur.id] || ''; return n; })}
-                      className="ml-auto text-[11px] text-red-500 hover:underline disabled:opacity-40 shrink-0">{L('复制到其他账号', '複製到其他帳號', 'Copy to all accounts')}</button>
-                  )}
-                  {!preciseMode && !isEd && (
-                    <button type="button" disabled={saving}
-                      onClick={() => { setKwError(null); setKwDraft(keywordsToText(kws)); setKwEditing(cur.id); }}
-                      className="ml-auto text-xs px-2.5 py-1 rounded-md border border-red-500/40 text-red-500 hover:bg-red-500/10 disabled:opacity-40 shrink-0">✏️ {L('修改关键词', '修改關鍵詞', 'Edit keywords')}</button>
-                  )}
+              {preciseMode ? (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium text-sm truncate dark:text-white">{cur.nickname || cur.displayName}</span>
+                    {cur.displayId && <span className="text-[11px] text-gray-500 shrink-0">{L('抖音号:', '抖音號:', 'ID: ')}{cur.displayId}</span>}
+                    {selectedAccounts.length > 1 && (
+                      <button type="button" disabled={saving || !p.valid.length}
+                        onClick={() => setTargetsText((prev) => { const n = { ...prev }; for (const b of selectedAccounts) n[b.id] = prev[cur.id] || ''; return n; })}
+                        className="ml-auto text-[11px] text-red-500 hover:underline disabled:opacity-40 shrink-0">{L('复制到其他账号', '複製到其他帳號', 'Copy to all accounts')}</button>
+                    )}
+                  </div>
+                  <textarea key={cur.id} value={targetsText[cur.id] || ''} onChange={(e) => { const v = e.target.value; setTargetsText((prev) => ({ ...prev, [cur.id]: v })); }} rows={6} disabled={saving}
+                    placeholder={'https://www.douyin.com/user/MS4wLjABAAAA...\nhttps://v.douyin.com/xxxxxx/\nhttps://www.douyin.com/video/7xxxxxxxxxxxx\ndy123456'}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40 resize-y min-h-[120px] font-mono" />
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className={p.valid.length ? 'text-red-500' : 'text-gray-400'}>{L(`有效 ${p.valid.length} 条`, `有效 ${p.valid.length} 條`, `${p.valid.length} valid`)}</span>
+                    {p.bad.length > 0 && <span className="text-amber-500">{L(`${p.bad.length} 条认不出,会被忽略`, `${p.bad.length} 條無法辨識,會被忽略`, `${p.bad.length} unrecognized (ignored)`)}</span>}
+                  </div>
                 </div>
+              ) : (
+                <AccountKeywordEditor
+                  key={cur.id}
+                  account={cur}
+                  keywords={kwOf(cur)}
+                  onSaved={(id, list) => setKwOverride((prev) => ({ ...prev, [id]: list }))}
+                  editing={kwEditing === cur.id}
+                  onEditingChange={(on) => setKwEditing(on ? cur.id : null)}
+                  accent="red"
+                  disabled={saving}
+                  emptyHint={L('还没配关键词 —— 点「修改关键词」补上,否则这个账号这次不跑', '還沒設定關鍵詞 —— 點「修改關鍵詞」補上,否則這個帳號這次不跑', 'No keywords yet — click Edit keywords to add some, otherwise this account is skipped')}
+                />
+              )}
 
-                {preciseMode ? (
-                  <>
-                    <textarea key={cur.id} value={targetsText[cur.id] || ''} onChange={(e) => { const v = e.target.value; setTargetsText((prev) => ({ ...prev, [cur.id]: v })); }} rows={6} disabled={saving}
-                      placeholder={'https://www.douyin.com/user/MS4wLjABAAAA...\nhttps://v.douyin.com/xxxxxx/\nhttps://www.douyin.com/video/7xxxxxxxxxxxx\ndy123456'}
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40 resize-y min-h-[120px] font-mono" />
-                    <div className="flex items-center gap-3 text-[11px]">
-                      <span className={p.valid.length ? 'text-red-500' : 'text-gray-400'}>{L(`有效 ${p.valid.length} 条`, `有效 ${p.valid.length} 條`, `${p.valid.length} valid`)}</span>
-                      {p.bad.length > 0 && <span className="text-amber-500">{L(`${p.bad.length} 条认不出,会被忽略`, `${p.bad.length} 條無法辨識,會被忽略`, `${p.bad.length} unrecognized (ignored)`)}</span>}
-                    </div>
-                  </>
-                ) : isEd ? (
-                  <div className="space-y-1.5">
-                    <textarea value={kwDraft} onChange={(e) => setKwDraft(e.target.value)} rows={5} disabled={kwSaving} autoFocus
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40 resize-y min-h-[100px]" />
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <span className="text-gray-400 flex-1">{L(`空格 / 换行 / 逗号分隔;含空格的词用 /…/ 包起来 · 识别 ${parseKeywords(kwDraft).length} 个`, `空格 / 換行 / 逗號分隔;含空格的詞用 /…/ 包起來 · 辨識 ${parseKeywords(kwDraft).length} 個`, `separate by space / newline / comma; wrap phrases in /…/ · ${parseKeywords(kwDraft).length} detected`)}</span>
-                      <button type="button" disabled={kwSaving} onClick={() => { setKwEditing(null); setKwError(null); }} className="px-2.5 py-1 rounded-md text-gray-500 hover:text-gray-700 dark:hover:text-gray-200">{L('取消', '取消', 'Cancel')}</button>
-                      <button type="button" disabled={kwSaving} onClick={() => saveKeywords(cur.id)} className="px-3 py-1 rounded-md bg-red-500 text-white font-semibold hover:bg-red-600 disabled:opacity-50">{kwSaving ? L('保存中…', '儲存中…', 'Saving…') : L('保存到账号', '儲存到帳號', 'Save to account')}</button>
-                    </div>
-                  </div>
-                ) : kws.length ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {kws.map((k) => <span key={k} className="text-[11px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-300">{k}</span>)}
-                  </div>
-                ) : (
-                  <div className="text-[11px] text-amber-500">{L('还没配关键词 —— 点「修改关键词」补上,否则这个账号这次不跑', '還沒設定關鍵詞 —— 點「修改關鍵詞」補上,否則這個帳號這次不跑', 'No keywords yet — click Edit keywords to add some, otherwise this account is skipped')}</div>
-                )}
-                {!preciseMode && kwError && <div className="text-[11px] text-red-500">❌ {kwError}</div>}
-              </div>
-
-              {!preciseMode && <button type="button" onClick={goAccounts} disabled={saving || kwSaving} className="text-[11px] text-gray-500 hover:text-red-500 underline decoration-dotted">{L('去「我的矩阵账号」管理(会关闭本向导)', '去「我的矩陣帳號」管理(會關閉本精靈)', 'Open My Matrix Accounts (closes this wizard)')}</button>}
+              {!preciseMode && <button type="button" onClick={goAccounts} disabled={saving || !!kwEditing} className="text-[11px] text-gray-500 hover:text-red-500 underline decoration-dotted disabled:opacity-40">{L('去「我的矩阵账号」管理(会关闭本向导)', '去「我的矩陣帳號」管理(會關閉本精靈)', 'Open My Matrix Accounts (closes this wizard)')}</button>}
             </>
           );
         })()}
@@ -398,9 +323,9 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{L('取消', '取消', 'Cancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => { setKwEditing(null); setStep((step - 1) as WizardStep); }} disabled={saving || kwSaving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{L('上一步', '上一步', 'Back')}</button>}
+        {step > 1 && <button type="button" onClick={() => { setKwEditing(null); setStep((step - 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{L('上一步', '上一步', 'Back')}</button>}
         {step < 3 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving || kwSaving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600 disabled:opacity-50">{L('下一步', '下一步', 'Next')}</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600 disabled:opacity-50">{L('下一步', '下一步', 'Next')}</button>
         ) : (
           <button type="button" onClick={handleSave} disabled={saving} className="px-5 py-2 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600 disabled:opacity-50">{saving ? L('保存中…', '儲存中…', 'Saving…') : (editing ? L('保存修改', '儲存修改', 'Save') : L('创建任务', '建立任務', 'Create task'))}</button>
         )}

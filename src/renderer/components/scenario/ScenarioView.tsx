@@ -468,7 +468,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
       // 互动涨粉走【主站】(浏览首页/搜索做赞关评),只能选主站账号;快手「创作者中心」(loginScope='creator')
       // 是发布端登录态,不能拿来互动 → 过滤掉。非快手账号无 loginScope(默认主站)不受影响。
-      setMatrixAccounts(accs.filter((a) => a.platform === platform && (a.loginScope || 'main') === 'main').map((a) => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar })));
+      setMatrixAccounts(accs.filter((a) => a.platform === platform && (a.loginScope || 'main') === 'main').map((a) => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, derivedKeywords: Array.isArray(a.derivedKeywords) ? a.derivedKeywords : [], group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar })));
     } catch { setMatrixAccounts([]); }
     finally { setMatrixAccountsLoading(false); }
   };
@@ -512,7 +512,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     try {
       const r = await (window as any).electron?.matrix?.listAccounts?.();
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
-      setMatrixAccounts(accs.filter((a) => a.platform === plat && (a.loginScope || 'main') === 'main').map((a) => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar })));
+      setMatrixAccounts(accs.filter((a) => a.platform === plat && (a.loginScope || 'main') === 'main').map((a) => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, derivedKeywords: Array.isArray(a.derivedKeywords) ? a.derivedKeywords : [], group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar })));
     } catch { setMatrixAccounts([]); }
     finally { setMatrixAccountsLoading(false); }
   };
@@ -546,7 +546,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 一律取主站号 —— 快手也取主站(loginScope!='creator'),不同于回复粉丝那条用 creator scope。
   const downloadAccountFilter = (a: any, platform: string): boolean =>
     a.platform === platform && (a.loginScope || 'main') === 'main';
-  const mapWizardAccount = (a: any): WizardAccount => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar });
+  const mapWizardAccount = (a: any): WizardAccount => ({ id: a.id, displayName: a.displayName, status: a.status, keywords: a.keywords, derivedKeywords: Array.isArray(a.derivedKeywords) ? a.derivedKeywords : [], group: a.group, platform: a.platform, nickname: a.nickname, displayId: a.displayId, avatar: a.avatar });
   const openMatrixReplyWizard = async (platform: string) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
     if (await hasDupTask(platform, 'reply_fan', '回复粉丝')) return;

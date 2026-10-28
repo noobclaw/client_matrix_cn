@@ -15,10 +15,11 @@ import { i18nService } from '../../services/i18n';
 import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../services/imageStyles';
 import MatrixLocalImagePicker from './MatrixLocalImagePicker';
 import { NumBox } from './NumberStepper';
+import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
 
 type WizardStep = 1 | 2 | 3;
 
-export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
+export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; derivedKeywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 
 const PLATFORM_NAME: Record<string, string> = { douyin: '抖音', xhs: '小红书', bilibili: 'B站', kuaishou: '快手', tiktok: 'TikTok' };
 
@@ -81,19 +82,25 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, dailyCount, runInterval]);
+  // 向导里当场改过的账号关键词(已写回矩阵账号)+ 正在改的账号 —— 必须在下面 useEffect 之前声明。
+  const [kwOverride, setKwOverride] = useState<Record<string, string[]>>({});
+  const [kwEditingId, setKwEditingId] = useState<string | null>(null);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selectedIds, kwOverride, dailyCount, runInterval]);
 
-  // 每个选中号都要有关键词(没词没法搜爆款)。
+  // 每个选中号都要有关键词(没词没法搜爆款)。第 1 步下方可以当场改(写回矩阵账号),改过的存在 kwOverride。
+  const VL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
   const selectedNoKeyword = useMemo(
-    () => accounts.filter((a) => selectedIds.includes(a.id) && (!a.keywords || a.keywords.length === 0)),
-    [accounts, selectedIds],
+    () => accounts.filter((a) => selectedIds.includes(a.id) && effectiveKw(a, kwOverride).length === 0),
+    [accounts, selectedIds, kwOverride],
   );
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: selectedIds.length === 0
       ? { ok: false, reason: i18nService.t('wzViralNeedOneAccount') }
+      : kwEditingId
+        ? { ok: false, reason: VL('还有关键词没保存,先保存或取消', '還有關鍵詞沒儲存,先儲存或取消', 'Save or cancel the keywords you are editing first') }
       : selectedNoKeyword.length > 0
-        ? { ok: false, reason: i18nService.t('wzViralNoKeywordBlock').replace('{n}', String(selectedNoKeyword.length)) }
+        ? { ok: false, reason: VL(`还有 ${selectedNoKeyword.length} 个账号没配关键词 —— 点下面的账号直接补上`, `還有 ${selectedNoKeyword.length} 個帳號沒設定關鍵詞 —— 點下面的帳號直接補上`, `${selectedNoKeyword.length} account(s) have no keywords — pick them below and add some`) }
         : { ok: true },
     2: { ok: true },
     3: { ok: allTermsAccepted, reason: i18nService.t('wzViralNeedTerms') },
@@ -158,7 +165,7 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
                   const ready = a.status !== 'login_required' && a.status !== 'banned';
                   const reason = a.status === 'banned' ? i18nService.t('wzViralStatusBanned') : a.status === 'login_required' ? i18nService.t('wzViralStatusDisconnected') : '';
                   const title = a.nickname || a.displayName;
-                  const noKw = !a.keywords || a.keywords.length === 0;
+                  const noKw = effectiveKw(a, kwOverride).length === 0;
                   return (
                     <label key={a.id} className={`flex items-center gap-2.5 text-sm px-2 py-1.5 rounded ${ready ? 'dark:text-gray-200 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800' : 'opacity-45 cursor-not-allowed'}`}>
                       <input type="checkbox" checked={selectedIds.includes(a.id)} onChange={() => ready && toggle(a.id)} disabled={saving || !ready} className="h-4 w-4 accent-rose-500 shrink-0" />
@@ -175,13 +182,29 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
                             : reason ? <span className="text-[11px] text-amber-500 shrink-0">{reason}</span> : null}
                           {ready && noKw && <span className="text-[11px] text-amber-500 shrink-0">{i18nService.t('wzViralNoKeywordTag')}</span>}
                         </div>
-                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzViralRemarkLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}{a.keywords && a.keywords.length ? ` · 🏷️ ${a.keywords.join('/')}` : ''}</div>
+                        <div className="text-[11px] text-gray-400 truncate">{i18nService.t('wzViralRemarkLabel')}{a.displayName}{a.group ? ` · ${a.group}` : ''}{!noKw ? ` · 🏷️ ${effectiveKw(a, kwOverride).join('/')}` : ''}</div>
                       </div>
                     </label>
                   );
                 })}
               </div>
-              {selectedNoKeyword.length > 0 && <div className="text-[11px] text-amber-500 mt-1.5">⚠ {i18nService.t('wzViralNoKeywordWarn').replace('{n}', String(selectedNoKeyword.length))}</div>}
+              {selectedIds.length > 0 && (
+                <div className="mt-3">
+                  <AccountKeywordTabs
+                    accounts={accounts.filter((a) => selectedIds.includes(a.id))}
+                    overrides={kwOverride}
+                    onSaved={(id, list) => setKwOverride((prev) => ({ ...prev, [id]: list }))}
+                    editingId={kwEditingId}
+                    onEditingIdChange={setKwEditingId}
+                    accent="rose"
+                    disabled={saving}
+                    intro={<div className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">🏷️ {VL('每个账号按它自己的关键词搜爆款。点下面的账号可以直接改关键词 —— 和「我的矩阵账号」是同一份,这里改了那边也跟着改。每个号都要有关键词才能下一步。',
+                      '每個帳號按它自己的關鍵詞搜爆款。點下面的帳號可以直接改關鍵詞 —— 和「我的矩陣帳號」是同一份,這裡改了那邊也跟著改。每個帳號都要有關鍵詞才能下一步。',
+                      'Each account searches viral posts with its own keywords. Pick an account below to edit them — same keywords as My Matrix Accounts. Every account needs keywords to continue.')}</div>}
+                    emptyHint={VL('没配关键词 —— 没法搜爆款,点「修改关键词」补上', '沒設定關鍵詞 —— 沒法搜爆款,點「修改關鍵詞」補上', 'No keywords — nothing to search; click Edit keywords to add some')}
+                  />
+                </div>
+              )}
             </div>
           </>
         )}
@@ -268,7 +291,7 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
       <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">
         <button type="button" onClick={onCancel} disabled={saving} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 px-2">{i18nService.t('wzViralCancel')}</button>
         <div className="flex-1" />
-        {step > 1 && <button type="button" onClick={() => setStep((step - 1) as WizardStep)} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzViralPrev')}</button>}
+        {step > 1 && <button type="button" onClick={() => { setKwEditingId(null); setStep((step - 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzViralPrev')}</button>}
         {step < 3 ? (
           <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50">{i18nService.t('wzViralNext')}</button>
         ) : (
