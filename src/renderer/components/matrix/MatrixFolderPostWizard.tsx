@@ -11,6 +11,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { AccountTabRow, accountAvatar, type KwAccount } from './MatrixAccountKeywords';
+import { presetAccountIds } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
 export interface FolderSlot { time: string; on: boolean }
@@ -37,7 +38,7 @@ interface Props {
 const MatrixFolderPostWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
   const editing = !!initialTask;
   const [step, setStep] = useState<WizardStep>(1);
-  const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask?.accountIds || []).map(String)));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask ? (initialTask.accountIds || []) : presetAccountIds(platform)).map(String)));
   const [slots, setSlots] = useState<Record<string, FolderSlot[]>>(() => {
     const src = initialTask?.folderPost?.slotsByAccount || {};
     const out: Record<string, FolderSlot[]> = {};

@@ -12,6 +12,7 @@ import { platformSupportsFavorite } from '../../services/engageActions';
 import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
 import { NumMinMax, NumRow } from './NumberStepper';
 import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
+import { presetAccountIds } from '../../uiEdition';
 
 const LIKE_HARDCAP = 500;
 const FOLLOW_HARDCAP = 100;
@@ -88,6 +89,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
   // 默认勾选所有「可用」账号(配了关键词 + 未封);编辑时用任务已存的账号。
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialTask?.accountIds) return new Set(initialTask.accountIds);
+    if (!initialTask && presetAccountIds(platform).length) return new Set<string>(presetAccountIds(platform));   // 简洁版:创建任务时已选好的号
     return new Set(accounts.filter((a) => effectiveKw(a).length && a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
   });
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });

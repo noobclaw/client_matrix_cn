@@ -26,6 +26,8 @@ export interface HomeViewProps {
   onShowInvite?: () => void;
   /** 登录过期账号数(喂步骤①的小角标) */
   matrixExpiredCount?: number;
+  /** 简洁版:首页 = 大号「创建任务」+ 三步引导 + 教学视频 */
+  simple?: boolean;
 }
 
 const OFFICIAL_SITE = 'https://noobclaw.com/cn/';
@@ -42,7 +44,9 @@ const HomeView: React.FC<HomeViewProps> = ({
   onShowMatrixTaskNew,
   onShowMatrixTasks,
   matrixExpiredCount = 0,
+  simple,
 }) => {
+  const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
   const isMac = window.electron.platform === 'darwin';
   const [authState, setAuthState] = useState(noobClawAuth.getState());
   useEffect(() => noobClawAuth.subscribe(setAuthState), []);
@@ -161,6 +165,22 @@ const HomeView: React.FC<HomeViewProps> = ({
               >
                 {i18nService.t('coworkConnectWallet')}
               </button>
+            </div>
+          )}
+
+          {/* 简洁版:硕大的「创建任务」—— 点一下:选平台 → 选账号 → 选任务 */}
+          {simple && (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={onShowMatrixTaskNew}
+                className="w-full max-w-xl py-6 rounded-3xl text-2xl font-extrabold text-white shadow-xl shadow-claude-accent/30 bg-gradient-to-r from-emerald-500 via-claude-accent to-cyan-500 hover:brightness-110 hover:-translate-y-0.5 active:scale-[0.98] transition-all"
+              >
+                ✨ {SL('创建任务', '建立任務', 'Create a task')}
+              </button>
+              <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                {SL('选平台 → 选账号 → 选任务,三下就建好', '選平台 → 選帳號 → 選任務,三下就建好', 'Pick a platform → accounts → a task. Done.')}
+              </div>
             </div>
           )}
 

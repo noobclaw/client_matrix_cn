@@ -51,6 +51,8 @@ import { noobClawApi } from './services/noobclawApi';
 import { writeCachedPaymentInfo, writeCachedRedeemInfo } from './services/paymentInfoCache';
 import { noobClawSSE } from './services/noobclawSSE';
 import { MATRIX_EDITION } from './matrixEdition';
+import { useUiEdition, setUiEdition, clearPresetAccounts, type UiEdition } from './uiEdition';
+import EditionChooser from './components/EditionChooser';
 
 const App: React.FC = () => {
   // 原生窗口标题跟随界面语言(tauri.conf 的静态中文 title 只是启动兜底)。
@@ -656,6 +658,36 @@ const App: React.FC = () => {
   //   MATRIX_TAB_ORDER[0] = 抖音)。以前这里写死 'video',而 ScenarioView 是
   //   initialPlatform || defaultPlatform —— 真值会把默认值整个短路掉。
   const [matrixPlatform, setMatrixPlatform] = useState<string>('');
+  // ── 简洁版 / 专业版(2026-10-28)── 只换界面,任务/账号/调度不变。
+  //   第一次打开(没选过):已经有矩阵账号的老用户 → 默默按专业版(维持他们熟悉的界面);新用户 → 弹框选。
+  const uiEdition = useUiEdition();
+  const simpleUi = MATRIX_EDITION && uiEdition === 'simple';
+  const [showEditionChooser, setShowEditionChooser] = useState(false);
+  useEffect(() => {
+    if (!MATRIX_EDITION || uiEdition) return;
+    let alive = true;
+    (async () => {
+      // 刚启动时 sidecar 可能还没起来(返回 ok:false)→ 隔几秒再问,别把老用户误当新用户
+      let hasAccounts = false;
+      for (let i = 0; i < 4 && alive; i++) {
+        let r: any = null;
+        try { r = await (window as any).electron?.matrix?.listAccounts?.(); } catch { /* ignore */ }
+        if (r?.ok) { hasAccounts = Array.isArray(r.accounts) && r.accounts.length > 0; break; }
+        await new Promise((res) => setTimeout(res, 2500));
+      }
+      if (!alive) return;
+      if (hasAccounts) setUiEdition('pro'); else setShowEditionChooser(true);
+    })();
+    return () => { alive = false; };
+  }, [uiEdition]);
+  // 简洁版里没有的页面 → 切过去时回首页
+  const SIMPLE_VIEWS = ['home', 'matrix', 'matrixTasks', 'matrixTaskNew', 'wallet', 'invite', 'contact'];
+  const switchEdition = (e: UiEdition) => {
+    setUiEdition(e);
+    if (e === 'simple' && !SIMPLE_VIEWS.includes(mainView)) setMainView('home');
+  };
+  // 简洁版「创建任务」带进向导的预选账号:离开新建页就清掉,别串到下次
+  useEffect(() => { if (mainView !== 'matrixTaskNew') clearPresetAccounts(); }, [mainView]);
   // 矩阵号:全平台「登录过期」账号总数 —— 喂给侧栏「我的矩阵账号」菜单右上角红圈角标(与账号页各平台 tab 角标口径一致),
   // 即便当前不在矩阵页也独立订阅,保证用户在任何页面都能看到「有号过期了,去重连」的提醒。
   const [matrixExpiredTotal, setMatrixExpiredTotal] = useState(0);
@@ -1036,6 +1068,9 @@ const App: React.FC = () => {
 
   return (
     <div className="relative h-screen overflow-hidden flex flex-col dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
+      {showEditionChooser && (
+        <EditionChooser onPick={(e) => { setShowEditionChooser(false); switchEdition(e); }} />
+      )}
       {showLoginWall && !authState.isAuthenticated && (
         <LoginWall
           onDismiss={() => setShowLoginWall(false)}
@@ -1073,8 +1108,12 @@ const App: React.FC = () => {
           /* create/runs 菜单下钻到任务详情时,高亮临时归到「我的涨粉任务」(quickuse),
              保持「任务详情属于我的涨粉任务」的认知一致;从「所有 AI 对话」列表点进对话详情时,
              高亮仍归到「所有 AI 对话」(coworkHistory);其余情况按真实 mainView 高亮。 */
+          simple={simpleUi}
+          onSwitchEdition={MATRIX_EDITION ? switchEdition : undefined}
           activeView={
-            scenarioInDetail && mainView === 'scenarioCreate'
+            simpleUi && mainView === 'matrixTaskNew'
+              ? (scenarioInDetail ? 'matrixTasks' : 'home')
+              : scenarioInDetail && mainView === 'scenarioCreate'
               ? 'quickuse'
               : mainView === 'cowork' && coworkFromHistory
                 ? 'coworkHistory'
@@ -1124,6 +1163,7 @@ const App: React.FC = () => {
                 onShowMatrix={handleShowMatrix}
                 onShowMatrixTaskNew={handleShowMatrixTaskNew}
                 onShowMatrixTasks={handleShowMatrixTasks}
+                simple={simpleUi}
                 onShowWallet={handleShowWallet}
                 onShowInvite={handleShowInvite}
                 matrixExpiredCount={matrixExpiredTotal}
@@ -1260,6 +1300,7 @@ const App: React.FC = () => {
               // 完整头部链 + 各平台互动涨粉卡片→账号向导)。数据经 scenarioService 的 MATRIX 适配层。
               <ScenarioView
                 matrixMode
+                simple={simpleUi}
                 mode={mainView === 'matrixRuns' ? 'runs' : mainView === 'matrixTaskNew' ? 'create' : 'manage'}
                 initialPlatform={matrixPlatform as any}
                 onSwitchToCreate={(platform) => { if (platform) setMatrixPlatform(platform); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); }}

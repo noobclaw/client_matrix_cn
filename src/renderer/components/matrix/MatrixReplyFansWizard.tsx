@@ -14,6 +14,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import MatrixFunnelConfig, { FunnelUnsetConfirm, countUnconfigured, FUNNEL_PROB_DEFAULT as FPD } from './MatrixFunnelConfig';
+import { presetAccountIds } from '../../uiEdition';
 
 type WizardStep = number;   // 1..totalSteps(抖音 4 步:账号 / 数量 / 引流语 / 频率;其它平台 3 步,无「数量」)
 
@@ -69,6 +70,7 @@ const MatrixReplyFansWizard: React.FC<Props> = ({ platformLabel, platform, accou
   // ── 账号(回复粉丝评论不需要关键词,只要已登录创作者中心) ──
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialTask?.accountIds) return new Set(initialTask.accountIds);
+    if (!initialTask && presetAccountIds(platform).length) return new Set<string>(presetAccountIds(platform));   // 简洁版:创建任务时已选好的号
     return new Set(accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
   });
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });

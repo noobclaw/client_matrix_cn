@@ -15,6 +15,7 @@ import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
 import { POST_SOURCE_OPTIONS, PostSourceSel, selsFromSourceIds, sourceIdsFromConfig, sourceIdsLabel } from './postSources';
 import { NumBox } from './NumberStepper';
+import { presetAccountIds } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -64,6 +65,7 @@ const MatrixRedditPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     if (Array.isArray(initialTask?.accountIds) && initialTask.accountIds.length) return Array.from(new Set(initialTask.accountIds.map(String)));
+    if (!initialTask && presetAccountIds(platform).length) return presetAccountIds(platform);   // 简洁版:创建任务时已选好的号
     return accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id);
   });
   const toggle = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

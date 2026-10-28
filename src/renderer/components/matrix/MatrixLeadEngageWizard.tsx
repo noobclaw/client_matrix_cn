@@ -22,6 +22,7 @@ import MatrixFunnelConfig, {
 } from './MatrixFunnelConfig';
 import { NumRow } from './NumberStepper';
 import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
+import { presetAccountIds } from '../../uiEdition';
 
 export interface LeadWizardAccount {
   id: string; displayName: string; status: string;
@@ -178,6 +179,7 @@ const MatrixLeadEngageWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
   const [selected, setSelected] = useState<Set<string>>(() => {
     if (initialTask?.accountIds) return new Set<string>(initialTask.accountIds);
+    if (!initialTask && presetAccountIds(platform).length) return new Set<string>(presetAccountIds(platform));   // 简洁版:创建任务时已选好的号
     return new Set<string>(accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id));
   });
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });

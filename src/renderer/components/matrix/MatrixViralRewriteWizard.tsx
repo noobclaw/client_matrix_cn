@@ -16,6 +16,7 @@ import { fetchImageStyles, FALLBACK_IMAGE_STYLES, ImageStyle } from '../../servi
 import MatrixLocalImagePicker from './MatrixLocalImagePicker';
 import { NumBox } from './NumberStepper';
 import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
+import { presetAccountIds } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -54,6 +55,7 @@ const MatrixViralRewriteWizard: React.FC<Props> = ({ platformLabel, platform, ac
 
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     if (Array.isArray(initialTask?.accountIds) && initialTask.accountIds.length) return Array.from(new Set(initialTask.accountIds.map(String)));
+    if (!initialTask && presetAccountIds(platform).length) return presetAccountIds(platform);   // 简洁版:创建任务时已选好的号
     return accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id);
   });
   const toggle = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

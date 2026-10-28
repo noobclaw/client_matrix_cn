@@ -12,6 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { presetAccountIds } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -70,6 +71,7 @@ const MatrixVideoDownloadWizard: React.FC<Props> = ({ platformLabel, platform, a
   // ── 单账号(只选 1 个) ──
   const [selectedId, setSelectedId] = useState<string>(() => {
     if (initialTask?.accountIds?.length) return String(initialTask.accountIds[0]);
+    if (!initialTask && presetAccountIds(platform)[0]) return presetAccountIds(platform)[0];   // 简洁版:创建任务时已选好的号
     const first = accounts.find((a) => a.status !== 'banned' && a.status !== 'login_required');
     return first ? first.id : '';
   });

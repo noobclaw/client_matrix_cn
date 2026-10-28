@@ -17,6 +17,7 @@ import { i18nService } from '../../services/i18n';
 import { POST_LANGS, postLangLabel } from './postLangs';
 import { NumBox } from './NumberStepper';
 import { AccountKeywordTabs, effectiveKw } from './MatrixAccountKeywords';
+import { presetAccountIds } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3 | 4;
 
@@ -84,6 +85,7 @@ const MatrixBinanceRepostWizard: React.FC<Props> = ({ platformLabel, platform, a
   // 口径与 binanceRepostRunner.collectFromSource 保持一致(取勾选发布号的并集)。
   const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     if (Array.isArray(initialTask?.accountIds) && initialTask.accountIds.length) return Array.from(new Set(initialTask.accountIds.map(String)));
+    if (!initialTask && presetAccountIds(platform).length) return presetAccountIds(platform);   // 简洁版:创建任务时已选好的号
     return accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required').map((a) => a.id);
   });
   const toggle = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

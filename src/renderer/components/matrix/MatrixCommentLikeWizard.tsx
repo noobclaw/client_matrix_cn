@@ -14,6 +14,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { NumBox } from './NumberStepper';
+import { presetAccountIds } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
 
@@ -60,7 +61,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
     return Number.isFinite(n) && n >= COMMENT_LIKE_MAX_MIN ? Math.min(COMMENT_LIKE_MAX_MAX, Math.round(n)) : COMMENT_LIKE_MAX_DEFAULT;
   });
 
-  const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask?.accountIds || []).map(String)));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask ? (initialTask.accountIds || []) : presetAccountIds(platform)).map(String)));
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'once');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);

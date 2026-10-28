@@ -58,6 +58,8 @@ import MatrixRedditPostWizard, { type RedditPostWizardSave } from '../matrix/Mat
 import MatrixInstagramPostWizard, { type InstagramPostWizardSave } from '../matrix/MatrixInstagramPostWizard';
 import MatrixBinanceRepostWizard, { type BinanceRepostWizardSave } from '../matrix/MatrixBinanceRepostWizard';
 import MatrixViralRewriteWizard, { type ViralRewriteWizardSave } from '../matrix/MatrixViralRewriteWizard';
+import SimpleCreatePicker from '../matrix/SimpleCreatePicker';
+import { setPresetAccounts, clearPresetAccounts } from '../../uiEdition';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'gate' | 'bitget' | 'bybit' | 'okx' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'instagram' | 'facebook' | 'reddit' | 'video';
 
@@ -186,6 +188,9 @@ interface ScenarioViewProps {
   /** 矩阵号 edition:锁死抖音平台、隐藏平台 tab、标题改「矩阵涨粉」、新建/编辑走
    *  MatrixView(matrixTaskNew)。数据经 scenarioService 的 MATRIX 适配层接矩阵后端。 */
   matrixMode?: boolean;
+  /** 简洁版(2026-10-28):create = 选平台 → 选账号 → 该平台任务卡片(不显示平台 tab);
+   *  manage = 全部平台的任务放一个列表,下拉框筛选。 */
+  simple?: boolean;
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
@@ -241,7 +246,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onInDetailChange,
   navNonce,
   matrixMode,
+  simple: simpleProp,
 }) => {
+  const simple = !!(simpleProp && matrixMode);
+  const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
+  // 简洁版 create:选好的平台 + 账号数(null = 还在选平台/账号那两步)
+  const [simplePicked, setSimplePicked] = useState<{ platform: string; n: number } | null>(null);
+  // 简洁版 manage:下拉筛选('all' | 'running' | 平台 id)
+  const [simpleFilter, setSimpleFilter] = useState<string>('all');
   const isMac = window.electron.platform === 'darwin';
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
   //   create 模式落在 'create'(新建页);manage 模式落在 'tasks'(我的涨粉任务)。
@@ -321,6 +333,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   useEffect(() => {
     setView({ kind: 'main', section: baseSection, platform: initialPlatform || defaultPlatform });
     setVideoInDetail(false);
+    // 简洁版:每次从首页 / 侧栏进「创建任务」都从第 1 步(选平台)开始
+    setSimplePicked(null);
+    clearPresetAccounts();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navNonce]);
 
@@ -1727,6 +1742,21 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
   // ── Render ──
 
+  // 简洁版可选平台:与新建页平台 tab 同口径(去掉「视频创作」),顺序同 MATRIX_TAB_ORDER
+  const simplePlatforms = MATRIX_TAB_ORDER
+    .filter((id) => id !== 'video' && !complianceHidden.includes(id) && !(HIDE_EXCHANGE_SQUARES && WEB3_SQUARE_TABS.includes(id)))
+    .map((id) => PLATFORM_TABS.find((t) => t.id === id))
+    .filter(Boolean)
+    .map((t) => ({ id: t!.id, label: i18nService.t(t!.labelKey), icon: t!.icon }));
+  // 简洁版「我的任务」下拉:只列有任务的平台
+  const simpleTaskPlatforms = (() => {
+    if (!simple) return [] as Array<{ id: string; label: string; icon: string; n: number }>;
+    const byId = new Map((Array.isArray(scenarios) ? scenarios : []).map(s => [s.id, s]));
+    const cnt: Record<string, number> = {};
+    for (const t of (Array.isArray(tasks) ? tasks : []) as any[]) { const p = String(t.platform || byId.get(t.scenario_id)?.platform || ''); if (p && p !== 'video') cnt[p] = (cnt[p] || 0) + 1; }
+    return MATRIX_TAB_ORDER.filter((id) => cnt[id]).map((id) => { const tab = PLATFORM_TABS.find((x) => x.id === id); return { id, label: tab ? i18nService.t(tab.labelKey) : id, icon: tab?.icon || '', n: cnt[id] }; });
+  })();
+
   const platformTabContent = (() => {
     if (view.kind === 'sensitive_check') {
       return <SensitiveCheckPage onBack={goBack} />;
@@ -1798,6 +1828,37 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onEdit={() => { if (matrixMode) { if (/_report$/.test(String(task.scenario_id || ''))) { void openMatrixReportWizardEdit(task); } else if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else if (/_comment_like$/.test(String(task.scenario_id || ''))) { void openMatrixCommentLikeWizardEdit(task); } else if (/_block$/.test(String(task.scenario_id || ''))) { void openMatrixBlockWizardEdit(task); } else if (/_folder_post$/.test(String(task.scenario_id || ''))) { void openMatrixFolderWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
+        />
+      );
+    }
+
+    // 简洁版 create 前两步:选平台 → 选账号
+    if (simple && mode === 'create' && view.kind === 'main' && !simplePicked) {
+      return (
+        <SimpleCreatePicker
+          platforms={simplePlatforms}
+          initialPlatform={initialPlatform}
+          onPicked={(p, ids) => { setPresetAccounts(p, ids); setSimplePicked({ platform: p, n: ids.length }); setView({ kind: 'main', section: 'create', platform: p as PlatformId }); }}
+        />
+      );
+    }
+    // 简洁版「我的任务」:全部平台放一起 + 下拉筛选(视频创作是另一套本地任务体系,不混排)
+    if (simple && mode === 'manage' && view.kind === 'main' && currentSection === 'tasks') {
+      const byId = new Map((Array.isArray(scenarios) ? scenarios : []).map(s => [s.id, s]));
+      const platOf = (t: any) => String(t.platform || byId.get(t.scenario_id)?.platform || '');
+      const all = (Array.isArray(tasks) ? tasks : []).filter((t) => platOf(t) !== 'video');
+      const shown = simpleFilter === 'all' || simpleFilter === 'running' ? all : all.filter((t) => platOf(t) === simpleFilter);
+      return (
+        <MyTasksPage
+          tasks={shown}
+          scenarios={scenarios}
+          loading={loading}
+          platformLabel=""
+          platformId="xhs"
+          onOpenTask={openTask}
+          onRefresh={refreshAll}
+          onGoCreate={() => { if (noobClawAuth.hasEnoughBalanceForTask()) onSwitchToCreate?.(); }}
+          runningOnly={simpleFilter === 'running'}
         />
       );
     }
@@ -2736,7 +2797,19 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </h2>
             {/* 「只看运行中」左右开关(默认关)。开 → 隐藏下方平台 tab,全平台运行中的任务卡
                 聚成一个列表,方便逐个追踪进度。仅矩阵 manage 菜单的任务列表显示。 */}
-            {matrixMode && mode === 'manage' && !isHistory && (
+            {simple && mode === 'manage' && !isHistory && (
+              <select
+                value={simpleFilter}
+                onChange={(e) => setSimpleFilter(e.target.value)}
+                className="non-draggable ml-2 shrink-0 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-2.5 py-1.5 dark:text-gray-200"
+                aria-label={SL('筛选任务', '篩選任務', 'Filter tasks')}
+              >
+                <option value="all">{SL('全部任务', '全部任務', 'All tasks')}</option>
+                <option value="running">🟢 {SL('运行中', '執行中', 'Running')}</option>
+                {simpleTaskPlatforms.map((p) => <option key={p.id} value={p.id}>{p.icon} {p.label}({p.n})</option>)}
+              </select>
+            )}
+            {matrixMode && mode === 'manage' && !isHistory && !simple && (
               <button
                 type="button"
                 role="switch"
@@ -2762,7 +2835,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           {/* Right-aligned CTA — 只在「我的涨粉任务」(tasks)展示;运行记录页无需新建入口。
               Always clickable; per-platform task-cap (>= 5) check happens inside the
               create page's scenario cards. Video tab is local-only (rose tint). */}
-          {currentSection === 'tasks' && (runningOnlyActive ? (
+          {currentSection === 'tasks' && ((runningOnlyActive || simple) ? (
           /* 「只看运行中」聚合态没有"当前平台"语境 —— 按钮退化为通用「新建任务」,
              跳「新建矩阵涨粉任务」选择页(与侧栏入口一致),由用户在那儿挑平台和类型。 */
           <button
@@ -2815,8 +2888,18 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </button>
             )}
             <h2 className="text-base font-bold dark:text-white text-gray-900 ml-2 whitespace-nowrap">
-              ✨ {currentPlatform === 'video' ? i18nService.t('svNewVideoTask') : i18nService.t('svNewFanTask')}
+              ✨ {simple ? SL('创建任务', '建立任務', 'Create a task') : currentPlatform === 'video' ? i18nService.t('svNewVideoTask') : i18nService.t('svNewFanTask')}
             </h2>
+            {simple && simplePicked && (
+              <>
+                <span className="ml-2 text-xs px-2.5 py-1 rounded-full bg-claude-accent/10 text-claude-accent font-semibold whitespace-nowrap">
+                  {simplePlatforms.find((p) => p.id === simplePicked.platform)?.icon} {simplePlatforms.find((p) => p.id === simplePicked.platform)?.label} · {SL(`已选 ${simplePicked.n} 个号`, `已選 ${simplePicked.n} 個帳號`, `${simplePicked.n} account(s)`)} · {SL('③ 选一个任务', '③ 選一個任務', '③ pick a task')}
+                </span>
+                <button type="button" onClick={() => { setSimplePicked(null); clearPresetAccounts(); }} className="ml-1 text-xs text-gray-500 hover:text-claude-accent underline whitespace-nowrap">
+                  {SL('重新选平台/账号', '重新選平台/帳號', 'Change platform / accounts')}
+                </button>
+              </>
+            )}
           </div>
           {/* v6.x: 「涨粉教程」入口 → 外部浏览器打开文档站。样式与「我的涨粉任务」
               页一致(琥珀渐变胶囊按钮),靠 justify-between 顶到头部右侧。 */}
@@ -2862,7 +2945,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           visible frame; the active one differentiates only by green tint
           + green border + slight glow shadow, matching the L1 section tabs'
           active treatment. */}
-      {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && !runningOnlyActive && (
+      {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && !runningOnlyActive && !simple && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           {/* 矩阵号:显示「视频创作」(热搜成片)+ 支持「互动涨粉」的平台(其余无 engage 剧本)。
               国内版:交易所广场五家(币安/OKX/Bitget/Bybit/Gate)【保留】且排在最后 —— 与「我的矩阵账号」页 VISIBLE_PLATFORMS 口径一致,新建/我的任务/运行记录三处都露。

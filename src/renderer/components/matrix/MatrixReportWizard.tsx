@@ -18,6 +18,7 @@ import {
   REPORT_TAXONOMY, REPORT_DEFAULT_HINT, findReportReason, validateReportItem,
   type ReportTargetType,
 } from '../../../main/libs/matrix/reportTaxonomy';
+import { presetAccountIds } from '../../uiEdition';
 
 const MAX_ITEMS = 4;
 const DESC_MAX = 200;
@@ -69,7 +70,7 @@ const MatrixReportWizard: React.FC<Props> = ({ platform, accounts, accountsLoadi
   const confirmStep = count + 2;
 
   // 执行账号可多选(2026-10-18):每个号各自把全部条目逐条提交一次,按顺序一个号跑完再跑下一个
-  const [selectedIds, setSelectedIds] = useState<string[]>(() => (initialTask?.accountIds || []).map(String).filter(Boolean));
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => (initialTask ? (initialTask.accountIds || []) : presetAccountIds(platform)).map(String).filter(Boolean));
   const toggleAccount = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const [termsAccepted, setTermsAccepted] = useState<boolean[]>([false, false]);
   const allTermsAccepted = termsAccepted.every(Boolean);

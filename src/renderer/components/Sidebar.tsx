@@ -37,6 +37,10 @@ interface SidebarProps {
   onShowMatrixTaskNew?: () => void;
   onShowMatrixTasks?: () => void;
   onShowMatrixRuns?: () => void;
+  /** 简洁版(2026-10-28):侧栏只留 首页 / 我的矩阵账号 / 我的任务 / 我的充值 / 邀请返佣 / 联系我们 */
+  simple?: boolean;
+  /** 顶部「简洁版 | 专业版」切换 */
+  onSwitchEdition?: (e: 'simple' | 'pro') => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -67,6 +71,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowMatrixTaskNew,
   onShowMatrixTasks,
   onShowMatrixRuns,
+  simple,
+  onSwitchEdition,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -196,6 +202,31 @@ const Sidebar: React.FC<SidebarProps> = ({
             <SidebarToggleIcon className="h-4 w-4" isCollapsed={isCollapsed} />
           </button>
         </div>
+        {/* 简洁版 / 专业版 切换 —— 放在最显眼的位置,随时切,两版数据完全共用 */}
+        {onSwitchEdition && (
+          <div className="mt-2 px-3">
+            <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-claude-surfaceHover/70 dark:bg-claude-darkSurfaceHover/70 border dark:border-claude-darkBorder border-claude-border">
+              {(['simple', 'pro'] as const).map((e) => {
+                const on = (e === 'simple') === !!simple;
+                const lang = i18nService.currentLanguage;
+                const label = e === 'simple'
+                  ? (lang === 'zh' ? '简洁版' : lang === 'zh-TW' ? '簡潔版' : 'Simple')
+                  : (lang === 'zh' ? '专业版' : lang === 'zh-TW' ? '專業版' : 'Pro');
+                return (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => { if (!on) { setIsSearchOpen(false); onSwitchEdition(e); } }}
+                    className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${on ? 'bg-claude-accent text-white shadow-sm' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText'}`}
+                    aria-pressed={on}
+                  >
+                    {e === 'simple' ? '🌱 ' : '🚀 '}{label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="mt-3 space-y-1 px-3">
           {/* 首页 — 置顶,默认进入。产品定位 + 三步使用流程 + 涨粉教程 + 开源提示 */}
           <button
@@ -257,12 +288,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           {/* 矩阵号导航:我的矩阵号 / 新建涨粉任务 / 我的涨粉任务 / 运行记录(矩阵 edition 整个 app 就这一组,不再加组头) */}
           <div className="space-y-1">
-            {([
+            {(([
               ['matrix', '👥 ' + i18nService.t('matrixMyAccounts'), onShowMatrix],
               ['matrixTaskNew', '✨ ' + i18nService.t('matrixNewFanTask'), onShowMatrixTaskNew],
-              ['matrixTasks', '📋 ' + i18nService.t('matrixMyFanTasks'), onShowMatrixTasks],
+              ['matrixTasks', '📋 ' + (simple ? (i18nService.currentLanguage === 'zh' ? '我的任务' : i18nService.currentLanguage === 'zh-TW' ? '我的任務' : 'My Tasks') : i18nService.t('matrixMyFanTasks')), onShowMatrixTasks],
               ['matrixRuns', '📊 ' + i18nService.t('matrixRunHistory'), onShowMatrixRuns],
-            ] as const).map(([key, label, handler]) => (
+            ] as const).filter(([key]) => !simple || key === 'matrix' || key === 'matrixTasks')).map(([key, label, handler]) => (
               <button
                 key={key}
                 type="button"
@@ -282,6 +313,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             ))}
           </div>
 
+          {!simple && (<>
           {/* 全网热搜 — 仅简体/繁体中文显示(知乎/微博/百度/雪球/抖音/B站热榜) */}
           {(i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') && (
             <button
@@ -405,6 +437,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
+          </>)}
+
           {/* My Wallet */}
           <button
             type="button"
@@ -449,6 +483,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           </>)}
 
+          {!simple && (<>
           {/* Events & Partners */}
           <button
             type="button"
@@ -462,6 +497,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-sm">🤝</span>
             {i18nService.t('eventsPartners')}
           </button>
+
+          </>)}
 
           {/* Contact Us */}
           {onShowContact && (
