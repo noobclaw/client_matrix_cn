@@ -173,24 +173,37 @@ const HomeView: React.FC<HomeViewProps> = ({
             </div>
           )}
 
-          {/* 简洁版:首页唯一的主操作 —— 一张干净的行动卡(纯色主题绿 + 深色字,不用渐变/光晕) */}
+          {/* 简洁版首页:一行简单的 3 步 → 一个正常大小的「创建任务」按钮 → 下面是教学视频(可按平台筛) */}
           {simple && (
-            <button
-              type="button"
-              onClick={onShowMatrixTaskNew}
-              className="group w-full flex items-center gap-4 rounded-2xl px-6 py-5 text-left bg-claude-accent hover:bg-claude-accentHover text-[#04130B] transition-colors active:scale-[0.99]"
-            >
-              <span className="w-12 h-12 shrink-0 rounded-xl bg-black/10 flex items-center justify-center text-3xl font-light leading-none">+</span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-xl font-bold">{SL('创建任务', '建立任務', 'Create a task')}</span>
-                <span className="block text-sm opacity-70 mt-0.5">{SL('选平台和账号 → 选任务', '選平台和帳號 → 選任務', 'Pick platform & accounts → pick a task')}</span>
-              </span>
-              <span className="text-2xl shrink-0 transition-transform group-hover:translate-x-1">→</span>
-            </button>
+            <div className="space-y-5">
+              <div className="flex items-center justify-center flex-wrap gap-2 text-sm">
+                {([
+                  [1, i18nService.t('hvStep1Title'), onShowMatrix, matrixExpiredCount],
+                  [2, i18nService.t('hvStep2Title'), onShowMatrixTaskNew, 0],
+                  [3, i18nService.t('hvStep3Title'), onShowMatrixTasks, 0],
+                ] as const).map(([n, label, go, badge], idx) => (
+                  <React.Fragment key={n}>
+                    {idx > 0 && <span className="text-gray-400">→</span>}
+                    <button type="button" onClick={go}
+                      className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg dark:text-claude-darkText text-claude-text hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover">
+                      <span className="w-6 h-6 rounded-full bg-claude-accent/15 text-claude-accent text-xs font-bold flex items-center justify-center">{n}</span>
+                      {label}
+                      {!!badge && <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-4">{badge}</span>}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </div>
+              <div className="flex justify-center">
+                <button type="button" onClick={onShowMatrixTaskNew}
+                  className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-semibold bg-claude-accent hover:bg-claude-accentHover text-[#04130B] transition-colors">
+                  ＋ {SL('创建任务', '建立任務', 'Create a task')}
+                </button>
+              </div>
+            </div>
           )}
 
-          {/* 使用流程 / 涨粉教程 — 三步走 */}
-          <div className="space-y-4">
+          {/* 使用流程 / 涨粉教程 — 三步走(简洁版用上面那一行,这里不显示) */}
+          <div className={`space-y-4 ${simple ? 'hidden' : ''}`}>
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">
                 📖 {i18nService.t('hvStepsTitle')}
@@ -237,7 +250,7 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           {/* 视频教程横排(与官网首页同款):数据来自 R2 清单,拉不到整个区不渲染 */}
-          <HomeVideoTutorials />
+          <HomeVideoTutorials filter={simple ? 'select' : 'tags'} />
 
           {!simple && (<>
           {/* 开源安全提示 */}

@@ -32,7 +32,8 @@ const groupLabel = (g: ManifestGroup): string => {
   return t === k ? g.label : t;
 };
 
-const HomeVideoTutorials: React.FC = () => {
+/** filter='select':分类用一个下拉框(简洁版);默认 'tags' 是一排标签(专业版,不变)。 */
+const HomeVideoTutorials: React.FC<{ filter?: 'tags' | 'select' }> = ({ filter = 'tags' }) => {
   const [videos, setVideos] = useState<ManifestVideo[]>([]);
   const [groups, setGroups] = useState<ManifestGroup[]>([]);
   // 先渲染骨架占住版位(标题/标签/两行卡位),清单到了原地填充 —— 避免整个区
@@ -87,9 +88,18 @@ const HomeVideoTutorials: React.FC = () => {
     <div className="space-y-4">
       {/* 标题行:📺 视频教程 + 更多教程 → 文档站 */}
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">
-          📺 {i18nService.t('hvVideosTitle')}
-        </h2>
+        <div className="flex items-center gap-2 min-w-0">
+          <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">
+            📺 {i18nService.t('hvVideosTitle')}
+          </h2>
+          {filter === 'select' && groups.length > 0 && (
+            <select value={active} onChange={(e) => setActive(e.target.value)} aria-label={i18nService.t('hvVideosTitle')}
+              className="rounded-lg border dark:border-white/10 border-gray-300 dark:bg-gray-800 bg-white text-xs px-2 py-1 dark:text-gray-200">
+              {!groups.some((g) => g.key === 'all') && <option value="all">{i18nService.currentLanguage === 'zh' ? '全部' : i18nService.currentLanguage === 'zh-TW' ? '全部' : 'All'} ({videos.length})</option>}
+              {groups.map((g) => <option key={g.key} value={g.key}>{groupLabel(g)} ({g.count})</option>)}
+            </select>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => openExternal(moreTutorialsUrl())}
@@ -101,7 +111,7 @@ const HomeVideoTutorials: React.FC = () => {
       </div>
 
       {/* 分类标签(标签文案来自清单,B 站内容为中文);loading 时先放灰条占位 */}
-      <div className="flex flex-wrap gap-1.5">
+      <div className={`flex flex-wrap gap-1.5 ${filter === 'select' ? 'hidden' : ''}`}>
         {loading && Array.from({ length: 6 }).map((_, i) => (
           <span key={i} className="h-[26px] w-16 rounded-full dark:bg-white/[0.06] bg-gray-200/70 animate-pulse" />
         ))}
