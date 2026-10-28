@@ -230,10 +230,10 @@ const COMMENT_LIKE_STEP_NAMES = (): string[] => (i18nService.currentLanguage ===
     : ['Open each post and like every comment', 'Summary']);
 // 批量拉黑 3 步(对齐 douyin_block orchestrator 的 stepStart 1/2/3)。内联中/繁/英。
 const BLOCK_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
-  ? ['整理名单 / 按关键词收集作者', '逐个拉黑', '汇总']
+  ? ['整理名单', '逐个拉黑(关键词:点开视频 → 进作者主页拉黑 → 返回下一个)', '汇总']
   : i18nService.currentLanguage === 'zh-TW'
-    ? ['整理名單 / 依關鍵詞收集作者', '逐個封鎖', '彙總']
-    : ['Build the list / collect creators by keyword', 'Block one by one', 'Summary']);
+    ? ['整理名單', '逐個封鎖(關鍵詞:點開影片 → 進作者主頁封鎖 → 返回下一個)', '彙總']
+    : ['Prepare the list', 'Block one by one (keywords: open video → author profile → block → next)', 'Summary']);
 const LEAD_ENGAGE_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
   ? ['采集同行的潜在客户', '逐个触达(点赞 / 评论 / 关注)', '更新名单并生成报告']
   : ['Collect leads from competitors', 'Reach out (like / comment / follow)', 'Update roster & report']);
