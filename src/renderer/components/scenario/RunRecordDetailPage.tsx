@@ -293,7 +293,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
         {(() => {
           const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
           const isZhLead = i18nService.currentLanguage === 'zh';
-          const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+          const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️', block: '🚫' };
           const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
           const labels = isZh
             ? { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rrActLike'), follow: (String(rec.scenario_snapshot?.id || '') === 'youtube_lead_engage' ? i18nService.t('rrActSubscribe') : i18nService.t('rrActFollow')), favorite: (isZhLead ? '收藏' : 'favorites'), comment: i18nService.t('rrActComment'), reply: i18nService.t('rrActReply'), subscribe: i18nService.t('rrActSubscribe'), post: i18nService.t('rrActPost'), download: i18nService.t('rrActDownload') }

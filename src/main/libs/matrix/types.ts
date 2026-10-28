@@ -306,10 +306,12 @@ export interface BinanceRepostConfig {
 //   只能选【1 个】账号执行,只能手动触发(每次逐条只提交一次),不定时、不重试;可编辑、可再次运行。
 // 作品评论区点赞 = comment_like(目前仅 TikTok,剧本 tiktok_comment_like):粘贴 1-20 条作品链接(urls),
 //   每个执行账号逐条打开、翻评论区给每位留言者的评论点赞,每号每次最多 commentLikeMax 个。
-export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report' | 'comment_like';
+export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report' | 'comment_like' | 'block';
 
 /** 作品评论区点赞(comment_like)的约束:客户端存盘校验 + 剧本再兜一层。 */
 export const COMMENT_LIKE_LIMITS = { maxLinks: 20, maxMin: 1, maxMax: 5000, maxDefault: 100 } as const;
+// 批量拉黑 = block(目前仅抖音,剧本 douyin_block):名单(主页/作品链接、短链、抖音号)和/或 关键词;不限人数。
+export const BLOCK_LIMITS = { maxTargets: 2000, maxKeywords: 20, keywordMaxLen: 30 } as const;
 
 /** 一条 Report:被举报的作品(视频/图文)或账号链接 + 抖音原文原因/具体类型 + 描述(用户手填,原样提交)。
  *  reason / subReason 必须是 reportTaxonomy.ts 里的抖音原文选项。 */
@@ -392,6 +394,8 @@ export interface MatrixTask {
   leadEngage?: LeadEngageConfig;   // 仅 lead_engage 用:定向获客配置
   urls?: string[];                 // video_download:待下载视频链接清单;comment_like:要点赞评论区的作品链接(1-20)
   commentLikeMax?: number;         // 仅 comment_like 用:每个账号每次运行最多点赞几条评论(1-5000,默认 100)
+  blockTargets?: string[];         // 仅 block 用:要拉黑的名单(主页/作品链接、短链、抖音号)
+  blockKeywords?: string[];        // 仅 block 用:关键词(搜视频,拉黑相关作者)
   reportItems?: ReportItem[];      // 仅 report 用:1-4 条举报条目
   // 仅 report 用:最近一次正式执行时间(展示用,不锁定)。
   reportExecutedAt?: number;

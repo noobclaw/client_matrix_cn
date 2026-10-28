@@ -228,6 +228,12 @@ const COMMENT_LIKE_STEP_NAMES = (): string[] => (i18nService.currentLanguage ===
   : i18nService.currentLanguage === 'zh-TW'
     ? ['打開作品,逐則為留言按讚', '彙總報告']
     : ['Open each post and like every comment', 'Summary']);
+// 批量拉黑 3 步(对齐 douyin_block orchestrator 的 stepStart 1/2/3)。内联中/繁/英。
+const BLOCK_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
+  ? ['整理名单 / 按关键词收集作者', '逐个拉黑', '汇总']
+  : i18nService.currentLanguage === 'zh-TW'
+    ? ['整理名單 / 依關鍵詞收集作者', '逐個封鎖', '彙總']
+    : ['Build the list / collect creators by keyword', 'Block one by one', 'Summary']);
 const LEAD_ENGAGE_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
   ? ['采集同行的潜在客户', '逐个触达(点赞 / 评论 / 关注)', '更新名单并生成报告']
   : ['Collect leads from competitors', 'Reach out (like / comment / follow)', 'Update roster & report']);
@@ -339,6 +345,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     //   详情页显示的步骤跟实际在跑的对不上。
     if (/_lead_engage$/.test(String(sid || ''))) return LEAD_ENGAGE_STEP_NAMES();
     if (/_comment_like$/.test(String(sid || ''))) return COMMENT_LIKE_STEP_NAMES();
+    if (/_block$/.test(String(sid || ''))) return BLOCK_STEP_NAMES();
     // 快手 / 哔哩哔哩 流程镜像抖音,但步骤名按各自平台名生成(纯展示,scenario.id 独立),
     // 不再复用抖音常量,避免「抖音」字样串台到别的平台页。
     if (sid === 'kuaishou_auto_engage') return engageStepNames(i18nService.t('tdKuaishou'), i18nService.t('tdActsLikeFollowComment'));
@@ -1633,7 +1640,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
                   {(() => {
                     const isZhLead = i18nService.currentLanguage === 'zh';
-                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️', block: '🚫' };
                     const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
                     const labels = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('tdLblLike'), follow: (scenario?.id === 'facebook_auto_engage' ? i18nService.t('tdLblAddFriend') : scenario?.id === 'youtube_lead_engage' ? i18nService.t('tdLblSubscribe') : i18nService.t('tdLblFollow')), favorite: (i18nService.currentLanguage === 'zh' ? '收藏' : 'favorites'), comment: i18nService.t('tdLblComment'), reply: i18nService.t('tdLblReply'), subscribe: i18nService.t('tdLblSubscribe'), post: i18nService.t('tdLblPost'), download: i18nService.t('tdLblDownload') };
                     const ap = progress.action_progress || {};
@@ -1876,7 +1883,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           || (scenario?.workflow_type as any) === 'lead_engage';
         // 作品评论区点赞同理:只点赞,没有草稿/发布。
         const isCommentLikeTask = /_comment_like$/.test(String(task.scenario_id || ''));
-        const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask && !isLeadEngageTask && !isCommentLikeTask;
+        const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask && !isLeadEngageTask && !isCommentLikeTask && !/_block$/.test(String(task.scenario_id || ''));
         const isXhsViral = scenario?.platform === 'xhs';
         const autoUploadLabel = isXhsViral
           ? i18nService.t('tdAutoUploadDrafts')
@@ -1962,6 +1969,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           if (/_report$/.test(sid)) return <>📋 {(ap as any).report?.done ?? 0}/{(ap as any).report?.target ?? 0} {i18nService.t('rpWordSubmitted')}</>;
                           // 作品评论区点赞:只有点赞这一个动作,别画 ➕ 关注 / 💬 评论的 0/0。
                           if (/_comment_like$/.test(sid)) return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0}</>;
+                          // 批量拉黑:只有拉黑这一个动作,不限人数(没有 target)。
+                          if (/_block$/.test(sid)) return <>🚫 {(ap as any).block?.done ?? 0}</>;
                           if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {i18nService.t('tdVideoDownloadWord')}</span>;
                           if (/_image_text$/.test(sid)) return <span className="text-gray-400 font-sans">📝 {i18nService.t('tdImageTextWord')}</span>;
                           if (/_viral_production_career$/.test(sid)) return <span className="text-gray-400 font-sans">🔥 {i18nService.t('tdViralRewriteWord')}</span>;
@@ -2257,6 +2266,11 @@ function formatActionBreakdown(
     const n = counts && typeof counts.like === 'number' ? counts.like : 0;
     return `👍 ${n} ${i18nService.t('tdLblLike')}`;
   }
+  // 批量拉黑(*_block):只产生「拉黑人数」,不显示赞/关注/评论。
+  if (/_block$/.test(sid)) {
+    const n = counts && typeof (counts as any).block === 'number' ? (counts as any).block : 0;
+    return `🚫 ${n} ` + (i18nService.currentLanguage === 'zh' ? '人已拉黑' : i18nService.currentLanguage === 'zh-TW' ? '人已封鎖' : 'blocked');
+  }
   // 抖音Report(*_report):只产生「已提交条数」,不显示赞/关注/评论。
   if (/_report$/.test(sid)) {
     const n = counts && typeof (counts as any).report === 'number' ? (counts as any).report : 0;
@@ -2329,6 +2343,7 @@ function formatActionBreakdown(
     subscribe: '📌',
     post: '📤',
     download: '⬇️',
+    block: '🚫',
   };
   const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
   // v5.x+: keep 0-count keys when they're explicitly present in the map.

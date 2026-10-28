@@ -10,7 +10,7 @@ import os from 'os';
 import path from 'path';
 import { coworkLog } from '../coworkLogger';
 import { nextRunAt } from './matrixSchedule';
-import { REPORT_LIMITS, COMMENT_LIKE_LIMITS } from './types';
+import { REPORT_LIMITS, COMMENT_LIKE_LIMITS, BLOCK_LIMITS } from './types';
 import type { ReportItem, ReportItemResult } from './types';
 import { validateReportItem } from './reportTaxonomy';
 import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, LeadEngageConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
@@ -90,6 +90,8 @@ export interface SaveTaskInput {
   urls?: string[];                 // video_download 用:待下载视频链接清单
   reportItems?: ReportItem[];      // report 用:1-4 条举报条目
   commentLikeMax?: number;         // comment_like 用:每号每次最多点赞数(1-5000)
+  blockTargets?: string[];         // block 用:名单
+  blockKeywords?: string[];        // block 用:关键词
   concurrency?: number;
   frequency: MatrixTaskFrequency;
 }
@@ -186,6 +188,26 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     input = { ...input, urls, commentLikeMax, quota: {} };
   }
 
+  // 批量拉黑(仅抖音):名单 + 关键词去重、裁剪;两者至少一项;至少 1 个执行账号。不限人数。
+  if (input.type === 'block') {
+    if (input.platform !== 'douyin') return { ok: false, error: 'block_platform_unsupported' };
+    const uniq = (arr: unknown, maxLen: number, cap: number) => {
+      const seen = new Set<string>(); const out: string[] = [];
+      for (const raw of Array.isArray(arr) ? arr : []) {
+        const v = String(raw || '').trim().slice(0, maxLen);
+        if (!v || seen.has(v)) continue;
+        seen.add(v); out.push(v);
+        if (out.length >= cap) break;
+      }
+      return out;
+    };
+    const blockTargets = uniq(input.blockTargets, 300, BLOCK_LIMITS.maxTargets);
+    const blockKeywords = uniq(input.blockKeywords, BLOCK_LIMITS.keywordMaxLen, BLOCK_LIMITS.maxKeywords);
+    if (!blockTargets.length && !blockKeywords.length) return { ok: false, error: 'block_no_targets' };
+    if (!(input.accountIds || []).filter(Boolean).length) return { ok: false, error: 'block_no_account' };
+    input = { ...input, blockTargets, blockKeywords, quota: {} };
+  }
+
   if (input.id) {
     const i = tasks.findIndex((t) => t.id === input.id);
     if (i < 0) return { ok: false, error: 'task_not_found' };
@@ -219,6 +241,8 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       leadEngage: input.leadEngage ?? tasks[i].leadEngage,
       urls: input.urls ?? tasks[i].urls,
       commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : tasks[i].commentLikeMax,
+      blockTargets: input.type === 'block' ? input.blockTargets : tasks[i].blockTargets,
+      blockKeywords: input.type === 'block' ? input.blockKeywords : tasks[i].blockKeywords,
       reportItems: input.type === 'report' ? reportItems : tasks[i].reportItems,
       concurrency: input.concurrency,
       frequency: input.frequency,
@@ -258,6 +282,8 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     leadEngage: input.leadEngage,
     urls: input.urls,
     commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : undefined,
+    blockTargets: input.type === 'block' ? input.blockTargets : undefined,
+    blockKeywords: input.type === 'block' ? input.blockKeywords : undefined,
     reportItems,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',

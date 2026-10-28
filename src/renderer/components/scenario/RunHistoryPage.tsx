@@ -362,7 +362,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                     const at = (rec.result as any)?.action_targets as Record<string, number> | undefined;
                     if (!ac && !at) return null;
                     const isZhLead = i18nService.currentLanguage === 'zh';
-                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ICONS: Record<string, string> = { lead_new: '📇', lead_engaged: '🤝', like: '👍', follow: '➕', favorite: '⭐', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️', block: '🚫' };
                     const ORDER = ['lead_new', 'lead_engaged', 'like', 'follow', 'favorite', 'subscribe', 'comment', 'reply', 'post', 'download'];
                     const labels: Record<string, string> = { lead_new: isZhLead ? '获得潜客' : 'leads', lead_engaged: isZhLead ? '互动潜客' : 'engaged', like: i18nService.t('rhActLike'), follow: (String(rec.scenario_snapshot?.id || '') === 'youtube_lead_engage' ? i18nService.t('rhActSubscribe') : i18nService.t('rhActFollow')), favorite: (isZhLead ? '收藏' : 'favorites'), comment: i18nService.t('rhActComment'), reply: i18nService.t('rhActReply'), subscribe: i18nService.t('rhActSubscribe'), post: i18nService.t('rhActPost'), download: i18nService.t('rhActDownload') };
                     // Union of keys present in either map — running rows

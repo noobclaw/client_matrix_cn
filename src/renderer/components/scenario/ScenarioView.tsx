@@ -46,6 +46,7 @@ import MatrixReplyFansWizard from '../matrix/MatrixReplyFansWizard';
 import MatrixLeadEngageWizard from '../matrix/MatrixLeadEngageWizard';
 import MatrixVideoDownloadWizard from '../matrix/MatrixVideoDownloadWizard';
 import MatrixCommentLikeWizard from '../matrix/MatrixCommentLikeWizard';
+import MatrixBlockWizard from '../matrix/MatrixBlockWizard';
 import MatrixReportWizard from '../matrix/MatrixReportWizard';
 import { MATRIX_REPORT_SCENARIO_ID } from '../../services/scenario';
 import MatrixImageTextWizard, { type ImageTextWizardSave } from '../matrix/MatrixImageTextWizard';
@@ -101,6 +102,8 @@ const LEAD_FOLLOW_WORD = (p: PlatformId | string): [string, string] =>
 const MATRIX_VIDEO_DOWNLOAD_PLATFORMS = new Set<PlatformId>(['douyin', 'kuaishou', 'bilibili', 'tiktok', 'xhs']);
 // 后端有 <platform>_comment_like「作品评论区点赞」剧本的平台(粘贴作品链接 → 多账号逐条翻评论区给留言点赞)。目前仅 TikTok。
 const MATRIX_COMMENT_LIKE_PLATFORMS = new Set<PlatformId>(['tiktok']);
+// 后端有 <platform>_block「批量拉黑」剧本的平台。目前仅抖音。
+const MATRIX_BLOCK_PLATFORMS = new Set<PlatformId>(['douyin']);
 // 后端 backend/matrix/scenarios 有 <platform>_image_text「图文创作」剧本的平台(N 号各自生成图文+发布)。
 // 抖音(creator.douyin.com)/小红书(creator.xiaohongshu.com)/视频号(channels.weixin.qq.com 助手「发表新动态」,
 // wujie 微前端 shadowRoot 发布)/头条号(mp.toutiao.com 微头条,byte-design 普通页,无标题/封面)。
@@ -346,6 +349,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [matrixCommentLikeAccounts, setMatrixCommentLikeAccounts] = useState<WizardAccount[]>([]);
   const [matrixCommentLikeAccountsLoading, setMatrixCommentLikeAccountsLoading] = useState(false);
   const [matrixCommentLikeTask, setMatrixCommentLikeTask] = useState<any | null>(null);
+  // 「批量拉黑」向导(block,目前仅抖音:名单/关键词 + 多账号)。
+  const [matrixBlockPlatform, setMatrixBlockPlatform] = useState<string | null>(null);
+  const [matrixBlockAccounts, setMatrixBlockAccounts] = useState<WizardAccount[]>([]);
+  const [matrixBlockAccountsLoading, setMatrixBlockAccountsLoading] = useState(false);
+  const [matrixBlockTask, setMatrixBlockTask] = useState<any | null>(null);
   // 「举报」向导(白名单功能;可多账号、1-4 条、只能手动触发)
   const [matrixReportPlatform, setMatrixReportPlatform] = useState<string | null>(null);
   const [matrixReportAccounts, setMatrixReportAccounts] = useState<WizardAccount[]>([]);
@@ -737,6 +745,45 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     finally { setMatrixCommentLikeAccountsLoading(false); }
   };
   const openMatrixCommentLikeWizardEdit = (task: any) => openMatrixCommentLikeWizard((task?.platform as string) || 'tiktok', task);
+  const openMatrixBlockWizard = async (platform: string, editTask?: any) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    if (!editTask && await hasDupTask(platform, 'block', '批量拉黑')) return;
+    setMatrixBlockAccounts([]);
+    setMatrixBlockAccountsLoading(true);
+    setMatrixBlockTask(editTask ? {
+      id: editTask.id,
+      name: editTask.name,
+      accountIds: editTask.account_ids || [],
+      blockTargets: Array.isArray(editTask.block_targets) ? editTask.block_targets : [],
+      blockKeywords: Array.isArray(editTask.block_keywords) ? editTask.block_keywords : [],
+      concurrency: editTask.concurrency,
+      frequency: editTask.run_interval,
+    } : null);
+    setMatrixBlockPlatform(platform);
+    void ensureMatrixKernel();
+    try {
+      const r = await (window as any).electron?.matrix?.listAccounts?.();
+      const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
+      setMatrixBlockAccounts(accs.filter((a) => leadAccountFilter(a, platform)).map(mapWizardAccount));
+    } catch { setMatrixBlockAccounts([]); }
+    finally { setMatrixBlockAccountsLoading(false); }
+  };
+  const openMatrixBlockWizardEdit = (task: any) => openMatrixBlockWizard((task?.platform as string) || 'douyin', task);
+  const saveMatrixBlockTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; blockTargets: string[]; blockKeywords: string[] }) => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
+    const m = (window as any).electron?.matrix;
+    const r = await m?.saveTask?.({ id: matrixBlockTask?.id, platform: matrixBlockPlatform, type: 'block', name: input.name, accountIds: input.accountIds, blockTargets: input.blockTargets, blockKeywords: input.blockKeywords, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    if (!r?.ok) {
+      if (r?.error === 'duplicate_type') { const dp = matrixBlockPlatform; setMatrixBlockPlatform(null); setMatrixBlockTask(null); setDupNotice({ platform: dp as string, label: '批量拉黑' }); return; }
+      throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', block_no_targets: '名单和关键词至少填一项', block_no_account: '请至少选 1 个执行账号', block_platform_unsupported: '目前仅支持抖音' } as any)[r?.error] || r?.error || '保存失败');
+    }
+    const wasEdit = !!matrixBlockTask?.id;
+    const plat = matrixBlockPlatform;
+    setMatrixBlockPlatform(null);
+    setMatrixBlockTask(null);
+    await refreshAll();
+    if (!wasEdit) { if (r?.task?.id) openTask(r.task.id); else onSwitchToManage?.(plat as any); }
+  };
   const saveMatrixCommentLikeTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; urls: string[]; commentLikeMax: number }) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
@@ -1706,7 +1753,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenario={scenario || null}
           onBack={goBack}
           /* 矩阵号:编辑打开账号多选向导(回填该任务的账号/配额/频率),不开原版 ConfigWizard */
-          onEdit={() => { if (matrixMode) { if (/_report$/.test(String(task.scenario_id || ''))) { void openMatrixReportWizardEdit(task); } else if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else if (/_comment_like$/.test(String(task.scenario_id || ''))) { void openMatrixCommentLikeWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
+          onEdit={() => { if (matrixMode) { if (/_report$/.test(String(task.scenario_id || ''))) { void openMatrixReportWizardEdit(task); } else if (/_video_download$/.test(String(task.scenario_id || ''))) { void openMatrixDownloadWizardEdit(task); } else if (/_image_text$/.test(String(task.scenario_id || ''))) { void openMatrixImageTextWizardEdit(task); } else if (/_viral_production_career$/.test(String(task.scenario_id || ''))) { void openMatrixViralWizardEdit(task); } else if (String(task.scenario_id || '') === 'x_post') { void openMatrixTweetWizardEdit(task); } else if (isSquarePostScenario(String(task.scenario_id || ''))) { void openMatrixBinanceWizardEdit(task); } else if (String(task.scenario_id || '') === 'facebook_post') { void openMatrixFacebookWizardEdit(task); } else if (String(task.scenario_id || '') === 'reddit_post') { void openMatrixRedditWizardEdit(task); } else if (String(task.scenario_id || '') === 'instagram_post') { void openMatrixInstagramWizardEdit(task); } else if (isSquareRepostScenario(String(task.scenario_id || ''))) { void openMatrixRepostWizardEdit(task); } else if (/_reply_fans_comment$/.test(String(task.scenario_id || ''))) { void openMatrixReplyWizardEdit(task); } else if (/_lead_engage$/.test(String(task.scenario_id || ''))) { void openMatrixLeadWizardEdit(task); } else if (/_comment_like$/.test(String(task.scenario_id || ''))) { void openMatrixCommentLikeWizardEdit(task); } else if (/_block$/.test(String(task.scenario_id || ''))) { void openMatrixBlockWizardEdit(task); } else { void openMatrixWizardEdit(task); } return; } if (scenario) openWizardEdit(task, scenario); }}
           onChanged={refreshAll}
           onOpenHistory={() => openHistoryForTask(task.id)}
         />
@@ -1871,6 +1918,38 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500 text-white text-sm font-bold hover:bg-cyan-600 shadow-sm shadow-cyan-500/25 transition-all active:scale-95"
                 >
                   🎯 {i18nService.currentLanguage === 'zh' ? '开始获客' : 'Start'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                  className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                >
+                  {i18nService.t('svHasTasks')}
+                </button>
+              </div>
+            </div>
+          )}
+          {/* 批量拉黑(目前仅抖音)—— 名单 / 关键词,多账号逐个拉黑。 */}
+          {matrixMode && MATRIX_BLOCK_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/5 dark:bg-red-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-red-600 dark:text-red-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {i18nService.currentLanguage === 'zh' ? '账号工具' : i18nService.currentLanguage === 'zh-TW' ? '帳號工具' : 'Account tools'}
+              </div>
+              <div className="text-xl font-bold dark:text-white mb-1">🚫 {platLabel} · {i18nService.currentLanguage === 'zh' ? '批量拉黑' : i18nService.currentLanguage === 'zh-TW' ? '批量封鎖' : 'Batch Block'}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                {i18nService.currentLanguage === 'zh'
+                  ? <>粘贴竞争对手名单,或输入关键词把搜出来的同行作者<strong>逐个拉黑</strong>(跳过已关注的人)。</>
+                  : i18nService.currentLanguage === 'zh-TW'
+                    ? <>貼上競爭對手名單,或輸入關鍵詞把搜出來的同行作者<strong>逐個封鎖</strong>(跳過已關注的人)。</>
+                    : <>Paste a list of accounts, or enter keywords to <strong>block the matching creators</strong> one by one (accounts you follow are skipped).</>}
+              </div>
+              <div className="mt-auto flex items-center flex-wrap pt-1">
+                <button
+                  type="button"
+                  onClick={() => openMatrixBlockWizard(currentPlatform)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 shadow-sm shadow-red-500/25 transition-all active:scale-95"
+                >
+                  🚫 {i18nService.currentLanguage === 'zh' ? '开始拉黑' : i18nService.currentLanguage === 'zh-TW' ? '開始封鎖' : 'Start'}
                 </button>
                 <button
                   type="button"
@@ -2913,6 +2992,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               initialTask={matrixCommentLikeTask}
               onCancel={() => { setMatrixCommentLikePlatform(null); setMatrixCommentLikeTask(null); }}
               onSave={saveMatrixCommentLikeTask}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 矩阵号批量拉黑向导(名单/关键词 → 多账号 → 频率) */}
+      {matrixBlockPlatform && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 overflow-auto">
+          <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <MatrixBlockWizard
+              platformLabel={matrixBlockPlatform === 'douyin' ? '抖音' : String(matrixBlockPlatform)}
+              platform={matrixBlockPlatform}
+              accounts={matrixBlockAccounts}
+              accountsLoading={matrixBlockAccountsLoading}
+              initialTask={matrixBlockTask}
+              onCancel={() => { setMatrixBlockPlatform(null); setMatrixBlockTask(null); }}
+              onSave={saveMatrixBlockTask}
             />
           </div>
         </div>
