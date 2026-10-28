@@ -2426,6 +2426,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionDownload')}
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white">🆓 {i18nService.currentLanguage === 'zh' ? '免费' : i18nService.currentLanguage === 'zh-TW' ? '免費' : 'Free'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">⬇️ {i18nService.t('ytdlTaskName')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">{i18nService.t('ytdlCardDesc')}</div>
@@ -2445,6 +2446,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionDownload')}
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white">🆓 {i18nService.currentLanguage === 'zh' ? '免费' : i18nService.currentLanguage === 'zh-TW' ? '免費' : 'Free'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">⬇️ {platLabel} · {i18nService.t('svCardDownloadTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
