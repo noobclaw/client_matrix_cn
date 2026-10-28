@@ -1144,6 +1144,7 @@ const App: React.FC = () => {
             { key: 'contact', icon: '💬', label: i18nService.t('contactUsMenu'), onClick: handleShowContact },
           ] : undefined}
           activeKey={mainView === 'matrixTaskNew' ? (scenarioInDetail ? 'matrixTasks' : 'home') : mainView}
+          subPage={mainView === 'matrixTaskNew' && !scenarioInDetail ? { icon: '✨', label: i18nService.currentLanguage === 'zh' ? '创建任务' : i18nService.currentLanguage === 'zh-TW' ? '建立任務' : 'Create a task' } : undefined}
           updateBadge={simpleUi ? updateBadge : null}
         />
       )}

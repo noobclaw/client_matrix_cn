@@ -47,7 +47,10 @@ const EditionChooser: React.FC<{ onPick: (e: UiEdition) => void; current?: UiEdi
               key={c.e}
               type="button"
               onClick={() => onPick(c.e)}
-              className={`text-left rounded-2xl border-2 p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg ${c.e === hi ? 'border-claude-accent/60 bg-claude-accent/5 hover:border-claude-accent' : 'border-gray-200 dark:border-gray-700 hover:border-claude-accent/50'}`}
+              // 高亮卡的淡绿底用 style 写:深色主题里 `button[class*="bg-claude-accent"]` 会被强制刷成实心亮绿 + 黑字(noobclaw-theme.css),
+              //   卡里的灰字就看不清了(用户 2026-10-29 截图)
+              style={c.e === hi ? { background: 'rgba(0,255,136,0.06)' } : undefined}
+              className={`text-left rounded-2xl border-2 p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg ${c.e === hi ? 'border-claude-accent/60 hover:border-claude-accent' : 'border-gray-200 dark:border-gray-700 hover:border-claude-accent/50'}`}
             >
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-2xl">{c.icon}</span>

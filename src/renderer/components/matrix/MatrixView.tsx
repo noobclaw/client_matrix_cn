@@ -1075,7 +1075,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     const kwAll = mergeKw(a.keywords, a.derivedKeywords);
                     const notConnected = a.status === 'login_required';
                     const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
-                    const btn = 'text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 dark:text-gray-200 text-gray-700 hover:border-violet-500 hover:text-violet-500';
+                    // 按钮配色照搬专业版卡片:没连接紫色、已连接绿色、断开橙色
+                    const btn = `text-xs px-2.5 py-1 rounded-lg text-white ${notConnected ? 'bg-violet-500 hover:bg-violet-600' : 'bg-emerald-600 hover:bg-emerald-700'}`;
                     return (
                       <div key={a.id} className={`relative rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 flex flex-col gap-3 bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
                         <button onClick={() => deleteAccount(a)} title={i18nService.t('mvRemoveAccountTitle')} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-red-500/90 transition-colors text-sm leading-none">✕</button>
@@ -1104,10 +1105,10 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           <button onClick={() => openProxy(a)} className={btn}>{i18nService.t('mvConfigIp')}</button>
                           <button onClick={() => openEdit(a)} className={btn}>{i18nService.t('mvEdit')}</button>
                           {notConnected
-                            ? <button onClick={() => setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope })} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{SL('连接账号', '連接帳號', 'Connect')}</button>
+                            ? <button onClick={() => setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope })} className="text-xs px-2.5 py-1 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{SL('连接账号', '連接帳號', 'Connect')}</button>
                             : <>
                                 <button onClick={() => refreshIdentity(a)} className={btn}>{i18nService.t('mvRefreshInfo')}</button>
-                                <button onClick={() => disconnectAccount(a)} className={btn}>{i18nService.t('mvDisconnect')}</button>
+                                <button onClick={() => disconnectAccount(a)} className="text-xs px-2.5 py-1 rounded-lg bg-orange-500 text-white hover:bg-orange-600">{i18nService.t('mvDisconnect')}</button>
                               </>}
                         </div>
                       </div>

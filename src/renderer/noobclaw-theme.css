@@ -95,6 +95,13 @@
   border-color: rgba(0,255,136,0.35) !important;
   box-shadow: 0 0 0 3px rgba(0,255,136,0.06) !important;
 }
+/* 简洁版规范下拉框(SimpleSelect):深色下线框要看得清(上面的通用 select 规则线框几乎和底色一样) */
+.dark select.simple-select {
+  background: #141826 !important;
+  border-color: rgba(255,255,255,0.28) !important;
+}
+.dark select.simple-select:hover { border-color: rgba(0,255,136,0.45) !important; }
+.dark select.simple-select:focus { border-color: rgba(0,255,136,0.6) !important; }
 .dark input::placeholder,
 .dark textarea::placeholder {
   color: var(--nc-muted) !important;

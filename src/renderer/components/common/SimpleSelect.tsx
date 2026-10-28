@@ -21,11 +21,11 @@ const SimpleSelect: React.FC<{
       onChange={(e) => onChange(e.target.value)}
       aria-label={ariaLabel}
       disabled={disabled}
-      className={`w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 ${size === 'sm' ? 'py-1.5 text-xs' : 'py-2.5 text-sm'} dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}
+      className={`simple-select w-full appearance-none rounded-lg border border-gray-300 dark:border-white/25 hover:border-green-500/60 dark:hover:border-green-400/60 bg-white dark:bg-gray-800 pl-3 pr-9 ${size === 'sm' ? 'py-1.5 text-xs' : 'py-2.5 text-sm'} dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed`}
     >
       {options.map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
     </select>
-    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-gray-300 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   </div>
