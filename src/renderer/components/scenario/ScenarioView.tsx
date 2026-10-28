@@ -1780,11 +1780,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (MATRIX_BLOCK_PLATFORMS.has(P)) add('block', '批量拉黑', '批量封鎖', 'Batch block', 'block');
     if (MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(P) || P === 'youtube') add('download', '无水印下载', '無浮水印下載', 'Watermark-free download', 'video_download');
     if (reportEnabled && !!MATRIX_REPORT_SCENARIO_ID[P]) add('report', '举报', '檢舉', 'Report');
+    if (P === 'xhs') add('sensitive', '敏感词检查', '敏感詞檢查', 'Sensitive-word check');   // 与专业版小红书卡片一致(账号无关的工具)
     return out;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportEnabled, i18nService.currentLanguage]);
   const runSimpleType = (p: string, key: string) => {
     setSimpleModalOpen(false);
+    if (key === 'sensitive') { openSensitiveCheck(); return; }
     setView({ kind: 'main', section: 'create', platform: p as PlatformId });
     const open: Record<string, (pl: string) => unknown> = {
       engage: openMatrixWizard, lead: openMatrixLeadWizard, reply: openMatrixReplyWizard, image_text: openMatrixImageTextWizard,

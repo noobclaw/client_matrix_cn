@@ -35,7 +35,11 @@ const SimpleCreateModal: React.FC<Props> = ({ platforms, typesFor, initialPlatfo
     let alive = true;
     (async () => {
       try {
-        const r = await (window as any).electron?.matrix?.listTasks?.();
+        // 与专业版 hasDupTask 一致:1.5 秒查不到就放行(保存时后端还会再拦一次重复)
+        const r: any = await Promise.race([
+          (window as any).electron?.matrix?.listTasks?.(),
+          new Promise((res) => setTimeout(() => res(null), 1500)),
+        ]);
         if (alive) setExisting(r?.ok && Array.isArray(r.tasks) ? r.tasks.map((t: any) => ({ platform: String(t?.platform || ''), type: String(t?.type || '') })) : []);
       } catch { if (alive) setExisting([]); }
     })();

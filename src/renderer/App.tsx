@@ -1134,7 +1134,7 @@ const App: React.FC = () => {
              保持「任务详情属于我的涨粉任务」的认知一致;从「所有 AI 对话」列表点进对话详情时,
              高亮仍归到「所有 AI 对话」(coworkHistory);其余情况按真实 mainView 高亮。 */
           simple={simpleUi}
-          onSwitchEdition={MATRIX_EDITION ? switchEdition : undefined}
+          onSwitchEdition={MATRIX_EDITION && uiEdition === 'pro' ? switchEdition : undefined}
           activeView={
             simpleUi && mainView === 'matrixTaskNew'
               ? (scenarioInDetail ? 'matrixTasks' : 'home')
@@ -1327,7 +1327,7 @@ const App: React.FC = () => {
               <ScenarioView
                 matrixMode
                 simple={simpleUi}
-                onSimpleCancel={() => setMainView((lastNonCreateViewRef.current || 'home') as any)}
+                onSimpleCancel={() => { const v = lastNonCreateViewRef.current; setMainView((v && SIMPLE_VIEWS.includes(v) ? v : 'home') as any); }}
                 mode={mainView === 'matrixRuns' ? 'runs' : mainView === 'matrixTaskNew' ? 'create' : 'manage'}
                 initialPlatform={matrixPlatform as any}
                 onSwitchToCreate={(platform) => { if (platform) setMatrixPlatform(platform); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); }}
