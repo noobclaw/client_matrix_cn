@@ -9,7 +9,7 @@
  * Only xhs is functional in Phase 1. Everything else renders a placeholder.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -1796,6 +1796,20 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     };
     void open[key]?.(p);
   };
+
+  // 简洁版 create:从这里打开过向导 / 任务详情 / 敏感词检查 / 「已有任务」提示,之后又回到了空的新建页
+  //   (向导取消、详情页点返回…)→ 直接回到进来之前的页面(通常是首页),不停在只有一个按钮的空页上。
+  const anyMatrixWizardOpen = !!(matrixWizardPlatform || matrixReplyPlatform || matrixLeadPlatform || matrixCommentLikePlatform
+    || matrixFolderPlatform || matrixBlockPlatform || matrixDownloadPlatform || matrixReportPlatform || matrixImageTextPlatform
+    || matrixTweetPlatform || matrixBinancePlatform || matrixFacebookPlatform || matrixRedditPlatform || matrixInstagramPlatform
+    || matrixRepostPlatform || matrixViralPlatform);
+  const simpleLeftCreate = useRef(false);
+  useEffect(() => {
+    if (!(simple && mode === 'create')) return;
+    if (anyMatrixWizardOpen || matrixKernelMissing || dupNotice || view.kind !== 'main') { simpleLeftCreate.current = true; return; }
+    if (!simpleModalOpen && simpleLeftCreate.current) { simpleLeftCreate.current = false; onSimpleCancel?.(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simple, mode, anyMatrixWizardOpen, matrixKernelMissing, dupNotice, view.kind, simpleModalOpen]);
 
   // 简洁版「我的任务」下拉:只列有任务的平台
   const simpleTaskPlatforms = (() => {

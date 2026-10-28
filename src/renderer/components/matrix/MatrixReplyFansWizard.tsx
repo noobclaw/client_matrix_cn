@@ -21,7 +21,7 @@ type WizardStep = number;   // 1..totalSteps(抖音 4 步:账号 / 数量 / 引�
 const FUNNEL_PHRASE_MAX = 1000;
 const FUNNEL_PROB_MIN = 1;
 const FUNNEL_PROB_MAX = 100;
-const FUNNEL_PROB_DEFAULT = 50;
+const FUNNEL_PROB_DEFAULT = 100;   // 2026-10-28:有引流语时默认 100%(原 50%);没填引流语时概率不生效
 
 export interface WizardAccount { id: string; displayName: string; status: string; keywords?: string[]; group?: string; platform?: string; nickname?: string; displayId?: string; avatar?: string }
 

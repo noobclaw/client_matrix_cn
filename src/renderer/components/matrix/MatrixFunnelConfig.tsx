@@ -16,7 +16,7 @@ export const FUNNEL_PHRASE_MAX = 1000; // 一行一条最多 20 条,放宽总字
 export const FUNNEL_LINES_MAX = 20;
 export const FUNNEL_PROB_MIN = 1;
 export const FUNNEL_PROB_MAX = 100;
-export const FUNNEL_PROB_DEFAULT = 50;
+export const FUNNEL_PROB_DEFAULT = 100;   // 2026-10-28:有引流语时默认 100%(原 50%);没填引流语时概率不生效
 
 export interface FunnelValue { funnel_phrase: string; funnel_probability: number }
 export interface FunnelAccount { id: string; title: string; group?: string; platformName?: string; avatar?: string }

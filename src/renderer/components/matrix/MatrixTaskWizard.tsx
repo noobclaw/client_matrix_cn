@@ -22,7 +22,7 @@ const COMMENT_HARDCAP = 100;
 const FUNNEL_PHRASE_MAX = 1000;
 const FUNNEL_PROB_MIN = 1;
 const FUNNEL_PROB_MAX = 100;
-const FUNNEL_PROB_DEFAULT = 50;
+const FUNNEL_PROB_DEFAULT = 100;   // 2026-10-28:有引流语时默认 100%(原 50%);没填引流语时概率不生效
 // 评论引流生效面(全平台统一,用户要求):
 //   抖音/快手/B站/TikTok/YouTube/Facebook/Instagram/Reddit —— 评论走 comment_composer 单串出口,
 //     客户端 makeAiCall 在该出口融入(engageRunner.maybeWeaveFunnel);

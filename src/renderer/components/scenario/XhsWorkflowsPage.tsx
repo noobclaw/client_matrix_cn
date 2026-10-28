@@ -205,7 +205,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     icon: '💌',
     default_config: {
       funnel_phrase: '',
-      funnel_probability: 50,
+      funnel_probability: 100,   // 2026-10-28:有引流语时默认 100%
       daily_count_min: 5,
       daily_count_max: 15,
       max_replies_per_note: 5,

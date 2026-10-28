@@ -199,7 +199,7 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
     icon: '💬',
     default_config: {
       funnel_phrase: '',
-      funnel_probability: 50,
+      funnel_probability: 100,   // 2026-10-28:有引流语时默认 100%
       schedule_window: '10:00-22:00',
     } as any,
     risk_caps: {} as any,
