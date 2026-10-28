@@ -39,6 +39,8 @@ interface SidebarProps {
   onShowMatrixRuns?: () => void;
   /** 简洁版(2026-10-28):侧栏只留 首页 / 我的矩阵账号 / 我的任务 / 我的充值 / 邀请返佣 / 联系我们 */
   simple?: boolean;
+  /** 专业版:左下角的「简洁版 | 专业版」切换(简洁版的切换在顶部横条) */
+  onSwitchEdition?: (e: 'simple' | 'pro') => void;
   onNewChat: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -70,6 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowMatrixTasks,
   onShowMatrixRuns,
   simple,
+  onSwitchEdition,
   onNewChat,
   isCollapsed,
   onToggleCollapse,
@@ -566,6 +569,26 @@ const Sidebar: React.FC<SidebarProps> = ({
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M14 17H5" /><path d="M19 7h-9" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg>
             {i18nService.t('settings')}
           </button>
+        </div>
+      )}
+      {/* 专业版:左下角「简洁版 | 专业版」切换(不单独占顶部一行) */}
+      {!simple && onSwitchEdition && (
+        <div className="mt-auto px-3 pb-3">
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-claude-surfaceHover/70 dark:bg-claude-darkSurfaceHover/70 border dark:border-claude-darkBorder border-claude-border">
+            {(['simple', 'pro'] as const).map((e) => {
+              const on = e === 'pro';
+              const lang = i18nService.currentLanguage;
+              const label = e === 'simple'
+                ? (lang === 'zh' ? '简洁版' : lang === 'zh-TW' ? '簡潔版' : 'Simple')
+                : (lang === 'zh' ? '专业版' : lang === 'zh-TW' ? '專業版' : 'Pro');
+              return (
+                <button key={e} type="button" aria-pressed={on} onClick={() => { if (!on) { setIsSearchOpen(false); onSwitchEdition(e); } }}
+                  className={`py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${on ? 'bg-claude-accent text-[#04130B] shadow-sm' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText'}`}>
+                  {e === 'simple' ? '🌱 ' : '🚀 '}{label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
       {/* Batch Delete Confirmation Modal */}

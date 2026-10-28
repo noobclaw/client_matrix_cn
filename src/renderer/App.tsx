@@ -1104,7 +1104,8 @@ const App: React.FC = () => {
         <MembershipExpiryModal />
       </ErrorBoundary>
       {/* 全宽顶部横条:正中「简洁版 | 专业版」;简洁版右侧只放账号 / 积分 / 指纹浏览器 */}
-      {MATRIX_EDITION && uiEdition && (
+      {/* 顶部横条只在简洁版(专业版的切换在左下角,不单独占一行) */}
+      {simpleUi && (
         <TopBar
           edition={uiEdition}
           onSwitch={switchEdition}
@@ -1130,6 +1131,7 @@ const App: React.FC = () => {
              保持「任务详情属于我的涨粉任务」的认知一致;从「所有 AI 对话」列表点进对话详情时,
              高亮仍归到「所有 AI 对话」(coworkHistory);其余情况按真实 mainView 高亮。 */
           simple={simpleUi}
+          onSwitchEdition={MATRIX_EDITION ? switchEdition : undefined}
           activeView={
             simpleUi && mainView === 'matrixTaskNew'
               ? (scenarioInDetail ? 'matrixTasks' : 'home')
