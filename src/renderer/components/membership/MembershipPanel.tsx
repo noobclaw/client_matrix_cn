@@ -337,9 +337,11 @@ const MembershipPanel: React.FC<{
       {info && <div className="mb-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-400">{info}</div>}
       {/* 中性提示条(不是报错)—— 例如「取消自动续费请在官网完成」 */}
 
-      {/* 套餐卡(4 档,免费版第一) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {sorted.map(plan => {
+      {/* 套餐卡:一行排开(2026-10-29)—— 免费版不占卡位(它没有可点的操作,当前档位在下方个人信息里能看到),
+          付费档一行四列,第一屏就能看到下面的个人信息。窗口很窄时退成两列。 */}
+      {/* 列数跟付费档数走(后端可配):3 档一行三列,4 档及以上一行四列,不留空位 */}
+      <div className={`grid grid-cols-2 gap-2.5 ${sorted.filter(pl => pl.code !== 'free').length <= 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4'}`}>
+        {sorted.filter(plan => plan.code !== 'free').map(plan => {
           const isFree = plan.code === 'free';
           const isCur = plan.code === curCode;
           const isCurActive = subActive && isCur;          // 当前档(订阅有效)→ 续费
@@ -370,7 +372,7 @@ const MembershipPanel: React.FC<{
           const perMonth = (!isFree && months > 0) ? finalP / months : 0;
           const savePerMo = (!isOnce && oncePrice > 0 && perMonth > 0) ? (oncePrice - perMonth) : 0;
           return (
-            <div key={plan.code} className={`relative rounded-2xl p-4 flex flex-col dark:bg-claude-darkSurface bg-claude-surface ${isLower ? 'opacity-50' : ''}`}
+            <div key={plan.code} className={`relative rounded-2xl p-3 flex flex-col dark:bg-claude-darkSurface bg-claude-surface ${isLower ? 'opacity-50' : ''}`}
               style={{ border: '1px solid', borderColor: isCur ? tier + '88' : 'rgba(255,255,255,0.08)' }}>
               {isRec && <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-black whitespace-nowrap" style={{ background: tier }}>{i18nService.t('mpMostPopular')}</span>}
               {/* 档位名 + 档位色点 + 限时折扣 */}
@@ -381,7 +383,7 @@ const MembershipPanel: React.FC<{
               </div>
               {/* 价格:最终价大字 + 原价划掉 + /周期 */}
               <div className="mt-3 flex items-end gap-1.5 flex-wrap">
-                <span className="text-2xl font-extrabold dark:text-claude-darkText text-claude-text">{sym}{finalP}</span>
+                <span className="text-xl font-extrabold dark:text-claude-darkText text-claude-text">{sym}{finalP}</span>
                 {hasDiscount && <span className="text-xs line-through dark:text-claude-darkTextSecondary text-claude-textSecondary">{sym}{Math.round(origP)}</span>}
                 {!isFree && <span className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">/{periodLabel(period)}</span>}
               </div>
@@ -391,7 +393,7 @@ const MembershipPanel: React.FC<{
               {savePerMo > 0.01 && (
                 <div className="mt-1 text-[11px] font-semibold text-primary">{i18nService.t('mpSaveVsOnce').replace('{n}', savePerMo.toFixed(1))}</div>
               )}
-              <ul className="mt-3 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary flex-1">
+              <ul className="mt-2 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary flex-1">
                 <li>· {isFree ? i18nService.t('mpFeatSignupGift') : i18nService.t('mpFeatMonthlyCredits').replace('{n}', fmtCredits(plan.monthly_credits))}</li>
                 <li>· {i18nService.t('mpFeatMaxAccounts').replace('{n}', String(plan.max_accounts_per_platform))}</li>
                 <li>· {isFree ? i18nService.t('mpFeatBasicOnly') : i18nService.t('mpFeatAllAbilities')}</li>
