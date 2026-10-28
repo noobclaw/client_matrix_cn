@@ -2910,7 +2910,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             {simple && simplePicked && (
               <>
                 <span className="ml-2 text-xs px-2.5 py-1 rounded-full bg-claude-accent/10 text-claude-accent font-semibold whitespace-nowrap">
-                  {simplePlatforms.find((p) => p.id === simplePicked.platform)?.icon} {simplePlatforms.find((p) => p.id === simplePicked.platform)?.label} · {SL(`已选 ${simplePicked.n} 个号`, `已選 ${simplePicked.n} 個帳號`, `${simplePicked.n} account(s)`)} · {SL('③ 选一个任务', '③ 選一個任務', '③ pick a task')}
+                  {simplePlatforms.find((p) => p.id === simplePicked.platform)?.icon} {simplePlatforms.find((p) => p.id === simplePicked.platform)?.label} · {SL(`已选 ${simplePicked.n} 个号`, `已選 ${simplePicked.n} 個帳號`, `${simplePicked.n} account(s)`)} · {SL('② 选一个任务', '② 選一個任務', '② pick a task')}
                 </span>
                 <button type="button" onClick={() => { setSimplePicked(null); clearPresetAccounts(); }} className="ml-1 text-xs text-gray-500 hover:text-claude-accent underline whitespace-nowrap">
                   {SL('重新选平台/账号', '重新選平台/帳號', 'Change platform / accounts')}

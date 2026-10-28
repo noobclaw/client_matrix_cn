@@ -453,8 +453,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [kernelMenuOpen, setKernelMenuOpen] = useState(false);
   // 简洁版账号卡「⋯ 更多」菜单当前展开的是哪个号
   const [simpleMoreFor, setSimpleMoreFor] = useState<string | null>(null);
-  // 简洁版平台 tab:默认只显示有账号的平台 + 当前平台,其余收进「＋ 更多平台」
-  const [simpleAllPlats, setSimpleAllPlats] = useState(false);
 
   const reload = useCallback(async () => { const r = await M()?.listAccounts(); if (r?.ok) setAccounts(r.accounts || []); }, []);
   const reloadTasks = useCallback(async () => { const r = await M()?.listTasks?.(); if (r?.ok) { setTasks(r.tasks || []); if (typeof r.running === 'boolean') setRunning(r.running); setRunningPlatforms(Array.isArray(r.runningPlatforms) ? r.runningPlatforms : []); } }, []);
@@ -997,7 +995,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <div className="flex items-center gap-2.5">
-                <h2 className="text-lg font-bold dark:text-white">🧬 {i18nService.t('mvMyMatrixAccounts')}</h2>
+                {/* 简洁版:页面名已在顶部横条左侧,这里不重复 */}
+                {!simple && <h2 className="text-lg font-bold dark:text-white">🧬 {i18nService.t('mvMyMatrixAccounts')}</h2>}
                 {/* 涨粉教程(从顶栏挪到标题后,贴着账号页)—— 简洁版不放 */}
                 {!simple && <button type="button" onClick={() => { try { const docs = (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? 'https://docs.noobclaw.com/zhong-wen-ban' : 'https://docs.noobclaw.com/english'; (window as any).electron?.shell?.openExternal(docs); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 {i18nService.t('mvGrowthTutorial')}</button>}
               </div>
@@ -1007,9 +1006,29 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">{i18nService.t('mvConnectAccount').replace('{platform}', platLabel(platform))}</button>
               </div>
             </div>
+            {/* 简洁版:平台用一个下拉框选(有账号的排前面;括号里是账号数,⚠️ = 有号登录过期) */}
+            {simple && (
+              <div className="mb-4">
+                <select
+                  value={platform}
+                  onChange={(e) => setPlatform(e.target.value as any)}
+                  aria-label={i18nService.currentLanguage === 'zh-TW' ? '平台' : i18nService.currentLanguage === 'zh' ? '平台' : 'Platform'}
+                  className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold px-3 py-2 dark:text-white"
+                >
+                  {(() => {
+                    const vis = PLATFORMS.filter((p) => !complianceHidden.includes(p));
+                    const cnt = (p: string) => accounts.filter((a) => a.platform === p).length;
+                    return [...vis.filter((p) => cnt(p) > 0), ...vis.filter((p) => cnt(p) === 0)].map((p) => (
+                      <option key={p} value={p}>{platLabel(p)}{cnt(p) ? `(${cnt(p)})` : ''}{expiredCountByPlatform[p] ? ' ⚠️' : ''}</option>
+                    ));
+                  })()}
+                </select>
+              </div>
+            )}
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
+            {!simple && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {PLATFORMS.filter((p) => !complianceHidden.includes(p)).filter((p) => !simple || simpleAllPlats || p === platform || accounts.some((a) => a.platform === p)).map((p) => {
+              {PLATFORMS.filter((p) => !complianceHidden.includes(p)).map((p) => {
                 const expiredCount = expiredCountByPlatform[p] || 0;
                 return (
                 <button key={p} onClick={() => setPlatform(p)} className={`relative px-3.5 py-1.5 rounded-full text-sm border transition-colors ${platform === p ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'}`}>
@@ -1021,14 +1040,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 </button>
                 );
               })}
-              {simple && PLATFORMS.filter((p) => !complianceHidden.includes(p)).some((p) => p !== platform && !accounts.some((a) => a.platform === p)) && (
-                <button onClick={() => setSimpleAllPlats((v) => !v)} className="px-3.5 py-1.5 rounded-full text-sm border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-violet-500/60 hover:text-violet-500">
-                  {simpleAllPlats
-                    ? (i18nService.currentLanguage === 'zh' ? '收起' : i18nService.currentLanguage === 'zh-TW' ? '收起' : 'Less')
-                    : (i18nService.currentLanguage === 'zh' ? '＋ 更多平台' : i18nService.currentLanguage === 'zh-TW' ? '＋ 更多平台' : '+ More platforms')}
-                </button>
-              )}
             </div>
+            )}
             {/* 快手:创作者中心(发布)/ 主站(涨粉)两类账号分开管理(两端登录互不覆盖)。 */}
             {platform === 'kuaishou' && (
               <div className="flex items-center gap-2 mb-4 -mt-1">

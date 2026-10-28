@@ -1,7 +1,7 @@
 /**
  * 全宽顶部横条(2026-10-28)。
- *   正中间:「简洁版 | 专业版」切换(两版都有,随时切)。
- *   简洁版右侧:只有 账号名 · 剩余积分 · 指纹浏览器 · ⚙设置(收起成一个小图标)—— 其它(会员标签、买积分、订阅、签到、分享…)一律不放。
+ *   正中间:「简洁版 | 专业版」切换(两版都有,随时切)。简洁版左侧显示当前页面名(简洁版不显示左侧菜单)。
+ *   简洁版右侧:只有 账号名 · 剩余积分 · 指纹浏览器 · ☰ 收纳菜单(原左侧菜单 + 设置)—— 其它(会员标签、买积分、订阅、签到、分享…)一律不放。
  *   专业版右侧不放东西(专业版各页面自己的页头保持原样)。
  */
 import React, { useEffect, useState } from 'react';
@@ -17,21 +17,30 @@ const L = (zh: string, tw: string, en: string): string => {
 };
 const shortAddr = (a: string) => (a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
 
-const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; onShowSettings?: () => void }> = ({ edition, onSwitch, onShowSettings }) => {
+export interface TopBarMenuItem { key: string; icon: string; label: string; onClick: () => void; badge?: number }
+
+const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; onShowSettings?: () => void; menu?: TopBarMenuItem[]; activeKey?: string }> = ({ edition, onSwitch, onShowSettings, menu, activeKey }) => {
   const [auth, setAuth] = useState(noobClawAuth.getState());
+  const [menuOpen, setMenuOpen] = useState(false);
+  const active = (menu || []).find((m) => m.key === activeKey);
+  const badgeTotal = (menu || []).reduce((n, m) => n + (m.badge || 0), 0);
   useEffect(() => noobClawAuth.subscribe(setAuth), []);
   const simple = edition === 'simple';
   const name = auth.socialProvider === 'password' && auth.socialEmail ? auth.socialEmail : shortAddr(auth.walletAddress || '');
 
   return (
     <div className="relative flex h-11 items-center px-4 shrink-0 border-b dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
+      {/* 简洁版左侧:当前在哪一页(左侧菜单已收进右上角 ☰) */}
+      {simple && active && (
+        <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text truncate max-w-[30%]">{active.icon} {active.label}</div>
+      )}
       {/* 正中间:版本切换 */}
       <div className="absolute left-1/2 -translate-x-1/2 grid grid-cols-2 gap-1 p-1 rounded-xl bg-claude-surfaceHover/70 dark:bg-claude-darkSurfaceHover/70 border dark:border-claude-darkBorder border-claude-border">
         {(['simple', 'pro'] as const).map((e) => {
           const on = e === edition;
           return (
             <button key={e} type="button" aria-pressed={on} onClick={() => { if (!on) onSwitch(e); }}
-              className={`px-4 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${on ? 'bg-claude-accent text-white shadow-sm' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText'}`}>
+              className={`px-4 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${on ? 'bg-claude-accent text-[#04130B] shadow-sm' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText'}`}>
               {e === 'simple' ? '🌱 ' + L('简洁版', '簡潔版', 'Simple') : '🚀 ' + L('专业版', '專業版', 'Pro')}
             </button>
           );
@@ -48,12 +57,42 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
               </button>
             </>
           ) : (
-            <button type="button" onClick={() => noobClawAuth.requireLoginUI()} className="text-xs font-semibold px-3 py-1 rounded-lg bg-claude-accent text-white">{i18nService.t('coworkConnectWallet')}</button>
+            <button type="button" onClick={() => noobClawAuth.requireLoginUI()} className="text-xs font-semibold px-3 py-1 rounded-lg bg-claude-accent text-[#04130B]">{i18nService.t('coworkConnectWallet')}</button>
           )}
           <KernelPicker />
-          {onShowSettings && (
-            <button type="button" onClick={onShowSettings} title={i18nService.t('settings')} aria-label={i18nService.t('settings')}
-              className="h-7 w-7 inline-flex items-center justify-center rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover">⚙️</button>
+          {/* 收纳菜单:原左侧菜单 + 设置 */}
+          {menu && menu.length > 0 && (
+            <div className="relative">
+              <button type="button" onClick={() => setMenuOpen((o) => !o)} aria-label={L('菜单', '選單', 'Menu')} aria-expanded={menuOpen}
+                className="relative h-8 w-8 inline-flex items-center justify-center rounded-lg text-lg dark:text-claude-darkText text-claude-text hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover">
+                ☰
+                {badgeTotal > 0 && <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-red-500" />}
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 mt-1.5 z-50 w-52 rounded-xl py-1.5 shadow-xl dark:bg-claude-darkSurface bg-white border dark:border-white/10 border-black/10">
+                    {menu.map((m) => (
+                      <button key={m.key} type="button" onClick={() => { setMenuOpen(false); m.onClick(); }}
+                        className={`w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left ${m.key === activeKey ? 'text-claude-accent font-semibold bg-claude-accent/10' : 'dark:text-claude-darkText text-claude-text hover:bg-black/5 dark:hover:bg-white/5'}`}>
+                        <span className="w-5 text-center">{m.icon}</span>
+                        <span className="flex-1 truncate">{m.label}</span>
+                        {!!m.badge && <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">{m.badge}</span>}
+                      </button>
+                    ))}
+                    {onShowSettings && (
+                      <>
+                        <div className="my-1 border-t dark:border-white/10 border-black/10" />
+                        <button type="button" onClick={() => { setMenuOpen(false); onShowSettings(); }}
+                          className="w-full flex items-center gap-2.5 px-3.5 py-2 text-sm text-left dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-black/5 dark:hover:bg-white/5">
+                          <span className="w-5 text-center">⚙️</span><span className="flex-1">{i18nService.t('settings')}</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       )}

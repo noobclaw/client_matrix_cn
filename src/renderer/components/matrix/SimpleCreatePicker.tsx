@@ -54,8 +54,14 @@ const SimpleCreatePicker: React.FC<Props> = ({ platforms, initialPlatform, onPic
     // 默认把能用的号全勾上(大多数人就是要全部号一起跑)
     setSelected(new Set((byPlat[id] || []).filter(usable).map((a) => a.id)));
   };
-  // 从「我的任务」带平台进来:账号到了再默认全勾
-  useEffect(() => { if (platform && accounts && selected.size === 0) setSelected(new Set((byPlat[platform] || []).filter(usable).map((a) => a.id))); /* eslint-disable-next-line */ }, [accounts]);
+  // 账号到了:没指定平台 → 默认选第一个有账号的平台;并把该平台能用的号默认全勾
+  useEffect(() => {
+    if (!accounts) return;
+    const p = platform || (ordered[0]?.id || '');
+    if (!p) return;
+    if (!platform) setPlatform(p);
+    if (selected.size === 0) setSelected(new Set((byPlat[p] || []).filter(usable).map((a) => a.id)));
+  /* eslint-disable-next-line */ }, [accounts]);
 
   const goAccounts = (p?: string) => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: p } })); };
   const plat = platforms.find((p) => p.id === platform);
@@ -64,7 +70,7 @@ const SimpleCreatePicker: React.FC<Props> = ({ platforms, initialPlatform, onPic
 
   const StepDot: React.FC<{ n: number; on: boolean; label: string }> = ({ n, on, label }) => (
     <div className={`flex items-center gap-2 ${on ? 'text-claude-accent' : 'text-gray-400'}`}>
-      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${on ? 'bg-claude-accent text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>{n}</span>
+      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${on ? 'bg-claude-accent text-[#04130B]' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}`}>{n}</span>
       <span className="text-sm font-semibold">{label}</span>
     </div>
   );
@@ -72,11 +78,9 @@ const SimpleCreatePicker: React.FC<Props> = ({ platforms, initialPlatform, onPic
   return (
     <div className="max-w-4xl mx-auto px-5 py-6 space-y-5">
       <div className="flex items-center gap-3 flex-wrap">
-        <StepDot n={1} on={!platform} label={L('选平台', '選平台', 'Platform')} />
+        <StepDot n={1} on label={L('选平台和账号', '選平台和帳號', 'Platform & accounts')} />
         <span className="text-gray-300">—</span>
-        <StepDot n={2} on={!!platform} label={L('选账号', '選帳號', 'Accounts')} />
-        <span className="text-gray-300">—</span>
-        <StepDot n={3} on={false} label={L('选任务', '選任務', 'Task')} />
+        <StepDot n={2} on={false} label={L('选任务', '選任務', 'Task')} />
       </div>
 
       {accounts === null ? (
@@ -84,32 +88,19 @@ const SimpleCreatePicker: React.FC<Props> = ({ platforms, initialPlatform, onPic
           <span className="h-4 w-4 rounded-full border-2 border-claude-accent border-t-transparent animate-spin" />
           {L('读取账号中…', '讀取帳號中…', 'Loading accounts…')}
         </div>
-      ) : !platform ? (
-        <>
-          <div className="text-base font-bold dark:text-white text-gray-900">{L('要在哪个平台做任务?', '要在哪個平台做任務?', 'Which platform?')}</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {ordered.map((p) => {
-              const n = (byPlat[p.id] || []).length;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => pickPlatform(p.id)}
-                  className={`flex flex-col items-center gap-1.5 rounded-2xl border-2 px-3 py-4 transition-all hover:-translate-y-0.5 hover:shadow-md ${n ? 'border-claude-accent/40 bg-claude-accent/5 hover:border-claude-accent' : 'border-gray-200 dark:border-gray-700 opacity-70 hover:opacity-100'}`}
-                >
-                  <span className="text-3xl">{p.icon}</span>
-                  <span className="text-sm font-semibold dark:text-white text-gray-900">{p.label}</span>
-                  <span className={`text-[11px] ${n ? 'text-claude-accent' : 'text-gray-400'}`}>{n ? L(`${n} 个账号`, `${n} 個帳號`, `${n} account(s)`) : L('还没有账号', '還沒有帳號', 'No accounts yet')}</span>
-                </button>
-              );
-            })}
-          </div>
-        </>
       ) : (
         <>
           <div className="flex items-center gap-2 flex-wrap">
-            <button type="button" onClick={() => { setPlatform(''); setSelected(new Set()); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">← {L('换平台', '換平台', 'Change platform')}</button>
-            <div className="text-base font-bold dark:text-white text-gray-900">{plat?.icon} {plat?.label} · {L('用哪些账号?', '用哪些帳號?', 'Which accounts?')}</div>
+            {/* 平台:下拉框(有账号的平台排前面,括号里是账号数) */}
+            <select
+              value={platform}
+              onChange={(e) => pickPlatform(e.target.value)}
+              aria-label={L('平台', '平台', 'Platform')}
+              className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold px-3 py-2 dark:text-white"
+            >
+              {ordered.map((p) => { const n = (byPlat[p.id] || []).length; return <option key={p.id} value={p.id}>{p.icon} {p.label}{n ? `(${n})` : ''}</option>; })}
+            </select>
+            <div className="text-base font-bold dark:text-white text-gray-900">{L('用哪些账号?', '用哪些帳號?', 'Which accounts?')}</div>
             {list.filter(usable).length > 0 && (
               <button type="button" className="ml-auto text-xs text-claude-accent hover:underline" onClick={() => setSelected(selected.size === list.filter(usable).length ? new Set() : new Set(list.filter(usable).map((a) => a.id)))}>
                 {selected.size === list.filter(usable).length ? L('全不选', '全不選', 'Clear') : L('全选', '全選', 'Select all')}
@@ -120,7 +111,7 @@ const SimpleCreatePicker: React.FC<Props> = ({ platforms, initialPlatform, onPic
             <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center space-y-3">
               <div className="text-4xl">👥</div>
               <div className="text-sm text-gray-500 dark:text-gray-400">{L(`还没有 ${plat?.label} 账号,先去添加一个吧`, `還沒有 ${plat?.label} 帳號,先去新增一個吧`, `No ${plat?.label} accounts yet — add one first`)}</div>
-              <button type="button" onClick={() => goAccounts(platform)} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-claude-accent text-white hover:brightness-110">{L('去添加账号', '去新增帳號', 'Add an account')}</button>
+              <button type="button" onClick={() => goAccounts(platform)} className="px-5 py-2.5 rounded-xl text-sm font-bold bg-claude-accent text-[#04130B] hover:brightness-110">{L('去添加账号', '去新增帳號', 'Add an account')}</button>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -152,7 +143,7 @@ const SimpleCreatePicker: React.FC<Props> = ({ platforms, initialPlatform, onPic
                 type="button"
                 disabled={selected.size === 0}
                 onClick={() => onPicked(platform, Array.from(selected))}
-                className="px-8 py-3 rounded-2xl text-base font-bold text-white bg-claude-accent hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-claude-accent/30"
+                className="px-8 py-3 rounded-2xl text-base font-bold text-[#04130B] bg-claude-accent hover:bg-claude-accentHover disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {L(`下一步:选任务(已选 ${selected.size} 个号)`, `下一步:選任務(已選 ${selected.size} 個帳號)`, `Next: pick a task (${selected.size} selected)`)} →
               </button>

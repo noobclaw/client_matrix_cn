@@ -50,12 +50,12 @@ const EditionChooser: React.FC<{ onPick: (e: UiEdition) => void }> = ({ onPick }
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-2xl">{c.icon}</span>
                 <span className="text-base font-bold dark:text-white text-gray-900">{c.title}</span>
-                {c.tag && <span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-claude-accent text-white">{c.tag}</span>}
+                {c.tag && <span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-claude-accent text-[#04130B]">{c.tag}</span>}
               </div>
               <ul className="space-y-1">
                 {c.lines.map((l) => <li key={l} className="text-xs text-gray-600 dark:text-gray-300">· {l}</li>)}
               </ul>
-              <div className={`mt-3 w-full py-2 rounded-xl text-center text-sm font-semibold ${c.e === 'simple' ? 'bg-claude-accent text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200'}`}>
+              <div className={`mt-3 w-full py-2 rounded-xl text-center text-sm font-semibold ${c.e === 'simple' ? 'bg-claude-accent text-[#04130B]' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200'}`}>
                 {L(`用${c.title}`, `用${c.title}`, `Use ${c.title}`)}
               </div>
             </button>

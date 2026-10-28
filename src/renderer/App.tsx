@@ -1104,9 +1104,25 @@ const App: React.FC = () => {
         <MembershipExpiryModal />
       </ErrorBoundary>
       {/* 全宽顶部横条:正中「简洁版 | 专业版」;简洁版右侧只放账号 / 积分 / 指纹浏览器 */}
-      {MATRIX_EDITION && uiEdition && <TopBar edition={uiEdition} onSwitch={switchEdition} onShowSettings={() => handleShowSettings()} />}
+      {MATRIX_EDITION && uiEdition && (
+        <TopBar
+          edition={uiEdition}
+          onSwitch={switchEdition}
+          onShowSettings={() => handleShowSettings()}
+          // 简洁版:左侧菜单收进右上角 ☰
+          menu={simpleUi ? [
+            { key: 'home', icon: '🏠', label: i18nService.t('home'), onClick: handleShowHome },
+            { key: 'matrix', icon: '👥', label: i18nService.t('matrixMyAccounts'), onClick: handleShowMatrix, badge: matrixExpiredTotal || undefined },
+            { key: 'matrixTasks', icon: '📋', label: i18nService.currentLanguage === 'zh' ? '我的任务' : i18nService.currentLanguage === 'zh-TW' ? '我的任務' : 'My Tasks', onClick: handleShowMatrixTasks },
+            { key: 'wallet', icon: '💰', label: i18nService.t('myWallet'), onClick: handleShowWallet },
+            { key: 'invite', icon: '🎁', label: i18nService.t('inviteRebateMenu'), onClick: handleShowInvite },
+            { key: 'contact', icon: '💬', label: i18nService.t('contactUsMenu'), onClick: handleShowContact },
+          ] : undefined}
+          activeKey={mainView === 'matrixTaskNew' ? (scenarioInDetail ? 'matrixTasks' : 'home') : mainView}
+        />
+      )}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        <Sidebar
+        {!simpleUi && <Sidebar
           onShowLogin={handleShowLogin}
           onShowSettings={handleShowSettings}
           /* create/runs 菜单下钻到任务详情时,高亮临时归到「我的涨粉任务」(quickuse),
@@ -1147,8 +1163,8 @@ const App: React.FC = () => {
           isCollapsed={simpleUi ? false : isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
           updateBadge={!isSidebarCollapsed ? updateBadge : null}
-        />
-        <div className={`flex-1 min-w-0 py-1.5 pr-1.5 ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
+        />}
+        <div className={`flex-1 min-w-0 py-1.5 pr-1.5 ${(isSidebarCollapsed || simpleUi) ? 'pl-1.5' : ''}`}>
           <div className="h-full min-h-0 rounded-xl dark:bg-claude-darkBg bg-claude-bg overflow-hidden">
             {/* v1.x: 包整个 mainView 切换区。real partner real rebate 到账后切
                 菜单导致黑屏的真实路径:新 view (InviteView / WalletView 等) 在
