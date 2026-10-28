@@ -1227,7 +1227,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         } as React.CSSProperties) : undefined}
       >
         {header}
-        <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
+        <div className="nc-hide-scrollbar flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
           {/* Back + Title */}
           <div className="flex items-center gap-2 mb-2">
@@ -1383,7 +1383,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             {i18nService.t('walletCopiedToClipboard')}
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
+        <div className="nc-hide-scrollbar flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
           {/* Intro card */}
           <div className="rounded-2xl overflow-hidden border dark:border-primary/20 border-primary/15 shadow-lg" style={{ background: 'linear-gradient(145deg, rgba(74,222,128,0.12) 0%, rgba(74,222,128,0.03) 50%, rgba(74,222,128,0.08) 100%)' }}>
@@ -1728,7 +1728,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       {!shopOpen && confirmDialogEl}
       {/* 2026-10-28:充值套餐放上面、个人信息放下面(简洁版 / 专业版都一样)—— 只改显示顺序(flex order),各区块内容不动;
           子块必须 shrink-0,否则 flex 列会把各块压扁到一屏高、滚动不了(2026-10-29 修)*/}
-      <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full flex flex-col gap-4 [&>*]:shrink-0">
+      {/* 2026-10-29:加宽到 max-w-6xl,五档套餐一行放得下;隐藏滚动条(滚轮/触控板照常能滚)—— 它原本是页面中间一条绿竖线 */}
+      <div className="nc-hide-scrollbar flex-1 overflow-y-auto p-5 max-w-6xl mx-auto w-full flex flex-col gap-4 [&>*]:shrink-0">
 
         {/* v6.x: 我的充值页顶部不再放 PartnerApplyCard — 用户反馈"充值中心顶部
             应该先看到充值,返佣比例是次要信息"。改成 balance row 第 3 列
@@ -2017,11 +2018,12 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           </div>{/* /relative z-10 wrapper */}
         </div>
 
-        {/* 顶部 tab:会员订阅 / 购买积分。仅 select 步骤显示;支付/成功时隐藏让支付屏干净。 */}
+        {/* 顶部 tab:会员订阅 / 购买积分。仅 select 步骤显示;支付/成功时隐藏让支付屏干净。
+            选中 = 实心绿底黑字(2026-10-29,和下面「按季/按年/按月」一致) */}
         {step === 'select' && (
         <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          <button onClick={() => setTopTab('subscription')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'subscription' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabSubscription')}</button>
-          <button onClick={() => setTopTab('topup')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'topup' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabTopup')}</button>
+          <button onClick={() => setTopTab('subscription')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'subscription' ? 'bg-primary text-black' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabSubscription')}</button>
+          <button onClick={() => setTopTab('topup')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'topup' ? 'bg-primary text-black' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabTopup')}</button>
         </div>
         )}
 
@@ -2104,7 +2106,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       <p className="text-xs mt-2 leading-relaxed" style={{ color: redeemMsg.color }}>{redeemMsg.text}</p>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid gap-3 justify-center" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 280px))' }}>
                     {(redeemInfo?.packages || []).map((pkg) => {
                       const tokensM = fmtCreditsM(pkg.tokens);
                       return (
@@ -2132,7 +2134,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               ) : (
               /* ─── 档位卡片(统一美元)───
                  支付方式不在这里选 —— 点卡片后弹窗选(国内版:银行卡 / 官方店铺卡密)。 */
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid gap-3 justify-center" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 280px))' }}>
                 {usdPackages.length === 0 ? (
                   <div className="col-span-3 text-center dark:text-claude-darkTextSecondary text-claude-textSecondary text-sm py-4">
                     {i18nService.t('walletLoadingPackages')}
@@ -2297,7 +2299,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
       {/* 支付步骤 —— 订阅 / 购买积分 共用同一套(QR/倒计时/轮询/取消) */}
         {step === 'pay' && (
-            <div className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+            <div className="w-full max-w-xl mx-auto p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
               {isExpired ? (
                 /* Expired state */
                 <div className="text-center py-4">

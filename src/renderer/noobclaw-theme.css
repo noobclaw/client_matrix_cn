@@ -193,6 +193,9 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,255,136,0.2); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0,255,136,0.45); }
+/* 不显示滚动条但照常能滚(充值页用) */
+.nc-hide-scrollbar { scrollbar-width: none; }
+.nc-hide-scrollbar::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 /* ── Loading spinner ─────────────────────────────────────────────── */
 /* 给没自己指定顶边颜色的 spinner 补一个绿色缺口。

@@ -337,11 +337,10 @@ const MembershipPanel: React.FC<{
       {info && <div className="mb-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-xs text-emerald-400">{info}</div>}
       {/* 中性提示条(不是报错)—— 例如「取消自动续费请在官网完成」 */}
 
-      {/* 套餐卡:一行排开(2026-10-29)—— 免费版不占卡位(它没有可点的操作,当前档位在下方个人信息里能看到),
-          付费档一行四列,第一屏就能看到下面的个人信息。窗口很窄时退成两列。 */}
-      {/* 列数跟付费档数走(后端可配):3 档一行三列,4 档及以上一行四列,不留空位 */}
-      <div className={`grid grid-cols-2 gap-2.5 ${sorted.filter(pl => pl.code !== 'free').length <= 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4'}`}>
-        {sorted.filter(plan => plan.code !== 'free').map(plan => {
+      {/* 套餐卡:全部档位(含免费版)一行排开(2026-10-29),第一屏就能看到下面的个人信息。
+          列数按面板实际宽度自动排(auto-fit,每张至少 155px):简洁版 / 专业版(多了左侧菜单)都尽量一行放满,放不下才换行。 */}
+      <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))' }}>
+        {sorted.map(plan => {
           const isFree = plan.code === 'free';
           const isCur = plan.code === curCode;
           const isCurActive = subActive && isCur;          // 当前档(订阅有效)→ 续费
@@ -356,7 +355,8 @@ const MembershipPanel: React.FC<{
             : (subActive ? i18nService.t('mpCtaUpgrade') : i18nService.t('mpCtaSubscribe'));
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
-          const tier = TIER_COLOR[plan.code] || '#9aa0aa';
+          // 表里没有的付费档(如至尊版)用尊贵的香槟橙,别落成灰色(像不能点);免费版仍是灰
+          const tier = TIER_COLOR[plan.code] || (isFree ? '#9aa0aa' : '#F2B47E');
           // 一律美元展示(支付方式在点卡片后的弹窗里选;Dodo 收银台会按用户本币结算,但标价统一 $)。
           //   'once' 取后端下发的单月购买价(prices.once,比连续包月贵)。
           const sym = '$';
