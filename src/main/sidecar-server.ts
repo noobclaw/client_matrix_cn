@@ -2540,6 +2540,17 @@ const server = http.createServer(async (req, res) => {
           // ── App info ──
           case 'app:getVersion': return writeJSON(res, 200, '5.4.0');
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
+          case 'app:installStamp': {
+            // 安装指纹(2026-10-28):本 sidecar 可执行文件的时间戳。每次安装 / 重装 / 自动升级都会重写这个文件
+            //   → 指纹变化 → 界面再问一次「简洁版 / 专业版」。只读本机文件属性,不联网;读不到返回 null(界面按旧逻辑走)。
+            try {
+              const fs = require('fs');
+              // 文件编号(inode / NTFS 文件 ID)+ 修改时间 + 大小:重装是新文件(Windows 安装钩子先删旧 exe;macOS 拷贝是新 inode)
+              //   → 编号一定变;平时重开、杀毒扫描、改属性都不变。不用 ctime / birthtime(会被改属性或文件隧道影响)。
+              const st = fs.statSync(process.execPath, { bigint: true });
+              return writeJSON(res, 200, [st.ino, st.mtimeMs, st.size].map((n: any) => String(n)).join('-'));
+            } catch { return writeJSON(res, 200, null); }
+          }
 
           // ── Session title ──
           case 'generate-session-title': {

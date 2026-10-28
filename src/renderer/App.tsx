@@ -51,7 +51,7 @@ import { noobClawApi } from './services/noobclawApi';
 import { writeCachedPaymentInfo, writeCachedRedeemInfo } from './services/paymentInfoCache';
 import { noobClawSSE } from './services/noobclawSSE';
 import { MATRIX_EDITION } from './matrixEdition';
-import { useUiEdition, setUiEdition, clearPresetAccounts, type UiEdition } from './uiEdition';
+import { useUiEdition, setUiEdition, getUiEdition, INSTALL_STAMP_KEY, clearPresetAccounts, type UiEdition } from './uiEdition';
 import EditionChooser from './components/EditionChooser';
 import TopBar from './components/common/TopBar';
 
@@ -660,27 +660,32 @@ const App: React.FC = () => {
   //   initialPlatform || defaultPlatform —— 真值会把默认值整个短路掉。
   const [matrixPlatform, setMatrixPlatform] = useState<string>('');
   // ── 简洁版 / 专业版(2026-10-28)── 只换界面,任务/账号/调度不变。
-  //   第一次打开(没选过):已经有矩阵账号的老用户 → 默默按专业版(维持他们熟悉的界面);新用户 → 弹框选。
+  //   每次安装(含重装、自动升级)后第一次打开都弹框问一次:比较 sidecar 可执行文件的「安装指纹」和上次记下的;
+  //   不一样 = 刚装过 → 弹框(当前版本高亮)。读不到指纹(开发环境 / sidecar 没起来)→ 只在从没选过时弹。
   const uiEdition = useUiEdition();
   const simpleUi = MATRIX_EDITION && uiEdition === 'simple';
   const [showEditionChooser, setShowEditionChooser] = useState(false);
+  const installStampRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!MATRIX_EDITION || uiEdition) return;
+    if (!MATRIX_EDITION) return;
     let alive = true;
     (async () => {
-      // 刚启动时 sidecar 可能还没起来(返回 ok:false)→ 隔几秒再问,别把老用户误当新用户
-      let hasAccounts = false;
-      for (let i = 0; i < 4 && alive; i++) {
-        let r: any = null;
-        try { r = await (window as any).electron?.matrix?.listAccounts?.(); } catch { /* ignore */ }
-        if (r?.ok) { hasAccounts = Array.isArray(r.accounts) && r.accounts.length > 0; break; }
+      // 刚启动时 sidecar 可能还没起来 → 隔几秒再问
+      let stamp: string | null = null;
+      const can = typeof (window as any).electron?.appInfo?.installStamp === 'function';
+      for (let i = 0; can && i < 6 && alive; i++) {
+        try { stamp = (await (window as any).electron?.appInfo?.installStamp?.()) || null; } catch { stamp = null; }
+        if (stamp) break;
         await new Promise((res) => setTimeout(res, 2500));
       }
       if (!alive) return;
-      if (hasAccounts) setUiEdition('pro'); else setShowEditionChooser(true);
+      installStampRef.current = stamp;
+      let seen: string | null = null;
+      try { seen = localStorage.getItem(INSTALL_STAMP_KEY); } catch { /* ignore */ }
+      if (stamp ? stamp !== seen : !getUiEdition()) setShowEditionChooser(true);
     })();
     return () => { alive = false; };
-  }, [uiEdition]);
+  }, []);
   // 简洁版里没有的页面 → 切过去时回首页
   const SIMPLE_VIEWS = ['home', 'matrix', 'matrixTasks', 'matrixTaskNew', 'wallet', 'invite', 'contact'];
   const switchEdition = (e: UiEdition) => {
@@ -1074,7 +1079,23 @@ const App: React.FC = () => {
   return (
     <div className="relative h-screen overflow-hidden flex flex-col dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
       {showEditionChooser && (
-        <EditionChooser onPick={(e) => { setShowEditionChooser(false); switchEdition(e); }} />
+        <EditionChooser current={uiEdition} onPick={(e) => {
+          setShowEditionChooser(false);
+          const save = (s: string) => { try { localStorage.setItem(INSTALL_STAMP_KEY, s); } catch { /* ignore */ } };
+          if (installStampRef.current) save(installStampRef.current);
+          else if (typeof (window as any).electron?.appInfo?.installStamp === 'function') {
+            // sidecar 启动慢、弹框时还没拿到指纹 → 选完后台再取几次补记,免得下次开又问一遍
+            (async () => {
+              for (let i = 0; i < 12; i++) {
+                let s: string | null = null;
+                try { s = (await (window as any).electron.appInfo.installStamp()) || null; } catch { /* ignore */ }
+                if (s) { installStampRef.current = s; save(s); return; }
+                await new Promise((res) => setTimeout(res, 5000));
+              }
+            })();
+          }
+          switchEdition(e);
+        }} />
       )}
       {showLoginWall && !authState.isAuthenticated && (
         <LoginWall

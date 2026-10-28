@@ -632,6 +632,7 @@ export function createTauriElectronShim(): typeof window.electron {
     appInfo: {
       getVersion: () => apiGet('/api/version').then((r: any) => r?.version || '1.0.0'),
       getSystemLocale: () => Promise.resolve(navigator.language),
+      installStamp: () => ipcInvoke('app:installStamp').then((r: any) => (typeof r === 'string' && r ? r : null)).catch(() => null),
     },
 
     // ── App Update ──

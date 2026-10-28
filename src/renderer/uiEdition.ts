@@ -12,6 +12,8 @@
 import { useEffect, useState } from 'react';
 
 export type UiEdition = 'simple' | 'pro';
+/** 上次弹过「选版本」时的安装指纹(见 App.tsx);和本次不同 = 刚装 / 重装 / 升级过 → 再问一次 */
+export const INSTALL_STAMP_KEY = 'noobclaw_ui_install_stamp';
 const KEY = 'noobclaw_ui_edition';
 const EVT = 'noobclaw:ui-edition';
 
