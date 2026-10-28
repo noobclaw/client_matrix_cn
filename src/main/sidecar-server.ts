@@ -293,7 +293,7 @@ async function runMatrixTaskById(taskId: string, kernelPath?: string, manual = f
   }
   // engage(互动涨粉)+ reply_fan(自动回复粉丝评论)都由 engageRunner 跑(共用内核/登录/进度链路,
   // 仅剧本与 task 字段不同)。其它类型未支持。
-  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post' && task.type !== 'lead_engage' && task.type !== 'report' && task.type !== 'comment_like' && task.type !== 'block') return { ok: false, error: 'unsupported_task_type' };
+  if (task.type !== 'engage' && task.type !== 'reply_fan' && task.type !== 'video_download' && task.type !== 'image_text' && task.type !== 'viral_rewrite' && task.type !== 'x_post' && task.type !== 'binance_post' && task.type !== 'binance_repost' && task.type !== 'facebook_post' && task.type !== 'reddit_post' && task.type !== 'instagram_post' && task.type !== 'lead_engage' && task.type !== 'report' && task.type !== 'comment_like' && task.type !== 'block' && task.type !== 'folder_post') return { ok: false, error: 'unsupported_task_type' };
   const platform = task.platform;
   // 并发上限由服务端下发,顺手刷一下 —— 【不等它】:拉一次最多要 8s(网络慢就吃满超时),
   //   await 在这儿等于每 10 分钟就有一次点「运行」要干等几秒才动静,而这个值只是微调,
@@ -334,6 +334,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const { runTweetPostTask } = await import('./libs/matrix/tweetPostRunner');
     const { runBinancePostTask } = await import('./libs/matrix/binancePostRunner');
     const { runBinanceRepostTask } = await import('./libs/matrix/binanceRepostRunner');
+    const { runFolderPostTask } = await import('./libs/matrix/folderPostRunner');
     const { addRun } = await import('./libs/matrix/runStore');
     const { getAccount, loadAccounts } = await import('./libs/matrix/accountManager');
     const { getPlanLimit, allowedAccountIds } = await import('./libs/matrix/planLimit');
@@ -436,6 +437,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const isReport = task.type === 'report';
     const isBlock = task.type === 'block';               // 批量拉黑(douyin_block):blockTargets + blockKeywords
     const isCommentLike = task.type === 'comment_like';   // 作品评论区点赞(tiktok_comment_like):urls + comment_like_max
+    const isFolderPost = task.type === 'folder_post';     // 文件夹定时发布(抖音):到点按顺序取文件夹内容发
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
     const cbOnTargets = (accountId: string, t: { like?: number; follow?: number; comment?: number; favorite?: number; lead_new?: number; lead_engaged?: number; post?: number; report?: number }) => {
@@ -505,7 +507,13 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
       cbOnItem({ accountId: aid, state: 'skipped', reason: 'plan_limit_suspended', counts: zero(), chargedCredits: 0, chargedUsd: 0 });
     }
 
-    const runP: Promise<any> = isBinanceRepost
+    const runP: Promise<any> = isFolderPost
+      ? runFolderPostTask({
+          platform: task.platform, taskId: task.id, accountIds: runIds, allAccountIds: task.accountIds || [], config: task.folderPost as any,
+          manual, concurrency: Math.max(1, runIds.length), kernelPath, signal: abort.signal,
+          onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
+        })
+      : isBinanceRepost
       ? runBinanceRepostTask({
           platform: task.platform, taskId: task.id, accountIds: runIds, config: task.binanceRepost as any,
           concurrency: task.concurrency, kernelPath, signal: abort.signal,
@@ -2257,6 +2265,29 @@ const server = http.createServer(async (req, res) => {
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
+          }
+          case 'matrix:folderPostStatus': {
+            // 文件夹定时发布:建好各号的时段文件夹(已有就不动),返回路径 + 每个时段剩多少素材/文案/话题;
+            //   带 taskId 时再给接下来的计划时间和最近的发布记录(详情页用)。只读本机文件,不联网。
+            try {
+              const a = (args[0] || {}) as any;
+              const fp = await import('./libs/matrix/folderPost');
+              const { getAccount } = await import('./libs/matrix/accountManager');
+              const ids: string[] = Array.isArray(a.accountIds) ? a.accountIds.map(String) : [];
+              const accounts = ids.map((id) => {
+                const acc = getAccount(id);
+                if (!acc) return { id, missing: true };
+                const dir = fp.ensureAccountDirs(acc);
+                return { id, dir, slots: [1, 2, 3].map((n) => fp.slotStatus(dir, n)) };
+              });
+              let upcoming: any[] = [], recent: any[] = [];
+              if (a.taskId) {
+                const { getTask } = await import('./libs/matrix/taskStore');
+                const t = getTask(String(a.taskId));
+                if (t) { upcoming = fp.upcomingOccurrences(t.id, t.accountIds || [], t.folderPost, Date.now()); recent = fp.ledgerRecent(t.id, 30); }
+              }
+              return writeJSON(res, 200, { ok: true, root: fp.folderPostRoot(), accounts, upcoming, recent });
+            } catch (e: any) { return writeJSON(res, 200, { ok: false, error: String(e?.message || e) }); }
           }
           case 'matrix:updateAccountMeta': {
             const { updateAccountMeta } = await import('./libs/matrix/accountManager');

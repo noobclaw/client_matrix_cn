@@ -74,6 +74,10 @@ export interface PublishInput {
   description?: string;
   /** 标签(平台支持 hashtag 的话);driver 自行格式化(抖音 # / 推特 # / 小红书话题 etc)。 */
   tags?: string[];
+  /** 仅图文 driver(matrix douyin_images):本次要发的一组本地图片绝对路径(脚本拿不到路径,走 ctx.uploadImages)。 */
+  imagePaths?: string[];
+  /** 仅图文 driver:是否从「我的收藏」前 3 首随机选背景音乐(缺省 = 选)。 */
+  bgm?: boolean;
 }
 
 /** 单平台发布结果。 */

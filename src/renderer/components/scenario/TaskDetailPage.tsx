@@ -274,6 +274,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const blockMode: string = String((task as any).block_mode || '');
   const blockByAcc: Record<string, string[]> = ((task as any).block_targets_by_account && typeof (task as any).block_targets_by_account === 'object') ? (task as any).block_targets_by_account : {};
   const BL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
+  // 文件夹定时发布(*_folder_post):独立展示 —— 各号时段、每个时段剩多少素材、接下来的计划、最近的发布记录。
+  const isFolderTask = /_folder_post$/.test(String(task.scenario_id || ''));
+  const folderCfg: any = (task as any).folder_post || {};
+  const [folderStat, setFolderStat] = useState<any | null>(null);
 
   // 打开本任务输出目录(报告 / 草稿 / 图片)。头部链接 + 醒目按钮 + 运行明细大按钮共用。
   const openTaskDir = async () => {
@@ -351,6 +355,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (/_lead_engage$/.test(String(sid || ''))) return LEAD_ENGAGE_STEP_NAMES();
     if (/_comment_like$/.test(String(sid || ''))) return COMMENT_LIKE_STEP_NAMES();
     if (/_block$/.test(String(sid || ''))) return BLOCK_STEP_NAMES();
+    if (/_folder_post$/.test(String(sid || ''))) return [BL('到点取下一条素材 + 文案 + 话题,发出去并归档', '到點取下一條素材 + 文案 + 話題,發出去並歸檔', 'At each slot: post the next media + caption + topics, then archive')];
     // 快手 / 哔哩哔哩 流程镜像抖音,但步骤名按各自平台名生成(纯展示,scenario.id 独立),
     // 不再复用抖音常量,避免「抖音」字样串台到别的平台页。
     if (sid === 'kuaishou_auto_engage') return engageStepNames(i18nService.t('tdKuaishou'), i18nService.t('tdActsLikeFollowComment'));
@@ -402,6 +407,23 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     })();
     return () => { alive = false; };
   }, [(task as any)?.id]);
+  // 文件夹定时发布:读各号文件夹余量 + 接下来的计划 + 最近记录(进页面、运行结束时刷新,另外每分钟一次)。
+  const folderRunStatus = (progress as any)?.status;
+  useEffect(() => {
+    if (!isFolderTask) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const ids: string[] = Array.isArray((task as any)?.account_ids) ? (task as any).account_ids : [];
+        const r = await (window.electron as any)?.matrix?.folderPostStatus?.({ accountIds: ids, taskId: (task as any)?.id });
+        if (alive && r?.ok) setFolderStat(r);
+      } catch { /* ignore */ }
+    };
+    void load();
+    const t = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFolderTask, (task as any)?.id, folderRunStatus]);
 
   const showToast = (kind: 'ok' | 'warn' | 'err', text: string) => {
     if (!mountedRef.current) return;
@@ -760,6 +782,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     const sid = task.scenario_id;
     if (/_report$/.test(String(sid || ''))) return { icon: '📋', label: i18nService.t('rpBrand'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (/_block$/.test(String(sid || ''))) return { icon: '🚫', label: BL('抖音 · 批量拉黑', '抖音 · 批量封鎖', 'Douyin · Batch Block'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (/_folder_post$/.test(String(sid || ''))) return { icon: '📅', label: BL('抖音 · 文件夹定时发布', '抖音 · 資料夾定時發布', 'Douyin · Folder Scheduled Posts'), color: 'text-teal-500 bg-teal-500/10 border-teal-500/30' };
     // 交易所广场(gate/okx/bitget/bybit × engage/post/repost)。这是第 4 处写死的平台链条,
     // 同样没登记这 12 个 sid → 详情页徽章掉到 tdTypeXhsAutoEngage,OKX 任务显示成
     // 「💬 💬 小红书 · 互动涨粉」(那条文案自带 💬,和 icon 撞成两个,用户实拍)。
@@ -937,7 +960,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <div>
                         <div className="flex items-center gap-3 mb-1.5">
                           <span className="text-gray-400">{i18nService.t('tdAccountsLabel')}</span>
-                          <span className="dark:text-white font-medium">{isBlockTask
+                          <span className="dark:text-white font-medium">{isFolderTask
+                            ? BL(`${matrixAccountIds.length} 个 · 每天共 ${matrixAccountIds.reduce((n: number, id: string) => n + ((folderCfg.slotsByAccount?.[id] || []).filter((x: any) => x?.on).length), 0)} 条`, `${matrixAccountIds.length} 個 · 每天共 ${matrixAccountIds.reduce((n: number, id: string) => n + ((folderCfg.slotsByAccount?.[id] || []).filter((x: any) => x?.on).length), 0)} 條`, `${matrixAccountIds.length} · ${matrixAccountIds.reduce((n: number, id: string) => n + ((folderCfg.slotsByAccount?.[id] || []).filter((x: any) => x?.on).length), 0)} posts/day`)
+                            : isBlockTask
                             ? (blockMode === 'keyword'
                                 ? BL(`${matrixAccountIds.length} 个 · 🔎 关键词模式(用各账号自己的关键词)`, `${matrixAccountIds.length} 個 · 🔎 關鍵詞模式(用各帳號自己的關鍵詞)`, `${matrixAccountIds.length} · 🔎 keyword mode (each account's own keywords)`)
                                 : blockMode === 'precise'
@@ -958,9 +983,20 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                                   <span className="shrink-0">{EM[a.platform] || '•'}</span>
                                   <span className="font-medium dark:text-gray-200 truncate min-w-0">{a.nickname || a.displayName}</span>
                                   {a.displayId && <span className="text-gray-500 dark:text-gray-400 truncate shrink-0">· {idLabel(a.platform)}:{a.displayId}</span>}
-                                  {!isBlockTask && <span className="ml-auto shrink-0 text-gray-500 dark:text-gray-400">🎯 {a.group ? a.group : <span className="text-amber-500">{i18nService.t('tdTrackNotSet')}</span>}</span>}
+                                  {!isBlockTask && !isFolderTask && <span className="ml-auto shrink-0 text-gray-500 dark:text-gray-400">🎯 {a.group ? a.group : <span className="text-amber-500">{i18nService.t('tdTrackNotSet')}</span>}</span>}
                                 </div>
-                                {isBlockTask && blockMode !== 'keyword' ? (() => {
+                                {isFolderTask ? (() => {
+                                  // 各时段:时间 + 这个时段文件夹里还剩几条素材(没开的时段不显示)
+                                  const sl: any[] = folderCfg.slotsByAccount?.[a.id] || [];
+                                  const st: any = (folderStat?.accounts || []).find((x: any) => x.id === a.id);
+                                  const parts = sl.map((x: any, i: number) => x?.on ? `${BL('时段', '時段', 'slot ')}${i + 1} ${x.time}` + (st?.slots?.[i] ? BL(` · 剩 ${st.slots[i].media} 条`, ` · 剩 ${st.slots[i].media} 條`, ` · ${st.slots[i].media} left`) : '') : '').filter(Boolean);
+                                  return (
+                                    <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 min-w-0">
+                                      <span className="truncate">⏰ {parts.length ? parts.join('  |  ') : <span className="text-amber-500">{BL('没开时段', '沒開時段', 'no slots')}</span>}</span>
+                                      {st?.dir && <button type="button" onClick={() => { try { (window.electron as any)?.shell?.openPath?.(st.dir); } catch { /* ignore */ } }} className="ml-auto shrink-0 text-teal-600 dark:text-teal-400 hover:underline">📂 {BL('打开文件夹', '打開資料夾', 'Open folder')}</button>}
+                                    </div>
+                                  );
+                                })() : isBlockTask && blockMode !== 'keyword' ? (() => {
                                   // 精准模式:本号自己的名单;老任务(无 block_mode)= 所有号共用 block_targets + block_keywords。
                                   const list: string[] = blockMode === 'precise' ? (blockByAcc[a.id] || []) : (Array.isArray((task as any).block_targets) ? (task as any).block_targets : []);
                                   const kws: string[] = blockMode === 'precise' ? [] : (Array.isArray((task as any).block_keywords) ? (task as any).block_keywords : []);
@@ -1365,6 +1401,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         // v2.4.60: 频次显示真实用户配置(min/max),不再写死 daily_count
                         const sid = task.scenario_id;
                         const t = task as any;
+                        if (isFolderTask) return BL(`按各号时段自动发 · 发布时间前后随机 ${folderCfg.jitterMin ?? 0} 分钟 · 错过 3 小时内补发`, `按各帳號時段自動發 · 發布時間前後隨機 ${folderCfg.jitterMin ?? 0} 分鐘 · 錯過 3 小時內補發`, `Posts at each account's slots · ±${folderCfg.jitterMin ?? 0} min · catch-up within 3h`);
                         if (isBlockTask) return BL(`${intervalLabel} · 不限人数 · 每次间隔 3~15 秒`, `${intervalLabel} · 不限人數 · 每次間隔 3~15 秒`, `${intervalLabel} · no limit · 3-15s apart`);
                         // 评论语言标记:海外互动任务设了【具体语言】(非 auto)时,摘要里标出来(国内平台跟帖子语言,不标)。
                         const COMMENT_LANG_LABEL: Record<string, string> = { zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
@@ -1555,7 +1592,36 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             {/* Output folder link — for auto_reply this contains the run-report
                 Markdown; for viral_production this contains the rewrite drafts
                 + images. Either way it's the place to look for what was produced. */}
-{!isReportTask && !isBlockTask && (
+{isFolderTask && (() => {
+              const nameOf = (id: string) => { const a: any = acctDetails.find((x: any) => x.id === id); return a ? (a.nickname || a.displayName || id) : id; };
+              const fmt = (ts: number) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+              const up: any[] = folderStat?.upcoming || [];
+              const rec: any[] = folderStat?.recent || [];
+              const recText = (r: any) => r.ok === true ? BL('✅ 已发布', '✅ 已發布', '✅ posted') : r.ok === null ? BL('⏳ 发布中', '⏳ 發布中', '⏳ posting') : r.note === 'empty' ? BL('📭 素材用完,跳过', '📭 素材用完,跳過', '📭 no media, skipped') : r.note === 'login_required' ? BL('⚠️ 登录失效,没发', '⚠️ 登入失效,沒發', '⚠️ logged out') : BL('❌ 没发出去', '❌ 沒發出去', '❌ failed') + (r.note ? ' · ' + String(r.note).slice(0, 40) : '');
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span>{BL('文件夹', '資料夾', 'Folders')}:</span>
+                    <button type="button" onClick={() => { if (folderStat?.root) { try { (window.electron as any)?.shell?.openPath?.(folderStat.root); } catch { /* ignore */ } } }} className="text-teal-600 dark:text-teal-400 hover:underline text-[11px]">📂 {folderStat?.root || BL('读取中…', '讀取中…', 'loading…')}</button>
+                  </div>
+                  <div className="text-[11px]">
+                    <div className="text-gray-400 mb-0.5">{BL('接下来', '接下來', 'Up next')}</div>
+                    {up.length ? up.slice(0, 6).map((o: any) => (
+                      <div key={o.key} className="pl-3 text-gray-600 dark:text-gray-300">{fmt(o.at)} · {nameOf(o.accountId)} · {BL('时段', '時段', 'slot ')}{o.slot}</div>
+                    )) : <div className="pl-3 text-gray-400">{BL('暂无(任务停用或没开时段)', '暫無(任務停用或沒開時段)', 'none (task off or no slots)')}</div>}
+                  </div>
+                  {rec.length > 0 && (
+                    <div className="text-[11px]">
+                      <div className="text-gray-400 mb-0.5">{BL('最近记录', '最近記錄', 'Recent')}</div>
+                      {rec.slice(0, 8).map((r: any) => { const [aid, sl, dt] = String(r.key).split('|'); return (
+                        <div key={r.key} className="pl-3 text-gray-600 dark:text-gray-300">{dt} · {nameOf(aid)} · {BL('时段', '時段', 'slot ')}{sl} · {recText(r)}</div>
+                      ); })}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+{!isReportTask && !isBlockTask && !isFolderTask && (
             <div className="flex items-center gap-2 flex-wrap">
               <span>{i18nService.t('tdOutputLabel')}</span>
               {/* 点文字也能打开(保留旧交互) */}
@@ -1944,6 +2010,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               {isReportTask ? (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-sky-500/10 text-sky-500 border-sky-500/30">
                   📋 {i18nService.t('rpRunBadge')}
+                </span>
+              ) : isFolderTask ? (
+                <span className="text-xs px-2.5 py-1 rounded-full border bg-teal-500/10 text-teal-500 border-teal-500/30">
+                  📅 {BL('到点按顺序发', '到點按順序發', 'Posts in order at slot times')}
                 </span>
               ) : isBlockTask ? (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-red-500/10 text-red-500 border-red-500/30">

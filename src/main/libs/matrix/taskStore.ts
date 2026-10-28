@@ -13,10 +13,14 @@ import { nextRunAt } from './matrixSchedule';
 import { REPORT_LIMITS, COMMENT_LIKE_LIMITS, BLOCK_LIMITS } from './types';
 import type { ReportItem, ReportItemResult } from './types';
 import { validateReportItem } from './reportTaxonomy';
+import { folderPostNextRunAt, normSlots } from './folderPost';
+import type { FolderPostConfig } from './types';
 import type { MatrixTask, EngageQuota, ReplyFanConfig, ImageTextConfig, ViralRewriteConfig, TweetPostConfig, BinancePostConfig, FacebookPostConfig, RedditPostConfig, InstagramPostConfig, BinanceRepostConfig, LeadEngageConfig, MatrixTaskType, MatrixTaskFrequency } from './types';
 
 /** 任务启用且非 once 才排下次运行;否则清空(手动触发)。 */
-function planned(t: { enabled: boolean; frequency: MatrixTaskFrequency }, fromTs: number, isFirst: boolean): number | undefined {
+function planned(t: { enabled: boolean; frequency: MatrixTaskFrequency; type?: MatrixTaskType; id?: string; accountIds?: string[]; folderPost?: FolderPostConfig }, fromTs: number, isFirst: boolean): number | undefined {
+  // 文件夹定时发布:不按频率,按各号时段排(到点没发的 → 现在;否则最近的未来时段)。
+  if (t.type === 'folder_post') return t.enabled && t.id ? folderPostNextRunAt(t.id, t.accountIds || [], t.folderPost, fromTs) : undefined;
   return t.enabled && t.frequency !== 'once' ? nextRunAt(t.frequency, fromTs, isFirst) : undefined;
 }
 
@@ -93,6 +97,7 @@ export interface SaveTaskInput {
   blockTargets?: string[];         // block 用:名单
   blockKeywords?: string[];        // block 用:关键词
   blockMode?: 'precise' | 'keyword'; // block 用:模式(缺省=老任务)
+  folderPost?: FolderPostConfig;    // folder_post 用:各号时段 + 随机浮动
   blockTargetsByAccount?: Record<string, string[]>; // block 精准模式:各账号名单
   concurrency?: number;
   frequency: MatrixTaskFrequency;
@@ -228,6 +233,21 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     }
   }
 
+  // 文件夹定时发布(仅抖音):只留选中号的时段,每号 3 个 HH:MM;至少一个号开了一个时段;浮动 0-30 分钟。
+  if (input.type === 'folder_post') {
+    if (input.platform !== 'douyin') return { ok: false, error: 'folder_post_platform_unsupported' };
+    const accIds = (input.accountIds || []).filter(Boolean).map(String);
+    if (!accIds.length) return { ok: false, error: 'folder_post_no_account' };
+    const src = input.folderPost?.slotsByAccount || {};
+    const slotsByAccount: FolderPostConfig['slotsByAccount'] = {};
+    for (const id of accIds) slotsByAccount[id] = normSlots(src[id]);
+    if (!accIds.some((id) => slotsByAccount[id].some((x) => x.on))) return { ok: false, error: 'folder_post_no_slot' };
+    const j = Math.round(Number(input.folderPost?.jitterMin));
+    const jitterMin = Number.isFinite(j) ? Math.max(0, Math.min(30, j)) : 15;
+    // frequency 只是占位(调度看时段),必须不是 once 才会进定时。
+    input = { ...input, folderPost: { slotsByAccount, jitterMin }, frequency: 'daily_random', quota: {} };
+  }
+
   if (input.id) {
     const i = tasks.findIndex((t) => t.id === input.id);
     if (i < 0) return { ok: false, error: 'task_not_found' };
@@ -265,6 +285,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       blockKeywords: input.type === 'block' ? input.blockKeywords : tasks[i].blockKeywords,
       blockMode: input.type === 'block' ? input.blockMode : tasks[i].blockMode,
       blockTargetsByAccount: input.type === 'block' ? input.blockTargetsByAccount : tasks[i].blockTargetsByAccount,
+      folderPost: input.type === 'folder_post' ? input.folderPost : tasks[i].folderPost,
       reportItems: input.type === 'report' ? reportItems : tasks[i].reportItems,
       concurrency: input.concurrency,
       frequency: input.frequency,
@@ -308,6 +329,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     blockKeywords: input.type === 'block' ? input.blockKeywords : undefined,
     blockMode: input.type === 'block' ? input.blockMode : undefined,
     blockTargetsByAccount: input.type === 'block' ? input.blockTargetsByAccount : undefined,
+    folderPost: input.type === 'folder_post' ? input.folderPost : undefined,
     reportItems,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',

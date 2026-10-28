@@ -117,7 +117,7 @@ function buildMatrixDriverCtx(
 ) {
   return {
     platform,
-    input: { title: input.title, description: input.description, tags: input.tags },
+    input: { title: input.title, description: input.description, tags: input.tags, bgm: input.bgm },
     cmd: (command: string, params: any, timeoutMs?: number) =>
       matrixCmd(accountId, command, params, timeoutMs),
     uploadVideo: async (targetSelector: string, opts?: { mimeType?: string; ttlMs?: number }) => {
@@ -134,6 +134,15 @@ function buildMatrixDriverCtx(
         onLog('   ⚠️ DataTransfer 注入未成(' + (dt.reason || '?') + '),回落 CDP setFileInputFiles…');
       }
       const r = await kernelSetFileInput(accountId, targetSelector, [input.videoPath]);
+      return r.ok ? { ok: true } : { ok: false, reason: r.reason || 'set_file_input_failed' };
+    },
+    // 图文 driver(douyin_images)用:把 runner 给的这组本地图片一次塞进图片 input(原生 multiple)。
+    //   路径只来自 runner(input.imagePaths),脚本只给 selector —— 服务端脚本无法借此读走用户别的文件。
+    //   single:true 只灌一个 input(同图文任务 upload_file:否则会把图也灌进「添加文件」附件 input)。
+    uploadImages: async (targetSelector: string) => {
+      const paths = Array.isArray(input.imagePaths) ? input.imagePaths.filter(Boolean) : [];
+      if (!paths.length) return { ok: false, reason: 'no_images' };
+      const r = await kernelSetFileInput(accountId, targetSelector, paths, { deep: true, single: true });
       return r.ok ? { ok: true } : { ok: false, reason: r.reason || 'set_file_input_failed' };
     },
     // 【通用】真实文件选择器拦截:可信点击站点自己的上传按钮 → 拦下弹出的选择器 → setFileInputFiles。

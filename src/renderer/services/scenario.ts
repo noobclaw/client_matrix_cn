@@ -232,6 +232,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const isReport = t?.type === 'report';
   const isCommentLike = t?.type === 'comment_like';   // 作品评论区点赞(tiktok_comment_like)
   const isBlock = t?.type === 'block';                // 批量拉黑(douyin_block)
+  const isFolderPost = t?.type === 'folder_post';     // 文件夹定时发布(客户端 runner,无后端剧本)
   const reportItems: any[] = Array.isArray(t?.reportItems) ? t.reportItems : [];
   const fn = t?.funnel || {};
   const dlUrls: string[] = Array.isArray(t?.urls) ? t.urls : [];
@@ -244,8 +245,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     //   不在客户端注册表里,scenario_id 映射不到)。之前没带 → 过滤后所有任务全部隐身(用户实测)。
     platform: t.platform,
     // 按任务真实 platform + 类型映射剧本 id(原来写死 douyin/engage → 非抖音 tab 看不到任务、回复粉丝错显成互动)。
-    scenario_id: isBlock ? `${t.platform}_block` : isCommentLike ? `${t.platform}_comment_like` : isReport ? `${t.platform}_report` : isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : isLead ? `${t.platform}_lead_engage` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
-    track: isBlock ? 'block' : isCommentLike ? 'comment_like' : isReport ? 'report' : isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : isLead ? 'lead_engage' : 'matrix',
+    scenario_id: isFolderPost ? `${t.platform}_folder_post` : isBlock ? `${t.platform}_block` : isCommentLike ? `${t.platform}_comment_like` : isReport ? `${t.platform}_report` : isReply ? `${t.platform}_reply_fans_comment` : isDownload ? `${t.platform}_video_download` : isImageText ? `${t.platform}_image_text` : isViral ? `${t.platform}_viral_production_career` : isRepost ? `${t.platform}_repost` : isLead ? `${t.platform}_lead_engage` : (isTweet || isBinancePost || isFacebookPost || isRedditPost || isInstagramPost) ? `${t.platform}_post` : engageScenarioIdForPlatform(t.platform),
+    track: isFolderPost ? 'folder_post' : isBlock ? 'block' : isCommentLike ? 'comment_like' : isReport ? 'report' : isReply ? 'reply_fan_comment' : isDownload ? 'video_download' : isImageText ? 'image_text' : isViral ? 'viral_production' : isTweet ? 'x_post' : isBinancePost ? 'binance_post' : isFacebookPost ? 'facebook_post' : isRedditPost ? 'reddit_post' : isInstagramPost ? 'instagram_post' : isRepost ? 'binance_repost' : isLead ? 'lead_engage' : 'matrix',
     // 定向获客配置透传(详情页/编辑回填 + updateTask 兜底不丢配置)。
     lead_engage: isLead ? t.leadEngage : undefined,
     // 举报:条目 + 执行锁时间透传(详情页展示「已执行,不可再运行」、编辑回填)。
@@ -283,6 +284,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     block_keywords: isBlock ? (Array.isArray(t.blockKeywords) ? t.blockKeywords : []) : undefined,
     block_mode: isBlock ? (t.blockMode || undefined) : undefined,
     block_targets_by_account: isBlock ? (t.blockTargetsByAccount || undefined) : undefined,
+    // folder_post:各号时段 + 浮动(详情页展示 + 编辑回填 + updateTask 兜底不丢配置)。
+    folder_post: isFolderPost ? t.folderPost : undefined,
     daily_count: (isDownload || isCommentLike) ? (dlUrls.length || 1) : isReport ? (reportItems.length || 1) : 1,
     variants_per_post: 1,
     daily_time: '',
@@ -388,6 +391,15 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       concurrency: accountIds.length,
       frequency: input.run_interval || 'daily_random',
       enabled: input.enabled !== false,
+    };
+  }
+  // 文件夹定时发布(scenario_id 以 _folder_post 结尾):保持 type='folder_post' + 透传时段配置,否则 updateTask 兜底会改成 engage。
+  if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_folder_post')) {
+    const fPlatform = input.platform || String(input.scenario_id).replace(/_folder_post$/, '') || 'douyin';
+    return {
+      id, platform: fPlatform, type: 'folder_post', name: input.name || '抖音文件夹定时发布', accountIds, quota: {},
+      folderPost: (input as any).folder_post,
+      concurrency: accountIds.length || 1, frequency: 'daily_random', enabled: input.enabled !== false,
     };
   }
   // 批量拉黑(scenario_id 以 _block 结尾):保持 type='block' + 透传名单/关键词,否则 updateTask 兜底会改成 engage、名单丢失。
@@ -655,6 +667,7 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
     case 'reply_fan':      return mk(`${p}_reply_fans_comment`, MATRIX_REPLY_META[p]?.name_zh || '自动回复粉丝', MATRIX_REPLY_META[p]?.icon || '💌');
     case 'comment_like':   return mk(`${p}_comment_like`, 'TikTok 作品评论区点赞', '💗');
     case 'block':          return mk(`${p}_block`, '抖音批量拉黑', '🚫');
+    case 'folder_post':    return mk(`${p}_folder_post`, '抖音文件夹定时发布', '📅');
     case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '抖音Report', MATRIX_REPORT_META[p]?.icon || '📋');
     case 'video_download': return mk(`${p}_video_download`, MATRIX_DOWNLOAD_META[p]?.name_zh || '视频下载', MATRIX_DOWNLOAD_META[p]?.icon || '⬇️');
     case 'image_text':     return mk(`${p}_image_text`, MATRIX_IMAGETEXT_META[p]?.name_zh || '图文创作', MATRIX_IMAGETEXT_META[p]?.icon || '📝');
@@ -875,7 +888,12 @@ class ScenarioService {
         id: 'douyin_block', version: '1.0.0', platform: 'douyin', workflow_type: 'block', category: 'tool',
         name_zh: '抖音批量拉黑', name_en: 'Douyin Batch Block', icon: '🚫',
       }];
-      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthReport, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost, ...synthCommentLike, ...synthBlock] as unknown as Scenario[];
+      // 「文件夹定时发布」快照(客户端 runner,没有后端剧本),让 folder_post 任务归到抖音 tab、详情页认得出。
+      const synthFolderPost = have.has('douyin_folder_post') ? [] : [{
+        id: 'douyin_folder_post', version: '1.0.0', platform: 'douyin', workflow_type: 'folder_post', category: 'creation',
+        name_zh: '抖音文件夹定时发布', name_en: 'Douyin Folder Scheduled Posts', icon: '📅',
+      }];
+      return [...DEFAULT_SCENARIOS, ...synth, ...synthReply, ...synthDownload, ...synthReport, ...synthImageText, ...synthViral, ...synthTweet, ...synthBinance, ...synthRepost, ...synthCommentLike, ...synthBlock, ...synthFolderPost] as unknown as Scenario[];
     }
     try {
       const res = await window.electron.scenario.listScenarios();

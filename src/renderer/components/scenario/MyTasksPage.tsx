@@ -549,6 +549,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', k: 'scnXhsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
                 if (sid === 'douyin_report')                return { icon: '📋', k: 'svCardReportTitle', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_comment_like')          return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 作品评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 作品留言區按讚' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'douyin_folder_post')           return { icon: '📅', label: i18nService.currentLanguage === 'zh' ? '抖音 文件夹定时发布' : i18nService.currentLanguage === 'zh-TW' ? '抖音 資料夾定時發佈' : 'Douyin Folder Scheduled Post', color: 'text-teal-500 bg-teal-500/10 border-teal-500/30' };
                 if (sid === 'douyin_video_download')        return { icon: '⬇️', k: 'scnDyDownload', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', k: 'scnTtDownload', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', k: 'scnKsEngage', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
@@ -604,6 +605,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const subTitle = (() => {
                 if (isVideoDownload) return i18nService.t('subVideoLinks');
                 if (isCommentLike) return i18nService.currentLanguage === 'zh' ? '作品链接 · 翻评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? '作品連結 · 翻留言區按讚' : 'Post links · like every comment';
+                if (/_folder_post$/.test(String(sid || ''))) return i18nService.currentLanguage === 'zh' ? '素材 / 文案 / 话题文件夹 · 按时段依次发' : i18nService.currentLanguage === 'zh-TW' ? '素材 / 文案 / 話題資料夾 · 按時段依序發' : 'Media / caption / topic folders · posted per time slot';
                 if (isLinkRewriteTwitter) return i18nService.t('subManualTweet');
                 if (isXhsLinkMode) return i18nService.t('subManualXhs');
                 if (track) return trackDisplayName(task.track, i18nService.currentLanguage);
@@ -763,6 +765,16 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           const pMin = t.daily_post_min, pMax = t.daily_post_max;
                           // 定向获客:没有「条」这回事 —— 它的产出是潜客人数。落通用兜底会
                           //   显示成「1 条/次」,纯误导。报它真正的两个配额。
+                          // 文件夹定时发布:不是「每日随机」,而是各号自己的时段(⚠️ 必须在 /_post$/ 兜底前,
+                          //   否则 douyin_folder_post 会被当成「每号每轮 1 条」)。
+                          if (/_folder_post$/.test(String(sid || ''))) {
+                            const fp = (t.folder_post || {}) as any;
+                            const sba = (fp.slotsByAccount || {}) as Record<string, Array<{ time: string; on: boolean }>>;
+                            const times = Array.from(new Set(Object.values(sba).flat().filter((s) => s && s.on).map((s) => s.time))).sort();
+                            const zhF = i18nService.currentLanguage === 'zh';
+                            const tStr = times.length ? times.join(' / ') : '—';
+                            return zhF ? `⏰ 按时段发布 ${tStr}` : `⏰ Posts at ${tStr}`;
+                          }
                           if (/_lead_engage$/.test(String(sid || ''))) {
                             const le = (t.lead_engage || {}) as any;
                             const nLead = typeof le.maxLeads === 'number' ? le.maxLeads : 20;

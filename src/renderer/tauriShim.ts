@@ -537,6 +537,7 @@ export function createTauriElectronShim(): typeof window.electron {
       refreshIdentity: (args: unknown) => ipcInvoke('matrix:refreshIdentity', args).then((r: any) => r ?? { ok: false }),
       disconnectAccount: (args: unknown) => ipcInvoke('matrix:disconnectAccount', args).then((r: any) => r ?? { ok: false }),
       updateAccountMeta: (args: unknown) => ipcInvoke('matrix:updateAccountMeta', args).then((r: any) => r ?? { ok: false }),
+      folderPostStatus: (args: unknown) => ipcInvoke('matrix:folderPostStatus', args).then((r: any) => r ?? { ok: false }),
       runEngage: (args: unknown) => ipcInvoke('matrix:runEngage', args).then((r: any) => r ?? { ok: false }),
       listTasks: () => ipcInvoke('matrix:listTasks').then((r: any) => r ?? { ok: false }),
       listRuns: (args?: unknown) => ipcInvoke('matrix:listRuns', args).then((r: any) => r ?? { ok: false }),
