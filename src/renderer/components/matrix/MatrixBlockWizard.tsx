@@ -12,7 +12,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
-import { AccountTabRow, AccountKeywordEditor, effectiveKw, accountAvatar } from './MatrixAccountKeywords';
+import { AccountTabRow, AccountKeywordEditor, effectiveKw, accountAvatar, type KwAccount } from './MatrixAccountKeywords';
 
 type WizardStep = 1 | 2 | 3;
 export type BlockMode = 'precise' | 'keyword';
@@ -80,7 +80,7 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
   const [kwOverride, setKwOverride] = useState<Record<string, string[]>>({});
   const [kwEditing, setKwEditing] = useState<string | null>(null);   // 正在改关键词的账号(改到一半不许切号/下一步)
   const [activeAcc, setActiveAcc] = useState<string | null>(null);   // 第 2 步横排 tab 当前选中的账号
-  const kwOf = (a: WizardAccount): string[] => effectiveKw(a, kwOverride);
+  const kwOf = (a: KwAccount): string[] => effectiveKw(a, kwOverride);
 
   useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [targetsText, selected, runInterval, mode, kwOverride]);
 
@@ -224,7 +224,7 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
           // 账号横排成一行 tab,点哪个就在下面编辑哪个(精准:名单;关键词:关键词,共用 MatrixAccountKeywords)。
           const cur = selectedAccounts.find((a) => a.id === activeAcc) || selectedAccounts[0];
           if (!cur) return null;
-          const badge = (a: WizardAccount) => {
+          const badge = (a: KwAccount) => {
             if (preciseMode) { const n = parsedFor(a.id).valid.length; return n ? { t: L(`${n} 条`, `${n} 條`, `${n}`), warn: false } : { t: L('未填', '未填', 'empty'), warn: true }; }
             const n = kwOf(a).length; return n ? { t: L(`${n} 个词`, `${n} 個詞`, `${n} kw`), warn: false } : { t: L('没关键词', '沒關鍵詞', 'no kw'), warn: true };
           };
