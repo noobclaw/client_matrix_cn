@@ -175,7 +175,21 @@ const HomeView: React.FC<HomeViewProps> = ({
 
           {/* 简洁版首页第一屏:4 步说明 + 大一点的「创建任务」,整体在一屏正中间;教学视频(一行)在下面,往下滚才看到 */}
           {simple && (
-            <div className="min-h-[calc(100vh-150px)] flex flex-col items-center justify-center gap-8">
+            <div className="min-h-[calc(100vh-150px)] flex flex-col items-center justify-center gap-6">
+              {/* 标题:与专业版首页同款(logo + NoobClaw 霓虹绿 + 渐变副标题),不带下面那段介绍文字 */}
+              <div className="text-center space-y-2">
+                <img src="logo.png" alt="logo" className="w-12 h-12 mx-auto rounded-2xl shadow-lg" />
+                <h1 className="text-3xl font-extrabold tracking-tight leading-tight">
+                  <span style={{ color: '#00ff88', textShadow: '0 0 20px rgba(0,255,136,0.5), 0 0 40px rgba(0,255,136,0.2)' }}>NoobClaw</span>
+                  <span className="dark:text-white text-gray-900"> - {i18nService.t('hvHeroTitle')}</span>
+                </h1>
+                <div
+                  className="text-xl font-extrabold tracking-tight"
+                  style={{ backgroundImage: 'linear-gradient(to right, #ff006e, #8b5cf6, #00d4ff)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', filter: 'drop-shadow(0 0 12px rgba(139,92,246,0.35))' }}
+                >
+                  {i18nService.t('hvHeroSubtitle')}
+                </div>
+              </div>
               <div className="flex items-center justify-center flex-wrap gap-2 text-[15px]">
                 {[
                   SL('选择平台任务', '選擇平台任務', 'Pick a platform task'),
@@ -196,6 +210,8 @@ const HomeView: React.FC<HomeViewProps> = ({
                 className="inline-flex items-center gap-2 px-10 py-4 rounded-2xl text-lg font-bold bg-claude-accent hover:bg-claude-accentHover text-[#04130B] transition-colors">
                 ＋ {SL('创建任务', '建立任務', 'Create a task')}
               </button>
+              {/* 教学视频:一行,和上面一起在第一屏里 */}
+              <div className="w-full pt-2"><HomeVideoTutorials filter={"select"} /></div>
             </div>
           )}
 
@@ -247,7 +263,7 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           {/* 视频教程横排(与官网首页同款):数据来自 R2 清单,拉不到整个区不渲染 */}
-          <HomeVideoTutorials filter={simple ? 'select' : 'tags'} />
+          {!simple && <HomeVideoTutorials filter="tags" />}
 
           {!simple && (<>
           {/* 开源安全提示 */}

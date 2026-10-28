@@ -686,7 +686,7 @@ const App: React.FC = () => {
   const switchEdition = (e: UiEdition) => {
     clearPresetAccounts();   // 切版本一律清预选,免得简洁版选的号带进专业版向导
     setUiEdition(e);
-    if (e === 'simple' && !SIMPLE_VIEWS.includes(mainView)) setMainView('home');
+    if (e === 'simple') setMainView('home');   // 切到简洁版一律回首页
   };
   // 简洁版「创建任务」弹窗点取消 → 回到进来之前的页面
   const lastNonCreateViewRef = useRef<string>('home');

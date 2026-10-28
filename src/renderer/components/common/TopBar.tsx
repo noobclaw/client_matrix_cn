@@ -50,7 +50,7 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
         })}
       </div>
       {/* 简洁版右侧:账号 · 剩余积分 · 指纹浏览器 */}
-      <div className="min-w-0 flex items-center justify-end gap-3 overflow-hidden">
+      <div className="min-w-0 flex items-center justify-end gap-3">
       {simple && (
         <>
           {auth.isAuthenticated ? (
