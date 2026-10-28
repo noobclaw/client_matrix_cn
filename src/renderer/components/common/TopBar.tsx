@@ -19,23 +19,26 @@ const shortAddr = (a: string) => (a && a.length > 12 ? `${a.slice(0, 6)}…${a.s
 
 export interface TopBarMenuItem { key: string; icon: string; label: string; onClick: () => void; badge?: number }
 
-const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; onShowSettings?: () => void; menu?: TopBarMenuItem[]; activeKey?: string }> = ({ edition, onSwitch, onShowSettings, menu, activeKey }) => {
+const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; onShowSettings?: () => void; menu?: TopBarMenuItem[]; activeKey?: string; updateBadge?: React.ReactNode }> = ({ edition, onSwitch, onShowSettings, menu, activeKey, updateBadge }) => {
   const [auth, setAuth] = useState(noobClawAuth.getState());
   const [menuOpen, setMenuOpen] = useState(false);
   const active = (menu || []).find((m) => m.key === activeKey);
   const badgeTotal = (menu || []).reduce((n, m) => n + (m.badge || 0), 0);
   useEffect(() => noobClawAuth.subscribe(setAuth), []);
   const simple = edition === 'simple';
-  const name = auth.socialProvider === 'password' && auth.socialEmail ? auth.socialEmail : shortAddr(auth.walletAddress || '');
+  // 账号名:用户名 / 邮箱优先(密码、Google、Twitter… 登录都放在 socialEmail),没有再用钱包地址缩写
+  const name = auth.socialEmail || shortAddr(auth.walletAddress || '') || '—';
 
   return (
-    <div className="relative flex h-11 items-center px-4 shrink-0 border-b dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
-      {/* 简洁版左侧:当前在哪一页(左侧菜单已收进右上角 ☰) */}
-      {simple && active && (
-        <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text truncate max-w-[30%]">{active.icon} {active.label}</div>
-      )}
+    // 三栏:左 / 中 / 右,左右等宽 → 中间的切换永远居中,窗口再窄也不会被右侧盖住(右侧自己截断)
+    <div className="grid grid-cols-[1fr_auto_1fr] h-11 items-center gap-3 px-4 shrink-0 border-b dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
+      {/* 简洁版左侧:当前在哪一页(左侧菜单已收进右上角 ☰)+ 有新版本时的更新提示 */}
+      <div className="min-w-0 flex items-center gap-2">
+        {simple && active && <span className="text-sm font-semibold dark:text-claude-darkText text-claude-text truncate">{active.icon} {active.label}</span>}
+        {simple && updateBadge}
+      </div>
       {/* 正中间:版本切换 */}
-      <div className="absolute left-1/2 -translate-x-1/2 grid grid-cols-2 gap-1 p-1 rounded-xl bg-claude-surfaceHover/70 dark:bg-claude-darkSurfaceHover/70 border dark:border-claude-darkBorder border-claude-border">
+      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-claude-surfaceHover/70 dark:bg-claude-darkSurfaceHover/70 border dark:border-claude-darkBorder border-claude-border">
         {(['simple', 'pro'] as const).map((e) => {
           const on = e === edition;
           return (
@@ -47,12 +50,13 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
         })}
       </div>
       {/* 简洁版右侧:账号 · 剩余积分 · 指纹浏览器 */}
+      <div className="min-w-0 flex items-center justify-end gap-3 overflow-hidden">
       {simple && (
-        <div className="ml-auto flex items-center gap-3 min-w-0">
+        <>
           {auth.isAuthenticated ? (
             <>
-              <span className="text-xs font-mono dark:text-claude-darkText text-claude-text truncate max-w-[180px]" title={name}>👤 {name}</span>
-              <button type="button" onClick={() => openWallet('topup')} className="text-xs whitespace-nowrap dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent" title={L('去充值', '去儲值', 'Top up')}>
+              <span className="hidden lg:inline-block min-w-0 text-xs font-mono dark:text-claude-darkText text-claude-text truncate max-w-[180px]" title={name}>👤 {name}</span>
+              <button type="button" onClick={() => openWallet('topup')} className="shrink-0 text-xs whitespace-nowrap dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent" title={L('去充值', '去儲值', 'Top up')}>
                 {L('积分', '積分', 'Credits')} <b className="dark:text-claude-darkText text-claude-text">{Number(auth.tokenBalance || 0).toLocaleString()}</b>
               </button>
             </>
@@ -62,7 +66,7 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
           <KernelPicker />
           {/* 收纳菜单:原左侧菜单 + 设置 */}
           {menu && menu.length > 0 && (
-            <div className="relative">
+            <div className="relative shrink-0">
               <button type="button" onClick={() => setMenuOpen((o) => !o)} aria-label={L('菜单', '選單', 'Menu')} aria-expanded={menuOpen}
                 className="relative h-8 w-8 inline-flex items-center justify-center rounded-lg text-lg dark:text-claude-darkText text-claude-text hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover">
                 ☰
@@ -94,8 +98,9 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
               )}
             </div>
           )}
-        </div>
+        </>
       )}
+      </div>
     </div>
   );
 };

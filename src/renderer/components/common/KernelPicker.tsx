@@ -34,7 +34,13 @@ const KernelPicker: React.FC = () => {
       setMsg(p?.msg || '');
       if (p?.done) {
         setBusy(false);
-        if (p?.path && p?.version) setSelectedVersion(String(p.version));
+        // 下载完成 → 选中并【落盘】刚下好的版本(与账号页一致;只改界面上的显示会导致任务实际还用旧版本)
+        if (p?.path && p?.version) {
+          setSelectedVersion(String(p.version));
+          Promise.resolve(M()?.setSelectedKernel?.({ version: String(p.version) })).catch(() => {}).finally(() => {
+            try { window.dispatchEvent(new CustomEvent('noobclaw:kernel-changed', { detail: { version: String(p.version) } })); } catch { /* ignore */ }
+          });
+        }
         load();
       }
     });
@@ -56,7 +62,7 @@ const KernelPicker: React.FC = () => {
   const ready = !!selectedVersion && (kernel.installedVersions || []).includes(selectedVersion);
 
   return (
-    <div className="relative non-draggable">
+    <div className="relative non-draggable shrink-0">
       <button type="button" onClick={() => setOpen((o) => !o)}
         className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border whitespace-nowrap ${ready ? 'bg-green-500/15 text-green-500 border-green-500/30' : 'bg-amber-500/15 text-amber-500 border-amber-500/30'}`}>
         🧬 {i18nService.t('mvFingerprintBrowser')} {selectedVersion ? `v${selectedVersion}` : ''} {ready ? '✓' : i18nService.t('mvNotReady')}

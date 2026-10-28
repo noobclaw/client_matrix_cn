@@ -1119,6 +1119,7 @@ const App: React.FC = () => {
             { key: 'contact', icon: '💬', label: i18nService.t('contactUsMenu'), onClick: handleShowContact },
           ] : undefined}
           activeKey={mainView === 'matrixTaskNew' ? (scenarioInDetail ? 'matrixTasks' : 'home') : mainView}
+          updateBadge={simpleUi ? updateBadge : null}
         />
       )}
       <div className="flex flex-1 min-h-0 overflow-hidden">

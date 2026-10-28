@@ -252,7 +252,7 @@ interface Props {
 }
 
 export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged, onOpenHistory }) => {
-  // 简洁版:统计只留 累计完成 / 上次运行 / 下次运行,不显示输出文件夹
+  // 简洁版:统计只留 累计完成 / 上次运行 / 下次运行(输出文件夹入口照常保留)
   const simpleUi = useUiEdition() === 'simple';
   // 链接模式是一次性手动运行，没有"下次运行"的概念
   const isLinkModeForStats = task.track === 'link_mode'
@@ -1629,7 +1629,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </div>
               );
             })()}
-{!simpleUi && !isReportTask && !isBlockTask && !isFolderTask && (
+{!isReportTask && !isBlockTask && !isFolderTask && (
             <div className="flex items-center gap-2 flex-wrap">
               <span>{i18nService.t('tdOutputLabel')}</span>
               {/* 点文字也能打开(保留旧交互) */}

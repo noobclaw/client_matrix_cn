@@ -63,6 +63,13 @@ const SimpleCreatePicker: React.FC<Props> = ({ platforms, initialPlatform, onPic
     if (selected.size === 0) setSelected(new Set((byPlat[p] || []).filter(usable).map((a) => a.id)));
   /* eslint-disable-next-line */ }, [accounts]);
 
+  // 平台列表异步变化(合规隐藏晚到)时,选中的平台若已不在列表里 → 改选第一个可见平台,别让下拉显示和实际状态不一致
+  useEffect(() => {
+    if (!accounts || !platform || platforms.some((p) => p.id === platform)) return;
+    const first = ordered[0]?.id;
+    if (first) pickPlatform(first); else { setPlatform(''); setSelected(new Set()); }
+  /* eslint-disable-next-line */ }, [platforms]);
+
   const goAccounts = (p?: string) => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform: p } })); };
   const plat = platforms.find((p) => p.id === platform);
   const list = platform ? (byPlat[platform] || []) : [];
