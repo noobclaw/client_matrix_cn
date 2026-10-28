@@ -452,8 +452,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
   const [kernelPct, setKernelPct] = useState(0);
   const [showKernelModal, setShowKernelModal] = useState(false);
   const [kernelMenuOpen, setKernelMenuOpen] = useState(false);
-  // 简洁版账号卡「⋯ 更多」菜单当前展开的是哪个号
-  const [simpleMoreFor, setSimpleMoreFor] = useState<string | null>(null);
 
   const reload = useCallback(async () => { const r = await M()?.listAccounts(); if (r?.ok) setAccounts(r.accounts || []); }, []);
   const reloadTasks = useCallback(async () => { const r = await M()?.listTasks?.(); if (r?.ok) { setTasks(r.tasks || []); if (typeof r.running === 'boolean') setRunning(r.running); setRunningPlatforms(Array.isArray(r.runningPlatforms) ? r.runningPlatforms : []); } }, []);
@@ -1071,16 +1069,17 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                   const stLabel = expired ? i18nService.t('mvStExpired') : statusLabel(a.status);
                   const stDot = expired ? 'bg-red-500' : STATUS_DOT[a.status];
                   const isSuspended = suspendedIds.has(a.id);
-                  // 简洁版账号卡:头像 + 昵称 + 状态 + 关键词一行 + 一个主按钮(没连接 → 连接账号;已连接 → 编辑),
-                  //   其余(配置IP / 刷新信息 / 断开 / 移除)收进「⋯」。
+                  // 简洁版账号卡:头像 + 昵称 + 状态 + 关键词一行 + 按钮直接摆出来(和专业版同一组:配置IP · 编辑 · 连接账号 / 刷新信息 · 断开),
+                  //   右上角 ✕ 移除。
                   if (simple) {
                     const kwAll = mergeKw(a.keywords, a.derivedKeywords);
                     const notConnected = a.status === 'login_required';
                     const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
-                    const item = 'w-full text-left px-3 py-1.5 text-xs hover:bg-black/5 dark:hover:bg-white/5';
+                    const btn = 'text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 dark:text-gray-200 text-gray-700 hover:border-violet-500 hover:text-violet-500';
                     return (
                       <div key={a.id} className={`relative rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 flex flex-col gap-3 bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
-                        <div className="flex items-center gap-3 min-w-0">
+                        <button onClick={() => deleteAccount(a)} title={i18nService.t('mvRemoveAccountTitle')} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-red-500/90 transition-colors text-sm leading-none">✕</button>
+                        <div className="flex items-center gap-3 min-w-0 pr-6">
                         <div className="relative shrink-0">
                           <div className="w-10 h-10 rounded-full bg-violet-500/20 text-violet-500 flex items-center justify-center text-sm font-bold">{(a.nickname || a.displayName || '?').slice(0, 1)}</div>
                           {a.avatar && <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="absolute inset-0 w-10 h-10 rounded-full object-cover bg-gray-200 dark:bg-gray-700" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />}
@@ -1092,7 +1091,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           </div>
                           <div className="text-[11px] truncate mt-0.5">
                             {notConnected && !expired
-                              ? <span className="text-amber-500">{SL('还没连接,点下面「连接账号」', '還沒連接,點下面「連接帳號」', 'Not connected yet — tap Connect below')}</span>
+                              ? <span className="text-amber-500">{SL('还没连接,点「连接账号」', '還沒連接,點「連接帳號」', 'Not connected yet — tap Connect below')}</span>
                               : expired
                                 ? <span className="text-red-500">{SL('登录过期了,重新连接一下', '登入過期了,重新連接一下', 'Login expired — reconnect')}</span>
                                 : kwAll.length
@@ -1101,25 +1100,15 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           </div>
                         </div>
                         </div>
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <button onClick={() => openProxy(a)} className={btn}>{i18nService.t('mvConfigIp')}</button>
+                          <button onClick={() => openEdit(a)} className={btn}>{i18nService.t('mvEdit')}</button>
                           {notConnected
                             ? <button onClick={() => setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope })} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{SL('连接账号', '連接帳號', 'Connect')}</button>
-                            : <button onClick={() => openEdit(a)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">{i18nService.t('mvEdit')}</button>}
-                          <div className="relative">
-                            <button onClick={() => setSimpleMoreFor(simpleMoreFor === a.id ? null : a.id)} className="w-7 h-7 rounded-lg text-gray-500 hover:bg-black/5 dark:hover:bg-white/10" aria-label={SL('更多', '更多', 'More')}>⋯</button>
-                            {simpleMoreFor === a.id && (
-                              <>
-                                <div className="fixed inset-0 z-40" onClick={() => setSimpleMoreFor(null)} />
-                                <div className="absolute right-0 mt-1 z-50 w-36 rounded-xl py-1 shadow-xl dark:bg-claude-darkBg bg-white border dark:border-white/10 border-black/10">
-                                  {notConnected && <button className={item} onClick={() => { setSimpleMoreFor(null); openEdit(a); }}>{i18nService.t('mvEdit')}</button>}
-                                  <button className={item} onClick={() => { setSimpleMoreFor(null); openProxy(a); }}>{i18nService.t('mvConfigIp')}</button>
-                                  {!notConnected && <button className={item} onClick={() => { setSimpleMoreFor(null); refreshIdentity(a); }}>{i18nService.t('mvRefreshInfo')}</button>}
-                                  {!notConnected && <button className={item} onClick={() => { setSimpleMoreFor(null); disconnectAccount(a); }}>{i18nService.t('mvDisconnect')}</button>}
-                                  <button className={item + ' text-red-500'} onClick={() => { setSimpleMoreFor(null); deleteAccount(a); }}>{SL('移除账号', '移除帳號', 'Remove')}</button>
-                                </div>
-                              </>
-                            )}
-                          </div>
+                            : <>
+                                <button onClick={() => refreshIdentity(a)} className={btn}>{i18nService.t('mvRefreshInfo')}</button>
+                                <button onClick={() => disconnectAccount(a)} className={btn}>{i18nService.t('mvDisconnect')}</button>
+                              </>}
                         </div>
                       </div>
                     );

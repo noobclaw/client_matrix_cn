@@ -1726,8 +1726,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       {/* 店铺弹窗开着时,确认面额的 confirmDialogEl 改挂到弹窗里(见下方 shopOpen portal)——
           它是页面内 absolute z-50,会被 portal 到 body 的 z-[9998] 遮罩整片盖住,点了兑换像卡死。 */}
       {!shopOpen && confirmDialogEl}
-      {/* 2026-10-28:充值套餐放上面、个人信息放下面(简洁版 / 专业版都一样)—— 只改显示顺序(flex order),各区块内容不动 */}
-      <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full flex flex-col gap-4">
+      {/* 2026-10-28:充值套餐放上面、个人信息放下面(简洁版 / 专业版都一样)—— 只改显示顺序(flex order),各区块内容不动;
+          子块必须 shrink-0,否则 flex 列会把各块压扁到一屏高、滚动不了(2026-10-29 修)*/}
+      <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full flex flex-col gap-4 [&>*]:shrink-0">
 
         {/* v6.x: 我的充值页顶部不再放 PartnerApplyCard — 用户反馈"充值中心顶部
             应该先看到充值,返佣比例是次要信息"。改成 balance row 第 3 列
