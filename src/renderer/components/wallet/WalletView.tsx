@@ -36,42 +36,63 @@ const ORDER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 // 钱包登录的账号不渲染这块 —— 他们的 payout 已在迁移时自动等于登录地址。
 // 国内版 HIDE_WEB3 下整块隐藏(CN 佣金走 CNY 提现,与链上钱包无关)。
 const PayoutWalletRow: React.FC<{ current: string | null; onSaved?: (wallet: string) => void }> = ({ current, onSaved }) => {
+  // 2026-10-29 精简:平时只占邮箱下面一行(未绑定 → 「绑定」;已绑定 → 地址缩写 + 「修改」),点了才弹窗填写。保存逻辑不变。
+  const [open, setOpen] = useState(false);
   const [value, setValue] = useState(current || '');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => { setValue(current || ''); }, [current]);
+  const zhUi = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
+  const short = (a: string) => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
+  const openDlg = () => { setValue(current || ''); setMsg(null); setOpen(true); };
   const save = async () => {
     const v = value.trim().toLowerCase();
     if (!/^0x[a-f0-9]{40}$/.test(v)) { setMsg({ ok: false, text: i18nService.t('payoutWalletInvalid') }); return; }
     setSaving(true); setMsg(null);
     const res = await noobClawApi.setPayoutWallet(v);
-    setSaving(false);
     if (res && res.success) {
       setMsg({ ok: true, text: i18nService.t('payoutWalletSaved') });
       // Sync the parent's profile state + localStorage cache so re-entering
       // the page doesn't briefly show the pre-save value from readCachedProfile.
       onSaved?.(v);
+      // 「已保存」停 0.7 秒再关;这期间保持 saving(保存键禁用、不能手动关),免得重复提交或被旧计时器关掉新开的框
+      setTimeout(() => { setOpen(false); setSaving(false); }, 700);
     } else {
+      setSaving(false);
       setMsg({ ok: false, text: (res && (res as any).error) || i18nService.t('pwErrGeneric') });
     }
   };
   return (
-    <div className="mt-2 p-2.5 rounded-lg border dark:border-claude-darkBorder border-claude-border">
-      <div className="text-xs font-medium dark:text-claude-darkText text-claude-text mb-1">{i18nService.t('payoutWalletTitle')}</div>
-      <div className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-2">{i18nService.t('payoutWalletDesc')}</div>
-      <div className="flex items-center gap-2">
-        <input
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          placeholder="0x..."
-          className="flex-1 px-2 py-1.5 rounded-md text-xs font-mono dark:bg-white/5 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 focus:outline-none focus:border-green-500/50"
-        />
-        <button onClick={save} disabled={saving} className="px-3 py-1.5 rounded-md text-xs font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-60">
-          {i18nService.t('save')}
-        </button>
+    <>
+      <div className="flex items-center gap-1.5 mt-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary min-w-0">
+        <span className="shrink-0">💳 {i18nService.t('payoutWalletTitle')}:</span>
+        {current
+          ? <code className="font-mono dark:text-claude-darkText text-claude-text truncate" title={current}>{short(current)}</code>
+          : <span className="text-amber-500 shrink-0">{zhUi ? '未绑定' : 'Not set'}</span>}
+        <button type="button" onClick={openDlg} className="shrink-0 text-primary hover:underline">{current ? (zhUi ? '修改' : 'Edit') : (zhUi ? '绑定' : 'Bind')}</button>
       </div>
-      {msg && <p className={`text-[11px] mt-1 ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>}
-    </div>
+      {open && createPortal(
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4" onClick={() => !saving && setOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text mb-1">{i18nService.t('payoutWalletTitle')}</div>
+            <div className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">{i18nService.t('payoutWalletDesc')}</div>
+            <input
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              placeholder="0x..."
+              autoFocus
+              className="w-full px-2.5 py-2 rounded-md text-xs font-mono dark:bg-white/5 bg-gray-50 border dark:border-white/10 border-gray-200 dark:text-white text-gray-900 focus:outline-none focus:border-green-500/50"
+            />
+            {msg && <p className={`text-[11px] mt-1.5 ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setOpen(false)} disabled={saving} className="px-3 py-1.5 rounded-md text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-60">{zhUi ? '取消' : 'Cancel'}</button>
+              <button type="button" onClick={save} disabled={saving} className="px-4 py-1.5 rounded-md text-xs font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-60">{i18nService.t('save')}</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 };
 
@@ -1726,8 +1747,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       {/* 店铺弹窗开着时,确认面额的 confirmDialogEl 改挂到弹窗里(见下方 shopOpen portal)——
           它是页面内 absolute z-50,会被 portal 到 body 的 z-[9998] 遮罩整片盖住,点了兑换像卡死。 */}
       {!shopOpen && confirmDialogEl}
-      {/* 2026-10-28:充值套餐放上面、个人信息放下面(简洁版 / 专业版都一样)—— 只改显示顺序(flex order),各区块内容不动;
-          子块必须 shrink-0,否则 flex 列会把各块压扁到一屏高、滚动不了(2026-10-29 修)*/}
+      {/* 2026-10-29:个人信息卡放回最上面但精简(UID / 邮箱 / 收款钱包一行行、收款钱包改成「绑定 / 修改」弹窗),
+          下面紧跟套餐(简洁版 / 专业版一样)。子块必须 shrink-0,否则 flex 列会把各块压扁到一屏高、滚动不了 */}
       {/* 2026-10-29:加宽到 max-w-6xl,五档套餐一行放得下;隐藏滚动条(滚轮/触控板照常能滚)—— 它原本是页面中间一条绿竖线 */}
       <div className="nc-hide-scrollbar flex-1 overflow-y-auto p-5 max-w-6xl mx-auto w-full flex flex-col gap-4 [&>*]:shrink-0">
 
@@ -1740,7 +1761,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             conic 旋转金边 + 4s shimmer 光带 + 6 个 sparkle 粒子 + ✦ VIP ✦
             角标。普通用户 partnerColor=null,整段 effects 不渲染,体验跟从
             前一样;合伙人多了一圈 VIP 氛围。 */}
-        <div className="order-last relative overflow-hidden p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+        <div className="relative overflow-hidden p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
           {partnerColor && (
             <>
               {/* Conic gradient rotating border ring */}
@@ -1830,7 +1851,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1 gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary shrink-0">{i18nService.t('walletMyWalletBsc')}</span>
+                  <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary shrink-0">{/^0x/i.test(walletAddr || '') ? i18nService.t('walletMyWalletBsc') : (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW' ? '我的UID' : 'My UID')}</span>
                   {/* 会员等级徽章 — 跟在钱包名旁(对标即梦,等级跟着 UID);显示档名 + 到期日/已过期;
                       到期后仍显示原档名(subPlanName)+「已过期」。点击切到会员订阅 tab。 */}
                   {(() => {

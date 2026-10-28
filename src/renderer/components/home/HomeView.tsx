@@ -28,6 +28,8 @@ export interface HomeViewProps {
   matrixExpiredCount?: number;
   /** 简洁版:首页 = 大号「创建任务」+ 三步引导 + 教学视频 */
   simple?: boolean;
+  /** 首页主体用简洁版的样子(标题 + 4 步 + 创建任务 + 一行视频)。2026-10-29 起专业版首页也这样;专业版自己的顶栏 / 行情条 / 联系我们照旧 */
+  simpleHome?: boolean;
 }
 
 const OFFICIAL_SITE = 'https://noobclaw.com/cn/';
@@ -45,6 +47,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   onShowMatrixTasks,
   matrixExpiredCount = 0,
   simple,
+  simpleHome,
 }) => {
   const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
   const isMac = window.electron.platform === 'darwin';
@@ -53,6 +56,7 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   const openExternal = (url: string) => { try { window.electron?.shell?.openExternal?.(url); } catch { /* noop */ } };
 
+  const sh = !!(simple || simpleHome);   // 主体用简洁版样子
   return (
     <div className="flex-1 flex flex-col dark:bg-claude-darkBg bg-claude-bg h-full">
       {/* 右侧「联系我们」悬浮小组件 — 与官网浮窗同源同款(无回到顶部小火箭) */}
@@ -121,9 +125,9 @@ const HomeView: React.FC<HomeViewProps> = ({
       </>)}
       {/* ── 主体 ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className={`${simple ? 'max-w-5xl' : 'max-w-3xl'} mx-auto px-5 py-8 space-y-8`}>
+        <div className={`${sh ? 'max-w-5xl' : 'max-w-3xl'} mx-auto px-5 py-8 space-y-8`}>
 
-          {!simple && (<>
+          {!sh && (<>
           {/* Hero / 产品定位 */}
           <div className="text-center space-y-3">
             <img src="logo.png" alt="logo" className="w-14 h-14 mx-auto rounded-2xl shadow-lg" />
@@ -174,8 +178,8 @@ const HomeView: React.FC<HomeViewProps> = ({
           )}
 
           {/* 简洁版首页第一屏:4 步说明 + 大一点的「创建任务」,整体在一屏正中间;教学视频(一行)在下面,往下滚才看到 */}
-          {simple && (
-            <div className="min-h-[calc(100vh-150px)] flex flex-col items-center justify-center gap-6">
+          {sh && (
+            <div className={`${simple ? 'min-h-[calc(100vh-150px)]' : 'min-h-[calc(100vh-200px)]'} flex flex-col items-center justify-center gap-6`}>
               {/* 标题:与专业版首页同款(logo + NoobClaw 霓虹绿 + 渐变副标题),不带下面那段介绍文字 */}
               <div className="text-center space-y-2">
                 <img src="logo.png" alt="logo" className="w-12 h-12 mx-auto rounded-2xl shadow-lg" />
@@ -225,7 +229,7 @@ const HomeView: React.FC<HomeViewProps> = ({
           )}
 
           {/* 使用流程 / 涨粉教程 — 三步走(简洁版用上面那一行,这里不显示) */}
-          <div className={`space-y-4 ${simple ? 'hidden' : ''}`}>
+          <div className={`space-y-4 ${sh ? 'hidden' : ''}`}>
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">
                 📖 {i18nService.t('hvStepsTitle')}
@@ -272,9 +276,9 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
 
           {/* 视频教程横排(与官网首页同款):数据来自 R2 清单,拉不到整个区不渲染 */}
-          {!simple && <HomeVideoTutorials filter="tags" />}
+          {!sh && <HomeVideoTutorials filter="tags" />}
 
-          {!simple && (<>
+          {!sh && (<>
           {/* 开源安全提示 */}
           <div className="flex justify-center">
             <a

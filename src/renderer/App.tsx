@@ -1211,6 +1211,7 @@ const App: React.FC = () => {
                 onShowMatrixTaskNew={handleShowMatrixTaskNew}
                 onShowMatrixTasks={handleShowMatrixTasks}
                 simple={simpleUi}
+                simpleHome={MATRIX_EDITION}
                 onShowWallet={handleShowWallet}
                 onShowInvite={handleShowInvite}
                 matrixExpiredCount={matrixExpiredTotal}
