@@ -993,7 +993,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
       <div className="flex-1 overflow-auto p-5">
         {/* 我的矩阵账号 —— 账号池(卡片样式对齐老客户端) */}
         {screen === 'accounts' && (
-          <div className="max-w-6xl mx-auto">
+          <div className={`${simple ? 'max-w-7xl' : 'max-w-6xl'} mx-auto`}>
             <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
               <div className="flex items-center gap-2.5">
                 {/* 简洁版:页面名已在顶部横条左侧,这里不重复 */}
@@ -1056,7 +1056,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 <button onClick={openAdd} className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95">{i18nService.t('mvConnectAccount').replace('{platform}', platLabel(platform))}</button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className={simple ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3' /* 简洁版:一行 3 个,宽屏 4 个 */ : 'grid grid-cols-1 md:grid-cols-2 gap-3' /* 专业版:一行 2 个(不变) */}>
                 {platformAccounts.map((a, idx) => {
                   // 状态小标签(挪到名字后边,表示状态;不放右侧按钮区)。
                   // 「登录过期」= login_required 但【连过有身份】(过期流程只翻状态不清身份);login_required 且无身份 = 尚未连接(从没连过)。
@@ -1079,7 +1079,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
                     const item = 'w-full text-left px-3 py-1.5 text-xs hover:bg-black/5 dark:hover:bg-white/5';
                     return (
-                      <div key={a.id} className={`relative rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 flex items-center gap-3 bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
+                      <div key={a.id} className={`relative rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 flex flex-col gap-3 bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
+                        <div className="flex items-center gap-3 min-w-0">
                         <div className="relative shrink-0">
                           <div className="w-10 h-10 rounded-full bg-violet-500/20 text-violet-500 flex items-center justify-center text-sm font-bold">{(a.nickname || a.displayName || '?').slice(0, 1)}</div>
                           {a.avatar && <img src={a.avatar.replace(/^http:/, 'https:')} referrerPolicy="no-referrer" alt="" className="absolute inset-0 w-10 h-10 rounded-full object-cover bg-gray-200 dark:bg-gray-700" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />}
@@ -1091,7 +1092,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           </div>
                           <div className="text-[11px] truncate mt-0.5">
                             {notConnected && !expired
-                              ? <span className="text-amber-500">{SL('还没连接,点右边「连接账号」', '還沒連接,點右邊「連接帳號」', 'Not connected yet — tap Connect')}</span>
+                              ? <span className="text-amber-500">{SL('还没连接,点下面「连接账号」', '還沒連接,點下面「連接帳號」', 'Not connected yet — tap Connect below')}</span>
                               : expired
                                 ? <span className="text-red-500">{SL('登录过期了,重新连接一下', '登入過期了,重新連接一下', 'Login expired — reconnect')}</span>
                                 : kwAll.length
@@ -1099,7 +1100,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                                   : <span className="text-amber-500">{SL('还没设关键词,点「编辑」加几个', '還沒設關鍵詞,點「編輯」加幾個', 'No keywords yet — tap Edit')}</span>}
                           </div>
                         </div>
-                        <div className="shrink-0 flex items-center gap-1.5">
+                        </div>
+                        <div className="flex items-center justify-end gap-1.5">
                           {notConnected
                             ? <button onClick={() => setConnectChoice({ accountId: a.id, plat: a.platform, displayName: a.displayName, loginScope: a.loginScope })} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-500 text-white hover:bg-violet-600">{SL('连接账号', '連接帳號', 'Connect')}</button>
                             : <button onClick={() => openEdit(a)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">{i18nService.t('mvEdit')}</button>}
