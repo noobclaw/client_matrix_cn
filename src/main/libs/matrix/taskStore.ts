@@ -92,6 +92,8 @@ export interface SaveTaskInput {
   commentLikeMax?: number;         // comment_like 用:每号每次最多点赞数(1-5000)
   blockTargets?: string[];         // block 用:名单
   blockKeywords?: string[];        // block 用:关键词
+  blockMode?: 'precise' | 'keyword'; // block 用:模式(缺省=老任务)
+  blockTargetsByAccount?: Record<string, string[]>; // block 精准模式:各账号名单
   concurrency?: number;
   frequency: MatrixTaskFrequency;
 }
@@ -201,11 +203,29 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       }
       return out;
     };
-    const blockTargets = uniq(input.blockTargets, 300, BLOCK_LIMITS.maxTargets);
-    const blockKeywords = uniq(input.blockKeywords, BLOCK_LIMITS.keywordMaxLen, BLOCK_LIMITS.maxKeywords);
-    if (!blockTargets.length && !blockKeywords.length) return { ok: false, error: 'block_no_targets' };
-    if (!(input.accountIds || []).filter(Boolean).length) return { ok: false, error: 'block_no_account' };
-    input = { ...input, blockTargets, blockKeywords, quota: {} };
+    const accIds = (input.accountIds || []).filter(Boolean).map(String);
+    if (!accIds.length) return { ok: false, error: 'block_no_account' };
+    if (input.blockMode === 'keyword') {
+      // 关键词模式:不存词 —— 运行时取各账号自己的关键词(和矩阵账号是同一份,改了就生效)。
+      input = { ...input, blockMode: 'keyword', blockTargets: [], blockKeywords: [], blockTargetsByAccount: undefined, quota: {} };
+    } else if (input.blockMode === 'precise') {
+      // 精准模式:每个执行账号各自一份名单;只保留选中的账号,每号去重裁剪。
+      const byAcc: Record<string, string[]> = {};
+      const src = input.blockTargetsByAccount || {};
+      for (const id of accIds) {
+        const list = uniq(src[id], 300, BLOCK_LIMITS.maxTargets);
+        if (list.length) byAcc[id] = list;
+      }
+      if (!Object.keys(byAcc).length) return { ok: false, error: 'block_no_targets' };
+      // blockTargets 存并集,只给详情页/摘要展示用;运行时以 blockTargetsByAccount 为准。
+      const union = uniq(Object.values(byAcc).flat(), 300, BLOCK_LIMITS.maxTargets * 50);
+      input = { ...input, blockMode: 'precise', blockTargets: union, blockKeywords: [], blockTargetsByAccount: byAcc, quota: {} };
+    } else {
+      const blockTargets = uniq(input.blockTargets, 300, BLOCK_LIMITS.maxTargets);
+      const blockKeywords = uniq(input.blockKeywords, BLOCK_LIMITS.keywordMaxLen, BLOCK_LIMITS.maxKeywords);
+      if (!blockTargets.length && !blockKeywords.length) return { ok: false, error: 'block_no_targets' };
+      input = { ...input, blockTargets, blockKeywords, blockMode: undefined, blockTargetsByAccount: undefined, quota: {} };
+    }
   }
 
   if (input.id) {
@@ -243,6 +263,8 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : tasks[i].commentLikeMax,
       blockTargets: input.type === 'block' ? input.blockTargets : tasks[i].blockTargets,
       blockKeywords: input.type === 'block' ? input.blockKeywords : tasks[i].blockKeywords,
+      blockMode: input.type === 'block' ? input.blockMode : tasks[i].blockMode,
+      blockTargetsByAccount: input.type === 'block' ? input.blockTargetsByAccount : tasks[i].blockTargetsByAccount,
       reportItems: input.type === 'report' ? reportItems : tasks[i].reportItems,
       concurrency: input.concurrency,
       frequency: input.frequency,
@@ -284,6 +306,8 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : undefined,
     blockTargets: input.type === 'block' ? input.blockTargets : undefined,
     blockKeywords: input.type === 'block' ? input.blockKeywords : undefined,
+    blockMode: input.type === 'block' ? input.blockMode : undefined,
+    blockTargetsByAccount: input.type === 'block' ? input.blockTargetsByAccount : undefined,
     reportItems,
     concurrency: input.concurrency,
     frequency: input.frequency || 'once',

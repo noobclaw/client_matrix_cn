@@ -281,6 +281,8 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     // block:名单 + 关键词(详情页展示 + 编辑回填)。
     block_targets: isBlock ? (Array.isArray(t.blockTargets) ? t.blockTargets : []) : undefined,
     block_keywords: isBlock ? (Array.isArray(t.blockKeywords) ? t.blockKeywords : []) : undefined,
+    block_mode: isBlock ? (t.blockMode || undefined) : undefined,
+    block_targets_by_account: isBlock ? (t.blockTargetsByAccount || undefined) : undefined,
     daily_count: (isDownload || isCommentLike) ? (dlUrls.length || 1) : isReport ? (reportItems.length || 1) : 1,
     variants_per_post: 1,
     daily_time: '',
@@ -400,6 +402,8 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       quota: {},
       blockTargets: Array.isArray((input as any).block_targets) ? (input as any).block_targets : [],
       blockKeywords: Array.isArray((input as any).block_keywords) ? (input as any).block_keywords : [],
+      blockMode: (input as any).block_mode,
+      blockTargetsByAccount: (input as any).block_targets_by_account,
       concurrency: (input as any).concurrency || 1,
       frequency: input.run_interval || 'once',
       enabled: input.enabled !== false,

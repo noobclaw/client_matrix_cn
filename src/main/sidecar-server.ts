@@ -579,6 +579,8 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           commentLikeMax: isCommentLike ? task.commentLikeMax : undefined,
           blockTargets: isBlock ? (task.blockTargets || []) : undefined,
           blockKeywords: isBlock ? (task.blockKeywords || []) : undefined,
+          blockMode: isBlock ? task.blockMode : undefined,
+          blockTargetsByAccount: isBlock ? task.blockTargetsByAccount : undefined,
           // 举报:条目透传给剧本;单账号、单窗口(存盘时已强制),这里再夹一次只取第 1 个号。
           reportItems: isReport ? (task.reportItems || []) : undefined,
           reportDryRun: isReport ? dryRun : undefined,

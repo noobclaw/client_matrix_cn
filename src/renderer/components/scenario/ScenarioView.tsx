@@ -756,6 +756,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       accountIds: editTask.account_ids || [],
       blockTargets: Array.isArray(editTask.block_targets) ? editTask.block_targets : [],
       blockKeywords: Array.isArray(editTask.block_keywords) ? editTask.block_keywords : [],
+      blockMode: editTask.block_mode,
+      blockTargetsByAccount: editTask.block_targets_by_account,
       concurrency: editTask.concurrency,
       frequency: editTask.run_interval,
     } : null);
@@ -764,18 +766,19 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     try {
       const r = await (window as any).electron?.matrix?.listAccounts?.();
       const accs: any[] = r?.ok && Array.isArray(r.accounts) ? r.accounts : [];
-      setMatrixBlockAccounts(accs.filter((a) => leadAccountFilter(a, platform)).map(mapWizardAccount));
+      // 关键词模式要显示【跑的时候真正用的】词 = 原始词 + AI 衍生词(effectiveKeywords),带上 derivedKeywords。
+      setMatrixBlockAccounts(accs.filter((a) => leadAccountFilter(a, platform)).map((a) => ({ ...mapWizardAccount(a), derivedKeywords: Array.isArray(a.derivedKeywords) ? a.derivedKeywords : [] })));
     } catch { setMatrixBlockAccounts([]); }
     finally { setMatrixBlockAccountsLoading(false); }
   };
   const openMatrixBlockWizardEdit = (task: any) => openMatrixBlockWizard((task?.platform as string) || 'douyin', task);
-  const saveMatrixBlockTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; blockTargets: string[]; blockKeywords: string[] }) => {
+  const saveMatrixBlockTask = async (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; blockMode: 'precise' | 'keyword'; blockTargetsByAccount: Record<string, string[]> }) => {
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); throw new Error('请先登录 NoobClaw 账号'); }
     const m = (window as any).electron?.matrix;
-    const r = await m?.saveTask?.({ id: matrixBlockTask?.id, platform: matrixBlockPlatform, type: 'block', name: input.name, accountIds: input.accountIds, blockTargets: input.blockTargets, blockKeywords: input.blockKeywords, quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
+    const r = await m?.saveTask?.({ id: matrixBlockTask?.id, platform: matrixBlockPlatform, type: 'block', name: input.name, accountIds: input.accountIds, blockMode: input.blockMode, blockTargetsByAccount: input.blockMode === 'precise' ? input.blockTargetsByAccount : undefined, blockTargets: [], blockKeywords: [], quota: {}, concurrency: input.concurrency, frequency: input.frequency, enabled: true });
     if (!r?.ok) {
       if (r?.error === 'duplicate_type') { const dp = matrixBlockPlatform; setMatrixBlockPlatform(null); setMatrixBlockTask(null); setDupNotice({ platform: dp as string, label: '批量拉黑' }); return; }
-      throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', block_no_targets: '名单和关键词至少填一项', block_no_account: '请至少选 1 个执行账号', block_platform_unsupported: '目前仅支持抖音' } as any)[r?.error] || r?.error || '保存失败');
+      throw new Error(({ platform_task_limit: '该平台任务已达 5 个上限', block_no_targets: '请至少给一个账号填要拉黑的名单', block_no_account: '请至少选 1 个执行账号', block_platform_unsupported: '目前仅支持抖音' } as any)[r?.error] || r?.error || '保存失败');
     }
     const wasEdit = !!matrixBlockTask?.id;
     const plat = matrixBlockPlatform;
@@ -1938,10 +1941,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               <div className="text-xl font-bold dark:text-white mb-1">🚫 {platLabel} · {i18nService.currentLanguage === 'zh' ? '批量拉黑' : i18nService.currentLanguage === 'zh-TW' ? '批量封鎖' : 'Batch Block'}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
                 {i18nService.currentLanguage === 'zh'
-                  ? <>粘贴竞争对手名单,或输入关键词把搜出来的同行作者<strong>逐个拉黑</strong>(跳过已关注的人)。</>
+                  ? <>精准模式给每个账号粘竞争对手名单;关键词模式用账号自己的关键词,把搜出来的同行作者<strong>逐个拉黑</strong>(跳过已关注的人)。</>
                   : i18nService.currentLanguage === 'zh-TW'
-                    ? <>貼上競爭對手名單,或輸入關鍵詞把搜出來的同行作者<strong>逐個封鎖</strong>(跳過已關注的人)。</>
-                    : <>Paste a list of accounts, or enter keywords to <strong>block the matching creators</strong> one by one (accounts you follow are skipped).</>}
+                    ? <>精準模式給每個帳號貼競爭對手名單;關鍵詞模式用帳號自己的關鍵詞,把搜出來的同行作者<strong>逐個封鎖</strong>(跳過已關注的人)。</>
+                    : <>Targeted mode: paste a list per account. Keyword mode: use each account's own keywords to <strong>block the matching creators</strong> one by one (accounts you follow are skipped).</>}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
                 <button

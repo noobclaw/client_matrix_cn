@@ -143,6 +143,8 @@ export interface EngageTaskOptions {
   commentLikeMax?: number;         // 仅 comment_like:每号本次最多点赞数(注入 ctx.task.comment_like_max)
   blockTargets?: string[];         // 仅 block:名单(注入 ctx.task.block_targets)
   blockKeywords?: string[];        // 仅 block:关键词(注入 ctx.task.block_keywords)
+  blockMode?: 'precise' | 'keyword'; // 仅 block:精准=各号名单 / 关键词=各号自己的关键词;缺省=老任务
+  blockTargetsByAccount?: Record<string, string[]>; // 仅 block 精准模式:accountId → 名单
   reportItems?: Array<{ url: string; targetType: string; reason: string; subReason?: string; description: string }>; // 仅 report:条目(注入 ctx.task.report_items)
   reportDryRun?: boolean;          // 仅 report:试运行(选原因+填描述,停在提交前;不计费)
   concurrency?: number;
@@ -397,6 +399,17 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       log('❌ 跳过:未配置关键词(到「我的矩阵账号」编辑里添加)'); return { accountId, state: 'skipped', reason: 'no_keywords' };
     }
   }
+  // 批量拉黑:按模式算出本号的名单/关键词;本号没东西可拉就跳过并说明原因。
+  let blockTargetsForAcc = opts.blockTargets, blockKeywordsForAcc = opts.blockKeywords;
+  if (opts.taskType === 'block' && opts.blockMode === 'keyword') {
+    blockTargetsForAcc = [];
+    blockKeywordsForAcc = effectiveKeywords(acc).map((k) => String(k).slice(0, 30)).slice(0, 20);
+    if (!blockKeywordsForAcc.length) { log('❌ 跳过:关键词模式但该账号没配关键词(到「我的矩阵账号」编辑里添加)'); return { accountId, state: 'skipped', reason: 'no_keywords' }; }
+  } else if (opts.taskType === 'block' && opts.blockMode === 'precise') {
+    blockKeywordsForAcc = [];
+    blockTargetsForAcc = (opts.blockTargetsByAccount && opts.blockTargetsByAccount[accountId]) || [];
+    if (!blockTargetsForAcc.length) { log('❌ 跳过:该账号没有填要拉黑的名单'); return { accountId, state: 'skipped', reason: 'no_targets' }; }
+  }
   if (acc.status === 'banned' || acc.status === 'limited') { log('❌ 跳过:账号状态为 ' + acc.status); return { accountId, state: 'skipped', reason: 'account_' + acc.status }; }
 
   await abortableSleep(randInt(opts.jitterMinMs ?? 3000, opts.jitterMaxMs ?? 15000), opts.signal); // 错峰(可中断:停止立即结束)
@@ -501,8 +514,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       // comment_like 剧本读 task.comment_like_max(每号本次最多点赞数;缺省剧本按 100)。
       comment_like_max: opts.commentLikeMax,
       // block 剧本读 task.block_targets / block_keywords。
-      block_targets: opts.blockTargets,
-      block_keywords: opts.blockKeywords,
+      block_targets: blockTargetsForAcc,
+      block_keywords: blockKeywordsForAcc,
       // report 剧本读 task.report_items(1-4 条 {url, reason, description},用户手填原样提交)。
       report_items: Array.isArray(opts.reportItems) ? opts.reportItems.map((it) => ({
         url: it.url, target_type: it.targetType, reason: it.reason, sub_reason: it.subReason || '', description: it.description,

@@ -269,6 +269,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     /_reply_fans_comment$/.test(scenario?.id || '');
   // 抖音Report(*_report):复用本页布局,只换文案 —— 不显示赞/关注/评论、输出目录、发布徽章等互动任务专属内容。
   const isReportTask = /_report$/.test(String(task.scenario_id || ''));
+  // 批量拉黑(*_block):独立展示 —— 模式 + 各号名单/关键词,不显示赛道、输出目录、发布徽章、「N 条/次」。
+  const isBlockTask = /_block$/.test(String(task.scenario_id || ''));
+  const blockMode: string = String((task as any).block_mode || '');
+  const blockByAcc: Record<string, string[]> = ((task as any).block_targets_by_account && typeof (task as any).block_targets_by_account === 'object') ? (task as any).block_targets_by_account : {};
+  const BL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
 
   // 打开本任务输出目录(报告 / 草稿 / 图片)。头部链接 + 醒目按钮 + 运行明细大按钮共用。
   const openTaskDir = async () => {
@@ -754,6 +759,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const typeBadge = (() => {
     const sid = task.scenario_id;
     if (/_report$/.test(String(sid || ''))) return { icon: '📋', label: i18nService.t('rpBrand'), color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (/_block$/.test(String(sid || ''))) return { icon: '🚫', label: BL('抖音 · 批量拉黑', '抖音 · 批量封鎖', 'Douyin · Batch Block'), color: 'text-red-500 bg-red-500/10 border-red-500/30' };
     // 交易所广场(gate/okx/bitget/bybit × engage/post/repost)。这是第 4 处写死的平台链条,
     // 同样没登记这 12 个 sid → 详情页徽章掉到 tdTypeXhsAutoEngage,OKX 任务显示成
     // 「💬 💬 小红书 · 互动涨粉」(那条文案自带 💬,和 icon 撞成两个,用户实拍)。
@@ -931,7 +937,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <div>
                         <div className="flex items-center gap-3 mb-1.5">
                           <span className="text-gray-400">{i18nService.t('tdAccountsLabel')}</span>
-                          <span className="dark:text-white font-medium">{(isReportTask ? i18nService.t('rpAccountsSummary') : i18nService.t('tdAccountsSummary')).replace('{n}', String(matrixAccountIds.length))}</span>
+                          <span className="dark:text-white font-medium">{isBlockTask
+                            ? (blockMode === 'keyword'
+                                ? BL(`${matrixAccountIds.length} 个 · 🔎 关键词模式(用各账号自己的关键词)`, `${matrixAccountIds.length} 個 · 🔎 關鍵詞模式(用各帳號自己的關鍵詞)`, `${matrixAccountIds.length} · 🔎 keyword mode (each account's own keywords)`)
+                                : blockMode === 'precise'
+                                  ? BL(`${matrixAccountIds.length} 个 · 🎯 精准模式(各账号自己的名单)`, `${matrixAccountIds.length} 個 · 🎯 精準模式(各帳號自己的名單)`, `${matrixAccountIds.length} · 🎯 targeted mode (per-account lists)`)
+                                  : BL(`${matrixAccountIds.length} 个`, `${matrixAccountIds.length} 個`, `${matrixAccountIds.length}`))
+                            : (isReportTask ? i18nService.t('rpAccountsSummary') : i18nService.t('tdAccountsSummary')).replace('{n}', String(matrixAccountIds.length))}</span>
                           <span className="text-[10px] text-gray-500 font-mono">#{shortId(task.id)}</span>
                         </div>
                         {accs.length > 0 ? (
@@ -946,13 +958,27 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                                   <span className="shrink-0">{EM[a.platform] || '•'}</span>
                                   <span className="font-medium dark:text-gray-200 truncate min-w-0">{a.nickname || a.displayName}</span>
                                   {a.displayId && <span className="text-gray-500 dark:text-gray-400 truncate shrink-0">· {idLabel(a.platform)}:{a.displayId}</span>}
-                                  <span className="ml-auto shrink-0 text-gray-500 dark:text-gray-400">🎯 {a.group ? a.group : <span className="text-amber-500">{i18nService.t('tdTrackNotSet')}</span>}</span>
+                                  {!isBlockTask && <span className="ml-auto shrink-0 text-gray-500 dark:text-gray-400">🎯 {a.group ? a.group : <span className="text-amber-500">{i18nService.t('tdTrackNotSet')}</span>}</span>}
                                 </div>
+                                {isBlockTask && blockMode !== 'keyword' ? (() => {
+                                  // 精准模式:本号自己的名单;老任务(无 block_mode)= 所有号共用 block_targets + block_keywords。
+                                  const list: string[] = blockMode === 'precise' ? (blockByAcc[a.id] || []) : (Array.isArray((task as any).block_targets) ? (task as any).block_targets : []);
+                                  const kws: string[] = blockMode === 'precise' ? [] : (Array.isArray((task as any).block_keywords) ? (task as any).block_keywords : []);
+                                  return (
+                                    <div className="text-gray-500 dark:text-gray-400 truncate" title={list.join('\n') || undefined}>
+                                      🚫 {list.length
+                                        ? BL(`名单 ${list.length} 条:`, `名單 ${list.length} 條:`, `${list.length} targets: `) + list.slice(0, 2).join(' · ') + (list.length > 2 ? ' …' : '')
+                                        : (kws.length ? '' : <span className="text-amber-500">{BL('未填名单', '未填名單', 'no targets')}</span>)}
+                                      {kws.length > 0 && <>{list.length ? ' · ' : ''}🔎 {kws.join(' · ')}</>}
+                                    </div>
+                                  );
+                                })() : (
                                 <div className="text-gray-500 dark:text-gray-400 truncate" title={a.keywords && a.keywords.length ? a.keywords.join(' · ') : undefined}>
                                   🏷️ {a.keywords && a.keywords.length
                                     ? a.keywords.slice(0, 4).join(' · ') + (a.keywords.length > 4 ? ' …' : '')
                                     : <span className="text-amber-500">{i18nService.t('tdNoKeywords')}</span>}
                                 </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1331,6 +1357,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         // v2.4.60: 频次显示真实用户配置(min/max),不再写死 daily_count
                         const sid = task.scenario_id;
                         const t = task as any;
+                        if (isBlockTask) return BL(`${intervalLabel} · 不限人数 · 每次间隔 3~15 秒`, `${intervalLabel} · 不限人數 · 每次間隔 3~15 秒`, `${intervalLabel} · no limit · 3-15s apart`);
                         // 评论语言标记:海外互动任务设了【具体语言】(非 auto)时,摘要里标出来(国内平台跟帖子语言,不标)。
                         const COMMENT_LANG_LABEL: Record<string, string> = { zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
                         const cLang: string = t.comment_lang || t.quota?.comment_lang || 'auto';
@@ -1520,7 +1547,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             {/* Output folder link — for auto_reply this contains the run-report
                 Markdown; for viral_production this contains the rewrite drafts
                 + images. Either way it's the place to look for what was produced. */}
-{!isReportTask && (
+{!isReportTask && !isBlockTask && (
             <div className="flex items-center gap-2 flex-wrap">
               <span>{i18nService.t('tdOutputLabel')}</span>
               {/* 点文字也能打开(保留旧交互) */}
@@ -1909,6 +1936,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               {isReportTask ? (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-sky-500/10 text-sky-500 border-sky-500/30">
                   📋 {i18nService.t('rpRunBadge')}
+                </span>
+              ) : isBlockTask ? (
+                <span className="text-xs px-2.5 py-1 rounded-full border bg-red-500/10 text-red-500 border-red-500/30">
+                  🚫 {BL('逐个打开主页拉黑', '逐個打開主頁封鎖', 'Blocks profiles one by one')}
                 </span>
               ) : isVideoDownloadTask ? (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-500 border-blue-500/30">

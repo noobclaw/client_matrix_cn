@@ -396,6 +396,10 @@ export interface MatrixTask {
   commentLikeMax?: number;         // 仅 comment_like 用:每个账号每次运行最多点赞几条评论(1-5000,默认 100)
   blockTargets?: string[];         // 仅 block 用:要拉黑的名单(主页/作品链接、短链、抖音号)
   blockKeywords?: string[];        // 仅 block 用:关键词(搜视频,拉黑相关作者)
+  // 仅 block 用:模式。'precise'=各账号自己的名单(blockTargetsByAccount);'keyword'=用各账号自己的关键词
+  //   (matrix 账号的 keywords,运行时取)。缺省 = 老任务,按 blockTargets/blockKeywords 原样跑。
+  blockMode?: 'precise' | 'keyword';
+  blockTargetsByAccount?: Record<string, string[]>; // 仅 block 精准模式:accountId → 该号要拉黑的名单
   reportItems?: ReportItem[];      // 仅 report 用:1-4 条举报条目
   // 仅 report 用:最近一次正式执行时间(展示用,不锁定)。
   reportExecutedAt?: number;
