@@ -121,7 +121,7 @@ const HomeView: React.FC<HomeViewProps> = ({
       </>)}
       {/* ── 主体 ── */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="max-w-3xl mx-auto px-5 py-8 space-y-8">
+        <div className={`${simple ? 'max-w-5xl' : 'max-w-3xl'} mx-auto px-5 py-8 space-y-8`}>
 
           {!simple && (<>
           {/* Hero / 产品定位 */}
@@ -173,32 +173,29 @@ const HomeView: React.FC<HomeViewProps> = ({
             </div>
           )}
 
-          {/* 简洁版首页:一行简单的 3 步 → 一个正常大小的「创建任务」按钮 → 下面是教学视频(可按平台筛) */}
+          {/* 简洁版首页第一屏:4 步说明 + 大一点的「创建任务」,整体在一屏正中间;教学视频(一行)在下面,往下滚才看到 */}
           {simple && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-center flex-wrap gap-2 text-sm">
-                {([
-                  [1, i18nService.t('hvStep1Title'), onShowMatrix, matrixExpiredCount],
-                  [2, i18nService.t('hvStep2Title'), onShowMatrixTaskNew, 0],
-                  [3, i18nService.t('hvStep3Title'), onShowMatrixTasks, 0],
-                ] as const).map(([n, label, go, badge], idx) => (
-                  <React.Fragment key={n}>
+            <div className="min-h-[calc(100vh-150px)] flex flex-col items-center justify-center gap-8">
+              <div className="flex items-center justify-center flex-wrap gap-2 text-[15px]">
+                {[
+                  SL('选择平台任务', '選擇平台任務', 'Pick a platform task'),
+                  SL('设置相关要求', '設置相關要求', 'Set the requirements'),
+                  SL('选择矩阵账号', '選擇矩陣帳號', 'Choose matrix accounts'),
+                  SL('设定任务定期运行并查看运行效果', '設定任務定期運行並查看運行效果', 'Schedule it and check the results'),
+                ].map((label, idx) => (
+                  <React.Fragment key={idx}>
                     {idx > 0 && <span className="text-gray-400">→</span>}
-                    <button type="button" onClick={go}
-                      className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg dark:text-claude-darkText text-claude-text hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover">
-                      <span className="w-6 h-6 rounded-full bg-claude-accent/15 text-claude-accent text-xs font-bold flex items-center justify-center">{n}</span>
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg dark:bg-white/[0.03] bg-white dark:text-claude-darkText text-claude-text">
+                      <span className="w-6 h-6 rounded-full bg-claude-accent/15 text-claude-accent text-xs font-bold flex items-center justify-center">{idx + 1}</span>
                       {label}
-                      {!!badge && <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-4">{badge}</span>}
-                    </button>
+                    </span>
                   </React.Fragment>
                 ))}
               </div>
-              <div className="flex justify-center">
-                <button type="button" onClick={onShowMatrixTaskNew}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-sm font-semibold bg-claude-accent hover:bg-claude-accentHover text-[#04130B] transition-colors">
-                  ＋ {SL('创建任务', '建立任務', 'Create a task')}
-                </button>
-              </div>
+              <button type="button" onClick={onShowMatrixTaskNew}
+                className="inline-flex items-center gap-2 px-10 py-4 rounded-2xl text-lg font-bold bg-claude-accent hover:bg-claude-accentHover text-[#04130B] transition-colors">
+                ＋ {SL('创建任务', '建立任務', 'Create a task')}
+              </button>
             </div>
           )}
 

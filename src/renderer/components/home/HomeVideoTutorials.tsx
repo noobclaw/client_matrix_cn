@@ -144,7 +144,7 @@ const HomeVideoTutorials: React.FC<{ filter?: 'tags' | 'select' }> = ({ filter =
           ref={rowRef}
           onScroll={updateArrows}
           className="flex-1 overflow-x-auto"
-          style={{ display: 'grid', gridAutoFlow: 'column', gridTemplateRows: 'repeat(2, auto)', gridAutoColumns: '176px', gap: 10, scrollBehavior: 'smooth', scrollbarWidth: 'none' }}
+          style={{ display: 'grid', gridAutoFlow: 'column', gridTemplateRows: filter === 'select' ? 'repeat(1, auto)' : 'repeat(2, auto)', gridAutoColumns: '176px', gap: 10, scrollBehavior: 'smooth', scrollbarWidth: 'none' }}
         >
           {loading && Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="rounded-xl overflow-hidden border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white">
