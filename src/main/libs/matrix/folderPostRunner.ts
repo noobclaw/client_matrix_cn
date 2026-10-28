@@ -11,7 +11,7 @@
  */
 
 import { coworkLog } from '../coworkLogger';
-import { launchKernel, kernelNavigate, closeKernel, checkKernelLogin, NO_KERNEL_ERROR } from './kernelPool';
+import { launchKernel, kernelNavigate, closeKernel, checkKernelLogin, kernelEval, NO_KERNEL_ERROR } from './kernelPool';
 import { inspectHoldMs } from './inspectHold';
 import { installedKernelPath } from './kernelInstaller';
 import { getAccount, setAccountStatus, accountBadgeLabel, matrixGroupTitle, markAccountAlive, platformKey } from './accountManager';
@@ -20,7 +20,8 @@ import { getNoobClawAuthToken } from '../claudeSettings';
 import { runMatrixDriver } from './driverCtx';
 import type { EngageItemResult, EngageReport } from './engageRunner';
 import type { FolderPostConfig } from './types';
-import { ensureAccountDirs, pickNext, archiveUsed, dueOccurrences, ledgerMark, ledgerHas, normSlots, slotStatus, SLOT_DIR, type Occurrence } from './folderPost';
+import { ensureAccountDirs, pickNext, archiveUsed, dueOccurrences, ledgerMark, ledgerHas, ledgerPending, ledgerStuck, normSlots, slotStatus, SLOT_DIR, type Occurrence, type MediaItem } from './folderPost';
+import fs from 'fs';
 import path from 'path';
 
 const DEFAULT_BASE_URL = 'https://api.noobclaw.com';
@@ -69,6 +70,34 @@ async function chargeAction(authToken: string | undefined, actionType: string, p
   } catch { return { ok: false, reason: 'network_error' }; }
 }
 
+/** 发之前先看余额:先发后扣,余额为 0 时扣费会失败,但帖子已经发出去了 —— 不先拦就等于免费发。
+ *  只在【确知】余额不够时拦;查不到(断网等)放行,发完扣费失败照常熔断。 */
+const POST_PRICE_MAX = 2000;
+async function balanceTooLow(authToken: string | undefined): Promise<boolean> {
+  if (!authToken) return true;
+  try {
+    const res = await fetch(`${baseUrl()}/api/ai/balance`, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (res.status === 401) return true;
+    if (!res.ok) return false;
+    const d: any = await res.json().catch(() => ({}));
+    const b = Number(d?.tokenBalance);
+    return Number.isFinite(b) && b < POST_PRICE_MAX;
+  } catch { return false; }
+}
+
+/** 视频 driver(douyin.js,现网脚本不动)点完发布等 4 秒就报成功,不确认结果。这里补一次确认:
+ *  跳到「作品管理」(/content/manage)才算发出去;还停在发布页 / 跳去别处 → 当「没确认到」处理。 */
+async function confirmVideoPublished(accountId: string, signal?: AbortSignal): Promise<boolean> {
+  for (let i = 0; i < 12; i++) {
+    let u = '';
+    try { u = String(await kernelEval(accountId, 'location.href', 5000) || ''); } catch { /* ignore */ }
+    if (u.indexOf('/content/manage') >= 0) return true;
+    if (signal?.aborted) return false;
+    await sleep(2500);
+  }
+  return false;
+}
+
 interface Work { slot: number; occ?: Occurrence }
 
 async function runOne(opts: FolderPostTaskOptions, accountId: string, work: Work[], chargeFatal: { reason: string }): Promise<EngageItemResult> {
@@ -81,6 +110,25 @@ async function runOne(opts: FolderPostTaskOptions, accountId: string, work: Work
   if (acc.platform !== opts.platform) { log('❌ 跳过:账号平台与任务不符'); return { accountId, state: 'skipped', reason: 'platform_mismatch' }; }
   if (acc.status === 'banned' || acc.status === 'limited') { log('❌ 跳过:账号状态为 ' + acc.status); return { accountId, state: 'skipped', reason: 'account_' + acc.status }; }
   const accDir = ensureAccountDirs(acc);
+
+  // ① 上次崩溃恢复:还停在「发布中」的 → 可能已经发出去了,把那次用的文件挪进「待确认」(绝不再发一遍)。
+  for (const e of ledgerPending(opts.taskId, accountId)) {
+    const media: MediaItem | null = e.media ? { kind: 'images', name: e.mediaName || path.basename(e.media), path: e.media, files: e.mediaFiles || [] } : null;
+    const res = media && fs.existsSync(media.path) ? archiveUsed(accDir, e.slot || 1, { media, captionPath: e.caption, topicPath: e.topic }, 'unsure') : { dest: '', ok: true };
+    log(res.dest ? `⚠️ 上次 ${SLOT_DIR(e.slot || 1)} 点了发布后程序被关了,不知道发没发成功 —— 那条挪到 ${res.dest},请到抖音「作品管理」核对` : `⚠️ 上次 ${SLOT_DIR(e.slot || 1)} 点了发布后程序被关了,请到抖音「作品管理」核对是否发出`);
+    ledgerMark(opts.taskId, e.key, { ts: Date.now(), ok: false, note: 'crash_unsure', stuck: !res.ok, stuckTo: 'unsure' });
+  }
+  // ② 发出去了但素材没挪走的:先挪,挪不走这个号这次一条都不发(否则会重复发)。
+  for (const e of ledgerStuck(opts.taskId, accountId)) {
+    if (!e.media || !fs.existsSync(e.media)) { ledgerMark(opts.taskId, e.key, { ts: e.ts, ok: e.ok, stuck: false }); continue; }
+    const media: MediaItem = { kind: 'images', name: e.mediaName || path.basename(e.media), path: e.media, files: e.mediaFiles || [] };
+    const res = archiveUsed(accDir, e.slot || 1, { media }, e.stuckTo || 'done');
+    if (res.ok) { ledgerMark(opts.taskId, e.key, { ts: e.ts, ok: e.ok, stuck: false }); log(`📦 上次没挪走的「${media.name}」已挪到 ${res.dest}`); continue; }
+    log(`⛔ 「${e.media}」已经发过,但文件挪不走(可能被别的程序占用 / 只读)。为免重复发,这个号先不发 —— 请手动把它移出「素材」文件夹`);
+    for (const w of work) if (w.occ && !ledgerHas(opts.taskId, w.occ.key)) ledgerMark(opts.taskId, w.occ.key, { ts: Date.now(), ok: false, note: 'blocked_stuck' });
+    return { accountId, state: 'failed', reason: 'archive_stuck' };
+  }
+
   // 没素材的时段先在这里说清楚、登记掉,不为它们启动浏览器。
   const ready: Work[] = [];
   for (const w of work) {
@@ -120,8 +168,24 @@ async function runOne(opts: FolderPostTaskOptions, accountId: string, work: Work
       const w = ready[i];
       const pick = pickNext(accDir, w.slot);
       if (!pick) continue;
-      // 先登记再发:万一中途崩了 / 被关,重启后不会把这个时段再发一遍。
-      if (w.occ) ledgerMark(opts.taskId, w.occ.key, { ts: Date.now(), ok: null, note: 'publishing' });
+      // 余额确知不够 → 不发(先发后扣,不拦就成了免费发)
+      if (await balanceTooLow(authToken)) {
+        chargeFatal.reason = chargeFatal.reason || 'insufficient_balance';
+        log('⛔ 积分余额不足,这次先不发(素材留着),请充值后继续');
+        if (w.occ) ledgerMark(opts.taskId, w.occ.key, { ts: Date.now(), ok: false, note: 'insufficient_balance' });
+        break;
+      }
+      // 先登记再发(连同这次用的文件):万一中途崩了 / 被关,重启后不会把这个时段再发一遍,
+      //   用过的文件也会被挪进「待确认」。账本写不进去 → 不发(否则每分钟都会被叫起来再发一条)。
+      // 手动试发没有时段 occurrence → 用一次性的 key 记,同样受崩溃恢复保护。
+      const ledgerKey = w.occ ? w.occ.key : `${accountId}|${w.slot}|manual-${Date.now()}`;
+      try {
+        ledgerMark(opts.taskId, ledgerKey, { ts: Date.now(), ok: null, note: 'publishing', slot: w.slot, media: pick.media.path, mediaName: pick.media.name, mediaFiles: pick.media.files, caption: pick.captionPath, topic: pick.topicPath }, true);
+      } catch {
+        log('⛔ 发布记录写不进本机(磁盘满 / 没权限?),为免重复发,这个号先不发');
+        lastReason = 'ledger_write_failed';
+        break;
+      }
       const isVideo = pick.media.kind === 'video';
       log(`📤 ${SLOT_DIR(w.slot)}:${isVideo ? '视频' : `图文(${pick.media.files.length} 张)`}「${pick.media.name}」`
         + (pick.title ? ` · 标题「${pick.title.slice(0, 20)}」` : ' · ⚠️ 没有文案')
@@ -131,32 +195,41 @@ async function runOne(opts: FolderPostTaskOptions, accountId: string, work: Work
       const input: any = isVideo
         ? { videoPath: pick.media.files[0], title: pick.title, description: pick.body, tags: pick.tags }
         : { videoPath: '', imagePaths: pick.media.files, title: pick.title, description: pick.body, tags: pick.tags, bgm: true };
-      const r = await runMatrixDriver(accountId, (isVideo ? 'douyin' : 'douyin_images') as any, input, (m) => log('   ' + m));
+      let r = await runMatrixDriver(accountId, (isVideo ? 'douyin' : 'douyin_images') as any, input, (m) => log('   ' + m));
+      if (r.ok && isVideo && !(await confirmVideoPublished(accountId, opts.signal))) r = { ok: false, reason: 'publish_not_confirmed' };
       if (r.ok) {
-        const dest = archiveUsed(accDir, w.slot, pick, 'done');
+        const ar = archiveUsed(accDir, w.slot, pick, 'done');
         counts.post++;
-        log(`✅ 已发布,文件挪到 ${dest}`);
-        if (w.occ) ledgerMark(opts.taskId, w.occ.key, { ts: Date.now(), ok: true });
+        ledgerMark(opts.taskId, ledgerKey, { ts: Date.now(), ok: true, note: undefined, stuck: !ar.ok, stuckTo: 'done' });
+        log(ar.ok ? `✅ 已发布,文件挪到 ${ar.dest}` : `✅ 已发布,但素材「${pick.media.name}」挪不走(被占用 / 只读?)—— 这个号先停发,请手动把它移出「素材」文件夹`);
         // 按条计费(失败退避重试;仍失败 → 熔断整个任务,和其它矩阵任务一致)
-        let cr: any = await chargeAction(authToken, 'post', 'douyin', `folder_post:${opts.taskId}`);
-        for (let ci = 1; ci < 4 && !(cr && cr.ok) && !/insufficient|余额/i.test(String(cr?.reason || '')); ci++) { await sleep(3000 * ci); cr = await chargeAction(authToken, 'post', 'douyin', `folder_post:${opts.taskId}`); }
+        const refId = `folder_post:${opts.taskId}:${ledgerKey}`;
+        let cr: any = await chargeAction(authToken, 'post', 'douyin', refId);
+        for (let ci = 1; ci < 4 && !(cr && cr.ok) && !/insufficient|余额/i.test(String(cr?.reason || '')); ci++) { await sleep(3000 * ci); cr = await chargeAction(authToken, 'post', 'douyin', refId); }
         if (cr && cr.ok) { chargedCredits += cr.charged || 0; chargedUsd += cr.cost_usd || 0; }
         else {
           if (!chargeFatal.reason) chargeFatal.reason = String(cr?.reason || 'unknown');
           log(/insufficient|余额/i.test(String(cr?.reason || '')) ? '⛔ 积分余额不足,后面的先不发了,请充值后继续' : '⛔ 计费失败,后面的先不发了,请稍后重试');
         }
         emit('success');
+        if (!ar.ok) break;
       } else {
         lastReason = r.reason || 'unknown';
-        const unsure = /not_confirmed|rejected/.test(lastReason);
+        // 只有「点了发布但没确认到」才可能已经发出去 → 挪进待确认;
+        //   publish_rejected(抖音提示不能为空/请填写/频繁,还停在编辑页)等 = 明确没发 → 素材留着下次再发。
+        const unsure = /not_confirmed/.test(lastReason);
+        let stuck = false;
         if (unsure) {
-          const dest = archiveUsed(accDir, w.slot, pick, 'unsure');
-          log(`⚠️ 点了发布,但没确认到发成功(${lastReason})—— 为免重复发,这条挪到 ${dest},请到抖音「作品管理」核对`);
+          const ar = archiveUsed(accDir, w.slot, pick, 'unsure');
+          stuck = !ar.ok;
+          log(ar.ok ? `⚠️ 点了发布,但没确认到发成功(${lastReason})—— 为免重复发,这条挪到 ${ar.dest},请到抖音「作品管理」核对`
+            : `⚠️ 点了发布,但没确认到发成功,且素材「${pick.media.name}」挪不走 —— 这个号先停发,请到抖音核对并手动移走这条`);
         } else {
           log(`❌ 这条没发出去(${lastReason}),素材留在原处,下个时段再试`);
         }
-        if (w.occ) ledgerMark(opts.taskId, w.occ.key, { ts: Date.now(), ok: false, note: lastReason.slice(0, 80) });
-        emit('success');
+        ledgerMark(opts.taskId, ledgerKey, { ts: Date.now(), ok: false, note: lastReason.slice(0, 80), stuck, stuckTo: 'unsure' });
+        emit('failed', lastReason);
+        if (stuck) break;
       }
       if (i < ready.length - 1) await abortableSleep(randInt(60_000, 120_000), opts.signal);   // 同号连发两条,隔 1-2 分钟
     }
@@ -236,6 +309,7 @@ async function runPlanned(opts: FolderPostTaskOptions, plan: Record<string, Work
       const i = cursor++;
       if (i >= ids.length) return;
       if (i > 0) await abortableSleep(randInt(3000, 15000), opts.signal);   // 错峰起浏览器
+      if (opts.signal?.aborted) return;   // 已点停止:后面的号别再起浏览器
       const r = await runOne(opts, ids[i], plan[ids[i]], chargeFatal);
       results.push(r);
       try { opts.onItem?.(r); } catch { /* ignore */ }

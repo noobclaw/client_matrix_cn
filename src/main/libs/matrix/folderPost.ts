@@ -33,9 +33,10 @@ export function folderPostRoot(): string {
 }
 function matrixDir(): string { return process.env.NOOBCLAW_MATRIX_DIR || path.join(os.homedir(), 'NoobClaw', 'matrix'); }
 function readJson<T>(p: string, def: T): T { try { return JSON.parse(fs.readFileSync(p, 'utf8')) as T; } catch { return def; } }
-function writeJson(p: string, v: unknown): void {
-  try { fs.mkdirSync(path.dirname(p), { recursive: true }); const tmp = p + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(v, null, 2), 'utf8'); fs.renameSync(tmp, p); } catch { /* ignore */ }
+function writeJsonStrict(p: string, v: unknown): void {
+  fs.mkdirSync(path.dirname(p), { recursive: true }); const tmp = p + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(v, null, 2), 'utf8'); fs.renameSync(tmp, p);
 }
+function writeJson(p: string, v: unknown): void { try { writeJsonStrict(p, v); } catch { /* ignore */ } }
 const natural = (a: string, b: string) => a.localeCompare(b, 'zh-CN', { numeric: true, sensitivity: 'base' });
 const visible = (name: string) => !name.startsWith('.') && !/^(thumbs\.db|desktop\.ini)$/i.test(name);
 const safeName = (s: string) => String(s || '').replace(/[\\/:*?"<>|\r\n\t]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 40) || 'account';
@@ -119,21 +120,36 @@ export function pickNext(accDir: string, n: number): { media: MediaItem; caption
   return { media, captionPath, topicPath, title: cap.title, body: cap.body, tags: topicPath ? parseTopics(topicPath) : [] };
 }
 
-/** 发完把这一条用到的素材 / 文案 / 话题挪走(成功 → 已发布,没确认 → 待确认)。返回目标目录。 */
-export function archiveUsed(accDir: string, n: number, used: { media: MediaItem; captionPath?: string; topicPath?: string }, outcome: 'done' | 'unsure', now = new Date()): string {
+/** 发完把这一条用到的素材 / 文案 / 话题挪走(成功 → 已发布,没确认 → 待确认)。
+ *  返回 { dest, ok }:ok=false 表示素材【没挪走】(还留在原处)—— 调用方必须停发这个号,否则下个时段会重复发。
+ *  图片子文件夹超过 35 张时只挪用掉的那几张,剩下的留在原文件夹(下次当一条新图文发)。 */
+export function archiveUsed(accDir: string, n: number, used: { media: MediaItem; captionPath?: string; topicPath?: string }, outcome: 'done' | 'unsure', now = new Date()): { dest: string; ok: boolean } {
   const day = localDate(now);
   const hhmm = String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0');
   const dest = path.join(accDir, outcome === 'done' ? DIR_DONE : DIR_UNSURE, day, `${SLOT_DIR(n)}_${hhmm}_${safeName(path.parse(used.media.name).name)}`);
-  fs.mkdirSync(dest, { recursive: true });
-  const move = (src: string | undefined, sub: string) => {
-    if (!src) return;
-    try { const to = path.join(dest, sub + '_' + path.basename(src)); fs.renameSync(src, to); }
-    catch { try { const to = path.join(dest, sub + '_' + path.basename(src)); fs.cpSync(src, to, { recursive: true }); fs.rmSync(src, { recursive: true, force: true }); } catch { /* ignore */ } }
+  try { fs.mkdirSync(dest, { recursive: true }); } catch { return { dest, ok: false }; }
+  const move = (src: string | undefined, to: string): boolean => {
+    if (!src || !fs.existsSync(src)) return true;
+    try { fs.renameSync(src, to); }
+    catch { try { fs.cpSync(src, to, { recursive: true }); fs.rmSync(src, { recursive: true, force: true }); } catch { /* 下面按「源还在不在」判 */ } }
+    return !fs.existsSync(src);
   };
-  move(used.media.path, SUB_MEDIA);
-  move(used.captionPath, SUB_CAPTION);
-  move(used.topicPath, SUB_TOPIC);
-  return dest;
+  let mediaOk: boolean;
+  const m = used.media;
+  let isDir = false;
+  try { isDir = fs.statSync(m.path).isDirectory(); } catch { /* gone */ }
+  const totalImgs = isDir ? list(m.path).filter((x) => x.isFile() && IMAGE_EXT.has(path.extname(x.name).toLowerCase())).length : 0;
+  if (isDir && m.files.length && totalImgs > m.files.length) {
+    const sub = path.join(dest, SUB_MEDIA + '_' + path.basename(m.path));
+    try { fs.mkdirSync(sub, { recursive: true }); } catch { return { dest, ok: false }; }
+    mediaOk = m.files.every((f) => move(f, path.join(sub, path.basename(f))));
+  } else {
+    mediaOk = move(m.path, path.join(dest, SUB_MEDIA + '_' + path.basename(m.path)));
+  }
+  // 文案 / 话题挪失败不会导致重复发(下一条素材配下一份文案而已),只影响配对,不算失败。
+  if (used.captionPath) move(used.captionPath, path.join(dest, SUB_CAPTION + '_' + path.basename(used.captionPath)));
+  if (used.topicPath) move(used.topicPath, path.join(dest, SUB_TOPIC + '_' + path.basename(used.topicPath)));
+  return { dest, ok: mediaOk };
 }
 
 // ── 排期 ──
@@ -177,18 +193,38 @@ function occurrencesAround(taskId: string, accountIds: string[], cfg: FolderPost
 }
 
 // ── 账本 ──
-interface LedgerEntry { ts: number; ok: boolean | null; note?: string }
+export interface LedgerEntry {
+  ts: number; ok: boolean | null; note?: string;
+  // 发之前就记下这次用的文件:万一中途崩了,下次启动据此把它们挪进「待确认」,不会再发一遍。
+  slot?: number; media?: string; mediaName?: string; mediaFiles?: string[]; caption?: string; topic?: string;
+  /** 发出去了(或可能发出去了)但素材没能挪走 → 下次先挪,挪不走这个号就不发 */
+  stuck?: boolean; stuckTo?: 'done' | 'unsure';
+}
 const LEDGER_FILE = () => path.join(matrixDir(), 'folderPostLedger.json');
 function loadLedger(): Record<string, Record<string, LedgerEntry>> { return readJson(LEDGER_FILE(), {}); }
 export function ledgerHas(taskId: string, key: string): boolean { return !!loadLedger()[taskId]?.[key]; }
-export function ledgerMark(taskId: string, key: string, e: LedgerEntry): void {
+/** 写账本。strict=true 时写不进去就抛错(发布前那一笔必须写成功,否则不发 —— 防「账本写不进 → 每分钟连发」)。 */
+export function ledgerMark(taskId: string, key: string, e: LedgerEntry, strict = false): void {
   const all = loadLedger();
   const t = all[taskId] || (all[taskId] = {});
-  t[key] = e;
-  // 只留最近 10 天
+  t[key] = { ...(t[key] || {}), ...e };
+  // 只留最近 10 天(「发布中」和「素材没挪走」的不删,留给恢复)
   const cut = Date.now() - 10 * 86400_000;
-  for (const k of Object.keys(t)) if ((t[k]?.ts || 0) < cut) delete t[k];
-  writeJson(LEDGER_FILE(), all);
+  for (const k of Object.keys(t)) if ((t[k]?.ts || 0) < cut && t[k]?.ok !== null && !t[k]?.stuck) delete t[k];
+  if (strict) {
+    writeJsonStrict(LEDGER_FILE(), all);
+    if (!loadLedger()[taskId]?.[key]) throw new Error('ledger_write_failed');
+  } else writeJson(LEDGER_FILE(), all);
+}
+/** 这个号还停在「发布中」(ok=null)的记录 —— 上次点了发布但没等到结果就崩了 / 被关了。 */
+export function ledgerPending(taskId: string, accountId: string): Array<{ key: string } & LedgerEntry> {
+  const t = loadLedger()[taskId] || {};
+  return Object.keys(t).filter((k) => k.startsWith(accountId + '|') && t[k]?.ok === null).map((k) => ({ key: k, ...t[k] }));
+}
+/** 这个号「发出去了(或可能发出去了)但素材没能挪走」(stuck)的记录 —— 文件还在原处的话绝不能再发,要先挪走。 */
+export function ledgerStuck(taskId: string, accountId: string): Array<{ key: string } & LedgerEntry> {
+  const t = loadLedger()[taskId] || {};
+  return Object.keys(t).filter((k) => k.startsWith(accountId + '|') && t[k]?.stuck).map((k) => ({ key: k, ...t[k] }));
 }
 export function ledgerRecent(taskId: string, limit = 30): Array<{ key: string } & LedgerEntry> {
   const t = loadLedger()[taskId] || {};
