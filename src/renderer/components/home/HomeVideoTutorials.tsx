@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import SimpleSelect from '../common/SimpleSelect';
 
 /**
  * 首页「视频教程」区 — 分类标签(全部/成片效果/各平台) + 两行横向翻页(首/末页藏对应箭头)。
@@ -93,11 +94,17 @@ const HomeVideoTutorials: React.FC<{ filter?: 'tags' | 'select' }> = ({ filter =
             📺 {i18nService.t('hvVideosTitle')}
           </h2>
           {filter === 'select' && groups.length > 0 && (
-            <select value={active} onChange={(e) => setActive(e.target.value)} aria-label={i18nService.t('hvVideosTitle')}
-              className="rounded-lg border dark:border-white/10 border-gray-300 dark:bg-gray-800 bg-white text-xs px-2 py-1 dark:text-gray-200">
-              {!groups.some((g) => g.key === 'all') && <option value="all">{i18nService.currentLanguage === 'zh' ? '全部' : i18nService.currentLanguage === 'zh-TW' ? '全部' : 'All'} ({videos.length})</option>}
-              {groups.map((g) => <option key={g.key} value={g.key}>{groupLabel(g)} ({g.count})</option>)}
-            </select>
+            <SimpleSelect
+              size="sm"
+              className="w-40"
+              value={active}
+              onChange={setActive}
+              ariaLabel={i18nService.t('hvVideosTitle')}
+              options={[
+                ...(!groups.some((g) => g.key === 'all') ? [{ value: 'all', label: `${i18nService.currentLanguage === 'zh' ? '全部' : i18nService.currentLanguage === 'zh-TW' ? '全部' : 'All'} (${videos.length})` }] : []),
+                ...groups.map((g) => ({ value: g.key, label: `${groupLabel(g)} (${g.count})` })),
+              ]}
+            />
           )}
         </div>
         <button

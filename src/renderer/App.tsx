@@ -688,6 +688,9 @@ const App: React.FC = () => {
     setUiEdition(e);
     if (e === 'simple' && !SIMPLE_VIEWS.includes(mainView)) setMainView('home');
   };
+  // 简洁版「创建任务」弹窗点取消 → 回到进来之前的页面
+  const lastNonCreateViewRef = useRef<string>('home');
+  useEffect(() => { if (mainView !== 'matrixTaskNew') lastNonCreateViewRef.current = mainView; }, [mainView]);
   // 简洁版「创建任务」带进向导的预选账号:离开新建页就清掉,别串到下次
   useEffect(() => { if (mainView !== 'matrixTaskNew') clearPresetAccounts(); }, [mainView]);
   // 矩阵号:全平台「登录过期」账号总数 —— 喂给侧栏「我的矩阵账号」菜单右上角红圈角标(与账号页各平台 tab 角标口径一致),
@@ -1324,6 +1327,7 @@ const App: React.FC = () => {
               <ScenarioView
                 matrixMode
                 simple={simpleUi}
+                onSimpleCancel={() => setMainView((lastNonCreateViewRef.current || 'home') as any)}
                 mode={mainView === 'matrixRuns' ? 'runs' : mainView === 'matrixTaskNew' ? 'create' : 'manage'}
                 initialPlatform={matrixPlatform as any}
                 onSwitchToCreate={(platform) => { if (platform) setMatrixPlatform(platform); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); }}

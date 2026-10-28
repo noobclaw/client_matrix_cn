@@ -5,6 +5,7 @@ import { shortId } from '../../utils/shortId';
 import MatrixTaskWizard from './MatrixTaskWizard';
 import MatrixReplyFansWizard from './MatrixReplyFansWizard';
 import { WalletBadge } from '../common/WalletBadge';
+import SimpleSelect from '../common/SimpleSelect';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { getBackendApiUrl } from '../../services/endpoints';
 import { openWallet } from '../../services/walletNav';
@@ -997,6 +998,22 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
               <div className="flex items-center gap-2.5">
                 {/* 简洁版:页面名已在顶部横条左侧,这里不重复 */}
                 {!simple && <h2 className="text-lg font-bold dark:text-white">🧬 {i18nService.t('mvMyMatrixAccounts')}</h2>}
+                {/* 简洁版:平台下拉框放在标题这一行(和「连接账号」同一行) */}
+                {simple && (<>
+                {(() => {
+                  const vis = PLATFORMS.filter((p) => !complianceHidden.includes(p));
+                  const cnt = (p: string) => accounts.filter((a) => a.platform === p).length;
+                  return (
+                    <SimpleSelect
+                      className="w-56"
+                      value={platform}
+                      onChange={(v) => setPlatform(v as any)}
+                      ariaLabel={i18nService.currentLanguage === 'zh-TW' ? '平台' : i18nService.currentLanguage === 'zh' ? '平台' : 'Platform'}
+                      options={[...vis.filter((p) => cnt(p) > 0), ...vis.filter((p) => cnt(p) === 0)].map((p) => ({ value: p, label: `${platLabel(p)}${cnt(p) ? `(${cnt(p)})` : ''}${expiredCountByPlatform[p] ? ' ⚠️' : ''}` }))}
+                    />
+                  );
+                })()}
+                </>)}
                 {/* 涨粉教程(从顶栏挪到标题后,贴着账号页)—— 简洁版不放 */}
                 {!simple && <button type="button" onClick={() => { try { const docs = (i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') ? 'https://docs.noobclaw.com/zhong-wen-ban' : 'https://docs.noobclaw.com/english'; (window as any).electron?.shell?.openExternal(docs); } catch { /* ignore */ } }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:border-amber-500/60">📖 {i18nService.t('mvGrowthTutorial')}</button>}
               </div>
@@ -1006,25 +1023,6 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                 <button onClick={openAdd} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold bg-violet-500 hover:bg-violet-600 shadow-sm shadow-violet-500/25 active:scale-95 transition-all">{i18nService.t('mvConnectAccount').replace('{platform}', platLabel(platform))}</button>
               </div>
             </div>
-            {/* 简洁版:平台用一个下拉框选(有账号的排前面;括号里是账号数,⚠️ = 有号登录过期) */}
-            {simple && (
-              <div className="mb-4">
-                <select
-                  value={platform}
-                  onChange={(e) => setPlatform(e.target.value as any)}
-                  aria-label={i18nService.currentLanguage === 'zh-TW' ? '平台' : i18nService.currentLanguage === 'zh' ? '平台' : 'Platform'}
-                  className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-semibold px-3 py-2 dark:text-white"
-                >
-                  {(() => {
-                    const vis = PLATFORMS.filter((p) => !complianceHidden.includes(p));
-                    const cnt = (p: string) => accounts.filter((a) => a.platform === p).length;
-                    return [...vis.filter((p) => cnt(p) > 0), ...vis.filter((p) => cnt(p) === 0)].map((p) => (
-                      <option key={p} value={p}>{platLabel(p)}{cnt(p) ? `(${cnt(p)})` : ''}{expiredCountByPlatform[p] ? ' ⚠️' : ''}</option>
-                    ));
-                  })()}
-                </select>
-              </div>
-            )}
             {/* 平台 tab 切换(跟新建页一致),按平台分别管理账号 */}
             {!simple && (
             <div className="flex flex-wrap gap-2 mb-4">
