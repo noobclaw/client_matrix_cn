@@ -12,7 +12,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
-import { NumBox } from './NumberStepper';
 
 type WizardStep = 1 | 2 | 3;
 export type BlockMode = 'precise' | 'keyword';
@@ -84,7 +83,6 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
   const preciseMode = mode === 'precise';
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask?.accountIds || []).map(String)));
-  const [concurrency, setConcurrency] = useState<number>(() => Math.max(1, Number(initialTask?.concurrency) || 1));
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'once');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -147,7 +145,7 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
       await onSave({
         name: initialTask?.name || L(`${platformLabel} 批量拉黑`, `${platformLabel} 批量封鎖`, `${platformLabel} Batch Block`),
         accountIds: Array.from(selected),
-        concurrency: Math.min(concurrency, Math.max(1, selected.size)),
+        concurrency: Math.max(1, selected.size),   // 勾几个号就几个号一起跑(同互动任务;runner 内部有上限兜底)
         frequency: runInterval,
         blockMode: mode,
         blockTargetsByAccount: byAcc,
@@ -268,12 +266,6 @@ const MatrixBlockWizard: React.FC<Props> = ({ platformLabel, platform, accounts,
                   );
                 })}
               </div>
-              {selected.size > 1 && (
-                <div className="mt-3 flex items-center gap-3 text-sm dark:text-gray-200">
-                  <span>{L('同时运行账号数', '同時執行帳號數', 'Run in parallel')}</span>
-                  <NumBox value={Math.min(concurrency, selected.size)} onChange={setConcurrency} min={1} max={Math.max(1, Math.min(5, selected.size))} accent="rose" disabled={saving} />
-                </div>
-              )}
             </div>
           </>
         )}

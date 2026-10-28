@@ -560,7 +560,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           onLog: cbOnLog, onTargets: cbOnTargets, onItem: cbOnItem,
         })
       : runEngageTask({
-          platform: task.platform, taskId: task.id, accountIds: runIds, quota: task.quota, concurrency: isReport ? 1 : task.concurrency, kernelPath, signal: abort.signal,
+          platform: task.platform, taskId: task.id, accountIds: runIds, quota: task.quota, concurrency: isReport ? 1 : (isBlock || isCommentLike) ? Math.max(1, runIds.length) : task.concurrency, kernelPath, signal: abort.signal,
           taskType: task.type as any,
           // 定向获客:把任务级配置透传给 runner(runner 再铺进 orchestrator 的 ctx.task)。
           leadEngage: task.type === 'lead_engage' ? task.leadEngage : undefined,

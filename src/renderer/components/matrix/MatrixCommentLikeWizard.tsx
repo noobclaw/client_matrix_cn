@@ -61,7 +61,6 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
   });
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask?.accountIds || []).map(String)));
-  const [concurrency, setConcurrency] = useState<number>(() => Math.max(1, Number(initialTask?.concurrency) || 1));
   const [runInterval, setRunInterval] = useState<string>(initialTask?.frequency || 'once');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -89,7 +88,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
       await onSave({
         name: initialTask?.name || L(`${platformLabel} 作品评论区点赞(${validLinks.length} 条作品)`, `${platformLabel} 作品留言區按讚(${validLinks.length} 則作品)`, `${platformLabel} Comment Liker (${validLinks.length} posts)`),
         accountIds: Array.from(selected),
-        concurrency: Math.min(concurrency, Math.max(1, selected.size)),
+        concurrency: Math.max(1, selected.size),   // 勾几个号就几个号一起跑(同互动任务;runner 内部有上限兜底)
         frequency: runInterval,
         urls: validLinks.slice(0, COMMENT_LIKE_MAX_LINKS),
         commentLikeMax: maxLikes,
@@ -194,12 +193,6 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
                 );
               })}
             </div>
-            {selected.size > 1 && (
-              <div className="mt-3 flex items-center gap-3 text-sm dark:text-gray-200">
-                <span>{L('同时运行账号数', '同時執行帳號數', 'Run in parallel')}</span>
-                <NumBox value={Math.min(concurrency, selected.size)} onChange={setConcurrency} min={1} max={Math.max(1, Math.min(5, selected.size))} accent="pink" disabled={saving} />
-              </div>
-            )}
           </div>
         )}
 
