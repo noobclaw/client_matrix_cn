@@ -973,11 +973,19 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                                     </div>
                                   );
                                 })() : (
-                                <div className="text-gray-500 dark:text-gray-400 truncate" title={a.keywords && a.keywords.length ? a.keywords.join(' · ') : undefined}>
-                                  🏷️ {a.keywords && a.keywords.length
-                                    ? a.keywords.slice(0, 4).join(' · ') + (a.keywords.length > 4 ? ' …' : '')
+                                (() => {
+                                  // 拉黑·关键词模式:运行时用的是 原始词 + AI 衍生词(effectiveKeywords),这里显示同一份;其它任务照旧只显示原始词。
+                                  const kw: string[] = isBlockTask
+                                    ? Array.from(new Set([...(a.keywords || []), ...(a.derivedKeywords || [])].map((k: any) => String(k || '').trim()).filter(Boolean)))
+                                    : (a.keywords || []);
+                                  return (
+                                <div className="text-gray-500 dark:text-gray-400 truncate" title={kw.length ? kw.join(' · ') : undefined}>
+                                  🏷️ {kw.length
+                                    ? kw.slice(0, 4).join(' · ') + (kw.length > 4 ? ' …' : '')
                                     : <span className="text-amber-500">{i18nService.t('tdNoKeywords')}</span>}
                                 </div>
+                                  );
+                                })()
                                 )}
                               </div>
                             ))}
