@@ -651,7 +651,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               </span>
             );
           return (
-            <div className="mb-3 p-5 rounded-2xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex flex-wrap items-center gap-x-6 gap-y-5">
+            <div className="mb-3 p-4 rounded-2xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex flex-wrap items-center gap-x-6 gap-y-4">
               {/* 左:个人信息 */}
               <div className="flex items-center gap-4 shrink-0 min-w-0">
                 <div className="shrink-0 w-20 h-20 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
@@ -705,7 +705,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
         })()}
 
         {/* ② 我的邀请链接 + 如何运作 */}
-        <div className="mb-3 p-5 rounded-2xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex flex-col gap-4">
+        <div className="mb-3 p-4 rounded-2xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex flex-col gap-3">
           <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('inviteYourLink')}</h3>
           <div className="flex flex-wrap justify-center items-center gap-3">
             <code className="flex-[0_1_440px] min-w-0 h-10 px-3.5 flex items-center justify-center rounded-lg border dark:border-white/35 border-black/25 !bg-transparent dark:!text-white !text-claude-text font-mono text-sm truncate select-all">{referralLink}</code>
@@ -718,12 +718,12 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             <button type="button" onClick={openRules} className="text-xs text-primary hover:underline">{i18nService.t('inviteViewRules')} ↗</button>
           </div>
           {/* 三步并排。文案全部沿用原来的(第 1、2 步 i18n;第 3 步国际版 = 原来的「双重奖励」两块,国内版 = 原来的 CNY 返佣那句) */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-stretch">
             {[
               { title: i18nService.t('inviteStep1Title'), desc: i18nService.t('inviteStep1Desc') },
               { title: i18nService.t('inviteStep2Title'), desc: i18nService.t('inviteStep2Desc') },
             ].map((step, i) => (
-              <div key={i} className="p-3.5 rounded-xl border dark:border-claude-darkBorder border-claude-border flex items-start gap-3">
+              <div key={i} className="p-3 rounded-xl border dark:border-claude-darkBorder border-claude-border flex items-start gap-3">
                 <span className="w-[26px] h-[26px] rounded-full bg-primary/10 text-primary text-[13px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                 <div className="min-w-0">
                   <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{step.title}</div>
@@ -731,7 +731,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 </div>
               </div>
             ))}
-            <div className="md:col-span-2 p-3.5 rounded-xl border dark:border-claude-darkBorder border-claude-border flex items-start gap-3">
+            <div className="p-3 rounded-xl border dark:border-claude-darkBorder border-claude-border flex items-start gap-3">
               <span className="w-[26px] h-[26px] rounded-full bg-primary/10 text-primary text-[13px] font-bold flex items-center justify-center shrink-0">3</span>
               <div className="min-w-0 flex-1">
                 {HIDE_WEB3 ? (
@@ -742,23 +742,23 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 ) : (
                   <>
                     <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('ivDualRewardsTitle')}</div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
-                      <div className="text-xs font-medium text-primary mb-1">💰 USDT {i18nService.t('ivUsdtRealCash')}</div>
-                      <div className="text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('ivUsdtRebateDesc').replace('{rate}', String(profitSharePct(profile?.partner?.is_partner ? profile.partner.rate_pct : null)))}</div>
-                    </div>
-                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
-                      <div className="text-xs font-medium text-primary mb-1">🪂 $NoobCoin {i18nService.t('ivNoobAirdropLabel')}</div>
-                      <div className="text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('ivNoobAirdropDesc').replace('{min}', String(purchaseMin)).replace('{max}', String(purchaseMax))}</div>
-                    </div>
-                    </div>
+                    {/* 简化(2026-10-29):两种奖励各一段 —— 绿色小标题 + 原文说明(完整显示,不截断) */}
+                    {[
+                      { label: `💰 USDT ${i18nService.t('ivUsdtRealCash')}`, desc: i18nService.t('ivUsdtRebateDesc').replace('{rate}', String(profitSharePct(profile?.partner?.is_partner ? profile.partner.rate_pct : null))) },
+                      { label: `🪂 $NoobCoin ${i18nService.t('ivNoobAirdropLabel')}`, desc: i18nService.t('ivNoobAirdropDesc').replace('{min}', String(purchaseMin)).replace('{max}', String(purchaseMax)) },
+                    ].map((x) => (
+                      <div key={x.label} className="mt-1.5">
+                        <div className="text-xs font-semibold text-primary">{x.label}</div>
+                        <div className="mt-0.5 text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{x.desc}</div>
+                      </div>
+                    ))}
                   </>
                 )}
               </div>
             </div>
           </div>
           {/* 邀请奖励档位(原来那块:直接邀请 ≥50% / 间接邀请 10%),改成一行两格放在三步下面 */}
-          <div className="p-3 rounded-xl dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          <div className="px-3 py-2 rounded-xl dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
             <span className="font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('inviteRewardTitle')}</span>
             <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel1')} <span className="ml-1 text-primary font-semibold">&ge;50%</span></span>
             <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel2_6')} <span className="ml-1 dark:text-claude-darkText text-claude-text font-semibold">10%</span></span>
@@ -787,73 +787,74 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             <div className="rounded-2xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border flex flex-col min-h-[320px]">
           {/* Top-level tabs: Records vs Rebate. Rebate has its own sub-menu
               (USDT real-cash + NoobCoin) rendered below this row when active. */}
-          <div className="flex border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+          {/* 2026-10-29:切换按钮做成左边一组胶囊(同充值页「会员订阅 / 购买积分」);返佣的币种子菜单并到同一行右边 */}
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+            <div className="inline-flex gap-1 p-1 rounded-xl border dark:border-claude-darkBorder border-claude-border">
             <button
               onClick={() => switchDetailTab('records')}
-              className={`flex-1 py-2 text-xs font-medium text-center transition-colors relative ${
+              className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                 detailTab === 'records'
-                  ? 'text-primary'
+                  ? 'bg-primary text-black'
                   : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'
               }`}
             >
               {i18nService.t('inviteDetailMenu')}
-              {detailTab === 'records' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
             </button>
             <button
               onClick={() => switchDetailTab('rebate')}
-              className={`flex-1 py-2 text-xs font-medium text-center transition-colors relative ${
+              className={`px-5 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                 detailTab === 'rebate'
-                  ? 'text-primary'
+                  ? 'bg-primary text-black'
                   : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'
               }`}
             >
               💰 {i18nService.t('inviteRebateMenu')}
-              {detailTab === 'rebate' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
             </button>
+            </div>
+            {/* Sub-menu only shown when Rebate is active — two pills for USDT
+                (real cash, BSC chain) vs NoobCoin (in-app reward ledger). */}
+            {detailTab === 'rebate' && (
+              <div className="ml-auto inline-flex gap-1">
+                {/* USDT(链上真金返佣)子 tab — 国内版隐藏(HIDE_WEB3) */}
+                {!HIDE_WEB3 && (
+                <button
+                  onClick={() => switchRebateSub('usdt')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    rebateSubTab === 'usdt'
+                      ? 'bg-primary/10 text-primary'
+                      : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                  }`}
+                >
+                  {i18nService.t('inviteRebateUsdtSub')}
+                </button>
+                )}
+                <button
+                  onClick={() => switchRebateSub('cny')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    rebateSubTab === 'cny'
+                      ? 'bg-primary/10 text-primary'
+                      : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                  }`}
+                >
+                  {i18nService.t('ivCnyRebateSub')}
+                </button>
+                {/* NoobCoin(链上代币奖励)子 tab — 国内版隐藏(HIDE_WEB3) */}
+                {!HIDE_WEB3 && (
+                <button
+                  onClick={() => switchRebateSub('noob')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    rebateSubTab === 'noob'
+                      ? 'bg-primary/10 text-primary'
+                      : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                  }`}
+                >
+                  {i18nService.t('inviteRebateNoobSub')}
+                </button>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Sub-menu only shown when Rebate is active — two pills for USDT
-              (real cash, BSC chain) vs NoobCoin (in-app reward ledger). */}
-          {detailTab === 'rebate' && (
-            <div className="flex gap-1 px-2 py-1.5 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
-              {/* USDT(链上真金返佣)子 tab — 国内版隐藏(HIDE_WEB3) */}
-              {!HIDE_WEB3 && (
-              <button
-                onClick={() => switchRebateSub('usdt')}
-                className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
-                  rebateSubTab === 'usdt'
-                    ? 'bg-primary/10 text-primary'
-                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-                }`}
-              >
-                {i18nService.t('inviteRebateUsdtSub')}
-              </button>
-              )}
-              <button
-                onClick={() => switchRebateSub('cny')}
-                className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
-                  rebateSubTab === 'cny'
-                    ? 'bg-primary/10 text-primary'
-                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-                }`}
-              >
-                {i18nService.t('ivCnyRebateSub')}
-              </button>
-              {/* NoobCoin(链上代币奖励)子 tab — 国内版隐藏(HIDE_WEB3) */}
-              {!HIDE_WEB3 && (
-              <button
-                onClick={() => switchRebateSub('noob')}
-                className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
-                  rebateSubTab === 'noob'
-                    ? 'bg-primary/10 text-primary'
-                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-                }`}
-              >
-                {i18nService.t('inviteRebateNoobSub')}
-              </button>
-              )}
-            </div>
-          )}
 
           {/* Content. v5.x+ branch order matches the new 2-level tab tree:
               top-level Records first, then Rebate splits via rebateSubTab.
