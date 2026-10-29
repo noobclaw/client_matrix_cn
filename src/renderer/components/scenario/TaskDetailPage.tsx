@@ -607,11 +607,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     // 1b. Balance check — 余额 < 10000 时弹"积分不足"提示框,点击充值跳
     //     钱包页;否则继续启动任务。阈值见 noobClawAuth.hasEnoughBalanceForTask。
     //     免费任务(无水印下载,2026-10-28 起 0 价)不拦 —— 余额为 0 也能用。
-    //     批量拉黑(全免费)、评论区点赞 / 文件夹定时发布(会员免费)对会员也不拦。
+    //     评论区点赞 / 文件夹定时发布(会员免费)对会员也不拦。批量拉黑 2026-10-29 起按人收费 → 要过余额检查。
     const __sid = String(task.scenario_id || '');
     // 评论区点赞评论:只点赞才对会员免费;勾了回复,每条回复照常扣积分 → 仍要余额检查。
     const __clReply = /_comment_like$/.test(__sid) && (task as any).comment_do_reply !== false;
-    const __free = /_video_download$|_block$/.test(__sid) || (/_comment_like$|_folder_post$/.test(__sid) && !__clReply && noobClawAuth.isActiveMember());
+    const __free = /_video_download$/.test(__sid) || (/_comment_like$|_folder_post$/.test(__sid) && !__clReply && noobClawAuth.isActiveMember());
     if (!__free && !noobClawAuth.hasEnoughBalanceForTask()) return;
 
     // 矩阵 edition:互动涨粉走指纹内核 CDP 按号执行(无浏览器插件;账号在「我的矩阵账号」已扫码关联,

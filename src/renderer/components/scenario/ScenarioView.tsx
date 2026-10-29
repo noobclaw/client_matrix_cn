@@ -232,9 +232,9 @@ const platformDisplayName = (id: string): string => {
 
 /** 走「自动发帖」向导的平台判定(币安广场 + 交易所广场三家)。它们共用 binancePostRunner:
  *  后端剧本 id 一律是 `${platform}_post`,所以这里加平台不需要改 runner。 */
-/** 这个平台的新建页里有没有免费卡片(无水印下载、批量拉黑;有效会员另含评论区点赞、文件夹定时发布)。 */
+/** 这个平台的新建页里有没有免费卡片(无水印下载;有效会员另含评论区点赞、文件夹定时发布)。批量拉黑 2026-10-29 起收费。 */
 const platformHasFreeCard = (p: PlatformId): boolean =>
-  MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(p) || p === 'youtube' || MATRIX_BLOCK_PLATFORMS.has(p)
+  MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(p) || p === 'youtube'
   || ((MATRIX_COMMENT_LIKE_PLATFORMS.has(p) || (!FOLDER_POST_CARD_HIDDEN && MATRIX_FOLDER_POST_PLATFORMS.has(p))) && noobClawAuth.isActiveMember());
 
 const isSquarePostScenario = (scenarioId: string): boolean =>
@@ -1597,7 +1597,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   /** 进入某平台的新建流。create 模式留在本实例切 create 段;manage 模式切到
    *  「一键涨粉」create 菜单(干净拆分)。两条路都先过积分门槛。 */
   const goCreatePlatform = (platform: PlatformId) => {
-    // 有免费卡片的平台(无水印下载 / 批量拉黑;会员另有评论区点赞 / 文件夹定时发布)不拦 —— 余额 0 也能进去建免费任务,
+    // 有免费卡片的平台(无水印下载;会员另有评论区点赞 / 文件夹定时发布)不拦 —— 余额 0 也能进去建免费任务,
     //   收费任务在「运行」时照样过积分门槛(TaskDetailPage)。
     if (!(matrixMode && platformHasFreeCard(platform)) && !noobClawAuth.hasEnoughBalanceForTask()) return;
     if (mode === 'create') { setView({ kind: 'main', section: 'create', platform }); return; }
@@ -2027,6 +2027,33 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     // 矩阵号:每个平台只有「互动涨粉」一个卡片(账号制),点开 MatrixTaskWizard。
     if (matrixMode) {
       const platLabel = platformLabel;
+      const imageTextCard = MATRIX_IMAGE_TEXT_PLATFORMS.has(currentPlatform) && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10 p-6 flex flex-col">
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {i18nService.t('svSectionImageText')}
+          </div>
+          <div className="text-xl font-bold dark:text-white mb-1">📝 {platLabel} · {i18nService.t('svCardImageTextTitle')}</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+            {i18nService.t('svCardImageTextDesc1')}<strong>{i18nService.t('svCardImageTextStrong')}</strong>{i18nService.t('svCardImageTextDesc2')}
+          </div>
+          <div className="mt-auto flex items-center flex-wrap pt-1">
+          <button
+            type="button"
+            onClick={() => openMatrixImageTextWizard(currentPlatform)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 text-black text-sm font-bold hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition-all active:scale-95"
+          >
+            📝 {i18nService.t('svStartCreate')}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSwitchToManage?.(currentPlatform as any)}
+            className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+          >
+            {i18nService.t('svHasTasks')}
+          </button>
+          </div>
+        </div>
+      );
       // 视频号/头条暂无 engage 剧本 → tab 在(与账号页一致),但「开始创作」改为「即将上线」不放行。
       const engageReady = MATRIX_ENGAGE_PLATFORMS.has(currentPlatform);
       return (
@@ -2136,39 +2163,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {/* 批量拉黑(目前仅抖音)—— 名单 / 关键词,多账号逐个拉黑。 */}
-          {!simple && matrixMode && MATRIX_BLOCK_PLATFORMS.has(currentPlatform) && (
-            <div className="rounded-2xl border border-red-500/30 bg-red-500/5 dark:bg-red-500/10 p-6 flex flex-col">
-              <div className="flex items-center gap-2 text-xs font-semibold text-red-600 dark:text-red-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {i18nService.currentLanguage === 'zh' ? '账号工具' : i18nService.currentLanguage === 'zh-TW' ? '帳號工具' : 'Account tools'}
-                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-black">{i18nService.currentLanguage === 'zh' ? '🆓 免费' : i18nService.currentLanguage === 'zh-TW' ? '🆓 免費' : '🆓 Free'}</span>
-              </div>
-              <div className="text-xl font-bold dark:text-white mb-1">🚫 {platLabel} · {i18nService.currentLanguage === 'zh' ? '批量拉黑' : i18nService.currentLanguage === 'zh-TW' ? '批量封鎖' : 'Batch Block'}</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                {i18nService.currentLanguage === 'zh'
-                  ? <>精准模式给每个账号粘竞争对手名单;关键词模式用账号自己的关键词,把搜出来的同行作者<strong>逐个拉黑</strong>(跳过已关注的人)。</>
-                  : i18nService.currentLanguage === 'zh-TW'
-                    ? <>精準模式給每個帳號貼競爭對手名單;關鍵詞模式用帳號自己的關鍵詞,把搜出來的同行作者<strong>逐個封鎖</strong>(跳過已關注的人)。</>
-                    : <>Targeted mode: paste a list per account. Keyword mode: use each account's own keywords to <strong>block the matching creators</strong> one by one (accounts you follow are skipped).</>}
-              </div>
-              <div className="mt-auto flex items-center flex-wrap pt-1">
-                <button
-                  type="button"
-                  onClick={() => openMatrixBlockWizard(currentPlatform)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 shadow-sm shadow-red-500/25 transition-all active:scale-95"
-                >
-                  🚫 {i18nService.currentLanguage === 'zh' ? '开始拉黑' : i18nService.currentLanguage === 'zh-TW' ? '開始封鎖' : 'Start'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSwitchToManage?.(currentPlatform as any)}
-                  className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-                >
-                  {i18nService.t('svHasTasks')}
-                </button>
-              </div>
-            </div>
-          )}
+          {/* 图文创作(矩阵多账号)—— 抖音:N 个号各自按身份+随机文风生成图文,配图+发到各自创作者中心。
+              2026-10-29 用户:抖音上跟「批量拉黑」换位置(放在原来拉黑的位置);其它平台位置不变。 */}
+          {currentPlatform === 'douyin' && imageTextCard}
           {/* 评论区点赞评论(目前仅 TikTok)—— 粘贴作品链接,多账号逐条翻评论区给每位留言者点赞。 */}
           {!simple && matrixMode && MATRIX_COMMENT_LIKE_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-pink-500/30 bg-pink-500/5 dark:bg-pink-500/10 p-6 flex flex-col">
@@ -2258,31 +2255,36 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               </div>
             </div>
           )}
-          {/* 图文创作(矩阵多账号)—— 抖音:N 个号各自按身份+随机文风生成图文,配图+发到各自创作者中心。 */}
-          {MATRIX_IMAGE_TEXT_PLATFORMS.has(currentPlatform) && (
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-500/10 p-6 flex flex-col">
-              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {i18nService.t('svSectionImageText')}
+          {currentPlatform !== 'douyin' && imageTextCard}
+          {/* 批量拉黑(目前仅抖音)—— 名单 / 关键词,多账号逐个拉黑。2026-10-29 用户:改收费(每拉黑 1 人 500~1000 积分),卡片挪到图文创作的位置。 */}
+          {!simple && matrixMode && MATRIX_BLOCK_PLATFORMS.has(currentPlatform) && (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/5 dark:bg-red-500/10 p-6 flex flex-col">
+              <div className="flex items-center gap-2 text-xs font-semibold text-red-600 dark:text-red-400 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {i18nService.currentLanguage === 'zh' ? '账号工具' : i18nService.currentLanguage === 'zh-TW' ? '帳號工具' : 'Account tools'}
               </div>
-              <div className="text-xl font-bold dark:text-white mb-1">📝 {platLabel} · {i18nService.t('svCardImageTextTitle')}</div>
+              <div className="text-xl font-bold dark:text-white mb-1">🚫 {platLabel} · {i18nService.currentLanguage === 'zh' ? '批量拉黑' : i18nService.currentLanguage === 'zh-TW' ? '批量封鎖' : 'Batch Block'}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
-                {i18nService.t('svCardImageTextDesc1')}<strong>{i18nService.t('svCardImageTextStrong')}</strong>{i18nService.t('svCardImageTextDesc2')}
+                {i18nService.currentLanguage === 'zh'
+                  ? <>精准模式给每个账号粘竞争对手名单;关键词模式用账号自己的关键词,把搜出来的同行作者<strong>逐个拉黑</strong>(跳过已关注的人)。</>
+                  : i18nService.currentLanguage === 'zh-TW'
+                    ? <>精準模式給每個帳號貼競爭對手名單;關鍵詞模式用帳號自己的關鍵詞,把搜出來的同行作者<strong>逐個封鎖</strong>(跳過已關注的人)。</>
+                    : <>Targeted mode: paste a list per account. Keyword mode: use each account's own keywords to <strong>block the matching creators</strong> one by one (accounts you follow are skipped).</>}
               </div>
               <div className="mt-auto flex items-center flex-wrap pt-1">
-              <button
-                type="button"
-                onClick={() => openMatrixImageTextWizard(currentPlatform)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 text-black text-sm font-bold hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition-all active:scale-95"
-              >
-                📝 {i18nService.t('svStartCreate')}
-              </button>
-              <button
-                type="button"
-                onClick={() => onSwitchToManage?.(currentPlatform as any)}
-                className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-              >
-                {i18nService.t('svHasTasks')}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => openMatrixBlockWizard(currentPlatform)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 shadow-sm shadow-red-500/25 transition-all active:scale-95"
+                >
+                  🚫 {i18nService.currentLanguage === 'zh' ? '开始拉黑' : i18nService.currentLanguage === 'zh-TW' ? '開始封鎖' : 'Start'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSwitchToManage?.(currentPlatform as any)}
+                  className="ml-3 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+                >
+                  {i18nService.t('svHasTasks')}
+                </button>
               </div>
             </div>
           )}
