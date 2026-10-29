@@ -373,7 +373,7 @@ const MembershipPanel: React.FC<{
           const savePerMo = (!isOnce && oncePrice > 0 && perMonth > 0) ? (oncePrice - perMonth) : 0;
           return (
             <div key={plan.code} className={`relative rounded-2xl p-3 flex flex-col dark:bg-claude-darkSurface bg-claude-surface ${isLower ? 'opacity-50' : ''}`}
-              style={{ border: isCur ? '2px solid #00FF88' : '1px solid rgba(255,255,255,0.08)' }}>  {/* 当前方案:统一用品牌绿实线框住(不跟档位色) */}
+              style={isCur ? { border: '2px solid #00FF88', boxShadow: '0 0 18px rgba(0,255,136,0.22)', backgroundImage: 'linear-gradient(rgba(0,255,136,0.05), rgba(0,255,136,0.05))' } : { border: '1px solid rgba(255,255,255,0.08)' }}>  {/* 当前方案:统一用品牌绿实线框住(不跟档位色) */}
               {isRec && <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-black whitespace-nowrap" style={{ background: tier }}>{i18nService.t('mpMostPopular')}</span>}
               {/* 档位名 + 档位色点 + 限时折扣 */}
               <div className="flex items-center gap-2 flex-wrap">
