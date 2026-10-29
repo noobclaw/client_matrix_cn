@@ -168,20 +168,20 @@ export const ContactFloatWidget: React.FC = () => {
   if (entries.length === 0) return null;
   return (
     <>
-      {/* 一个竖向胶囊:收起时只有「耳机图标 + 联系我们(两行)」,绿底醒目;
-          展开时同一个胶囊往下长出各联系方式(同官网浮窗的样子)。顶端位置固定,展开不跳。 */}
-      <div className="fixed right-4 top-[38%] z-40"
+      {/* 一个竖向胶囊,放在页面右下偏上:收起时只有「耳机图标 + 联系我们(两行)」,绿底醒目;
+          展开时同一个胶囊【往上】长出各联系方式(同官网浮窗的样子)。底边位置固定,展开不跳。 */}
+      <div className="fixed right-4 bottom-[12%] z-40"
         onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setPinned(false); }}>
-        <div className={`w-[60px] flex flex-col items-center rounded-[30px] border shadow-lg transition-colors ${expanded ? 'dark:bg-claude-darkSurface/95 bg-claude-surface/95 backdrop-blur dark:border-claude-darkBorder border-claude-border' : 'bg-primary border-transparent'}`}>
+        <div className={`w-[60px] flex flex-col-reverse items-center rounded-[30px] border shadow-lg transition-colors ${expanded ? 'dark:bg-claude-darkSurface/95 bg-claude-surface/95 backdrop-blur dark:border-claude-darkBorder border-claude-border' : 'bg-primary border-transparent'}`}>
           <button type="button" onClick={() => { if (pinned) { setPinned(false); setHovered(false); } else setPinned(true); }} aria-expanded={expanded} aria-label={i18nService.t('contactUsMenu')}
-            className={`w-full flex flex-col items-center gap-1 pt-3 pb-2.5 px-1 rounded-[30px] ${expanded ? 'text-primary' : 'text-black'}`}>
+            className={`w-full flex flex-col items-center gap-1 pt-2.5 pb-3 px-1 rounded-[30px] ${expanded ? 'text-primary' : 'text-black'}`}>
             {HEADSET_ICON}
             <span className="text-[11px] font-bold leading-tight text-center break-all">{i18nService.t('contactUsMenu')}</span>
           </button>
           {expanded && (
             <>
-              <div className="w-6 h-px dark:bg-claude-darkBorder bg-claude-border mb-1" />
-              <div className="flex flex-col items-center gap-1 pb-2.5">
+              <div className="w-6 h-px dark:bg-claude-darkBorder bg-claude-border mt-1" />
+              <div className="flex flex-col items-center gap-1 pt-2.5">
                 {entries.map((k) => (
                   <button
                     key={k}
