@@ -110,6 +110,8 @@ const MATRIX_COMMENT_LIKE_PLATFORMS = new Set<PlatformId>(['tiktok']);
 const MATRIX_BLOCK_PLATFORMS = new Set<PlatformId>(['douyin']);
 // 「文件夹定时发布」(folder_post,客户端 runner + matrix driver douyin / douyin_images)。目前仅抖音。
 const MATRIX_FOLDER_POST_PLATFORMS = new Set<PlatformId>(['douyin']);
+// 2026-10-29 用户:先隐藏「文件夹定时发布」卡片(新建页 + 简洁版创建弹窗都不显示);已建的任务照常运行、可在我的任务里编辑。
+const FOLDER_POST_CARD_HIDDEN = true;
 // 后端 backend/matrix/scenarios 有 <platform>_image_text「图文创作」剧本的平台(N 号各自生成图文+发布)。
 // 抖音(creator.douyin.com)/小红书(creator.xiaohongshu.com)/视频号(channels.weixin.qq.com 助手「发表新动态」,
 // wujie 微前端 shadowRoot 发布)/头条号(mp.toutiao.com 微头条,byte-design 普通页,无标题/封面)。
@@ -233,7 +235,7 @@ const platformDisplayName = (id: string): string => {
 /** 这个平台的新建页里有没有免费卡片(无水印下载、批量拉黑;有效会员另含评论区点赞、文件夹定时发布)。 */
 const platformHasFreeCard = (p: PlatformId): boolean =>
   MATRIX_VIDEO_DOWNLOAD_PLATFORMS.has(p) || p === 'youtube' || MATRIX_BLOCK_PLATFORMS.has(p)
-  || ((MATRIX_COMMENT_LIKE_PLATFORMS.has(p) || MATRIX_FOLDER_POST_PLATFORMS.has(p)) && noobClawAuth.isActiveMember());
+  || ((MATRIX_COMMENT_LIKE_PLATFORMS.has(p) || (!FOLDER_POST_CARD_HIDDEN && MATRIX_FOLDER_POST_PLATFORMS.has(p))) && noobClawAuth.isActiveMember());
 
 const isSquarePostScenario = (scenarioId: string): boolean =>
   /^(binance|gate|bitget|bybit|okx)_post$/.test(String(scenarioId || ''));
@@ -1771,7 +1773,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (MATRIX_LEAD_PLATFORMS.has(P)) add('lead', '精准定向获客', '精準定向獲客', 'Targeted leads', 'lead_engage');
     if (MATRIX_REPLY_FAN_PLATFORMS.has(P)) add('reply', '自动回复粉丝评论', '自動回覆粉絲留言', 'Auto-reply to fans', 'reply_fan');
     if (MATRIX_IMAGE_TEXT_PLATFORMS.has(P)) add('image_text', '图文创作', '圖文創作', 'Image-text posts', 'image_text');
-    if (MATRIX_FOLDER_POST_PLATFORMS.has(P)) add('folder', '文件夹定时发布', '資料夾定時發布', 'Folder scheduled posts', 'folder_post');
+    if (!FOLDER_POST_CARD_HIDDEN && MATRIX_FOLDER_POST_PLATFORMS.has(P)) add('folder', '文件夹定时发布', '資料夾定時發布', 'Folder scheduled posts', 'folder_post');
     if (MATRIX_VIRAL_PLATFORMS.has(P)) add('viral', '爆款仿写', '爆款仿寫', 'Viral rewrite', 'viral_rewrite');
     if (MATRIX_TWEET_POST_PLATFORMS.has(P)) add('tweet', '自动发推', '自動發推', 'Auto tweet', 'x_post');
     if (MATRIX_BINANCE_POST_PLATFORMS.has(P) || MATRIX_EXCHANGE_POST_PLATFORMS.has(P)) add('square_post', '自动发帖', '自動發帖', 'Auto post', `${P}_post`);
@@ -2100,7 +2102,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           {/* 文件夹定时发布(目前仅抖音)—— 每个号 3 个时段文件夹,到点按顺序取素材 + 文案 + 话题发出去。 */}
-          {matrixMode && MATRIX_FOLDER_POST_PLATFORMS.has(currentPlatform) && (
+          {matrixMode && !FOLDER_POST_CARD_HIDDEN && MATRIX_FOLDER_POST_PLATFORMS.has(currentPlatform) && (
             <div className="rounded-2xl border border-teal-500/30 bg-teal-500/5 dark:bg-teal-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-teal-600 dark:text-teal-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> {i18nService.currentLanguage === 'zh' ? '定时发布' : i18nService.currentLanguage === 'zh-TW' ? '定時發布' : 'Scheduled posts'}

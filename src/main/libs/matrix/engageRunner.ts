@@ -521,6 +521,8 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       // 要不要点赞 / 回复(老任务 / 老客户端没有这两个字段:剧本按「点赞 + 回复」处理)。
       cl_do_like: opts.commentDoLike,
       cl_do_reply: opts.commentDoReply,
+      // 矩阵账号的内容语言(中文 / English;存量号没这个字段按中文)。comment_like 回复:留言看不出语言时用它。
+      account_lang: acc?.contentLang === 'en' ? 'en' : 'zh',
       // block 剧本读 task.block_targets / block_keywords。
       block_targets: blockTargetsForAcc,
       block_keywords: blockKeywordsForAcc,
