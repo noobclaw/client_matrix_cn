@@ -905,6 +905,33 @@ class NoobClawApiService {
     }
   }
 
+  // 账密账号自助改密码。⚠️ 不走 authedFetch:后端「原密码不正确」也回 401(INVALID_OLD_PASSWORD),
+  //   authedFetch 见 401 就当登录过期把人踢下线。这里只有真正的会话失效才交给 handleAuthExpired。
+  /** 退出登录时顺手让服务端作废这个登录会话(fire-and-forget,失败不影响本地退出)。 */
+  serverLogout(): void {
+    try {
+      const h = this.getAuthHeaders() as Record<string, string>;
+      if (!h || !h.Authorization) return;
+      void fetch(`${this.backendUrl}/api/auth/logout`, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+    } catch { /* ignore */ }
+  }
+
+  async changePassword(oldPassword: string, newPassword: string): Promise<{ success: boolean; code?: string; message?: string }> {
+    try {
+      const res = await fetch(`${this.backendUrl}/api/auth/change-password`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPassword, newPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && data?.error !== 'INVALID_OLD_PASSWORD') noobClawAuth.handleAuthExpired();
+      if (!res.ok || !data?.success) return { success: false, code: data?.error, message: data?.message || data?.error };
+      return { success: true };
+    } catch {
+      return { success: false, message: 'Network error' };
+    }
+  }
+
   async claimLuckyBag(): Promise<{ hit: boolean; reward: number } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/ai/lucky-bag/claim`, {

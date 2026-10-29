@@ -62,7 +62,11 @@ const HomeVideoTutorials: React.FC<{ filter?: 'tags' | 'select' }> = ({ filter =
     let timer: ReturnType<typeof setTimeout> | null = null;
     const attempt = (i: number) => {
       timer = setTimeout(() => {
-        fetch(`${MANIFEST_URL}?v=${Date.now()}`)
+        // 8 秒拿不到就算这次失败(sidecar 代理没响应时别把重试链卡死)
+        const ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const to = ac ? setTimeout(() => ac.abort(), 8000) : null;
+        fetch(`${MANIFEST_URL}?v=${Date.now()}`, ac ? { signal: ac.signal } : undefined)
+          .finally(() => { if (to) clearTimeout(to); })
           .then((r) => r.json())
           .then((m) => {
             if (!alive) return;

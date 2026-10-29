@@ -13,6 +13,8 @@ import { isTestMode } from '../services/endpoints';
 import { HIDE_WEB3 } from '../buildFlags';
 import ErrorMessage from './ErrorMessage';
 import AdvancedSettingsPanel from './AdvancedSettingsPanel';
+import ProfileSettingsPanel from './ProfileSettingsPanel';
+import { noobClawAuth } from '../services/noobclawAuth';
 import { XMarkIcon, SignalIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
 import PlusCircleIcon from './icons/PlusCircleIcon';
@@ -42,7 +44,7 @@ import {
   QwenIcon,
 } from './icons/providers';
 
-type TabType = 'general' | 'model' | 'coworkMemory' | 'email' | 'advanced' | 'about';
+type TabType = 'profile' | 'general' | 'model' | 'coworkMemory' | 'email' | 'advanced' | 'about';
 
 export type SettingsOpenOptions = {
   initialTab?: TabType;
@@ -328,6 +330,12 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
   const dispatch = useDispatch();
   // State
   const [activeTab, setActiveTab] = useState<TabType>(initialTab ?? 'general');
+  // 「个人信息」tab 只在登录后出现
+  const [isLoggedIn, setIsLoggedIn] = useState(() => noobClawAuth.getState().isAuthenticated);
+  useEffect(() => noobClawAuth.subscribe((s) => setIsLoggedIn(s.isAuthenticated)), []);
+  useEffect(() => {
+    if (!isLoggedIn && activeTab === 'profile') setActiveTab('general');
+  }, [isLoggedIn, activeTab]);
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system');
   const [language, setLanguage] = useState<LanguageType>('zh');
   const [useSystemProxy, setUseSystemProxy] = useState(false);
@@ -1601,6 +1609,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
 
   // Render tabs
   const sidebarTabs: { key: TabType; label: string; icon: React.ReactNode }[] = useMemo(() => [
+    ...(isLoggedIn ? [{ key: 'profile' as TabType, label: i18nService.t('profileTab'), icon: <span className="text-base">&#x1F464;</span> }] : []),
     { key: 'general',        label: i18nService.t('general'),        icon: <span className="text-base">&#x2699;&#xFE0F;</span> },
     // 「AI服务」tab(model)已下线:矩阵版始终用 NoobClaw AI 服务,不暴露切换自定义 API Key 的入口。
     // useNoobClawServer 默认 true,渲染分支与 LoginWall/Cowork 的旧入口保留但侧栏不再可达。
@@ -1608,7 +1617,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
     { key: 'coworkMemory',   label: i18nService.t('coworkMemoryTitle'), icon: <span className="text-base">&#x1F9E0;</span> },
     { key: 'advanced',       label: i18nService.t('stAdvancedTab'), icon: <span className="text-base">&#x1F527;</span> },
     { key: 'about',          label: i18nService.t('about'),          icon: <span className="text-base">&#x2139;&#xFE0F;</span> },
-  ], [language]);
+  ], [language, isLoggedIn]);
 
   const activeTabLabel = useMemo(() => {
     return sidebarTabs.find(t => t.key === activeTab)?.label ?? '';
@@ -1616,6 +1625,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
 
   const renderTabContent = () => {
     switch(activeTab) {
+      case 'profile':
+        return isLoggedIn ? <ProfileSettingsPanel onLoggedOut={onClose} /> : null;
+
       case 'general':
         return (
           <div className="space-y-8">
