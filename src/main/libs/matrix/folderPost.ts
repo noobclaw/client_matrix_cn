@@ -178,7 +178,9 @@ function occurrencesForDay(taskId: string, accountId: string, slots: FolderPostS
     if (!s.on) return;
     const [h, m] = s.time.split(':').map(Number);
     const d = new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m, 0, 0);
-    const j = Math.max(0, Math.min(FOLDER_POST_LIMITS.jitterMaxMin, Math.round(jitterMin || 0)));
+    // 2026-10-29 用户:不要随机浮动,就按设定时间准点发 —— 老任务存的 jitterMin 也一律不再生效(同一时段同一天的账本 key 不变,不会重发)。
+    void jitterMin;
+    const j = 0;
     const off = j ? (hash(`${taskId}|${accountId}|${i}|${date}`) % (2 * j + 1)) - j : 0;
     out.push({ key: `${accountId}|${i + 1}|${date}`, accountId, slot: i + 1, date, at: d.getTime() + off * 60_000 });
   });

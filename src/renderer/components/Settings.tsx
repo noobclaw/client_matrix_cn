@@ -329,7 +329,8 @@ const getDefaultActiveProvider = (): ProviderType => {
 const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceCustomApi, onUpdateFound, scrollToSection }) => {
   const dispatch = useDispatch();
   // State
-  const [activeTab, setActiveTab] = useState<TabType>(initialTab ?? 'general');
+  // 2026-10-29 用户:打开设置默认是「个人信息」(登录后才有这个 tab;没登录照旧「通用」)
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab ?? (noobClawAuth.getState().isAuthenticated ? 'profile' : 'general'));
   // 「个人信息」tab 只在登录后出现
   const [isLoggedIn, setIsLoggedIn] = useState(() => noobClawAuth.getState().isAuthenticated);
   useEffect(() => noobClawAuth.subscribe((s) => setIsLoggedIn(s.isAuthenticated)), []);

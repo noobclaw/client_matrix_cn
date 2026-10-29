@@ -5,7 +5,7 @@
  * (不用抖音自带定时)。图文从账号「我的收藏」音乐前 3 首随机配 BGM;视频用原声。
  *   Step 1 — 勾执行账号
  *   Step 2 — 账号横排,点一个号:设它 3 个时段(开关 + 时间),看每个时段文件夹里还剩多少,能直接打开文件夹
- *   Step 3 — 发布时间随机浮动 + 摘要
+ *   Step 3 — 摘要(按设定时间准点发)
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -48,7 +48,7 @@ const MatrixFolderPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
     for (const k of Object.keys(src)) out[k] = (src[k] || []).slice(0, 3).map((s: any) => ({ time: String(s?.time || ''), on: !!s?.on }));
     return out;
   });
-  const [jitterMin, setJitterMin] = useState<number>(() => (typeof initialTask?.folderPost?.jitterMin === 'number' ? initialTask.folderPost.jitterMin : 15));
+  const jitterMin = 0;   // 2026-10-29 用户:不要随机浮动,准点发
   const [activeAcc, setActiveAcc] = useState<string | null>(null);
   const [stats, setStats] = useState<Record<string, { dir: string; slots: SlotStat[] }>>({});
   const [root, setRoot] = useState('');
@@ -56,7 +56,7 @@ const MatrixFolderPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, slots, jitterMin]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [selected, slots]);
 
   const linked = (a: WizardAccount) => a.status !== 'banned' && a.status !== 'login_required';
   const readyAccounts = accounts.filter(linked);
@@ -242,17 +242,7 @@ const MatrixFolderPostWizard: React.FC<Props> = ({ platformLabel, platform, acco
 
         {step === 3 && (
           <>
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-2 block">{L('发布时间随机浮动', '發布時間隨機浮動', 'Random offset')}</label>
-              <div className="flex gap-2 flex-wrap">
-                {[0, 5, 10, 15, 30].map((v) => (
-                  <button key={v} type="button" onClick={() => setJitterMin(v)} className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${jitterMin === v ? 'border-teal-500 bg-teal-500/10 text-teal-600 dark:text-teal-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-teal-500/50'}`}>
-                    {v === 0 ? L('准点发', '準點發', 'On time') : L(`前后 ${v} 分钟`, `前後 ${v} 分鐘`, `±${v} min`)}
-                  </button>
-                ))}
-              </div>
-              <div className="text-[11px] text-gray-400 mt-1">{L('每个号每天的发布时间会在设定时间前后随机一点,更像真人。', '每個帳號每天的發布時間會在設定時間前後隨機一點,更像真人。', 'Each day the time shifts a little around the set time.')}</div>
-            </div>
+            {/* 2026-10-29 用户:去掉「发布时间随机浮动」,按设定时间准点发 */}
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">{L('任务摘要', '任務摘要', 'Summary')}</div>
               <SummaryRow label={L('账号', '帳號', 'Accounts')} value={L(`${selected.size} 个`, `${selected.size} 個`, `${selected.size}`)} />

@@ -237,7 +237,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     }
   }
 
-  // 文件夹定时发布(仅抖音):只留选中号的时段,每号 3 个 HH:MM;至少一个号开了一个时段;浮动 0-30 分钟。
+  // 文件夹定时发布(仅抖音):只留选中号的时段,每号 3 个 HH:MM;至少一个号开了一个时段;准点发(浮动已取消,恒为 0)。
   if (input.type === 'folder_post') {
     if (input.platform !== 'douyin') return { ok: false, error: 'folder_post_platform_unsupported' };
     const accIds = (input.accountIds || []).filter(Boolean).map(String);
@@ -247,7 +247,9 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     for (const id of accIds) slotsByAccount[id] = normSlots(src[id]);
     if (!accIds.some((id) => slotsByAccount[id].some((x) => x.on))) return { ok: false, error: 'folder_post_no_slot' };
     const j = Math.round(Number(input.folderPost?.jitterMin));
-    const jitterMin = Number.isFinite(j) ? Math.max(0, Math.min(30, j)) : 15;
+    // 2026-10-29 用户:去掉随机浮动,一律准点(字段保留为 0,兼容老数据结构)
+    void j;
+    const jitterMin = 0;
     // frequency 只是占位(调度看时段),必须不是 once 才会进定时。
     input = { ...input, folderPost: { slotsByAccount, jitterMin }, frequency: 'daily_random', quota: {} };
   }

@@ -1413,7 +1413,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         // v2.4.60: 频次显示真实用户配置(min/max),不再写死 daily_count
                         const sid = task.scenario_id;
                         const t = task as any;
-                        if (isFolderTask) return BL(`按各号时段自动发 · 发布时间前后随机 ${folderCfg.jitterMin ?? 0} 分钟 · 错过 3 小时内补发`, `按各帳號時段自動發 · 發布時間前後隨機 ${folderCfg.jitterMin ?? 0} 分鐘 · 錯過 3 小時內補發`, `Posts at each account's slots · ±${folderCfg.jitterMin ?? 0} min · catch-up within 3h`);
+                        if (isFolderTask) return BL('按各号时段准点发 · 错过 3 小时内补发', '按各帳號時段準點發 · 錯過 3 小時內補發', "Posts at each account's slot times · catch-up within 3h");
                         if (isBlockTask) return BL(`${intervalLabel} · 不限人数 · 每次间隔 3~15 秒`, `${intervalLabel} · 不限人數 · 每次間隔 3~15 秒`, `${intervalLabel} · no limit · 3-15s apart`);
                         // 评论语言标记:海外互动任务设了【具体语言】(非 auto)时,摘要里标出来(国内平台跟帖子语言,不标)。
                         const COMMENT_LANG_LABEL: Record<string, string> = { zh: '简体中文', 'zh-TW': '繁體中文', en: 'English', ja: '日本語', ko: '한국어', ru: 'Русский', fr: 'Français', de: 'Deutsch', vi: 'Tiếng Việt' };
