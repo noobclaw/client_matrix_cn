@@ -45,18 +45,41 @@ const HomeVideoTutorials: React.FC<{ filter?: 'tags' | 'select' }> = ({ filter =
   const [canPrev, setCanPrev] = useState(false);
   const [canNext, setCanNext] = useState(false);
 
+  // 2026-10-29 用户:「有时候视频教程整块不见」—— 清单是经 sidecar 代理拉的,刚启动 / 网络抖一下就会失败,
+  //   失败一次整块就隐藏了。改成:① 先用上次成功的清单(本地缓存)立刻显示;② 拉取失败自动重试(2s / 5s / 10s);
+  //   三次都失败、又没有缓存,才隐藏。
   useEffect(() => {
     let alive = true;
-    fetch(`${MANIFEST_URL}?v=${Date.now()}`)
-      .then((r) => r.json())
-      .then((m) => {
-        if (!alive) return;
-        const vs = m.videos || [];
-        setVideos(vs); setGroups(m.groups || []);
-        setStatus(vs.length ? 'ready' : 'error');
-      })
-      .catch(() => { if (alive) setStatus('error'); });
-    return () => { alive = false; };
+    const CACHE_KEY = 'noobclaw_home_videos_manifest';
+    let hasCache = false;
+    try {
+      const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+      if (c && Array.isArray(c.videos) && c.videos.length) {
+        setVideos(c.videos); setGroups(c.groups || []); setStatus('ready'); hasCache = true;
+      }
+    } catch { /* 缓存坏了就当没有 */ }
+    const delays = [0, 2000, 5000, 10000];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const attempt = (i: number) => {
+      timer = setTimeout(() => {
+        fetch(`${MANIFEST_URL}?v=${Date.now()}`)
+          .then((r) => r.json())
+          .then((m) => {
+            if (!alive) return;
+            const vs = (m && m.videos) || [];
+            if (!vs.length) throw new Error('empty');
+            setVideos(vs); setGroups(m.groups || []); setStatus('ready');
+            try { localStorage.setItem(CACHE_KEY, JSON.stringify({ videos: vs, groups: m.groups || [] })); } catch { /* ignore */ }
+          })
+          .catch(() => {
+            if (!alive) return;
+            if (i + 1 < delays.length) attempt(i + 1);
+            else if (!hasCache) setStatus('error');
+          });
+      }, delays[i]);
+    };
+    attempt(0);
+    return () => { alive = false; if (timer) clearTimeout(timer); };
   }, []);
 
   const shown = active === 'all' ? videos : videos.filter((v) => v.group === active);
