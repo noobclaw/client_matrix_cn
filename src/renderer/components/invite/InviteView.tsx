@@ -708,8 +708,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
         <div className="mb-3 p-5 rounded-2xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex flex-col gap-4">
           <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('inviteYourLink')}</h3>
           <div className="flex flex-wrap justify-center items-center gap-3">
-            <code className="flex-[0_1_560px] min-w-0 h-12 px-4 flex items-center justify-center rounded-[10px] border dark:border-white/35 border-black/25 !bg-transparent dark:!text-white !text-claude-text font-mono text-base truncate select-all">{referralLink}</code>
-            <button onClick={copyLink} className={`shrink-0 h-12 px-6 rounded-[10px] text-[15px] font-bold transition-all ${copied ? 'bg-primary/20 text-primary' : 'bg-primary hover:bg-primary-hover text-black'}`}>
+            <code className="flex-[0_1_440px] min-w-0 h-10 px-3.5 flex items-center justify-center rounded-lg border dark:border-white/35 border-black/25 !bg-transparent dark:!text-white !text-claude-text font-mono text-sm truncate select-all">{referralLink}</code>
+            <button onClick={copyLink} className={`shrink-0 h-10 px-5 rounded-lg text-sm font-bold transition-all ${copied ? 'bg-primary/20 text-primary' : 'bg-primary hover:bg-primary-hover text-black'}`}>
               {copied ? i18nService.t('inviteCopied') : i18nService.t('inviteCopy')}
             </button>
           </div>
