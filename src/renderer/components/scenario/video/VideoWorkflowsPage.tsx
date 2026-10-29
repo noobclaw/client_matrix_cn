@@ -45,6 +45,9 @@ import StoryboardReviewModal from './StoryboardReviewModal';
 import BgmPreviewBar, { BgmPreviewButtons, BgmPreviewPlayer, useBgmPreview, useVoicePreview } from './BgmPreviewBar';
 import { NumBox } from '../../matrix/NumberStepper';
 
+// 电影级(纯 AI · Seedance)入口卡片暂时隐藏(2026-10-29)。改回 false 即恢复。
+const HIDE_CINEMA_CARD = true;
+
 // 订阅 store 的 React hook:任意视图都能拿到最新任务列表 + 运行记录并自动重渲染。
 function useVideoStore(): { tasks: VideoTask[]; runs: VideoRunRecord[] } {
   const [snap, setSnap] = useState(() => ({
@@ -2302,6 +2305,8 @@ const VideoCreateFlow: React.FC<{
           descZh={i18nService.t('rpstCardDesc')} descEn={i18nService.t('rpstCardDesc')}
           costZh={i18nService.t('rpstCardCost').replace('{fee}', feeZh)} costEn={i18nService.t('rpstCardCost').replace('{fee}', feeEn)}
           btnZh={i18nService.t('rpstCardBtn')} btnEn={i18nService.t('rpstCardBtn')} />
+        {/* 2026-10-29 用户:新版本先隐藏「电影级 · 纯 AI 生成」卡片(已建的电影级任务照常运行、可编辑)。 */}
+        {!HIDE_CINEMA_CARD && (
         <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={openWithLogin(() => setCinemaOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
@@ -2309,6 +2314,7 @@ const VideoCreateFlow: React.FC<{
           descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates the picture, the voice, the lip sync and the ambience together, so audio and video are in step to the millisecond; shots are chained frame to frame so faces and style hold. Paste your own storyboard, or let AI write one. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={`按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
+        )}
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
