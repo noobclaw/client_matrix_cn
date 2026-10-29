@@ -269,7 +269,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
               type="button"
               disabled={loading}
               onClick={handleCheck}
-              className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 active:scale-95 disabled:opacity-50"
+              className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-green-500 text-black hover:bg-green-600 active:scale-95 disabled:opacity-50"
             >
               {loading ? i18nService.t('scChecking') : i18nService.t('scCheck')}
             </button>

@@ -170,7 +170,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               <button
                 type="button"
                 onClick={() => noobClawAuth.requireLoginUI()}
-                className="shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold bg-claude-accent text-white hover:bg-claude-accentHover transition-colors shadow-sm"
+                className="shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold bg-claude-accent text-black hover:bg-claude-accentHover transition-colors shadow-sm"
               >
                 {i18nService.t('coworkConnectWallet')}
               </button>

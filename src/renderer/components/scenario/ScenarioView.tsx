@@ -1858,7 +1858,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 <button
                   type="button"
                   onClick={() => goCreate('xhs')}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 shadow-sm shadow-green-500/25 transition-all active:scale-95"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-green-500 text-black text-sm font-semibold hover:bg-green-600 shadow-sm shadow-green-500/25 transition-all active:scale-95"
                 >
                   📕 {i18nService.t('svNewXhsTask')}
                 </button>
@@ -2134,7 +2134,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-red-500/30 bg-red-500/5 dark:bg-red-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-red-600 dark:text-red-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> {i18nService.currentLanguage === 'zh' ? '账号工具' : i18nService.currentLanguage === 'zh-TW' ? '帳號工具' : 'Account tools'}
-                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white">{i18nService.currentLanguage === 'zh' ? '🆓 免费' : i18nService.currentLanguage === 'zh-TW' ? '🆓 免費' : '🆓 Free'}</span>
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-black">{i18nService.currentLanguage === 'zh' ? '🆓 免费' : i18nService.currentLanguage === 'zh-TW' ? '🆓 免費' : '🆓 Free'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">🚫 {platLabel} · {i18nService.currentLanguage === 'zh' ? '批量拉黑' : i18nService.currentLanguage === 'zh-TW' ? '批量封鎖' : 'Batch Block'}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
@@ -2265,7 +2265,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               <button
                 type="button"
                 onClick={() => openMatrixImageTextWizard(currentPlatform)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-bold hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition-all active:scale-95"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500 text-black text-sm font-bold hover:bg-emerald-600 shadow-sm shadow-emerald-500/25 transition-all active:scale-95"
               >
                 📝 {i18nService.t('svStartCreate')}
               </button>
@@ -2493,7 +2493,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionDownload')}
-                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white">🆓 {i18nService.currentLanguage === 'zh' ? '免费' : i18nService.currentLanguage === 'zh-TW' ? '免費' : 'Free'}</span>
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-black">🆓 {i18nService.currentLanguage === 'zh' ? '免费' : i18nService.currentLanguage === 'zh-TW' ? '免費' : 'Free'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">⬇️ {i18nService.t('ytdlTaskName')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">{i18nService.t('ytdlCardDesc')}</div>
@@ -2513,7 +2513,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-sky-500/30 bg-sky-500/5 dark:bg-sky-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-sky-600 dark:text-sky-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> {i18nService.t('svSectionDownload')}
-                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-white">🆓 {i18nService.currentLanguage === 'zh' ? '免费' : i18nService.currentLanguage === 'zh-TW' ? '免費' : 'Free'}</span>
+                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500 text-black">🆓 {i18nService.currentLanguage === 'zh' ? '免费' : i18nService.currentLanguage === 'zh-TW' ? '免費' : 'Free'}</span>
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">⬇️ {platLabel} · {i18nService.t('svCardDownloadTitle')}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
@@ -2919,7 +2919,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               if (!simple && !noobClawAuth.hasEnoughBalanceForTask()) return;
               onSwitchToCreate?.();
             }}
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap active:scale-95 text-white shadow-md shadow-green-500/30 bg-green-500 hover:bg-green-600 border border-green-500"
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap active:scale-95 text-black shadow-md shadow-green-500/30 bg-green-500 hover:bg-green-600 border border-green-500"
           >
             <span>✨</span>
             <span>{i18nService.t('svNewTaskGeneric')}</span>

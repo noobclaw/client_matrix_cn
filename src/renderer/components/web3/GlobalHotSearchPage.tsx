@@ -148,7 +148,7 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
               <button key={g.key} type="button" onClick={() => selectTab(idx)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                   activeTab === idx
-                    ? 'bg-claude-accent text-white border-transparent shadow'
+                    ? 'bg-claude-accent text-black border-transparent shadow'
                     : 'dark:text-claude-darkTextSecondary text-claude-textSecondary dark:border-claude-darkBorder border-claude-border hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'}`}>
                 {g.label}
                 {loadingTab === idx && <span className="ml-1 animate-pulse">⟳</span>}
@@ -163,7 +163,7 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
           ) : tabError ? (
             <div className="py-20 flex flex-col items-center justify-center gap-3 text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">
               <span>😶‍🌫️ {i18nService.t('globalHotSearchError')}</span>
-              <button onClick={refresh} className="px-3 py-1.5 rounded-lg bg-claude-accent text-white text-xs hover:opacity-90">{i18nService.t('globalHotSearchRetry')}</button>
+              <button onClick={refresh} className="px-3 py-1.5 rounded-lg bg-claude-accent text-black text-xs hover:opacity-90">{i18nService.t('globalHotSearchRetry')}</button>
             </div>
           ) : (
             /* 当前组的榜单(一行铺开),按组内顺序锚定;某榜抓取失败给占位卡保持布局 */

@@ -2009,7 +2009,7 @@ const VideoTaskDetail: React.FC<{
                   type="button"
                   onClick={handleRerun}
                   disabled={checking}
-                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50"
+                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-black hover:bg-green-600 transition-colors disabled:opacity-50"
                 >
                   {checking
                     ? (isZh ? '校验余额…' : 'Checking…')
@@ -7284,7 +7284,7 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                   {/* 原片直传:只选视频文件(可多选,轮流直发),不选文件夹、不选形态、不支持图片。 */}
                   <Field label={t('vmixSourceLabel')} hint={t('uaPickVideoHint')}>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">🎞️ {t('uaPickVideo')}</button>
+                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600">🎞️ {t('uaPickVideo')}</button>
                       <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={pickedFiles.join('\n')}>
                         {pickedFiles.length > 0 ? String(pickedFiles[0]).split(/[\/]/).pop() : t('uaNoVideoYet')}
                       </div>
@@ -7304,8 +7304,8 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
                 <>
                   <Field label={t('vmixSourceLabel')} hint={t('vmixSourceHint')}>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={pickFolder} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">📂 {t('vmixPickFolder')}</button>
-                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">🎞️ {t('vmixPickFiles')}</button>
+                      <button type="button" onClick={pickFolder} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600">📂 {t('vmixPickFolder')}</button>
+                      <button type="button" onClick={pickFiles} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600">🎞️ {t('vmixPickFiles')}</button>
                       <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 truncate" title={folder || pickedFiles.join('\n')}>
                         {folder
                           || (pickedFiles.length > 0 ? t('vmixFilesPicked').replace('{n}', String(pickedFiles.length)) : t('vmixNoFolderYet'))}
@@ -7569,9 +7569,9 @@ export const LocalMixVideoModal: React.FC<{ isZh: boolean; matrixMode?: boolean;
           <button type="button" onClick={goBack} disabled={submitting} className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{step === 1 ? t('vmixCancel') : t('vmixBack')}</button>
           <div className="flex-1" />
           {step < MAX_STEP ? (
-            <button type="button" onClick={goNext} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600">{t('vmixNext')}</button>
+            <button type="button" onClick={goNext} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600">{t('vmixNext')}</button>
           ) : (
-            <button type="button" onClick={handleFinalClick} disabled={submitting} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{submitting ? t('vmixSaving') : (isEdit ? t('vmixSave') : t('vmixCreate'))}</button>
+            <button type="button" onClick={handleFinalClick} disabled={submitting} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600 disabled:opacity-50">{submitting ? t('vmixSaving') : (isEdit ? t('vmixSave') : t('vmixCreate'))}</button>
           )}
         </div>
 

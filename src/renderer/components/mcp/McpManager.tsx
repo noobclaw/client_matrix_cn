@@ -446,7 +446,7 @@ const McpManager: React.FC = () => {
                 onClick={() => setActiveCategory(cat.id)}
                 className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                   activeCategory === cat.id
-                    ? 'bg-claude-accent text-white'
+                    ? 'bg-claude-accent text-black'
                     : 'dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkTextSecondary text-claude-textSecondary dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover border dark:border-claude-darkBorder border-claude-border'
                 }`}
               >
@@ -484,7 +484,7 @@ const McpManager: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => handleInstallFromRegistry(entry)}
-                          className="px-2.5 py-1 text-xs rounded-lg bg-claude-accent text-white hover:bg-claude-accent/90 transition-colors"
+                          className="px-2.5 py-1 text-xs rounded-lg bg-claude-accent text-black hover:bg-claude-accent/90 transition-colors"
                         >
                           {i18nService.t('mcpInstall')}
                         </button>

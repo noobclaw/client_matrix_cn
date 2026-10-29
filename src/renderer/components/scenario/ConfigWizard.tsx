@@ -2183,12 +2183,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 // 不显示 persona 输入)被 disabled 卡住。canAdvance 已经正确排除了 isBinanceSourceViral
                 // (line 888),统一用它一处算就好。
                 disabled={step === 1 && !canAdvance[1].ok}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-black hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {isZh ? '下一步' : 'Next'} →
               </button>
             ) : (
               <button type="button" onClick={handleFinish} disabled={!canFinish || saving}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-black hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {saving ? '...' : (isZh ? '保存并启用' : 'Save & Create Task')}
               </button>
             )}

@@ -86,7 +86,7 @@ export const PayoutWalletRow: React.FC<{ current: string | null; onSaved?: (wall
             {msg && <p className={`text-[11px] mt-1.5 ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.text}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setOpen(false)} disabled={saving} className="px-3 py-1.5 rounded-md text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-60">{zhUi ? '取消' : 'Cancel'}</button>
-              <button type="button" onClick={save} disabled={saving} className="px-4 py-1.5 rounded-md text-xs font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-60">{i18nService.t('save')}</button>
+              <button type="button" onClick={save} disabled={saving} className="px-4 py-1.5 rounded-md text-xs font-semibold bg-green-500 text-black hover:bg-green-600 disabled:opacity-60">{i18nService.t('save')}</button>
             </div>
           </div>
         </div>,
@@ -1021,7 +1021,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               onClick={() => { setStatusFilter(tab.key); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(tab.key); }}
               className={`px-3 py-1.5 text-xs rounded-lg whitespace-nowrap transition-colors ${
                 statusFilter === tab.key
-                  ? 'bg-primary/10 text-primary font-medium'
+                  ? 'bg-primary text-black font-semibold'
                   : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover'
               }`}
             >
@@ -1059,7 +1059,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           <div className="flex gap-2">
             <button
               onClick={() => loadOrders(statusFilter, searchOrderNo, searchFrom ? `${searchFrom}T00:00:00` : '', searchTo ? `${searchTo}T23:59:59` : '')}
-              className="px-3 py-1.5 text-xs rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+              className="px-3 py-1.5 text-xs rounded-lg bg-primary text-black hover:bg-primary/90 transition-colors"
             >
               {i18nService.t('walletSearch')}
             </button>
@@ -1311,7 +1311,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           <div className="flex gap-1 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
             {([['all', i18nService.t('wvKindAll')], ['spend', i18nService.t('wvKindSpend')], ['earn', i18nService.t('wvKindEarn')]] as Array<['all' | 'spend' | 'earn', string]>).map(([k, label]) => (
               <button key={k} onClick={() => switchKind(k)}
-                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${creditKind === k ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
+                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-all ${creditKind === k ? 'bg-primary text-black' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>
                 {label}
               </button>
             ))}

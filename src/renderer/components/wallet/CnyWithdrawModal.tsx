@@ -11,7 +11,8 @@
  * 同时只允许 1 笔 pending(后端强约束),has_pending 时表单禁用。
  */
 
-import React, { useEffect, useRef, useState } from 'react';import { i18nService } from '../../services/i18n';
+import React, { useEffect, useRef, useState } from 'react';
+import { i18nService } from '../../services/i18n';
 
 import { createPortal } from 'react-dom';
 import { noobClawApi } from '../../services/noobclawApi';
@@ -208,7 +209,7 @@ export const CnyWithdrawModal: React.FC<{
               )}
 
               <button type="button" onClick={handleSubmit} disabled={submitting || hasPending}
-                className="w-full mt-4 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-50">
+                className="w-full mt-4 py-2.5 rounded-lg text-sm font-semibold bg-green-500 text-black hover:bg-green-600 disabled:opacity-50">
                 {submitting ? i18nService.t('cwSubmitting') : '💴 ' + i18nService.t('cwRequestWithdrawal')}
               </button>
             </fieldset>

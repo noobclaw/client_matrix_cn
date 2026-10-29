@@ -244,7 +244,7 @@ const Web3News: React.FC = () => {
           onClick={() => setActiveCategory('all')}
           className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
             activeCategory === 'all'
-              ? 'bg-claude-accent text-white'
+              ? 'bg-claude-accent text-black'
               : 'dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkTextSecondary text-claude-textSecondary hover:opacity-80'
           }`}
         >
@@ -256,7 +256,7 @@ const Web3News: React.FC = () => {
             onClick={() => setActiveCategory(cat.key)}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
               activeCategory === cat.key
-                ? 'bg-claude-accent text-white'
+                ? 'bg-claude-accent text-black'
                 : 'dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkTextSecondary text-claude-textSecondary hover:opacity-80'
             }`}
           >

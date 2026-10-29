@@ -124,7 +124,7 @@ const AdvancedSettingsPanel: React.FC = () => {
   return (
     <div className="space-y-10 text-sm">
       {savedToast && (
-        <div className="fixed top-4 right-4 z-50 rounded bg-claude-accent px-3 py-1.5 text-xs text-white shadow">
+        <div className="fixed top-4 right-4 z-50 rounded bg-claude-accent px-3 py-1.5 text-xs text-black shadow">
           {savedToast}
         </div>
       )}

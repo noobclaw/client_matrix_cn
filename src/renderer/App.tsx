@@ -1007,7 +1007,7 @@ const App: React.FC = () => {
             <div className="dark:text-claude-darkText text-claude-text text-xl font-medium text-center">{initError}</div>
             <button
               onClick={() => handleShowSettings()}
-              className="px-6 py-2.5 bg-claude-accent hover:bg-claude-accentHover text-white rounded-xl shadow-md transition-colors text-sm font-medium"
+              className="px-6 py-2.5 bg-claude-accent hover:bg-claude-accentHover text-black rounded-xl shadow-md transition-colors text-sm font-medium"
             >
               {i18nService.t('openSettings')}
             </button>

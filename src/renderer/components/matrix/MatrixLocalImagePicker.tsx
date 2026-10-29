@@ -7,7 +7,7 @@ import { i18nService } from '../../services/i18n';
 
 // ⚠️ Tailwind JIT 扫不到模板拼出来的类名 → 每个主色一整串字面量。
 const ACCENT_BTN: Record<string, string> = {
-  emerald: 'bg-emerald-500 text-white hover:bg-emerald-600',
+  emerald: 'bg-emerald-500 text-black hover:bg-emerald-600',
   sky: 'bg-sky-500 text-white hover:bg-sky-600',
   amber: 'bg-amber-500 text-white hover:bg-amber-600',
   fuchsia: 'bg-fuchsia-500 text-white hover:bg-fuchsia-600',

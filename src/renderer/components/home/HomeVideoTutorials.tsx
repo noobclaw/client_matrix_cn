@@ -131,7 +131,7 @@ const HomeVideoTutorials: React.FC<{ filter?: 'tags' | 'select' }> = ({ filter =
             onClick={() => setActive(g.key)}
             className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
               active === g.key
-                ? 'bg-claude-accent text-white border-transparent'
+                ? 'bg-claude-accent text-black border-transparent'
                 : 'dark:bg-white/[0.03] bg-white dark:border-white/10 border-gray-200/80 dark:text-gray-300 text-gray-600 hover:border-claude-accent/50'
             }`}
           >

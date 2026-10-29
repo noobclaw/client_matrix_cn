@@ -259,7 +259,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                     <button
                       type="button"
                       onClick={() => { window.dispatchEvent(new CustomEvent('noobclaw:show-matrix-accounts', { detail: { platform } })); onCancel(); }}
-                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 active:scale-95"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-black text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 active:scale-95"
                     >{i18nService.t('wzImgGoAddAccount')}</button>
                   </div>
                 )}
@@ -349,9 +349,9 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
                   <div className="mt-2.5">
                     <button type="button" onClick={() => setSourceTrackMatch(!sourceTrackMatch)} aria-pressed={sourceTrackMatch} disabled={saving}
                       className={`w-full px-4 py-3 rounded-xl border text-left transition-colors flex items-start gap-3 disabled:opacity-50 ${sourceTrackMatch ? 'border-emerald-400 bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 text-emerald-700 dark:text-emerald-300 shadow-sm' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-emerald-400/60'}`}>
-                      <span className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-sm transition-colors ${sourceTrackMatch ? 'bg-emerald-500 text-white' : 'border-2 border-gray-400 dark:border-gray-600'}`}>{sourceTrackMatch ? '✓' : ''}</span>
+                      <span className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-sm transition-colors ${sourceTrackMatch ? 'bg-emerald-500 text-black' : 'border-2 border-gray-400 dark:border-gray-600'}`}>{sourceTrackMatch ? '✓' : ''}</span>
                       <span className="flex-1 min-w-0">
-                        <span className="flex items-center gap-1.5 text-sm font-semibold">🎯 {T('仅选用账号赛道相关内容', 'Only niche-relevant topics')}{sourceTrackMatch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500 text-white font-bold tracking-wide">{T('已开', 'ON')}</span>}</span>
+                        <span className="flex items-center gap-1.5 text-sm font-semibold">🎯 {T('仅选用账号赛道相关内容', 'Only niche-relevant topics')}{sourceTrackMatch && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500 text-black font-bold tracking-wide">{T('已开', 'ON')}</span>}</span>
                         <span className="block text-[11px] text-gray-500 dark:text-gray-400 font-normal mt-0.5">{T('勾选此项,则 AI 会从数据源中筛选符合每个矩阵号赛道的热点进行选题创作', "When on, AI filters the data sources for topics matching each account's niche")}</span>
                       </span>
                     </button>
@@ -380,7 +380,7 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
               {imageSource === 'local' && (
                 <div className="mt-3 space-y-1.5">
                   <button type="button" onClick={pickLocalImages} disabled={saving || localImages.length >= 6}
-                    className="w-full px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 transition-colors">
+                    className="w-full px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600 disabled:opacity-50 transition-colors">
                     ➕ {i18nService.t('wzImgLocalPick').replace('{n}', String(localImages.length))}
                   </button>
                   {localImages.length > 0 && (
@@ -549,9 +549,9 @@ const MatrixImageTextWizard: React.FC<Props> = ({ platformLabel, platform, accou
         <div className="flex-1" />
         {step > 1 && <button type="button" onClick={() => { setKwEditingId(null); setStep((step - 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">{i18nService.t('wzImgPrev')}</button>}
         {step < 4 ? (
-          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{i18nService.t('wzImgNext')}</button>
+          <button type="button" onClick={() => { if (!canAdvance[step].ok) { setSaveError(canAdvance[step].reason || ''); return; } setSaveError(null); setStep((step + 1) as WizardStep); }} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600 disabled:opacity-50">{i18nService.t('wzImgNext')}</button>
         ) : (
-          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">{saving ? i18nService.t('wzImgSaving') : (editing ? i18nService.t('wzImgSaveEdit') : i18nService.t('wzImgCreateTask'))}</button>
+          <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted} className="px-5 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-black hover:bg-emerald-600 disabled:opacity-50">{saving ? i18nService.t('wzImgSaving') : (editing ? i18nService.t('wzImgSaveEdit') : i18nService.t('wzImgCreateTask'))}</button>
         )}
       </div>
     </div>

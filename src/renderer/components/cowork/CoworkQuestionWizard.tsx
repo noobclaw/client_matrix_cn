@@ -327,7 +327,7 @@ const CoworkQuestionWizard: React.FC<CoworkQuestionWizardProps> = ({
                         onClick={() => setCurrentStep(index)}
                         className={`relative flex items-center justify-center w-7 h-7 rounded-full text-xs font-medium transition-all ${
                           isActive
-                            ? 'bg-claude-accent text-white shadow-md'
+                            ? 'bg-claude-accent text-black shadow-md'
                             : isAnswered
                             ? 'bg-green-500/20 dark:bg-green-600/20 text-green-700 dark:text-green-400 border border-green-500 dark:border-green-600 hover:scale-105'
                             : 'bg-claude-surfaceHover dark:bg-claude-darkSurfaceHover text-claude-textSecondary dark:text-claude-darkTextSecondary hover:bg-claude-accent/20 dark:hover:bg-claude-accent/20 hover:scale-105'
@@ -434,7 +434,7 @@ const CoworkQuestionWizard: React.FC<CoworkQuestionWizardProps> = ({
         <div className="flex items-center justify-end px-6 py-4 border-t dark:border-claude-darkBorder border-claude-border bg-claude-surfaceMuted dark:bg-claude-darkSurfaceMuted">
           <button
             onClick={handleSubmit}
-            className="px-5 py-2 text-sm font-medium rounded-lg bg-claude-accent hover:bg-claude-accentHover text-white transition-colors"
+            className="px-5 py-2 text-sm font-medium rounded-lg bg-claude-accent hover:bg-claude-accentHover text-black transition-colors"
           >
             {i18nService.t('coworkQuestionWizardSubmit')}
           </button>

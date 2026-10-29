@@ -469,7 +469,7 @@ const SkillsManager: React.FC = () => {
       )}
 
       {installSuccessName && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-600 text-white text-sm shadow-lg animate-fade-in-up">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-600 text-black text-sm shadow-lg animate-fade-in-up">
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           {i18nService.currentLanguage === 'zh' ? `「${installSuccessName}」安装成功` : `"${installSuccessName}" installed`}
         </div>
@@ -822,7 +822,7 @@ const SkillsManager: React.FC = () => {
                   onClick={() => setActiveMarketTag('all')}
                   className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                     activeMarketTag === 'all'
-                      ? 'bg-claude-accent text-white'
+                      ? 'bg-claude-accent text-black'
                       : 'dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkTextSecondary text-claude-textSecondary dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover border dark:border-claude-darkBorder border-claude-border'
                   }`}
                 >
@@ -835,7 +835,7 @@ const SkillsManager: React.FC = () => {
                     onClick={() => setActiveMarketTag(tag.id)}
                     className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                       activeMarketTag === tag.id
-                        ? 'bg-claude-accent text-white'
+                        ? 'bg-claude-accent text-black'
                         : 'dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkTextSecondary text-claude-textSecondary dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover border dark:border-claude-darkBorder border-claude-border'
                     }`}
                   >
@@ -876,7 +876,7 @@ const SkillsManager: React.FC = () => {
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleInstallMarketplaceSkill(skill); }}
                         disabled={installingSkillId !== null}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-lg bg-claude-accent text-white hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-lg bg-claude-accent text-black hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <ArrowDownTrayIcon className="h-3.5 w-3.5" />
                         {installingSkillId === skill.id ? i18nService.t('skillInstalling') : i18nService.t('skillInstall')}
@@ -1005,7 +1005,7 @@ const SkillsManager: React.FC = () => {
                             type="button"
                             onClick={() => handleInstallPack(pack)}
                             disabled={installingPack !== null}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-lg bg-claude-accent text-white hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium rounded-lg bg-claude-accent text-black hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <ArrowDownTrayIcon className="h-3.5 w-3.5" />
                             {isInstalling && packInstallProgress
@@ -1045,7 +1045,7 @@ const SkillsManager: React.FC = () => {
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); handleInstallMarketplaceSkill(skill); }}
                                 disabled={installingSkillId !== null || installingPack !== null}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-lg bg-claude-accent text-white hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-lg bg-claude-accent text-black hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 <ArrowDownTrayIcon className="h-3.5 w-3.5" />
                                 {installingSkillId === skill.id ? i18nService.t('skillInstalling') : i18nService.t('skillInstall')}
@@ -1174,7 +1174,7 @@ const SkillsManager: React.FC = () => {
                 type="button"
                 onClick={() => handleInstallMarketplaceSkill(selectedMarketplaceSkill)}
                 disabled={installingSkillId !== null}
-                className="w-full py-2.5 rounded-xl bg-claude-accent text-white text-sm font-medium hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 rounded-xl bg-claude-accent text-black text-sm font-medium hover:bg-claude-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
               >
                 <ArrowDownTrayIcon className="h-4 w-4" />
                 {installingSkillId === selectedMarketplaceSkill.id ? i18nService.t('skillInstalling') : i18nService.t('skillInstall')}
@@ -1400,7 +1400,7 @@ const SkillsManager: React.FC = () => {
                 type="button"
                 onClick={handleImportFromGithub}
                 disabled={isDownloadingSkill || !skillDownloadSource.trim()}
-                className="w-full py-2.5 rounded-xl bg-claude-accent text-white text-sm font-medium hover:bg-claude-accent/90 transition-colors disabled:opacity-50"
+                className="w-full py-2.5 rounded-xl bg-claude-accent text-black text-sm font-medium hover:bg-claude-accent/90 transition-colors disabled:opacity-50"
               >
                 {isDownloadingSkill ? i18nService.t('importingSkill') : i18nService.t('importSkill')}
               </button>

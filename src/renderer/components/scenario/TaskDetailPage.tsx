@@ -1687,7 +1687,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   })()}
                 </span>
                 <button type="button" onClick={() => handleRunNow()}
-                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
+                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-black hover:bg-green-600 transition-colors">
                   {i18nService.t('tdRunNow')}
                 </button>
                 <button type="button" onClick={onEdit}

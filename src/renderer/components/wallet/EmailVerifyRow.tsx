@@ -98,7 +98,7 @@ export const EmailVerifyRow: React.FC<Props> = ({ profile, onVerified }) => {
             <p className="text-[11px] dark:text-gray-500 text-gray-400 mb-2">{t('beEditable')}</p>
             <input className={inputCls} value={code} onChange={e => setCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder={t('pwEmailCodePh').replace('（选填）', '').replace(' (optional)', '')} />
             {err && <p className="text-xs text-red-400 mb-2">{err}</p>}
-            <button onClick={submit} disabled={busy} className="w-full py-3 rounded-xl bg-green-500 text-white font-semibold hover:bg-green-600 transition-all disabled:opacity-60">
+            <button onClick={submit} disabled={busy} className="w-full py-3 rounded-xl bg-green-500 text-black font-semibold hover:bg-green-600 transition-all disabled:opacity-60">
               {busy ? '…' : t('beVerify')}
             </button>
           </div>
@@ -118,7 +118,7 @@ export const EmailVerifyRow: React.FC<Props> = ({ profile, onVerified }) => {
                 <div className="text-xs text-green-400 mt-1">{t('bsCredits')}</div>
               </div>
             )}
-            <button onClick={() => setSuccessBonus(null)} className="w-full py-3 rounded-xl bg-green-500 text-white font-semibold hover:bg-green-600 transition-all">{t('bsBtn')}</button>
+            <button onClick={() => setSuccessBonus(null)} className="w-full py-3 rounded-xl bg-green-500 text-black font-semibold hover:bg-green-600 transition-all">{t('bsBtn')}</button>
           </div>
         </div>
       )}

@@ -323,7 +323,7 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
           <button
             onClick={submit}
             disabled={busy}
-            className="relative w-full py-3 rounded-xl bg-green-500 text-white font-semibold hover:bg-green-600 transition-all mb-1 disabled:opacity-60"
+            className="relative w-full py-3 rounded-xl bg-green-500 text-black font-semibold hover:bg-green-600 transition-all mb-1 disabled:opacity-60"
           >
             {busy ? '…' : (mode === 'login' ? t('pwLoginBtn') : <>🎁 {t('pwRegisterBtn')}</>)}
           </button>
@@ -331,7 +331,7 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
           <button
             onClick={submitReset}
             disabled={busy}
-            className="relative w-full py-3 rounded-xl bg-green-500 text-white font-semibold hover:bg-green-600 transition-all mb-1 disabled:opacity-60"
+            className="relative w-full py-3 rounded-xl bg-green-500 text-black font-semibold hover:bg-green-600 transition-all mb-1 disabled:opacity-60"
           >
             {busy ? '…' : t('pwResetBtn')}
           </button>

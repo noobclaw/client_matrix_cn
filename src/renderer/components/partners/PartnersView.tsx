@@ -327,7 +327,7 @@ const ActivityCard: React.FC<ActivityCardProps> = ({
           type="button"
           onClick={handleClick}
           disabled={submitting || !isAuthenticated}
-          className="w-full py-3 rounded-xl text-sm font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-full py-3 rounded-xl text-sm font-semibold bg-green-500 text-black hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {submitting ? (
             <span className="flex items-center justify-center gap-2">

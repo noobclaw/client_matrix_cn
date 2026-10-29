@@ -155,7 +155,7 @@ const ScheduledTasksView: React.FC<ScheduledTasksViewProps> = ({
             <button
               type="button"
               onClick={() => dispatch(setViewMode('create'))}
-              className="px-3 py-1 text-sm font-medium bg-claude-accent text-white rounded-lg hover:bg-claude-accentHover transition-colors"
+              className="px-3 py-1 text-sm font-medium bg-claude-accent text-black rounded-lg hover:bg-claude-accentHover transition-colors"
             >
               {i18nService.t('scheduledTasksNewTask')}
             </button>
