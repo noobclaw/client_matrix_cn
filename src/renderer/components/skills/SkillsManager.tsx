@@ -469,7 +469,7 @@ const SkillsManager: React.FC = () => {
       )}
 
       {installSuccessName && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-600 text-black text-sm shadow-lg animate-fade-in-up">
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-600 text-white text-sm shadow-lg animate-fade-in-up">
           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           {i18nService.currentLanguage === 'zh' ? `「${installSuccessName}」安装成功` : `"${installSuccessName}" installed`}
         </div>

@@ -1076,7 +1076,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     const notConnected = a.status === 'login_required';
                     const SL = (zh: string, tw: string, en: string) => (i18nService.currentLanguage === 'zh' ? zh : i18nService.currentLanguage === 'zh-TW' ? tw : en);
                     // 按钮配色照搬专业版卡片:没连接紫色、已连接绿色、断开橙色
-                    const btn = `text-xs px-2.5 py-1 rounded-lg ${notConnected ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-black'}`;
+                    const btn = `text-xs px-2.5 py-1 rounded-lg ${notConnected ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`;
                     return (
                       <div key={a.id} className={`relative rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 flex flex-col gap-3 bg-white dark:bg-gray-900 ${isSuspended ? 'opacity-60' : ''}`}>
                         <button onClick={() => deleteAccount(a)} title={i18nService.t('mvRemoveAccountTitle')} className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-white hover:bg-red-500/90 transition-colors text-sm leading-none">✕</button>
@@ -1170,8 +1170,8 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                     {/* 右侧可点击按钮:全色按钮 */}
                     <div className="flex items-center gap-2 flex-wrap pt-1 mt-auto">
                       {/* 未连接:配置IP/编辑/扫码连接 统一紫色;已连接:配置IP/编辑/刷新信息 统一绿色。 */}
-                      <button onClick={() => openProxy(a)} className={`text-xs px-2.5 py-1 rounded-lg ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-black'}`}>{i18nService.t('mvConfigIp')}</button>
-                      <button onClick={() => openEdit(a)} className={`text-xs px-2.5 py-1 rounded-lg ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-black'}`}>{i18nService.t('mvEdit')}</button>
+                      <button onClick={() => openProxy(a)} className={`text-xs px-2.5 py-1 rounded-lg ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}>{i18nService.t('mvConfigIp')}</button>
+                      <button onClick={() => openEdit(a)} className={`text-xs px-2.5 py-1 rounded-lg ${a.status === 'login_required' ? 'bg-violet-500 hover:bg-violet-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}>{i18nService.t('mvEdit')}</button>
                       {a.status === 'login_required'
                         ? (<>
                             {/* 尚未连接:统一入口「连接账号」→ 弹窗选【扫码连接 / 导入 cookie】,各走各流程(把原来并排两颗按钮收成一个)。 */}
@@ -1179,7 +1179,7 @@ const MatrixView: React.FC<Props> = ({ screen = 'accounts', initialPlatform, onN
                           </>)
                         : (<>
                             {/* 已连接:读真实身份 / 断开(清登录,保留配置) */}
-                            <button onClick={() => refreshIdentity(a)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-black hover:bg-emerald-700">{i18nService.t('mvRefreshInfo')}</button>
+                            <button onClick={() => refreshIdentity(a)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">{i18nService.t('mvRefreshInfo')}</button>
                             <button onClick={() => disconnectAccount(a)} className="text-xs px-2.5 py-1 rounded-lg bg-orange-500 text-white hover:bg-orange-600">{i18nService.t('mvDisconnect')}</button>
                           </>)}
                     </div>
