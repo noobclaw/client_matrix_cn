@@ -150,7 +150,7 @@ export const ContactInlinePanel: React.FC<{ showTitle?: boolean }> = ({ showTitl
 // 2026-10-29:平时只露一个显眼的「🎧 客服图标 + 联系我们」按钮;鼠标移上去或点一下才展开各联系方式,
 //   再点一下或鼠标移开就收起(弹出的二维码卡片不受影响)。
 const HEADSET_ICON = (
-  <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <svg viewBox="0 0 24 24" width={22} height={22} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M3 14v-2a9 9 0 0 1 18 0v2" />
     <path d="M21 15a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2z" />
     <path d="M3 15a2 2 0 0 0 2 2h1v-6H5a2 2 0 0 0-2 2z" />
@@ -168,32 +168,36 @@ export const ContactFloatWidget: React.FC = () => {
   if (entries.length === 0) return null;
   return (
     <>
-      <div className="fixed right-4 top-1/2 -translate-y-5 z-40"
+      {/* 一个竖向胶囊:收起时只有「耳机图标 + 联系我们(两行)」,绿底醒目;
+          展开时同一个胶囊往下长出各联系方式(同官网浮窗的样子)。顶端位置固定,展开不跳。 */}
+      <div className="fixed right-4 top-[38%] z-40"
         onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setPinned(false); }}>
-        <button type="button" onClick={() => { if (pinned) { setPinned(false); setHovered(false); } else setPinned(true); }} aria-expanded={expanded} aria-label={i18nService.t('contactUsMenu')}
-          className="inline-flex items-center gap-1.5 pl-3 pr-3.5 h-10 rounded-full bg-primary text-black text-[13px] font-bold shadow-lg shadow-black/30 hover:brightness-105 transition-all">
-          {HEADSET_ICON}
-          <span className="whitespace-nowrap">{i18nService.t('contactUsMenu')}</span>
-        </button>
-        {/* 展开的列表挂在按钮正下方(绝对定位):按钮位置不跟着跳,鼠标从按钮移到列表也不会收起(pt-2 补上缝隙) */}
-        {expanded && (
-          <div className="absolute left-1/2 -translate-x-1/2 top-full pt-2">
-          <div className="flex flex-col items-center gap-1 px-1.5 py-2 rounded-3xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface/95 bg-claude-surface/95 backdrop-blur shadow-lg">
-            {entries.map((k) => (
-              <button
-                key={k}
-                type="button"
-                title={contactLabel(k)}
-                aria-label={contactLabel(k)}
-                onClick={() => setOpenId(k)}
-                className="w-9 h-9 rounded-full flex items-center justify-center dark:text-white text-gray-700 hover:text-primary hover:bg-primary/10 transition-all"
-              >
-                <ContactIcon id={k} size={18} />
-              </button>
-            ))}
-          </div>
-          </div>
-        )}
+        <div className={`w-[60px] flex flex-col items-center rounded-[30px] border shadow-lg transition-colors ${expanded ? 'dark:bg-claude-darkSurface/95 bg-claude-surface/95 backdrop-blur dark:border-claude-darkBorder border-claude-border' : 'bg-primary border-transparent'}`}>
+          <button type="button" onClick={() => { if (pinned) { setPinned(false); setHovered(false); } else setPinned(true); }} aria-expanded={expanded} aria-label={i18nService.t('contactUsMenu')}
+            className={`w-full flex flex-col items-center gap-1 pt-3 pb-2.5 px-1 rounded-[30px] ${expanded ? 'text-primary' : 'text-black'}`}>
+            {HEADSET_ICON}
+            <span className="text-[11px] font-bold leading-tight text-center break-all">{i18nService.t('contactUsMenu')}</span>
+          </button>
+          {expanded && (
+            <>
+              <div className="w-6 h-px dark:bg-claude-darkBorder bg-claude-border mb-1" />
+              <div className="flex flex-col items-center gap-1 pb-2.5">
+                {entries.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    title={contactLabel(k)}
+                    aria-label={contactLabel(k)}
+                    onClick={() => setOpenId(k)}
+                    className="w-10 h-10 rounded-full flex items-center justify-center dark:text-white text-gray-700 hover:text-primary hover:bg-primary/10 transition-all"
+                  >
+                    <ContactIcon id={k} size={20} />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
       {openId && contact[openId] && (
         <ContactModal id={openId} conf={contact[openId]} onClose={() => setOpenId(null)} />
