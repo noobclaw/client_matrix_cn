@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { CnyWithdrawModal } from '../wallet/CnyWithdrawModal';
 import { HIDE_WEB3 } from '../../buildFlags';
 import { noobClawAuth } from '../../services/noobclawAuth';
@@ -13,7 +14,9 @@ import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import InviteTicker from './InviteTicker';
 import PartnerHero from './PartnerHero';
-import PartnerApplyCard from './PartnerApplyCard';
+import { getWebsiteUrl } from '../../services/endpoints';
+import { EmailVerifyRow } from '../wallet/EmailVerifyRow';
+import { PayoutWalletRow } from '../wallet/WalletView';
 
 interface InviteViewProps {
   isSidebarCollapsed?: boolean;
@@ -60,6 +63,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   // has data — referrer wallet shows immediately, no half-second flicker.
   // Background fetch in the effect below replaces it with fresh data.
   const [profile, setProfile] = useState<any>(() => readCachedProfile(noobClawAuth.getState().walletAddress));
+  // 2026-10-29:绑定上级改成弹窗(点「我的上级」里的「绑定」才弹)
+  const [showBindUpline, setShowBindUpline] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [bindResult, setBindResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -622,262 +627,164 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             右 = 合伙人 → PartnerHero(等级标志卡);非合伙人 → PartnerApplyCard(您当前的返佣比例 / 申请合伙人)。
             ⚠️ 别再把 CNY 拆成顶部独立全宽卡,也别用 socialEmail / is_partner 把整张卡 gate 掉 ——
             任何已登录用户都要看到这张钱包卡 + CNY 提现(已被用户骂过几次)。 */}
-        {profile && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 items-stretch">
-            {/* 左:我的钱包卡片,卡框右侧带 收到返佣(CNY)+ 提现 */}
-            <div className="p-4 rounded-xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex items-center gap-3 min-w-0">
-              {/* avatar */}
-              <div className="shrink-0 w-12 h-12 rounded-full overflow-hidden border dark:border-claude-darkBorder border-claude-border bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-                {authState.avatarUrl
-                  ? <img src={authState.avatarUrl} alt="" className="w-full h-full object-cover" />
-                  : <span className="text-white text-sm font-bold">
-                      {/* Password accounts: walletAddress is a numeric UID (no 0x),
-                          prefer the username initials, else strip the 0x prefix. */}
-                      {((authState.socialProvider === 'password' && authState.socialEmail)
-                        ? authState.socialEmail
-                        : (authState.walletAddress || '').replace(/^0x/, '')
-                      ).slice(0, 2).toUpperCase()}
-                    </span>}
-              </div>
-              {/* main col */}
-              <div className="flex-1 min-w-0">
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">
-                  {i18nService.t('walletMyWalletBsc')}
+        {/* 2026-10-29 改版(简洁版 / 专业版同一套,国际 / 国内按 HIDE_WEB3 区分):
+            ① 顶部一张卡:左 = 头像 + 昵称(右上角返佣比例标签,悬停看说明)+ UID + 邮箱 +(国际版)USDT 收款钱包 + 申请合伙人;
+               右 = 数据网格,每行数量一样、列线对齐(国际 3×2:总邀请网络 / 直接邀请 / 我的上级;USDT / CNY / NoobCoin。国内 2×2)。
+               我的上级没有时 →「未绑定」+「绑定」,点了弹窗填。合伙人仍在最上面显示等级卡 PartnerHero。
+            ② 我的邀请链接(标题 + 居中的链接框 + 复制)+ 如何运作(三步并排)。③ 邀请明细 / 返佣明细(下面原样)。
+            功能(绑定、复制分享文、提现、明细分页)全部沿用原来的函数,只换排版。 */}
+        {profile?.partner?.is_partner && <div className="mb-3"><PartnerHero partner={profile.partner} /></div>}
+        {profile && (() => {
+          const rate = profitSharePct(profile?.partner?.is_partner ? profile.partner.rate_pct : null);
+          const uid = authState.walletAddress || '';
+          const nick = authState.socialEmail || (uid ? `${uid.slice(0, 6)}…${uid.slice(-4)}` : '—');
+          const lab = 'text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap';
+          const val = 'text-[22px] leading-tight font-extrabold tabular-nums whitespace-nowrap';
+          const cell = 'px-3.5 py-0.5 border-l dark:border-claude-darkBorder border-claude-border flex flex-col gap-1';
+          const applyPartner = () => { try { window.electron?.shell?.openExternal?.(`${getWebsiteUrl()}/?page=partner-apply`); } catch { /* ignore */ } };
+          const upline = hasReferrer
+            ? <span className={`${val} !text-lg !leading-[29px] font-mono dark:text-claude-darkText text-claude-text`}>{maskWallet(profile.referrerWallet)}</span>
+            : (
+              <span className="flex items-center gap-2 h-[29px]">
+                <span className="text-sm text-amber-500">{i18nService.currentLanguage === 'zh' ? '未绑定' : i18nService.currentLanguage === 'zh-TW' ? '未綁定' : 'Not set'}</span>
+                <button type="button" onClick={() => { setBindResult(null); setShowBindUpline(true); }} className="text-xs px-2.5 py-1 rounded-md border border-primary/50 text-primary hover:bg-primary/10">{i18nService.t('inviteBind')}</button>
+              </span>
+            );
+          return (
+            <div className="mb-3 p-5 rounded-2xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex flex-wrap items-center gap-x-6 gap-y-5">
+              {/* 左:个人信息 */}
+              <div className="flex items-center gap-4 shrink-0 min-w-0">
+                <div className="shrink-0 w-20 h-20 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                  {authState.avatarUrl
+                    ? <img src={authState.avatarUrl} alt="" className="w-full h-full object-cover" />
+                    : <span className="text-white text-2xl font-bold">{((authState.socialProvider === 'password' && authState.socialEmail) ? authState.socialEmail : uid.replace(/^0x/, '')).slice(0, 2).toUpperCase()}</span>}
                 </div>
-                <div className="text-sm font-mono dark:text-claude-darkText text-claude-text truncate">
-                  {authState.walletAddress
-                    ? `${authState.walletAddress.slice(0, 8)}…${authState.walletAddress.slice(-6)}`
-                    : '—'}
-                </div>
-                {/* social account row — 仅社交登录用户有 socialEmail 时显示 */}
-                {authState.socialEmail && (
-                  <div className="flex items-center gap-1.5 mt-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary truncate">
-                    {authState.socialProvider === 'google' && <span style={{ color: '#ea4335' }}>●</span>}
-                    {authState.socialProvider === 'twitter' && <span style={{ color: '#fff' }}>𝕏</span>}
-                    {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
-                    <span className="truncate">{authState.socialEmail}</span>
+                <div className="min-w-0 flex flex-col gap-1">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className="text-lg font-bold dark:text-claude-darkText text-claude-text truncate">{nick}</span>
+                    <span tabIndex={0} title={i18nService.t('partnerApplyRateHint').replace(/^[(（]|[)）]$/g, '')}
+                      className="shrink-0 -mt-1 text-[11px] font-bold text-primary border border-primary/40 rounded-full px-2 py-px cursor-help whitespace-nowrap">
+                      {rate}% {i18nService.currentLanguage === 'zh' ? '返佣比例' : i18nService.currentLanguage === 'zh-TW' ? '返傭比例' : 'rebate'} ⓘ
+                    </span>
                   </div>
-                )}
+                  <div className="flex items-center gap-2 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                    <span>UID</span>
+                    <span className="font-mono dark:text-claude-darkText text-claude-text">{uid || '—'}</span>
+                    {uid && <button type="button" onClick={() => { try { navigator.clipboard.writeText(uid); } catch { /* ignore */ } }} className="px-1.5 py-px rounded-md border dark:border-claude-darkBorder border-claude-border hover:text-primary">{i18nService.t('walletCopy')}</button>}
+                  </div>
+                  <EmailVerifyRow profile={profile} onVerified={async () => { const fresh = await noobClawApi.getUserProfile(); if (fresh) { setProfile(fresh); writeCachedProfile(authState.walletAddress, fresh); } }} />
+                  {!HIDE_WEB3 && profile?.account_type === 'password' && (
+                    <PayoutWalletRow current={(profile?.payout_wallet as string) || null}
+                      onSaved={(w) => { const next = { ...profile, payout_wallet: w }; setProfile(next); writeCachedProfile(authState.walletAddress, next); }} />
+                  )}
+                  {!profile?.partner?.is_partner && (
+                    <button type="button" onClick={applyPartner} className="self-start mt-1.5 h-[34px] px-4 rounded-lg text-[13px] font-bold bg-primary hover:bg-primary-hover text-black whitespace-nowrap">
+                      {i18nService.t('partnerApplyCtaShort')}
+                    </button>
+                  )}
+                </div>
               </div>
-              {/* 卡框内右侧:收到返佣(CNY)+ 提现(用户要求放在钱包框的右边) */}
-              <div className="shrink-0 self-stretch flex flex-col justify-center text-right border-l dark:border-claude-darkBorder border-claude-border pl-3">
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.t('ivRebateCnyLabel')}</div>
-                <div className="text-lg font-bold text-primary tabular-nums leading-tight">¥{animCny.toFixed(2)}</div>
-                <button type="button" onClick={() => setShowCnyWithdraw(true)} className="text-xs text-primary hover:underline flex items-center gap-0.5 justify-end mt-0.5">
-                  {i18nService.t('ivWithdraw')}
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                </button>
+              {/* 右:数据网格(右对齐;两行共用列线) */}
+              <div className="flex-1 shrink-0 basis-auto flex justify-end">
+                <div className={`grid ${HIDE_WEB3 ? 'grid-cols-[repeat(2,max-content)]' : 'grid-cols-[repeat(3,max-content)]'} gap-y-3.5`}>
+                  <div className={cell}><span className={lab}>{i18nService.t('inviteTotalNetwork')}</span><span className={`${val} dark:text-claude-darkText text-claude-text`}>{Math.floor(animNetwork)}</span></div>
+                  <div className={cell}><span className={lab}>{i18nService.t('inviteDirectReferrals')}</span><span className={`${val} dark:text-claude-darkText text-claude-text`}>{Math.floor(animDirect)}</span></div>
+                  <div className={cell}><span className={lab}>{i18nService.t('inviteMyUpper')}</span>{upline}</div>
+                  {!HIDE_WEB3 && <div className={cell}><span className={lab}>{i18nService.t('inviteUsdtTotal')}</span><span className={`${val} text-primary`}>${animUsdt.toFixed(2)}</span></div>}
+                  <div className={cell}>
+                    <span className={`${lab} flex items-center gap-2`}>{i18nService.t('ivRebateCnyLabel')}
+                      <button type="button" onClick={() => setShowCnyWithdraw(true)} className="text-primary hover:underline">{i18nService.t('ivWithdraw')} ›</button>
+                    </span>
+                    <span className={`${val} text-primary`}>¥{animCny.toFixed(2)}</span>
+                  </div>
+                  {!HIDE_WEB3 && <div className={cell}><span className={lab}>{i18nService.t('inviteNoobReward')}</span><span className={`${val} text-primary`}>{Math.floor(animNoob).toLocaleString()}</span></div>}
+                </div>
               </div>
             </div>
-            {/* 右:合伙人 → 等级标志卡 PartnerHero;非合伙人 → 返佣比例 / 申请合伙人卡 */}
-            {profile?.partner?.is_partner
-              ? <PartnerHero partner={profile.partner} />
-              : <PartnerApplyCard compact />}
+          );
+        })()}
+
+        {/* ② 我的邀请链接 + 如何运作 */}
+        <div className="mb-3 p-5 rounded-2xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex flex-col gap-4">
+          <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('inviteYourLink')}</h3>
+          <div className="flex flex-wrap justify-center items-center gap-3">
+            <code className="flex-[0_1_560px] min-w-0 h-12 px-4 flex items-center justify-center rounded-[10px] border dark:border-white/35 border-black/25 !bg-transparent dark:!text-white !text-claude-text font-mono text-base truncate select-all">{referralLink}</code>
+            <button onClick={copyLink} className={`shrink-0 h-12 px-6 rounded-[10px] text-[15px] font-bold transition-all ${copied ? 'bg-primary/20 text-primary' : 'bg-primary hover:bg-primary-hover text-black'}`}>
+              {copied ? i18nService.t('inviteCopied') : i18nService.t('inviteCopy')}
+            </button>
           </div>
-        )}
-        {/* v1.x: 改 grid 是因为 flex + space-y 在右栏 flex-1 上下拉不齐(左栏内容
-            高,右栏 details 容器靠 flex-1 应该撑满,实际不撑满)。grid 行内 cells
-            默认 align: stretch,左右两栏一定等高,右栏 details 的 flex-1 在
-            grid cell 内能正确 expand 填满剩余高度。 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
-
-          {/* ── Left Column: Referrer + Link + How it works ── */}
-          <div className="min-w-0 flex flex-col gap-3">
-            {/* My Referrer (upper level) */}
-            {hasReferrer && (
-              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('inviteMyUpper')}</div>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                  </div>
-                  <span className="text-sm font-mono dark:text-claude-darkText text-claude-text">{maskWallet(profile.referrerWallet)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Bind Upper - only show when no referrer */}
-            {!hasReferrer && (
-              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-                <div className="text-sm font-medium dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('inviteBindUpper')}</div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && bindInvite()}
-                    placeholder={i18nService.t('inviteBindUpperPlaceholder')}
-                    className="flex-1 text-xs px-3 py-1.5 rounded-lg border dark:border-claude-darkBorder border-claude-border bg-transparent dark:text-claude-darkText text-claude-text focus:border-primary outline-none transition-colors"
-                  />
-                  <button
-                    onClick={bindInvite}
-                    disabled={binding || !inviteCode.trim()}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-black font-medium transition-all disabled:opacity-40"
-                  >
-                    {binding ? '...' : i18nService.t('inviteBind')}
-                  </button>
-                </div>
-                {bindResult && (
-                  <p className={`text-xs mt-1.5 ${bindResult.success ? 'text-primary' : 'text-red-400'}`}>{bindResult.message}</p>
-                )}
-              </div>
-            )}
-
-            {/* My Referral Link */}
-            <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-              <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1.5">{i18nService.t('inviteYourLink')}</div>
-              <div className="flex items-center gap-2 p-2 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border">
-                <code className="flex-1 text-xs font-mono text-primary truncate select-all">{referralLink}</code>
-              </div>
-              <button
-                onClick={copyLink}
-                className={`mt-2 w-full text-sm py-1.5 rounded-lg font-medium transition-all ${
-                  copied
-                    ? 'bg-primary/20 text-primary'
-                    : 'bg-primary hover:bg-primary-hover text-black'
-                }`}
-              >
-                {copied ? i18nService.t('inviteCopied') : i18nService.t('inviteCopy')}
-              </button>
-            </div>
-
-            {/* How it works + Reward rules */}
-            <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('inviteHowItWorks')}</h3>
-                {/* v5.x+: link to the full affiliate-program doc. zh/zh-TW
-                    → Chinese page, everything else → English fallback until
-                    other locales exist on docs.noobclaw.com. */}
-                <button
-                  type="button"
-                  onClick={openRules}
-                  className="text-xs text-primary hover:underline inline-flex items-center gap-0.5"
-                >
-                  📖 {i18nService.t('inviteViewRules')} ↗
-                </button>
-              </div>
-              {/* Steps 1-2 are the narrative; step 3 (rewards trigger) is
-                  replaced below by the unified dual-rewards callout, which
-                  is too rich to fit a single-line step description. */}
-              <div className="space-y-2.5">
-                {[
-                  { title: i18nService.t('inviteStep1Title'), desc: i18nService.t('inviteStep1Desc') },
-                  { title: i18nService.t('inviteStep2Title'), desc: i18nService.t('inviteStep2Desc') },
-                ].map((step, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">{i + 1}</div>
-                    <div>
-                      <div className="text-sm dark:text-claude-darkText text-claude-text">{step.title}</div>
-                      <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">{step.desc}</div>
-                    </div>
-                  </div>
-                ))}
-                {/* Step 3（国内版 CNY 返佣）：好友充值即得邀请奖励 */}
-                {HIDE_WEB3 && (
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
-                  <div>
-                    <div className="text-sm dark:text-claude-darkText text-claude-text">{i18nService.currentLanguage === 'zh' ? '好友充值时，您将获得邀请奖励' : 'When your friend tops up, you earn a referral reward'}</div>
-                    <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">{i18nService.currentLanguage === 'zh' ? '邀请关系生效后，按好友充值金额给您返佣' : "Rebate based on your friend's top-up once the referral is bound"}</div>
-                  </div>
-                </div>
-                )}
-                {/* Step 3: dual-reward composite — 国内版隐藏(HIDE_WEB3,改走 CNY 返佣)。
-                    Replaces the old separate USDT explainer card too — both
-                    rewards are surfaced inline with parallel structure so the
-                    user sees them as siblings, not as competing systems. */}
-                {!HIDE_WEB3 && (
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
-                  <div className="flex-1">
-                    <div className="text-sm dark:text-claude-darkText text-claude-text">
-                      {i18nService.t('ivDualRewardsTitle')}
-                    </div>
-                    {/* v1.x: USDT 真金返佣放上面 — 现金返佣比代币空投更直接,作为主
-                        奖励先展示;website uc/ir 卡片同序。 */}
-                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
-                      <div className="text-xs font-medium text-primary mb-1">
-                        💰 USDT {i18nService.t('ivUsdtRealCash')}
-                      </div>
-                      <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
-                        {/* Partner-aware rate,展示「净利润分成」口径(profitSharePct 映射,
-                            实际计费费率不变):非合伙人 50%,合伙人按档 60~95%。 */}
-                        {(() => {
-                          const rate = profitSharePct(profile?.partner?.is_partner ? profile.partner.rate_pct : null);
-                          return i18nService.t('ivUsdtRebateDesc').replace('{rate}', String(rate));
-                        })()}
-                      </div>
-                    </div>
-                    {/* NoobCoin airdrop */}
-                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
-                      <div className="text-xs font-medium text-primary mb-1">
-                        🪂 $NoobCoin {i18nService.t('ivNoobAirdropLabel')}
-                      </div>
-                      <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
-                        {i18nService.t('ivNoobAirdropDesc').replace('{min}', String(purchaseMin)).replace('{max}', String(purchaseMax))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                )}
-              </div>
-
-              {/* 6-level reward percentage chart — applies to BOTH rewards above.
-                  L1 gets ≥50%, L2-L6 each get 10%. Same splits for NoobCoin
-                  airdrop and USDT rebate, hence one chart documents both. */}
-              <div className="mt-3 p-2.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border">
-                <div className="text-xs font-medium dark:text-claude-darkText text-claude-text mb-1.5">{i18nService.t('inviteRewardTitle')}</div>
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between">
-                    <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel1')}</span>
-                    <span className="text-primary font-medium">&ge;50%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel2_6')}</span>
-                    <span className="dark:text-claude-darkText text-claude-text">10%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('inviteHowItWorks')}</h3>
+            <button type="button" onClick={openRules} className="text-xs text-primary hover:underline">{i18nService.t('inviteViewRules')} ↗</button>
           </div>
-
-          {/* ── Right Column: Stats + Invite Details / Rewards ── */}
-          <div className="min-w-0 flex flex-col gap-3">
-            {/* Stats: Direct Referrals + Total Network + USDT total earned + NOOB earned.
-                v5.x+: grid is 4 cols on md+ for the full row, falls back to
-                2 cols on narrow widths so the labels don't squash on phones.
-                USDT total comes from /api/me/rebate/summary (prefetched on
-                mount), NOOB total comes from profile.totalNoob (already
-                served by /api/user/referral). */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animDirect)}</div>
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteDirectReferrals')}</div>
+          {/* 三步并排。文案全部沿用原来的(第 1、2 步 i18n;第 3 步国际版 = 原来的「双重奖励」两块,国内版 = 原来的 CNY 返佣那句) */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch">
+            {[
+              { title: i18nService.t('inviteStep1Title'), desc: i18nService.t('inviteStep1Desc') },
+              { title: i18nService.t('inviteStep2Title'), desc: i18nService.t('inviteStep2Desc') },
+            ].map((step, i) => (
+              <div key={i} className="p-3.5 rounded-xl border dark:border-claude-darkBorder border-claude-border flex items-start gap-3">
+                <span className="w-[26px] h-[26px] rounded-full bg-primary/10 text-primary text-[13px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{step.title}</div>
+                  <div className="mt-1 text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{step.desc}</div>
+                </div>
               </div>
-              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNetwork)}</div>
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteTotalNetwork')}</div>
+            ))}
+            <div className="md:col-span-2 p-3.5 rounded-xl border dark:border-claude-darkBorder border-claude-border flex items-start gap-3">
+              <span className="w-[26px] h-[26px] rounded-full bg-primary/10 text-primary text-[13px] font-bold flex items-center justify-center shrink-0">3</span>
+              <div className="min-w-0 flex-1">
+                {HIDE_WEB3 ? (
+                  <>
+                    <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.currentLanguage === 'zh' ? '好友充值时，您将获得邀请奖励' : 'When your friend tops up, you earn a referral reward'}</div>
+                    <div className="mt-1 text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.currentLanguage === 'zh' ? '邀请关系生效后，按好友充值金额给您返佣' : "Rebate based on your friend's top-up once the referral is bound"}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('ivDualRewardsTitle')}</div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                      <div className="text-xs font-medium text-primary mb-1">💰 USDT {i18nService.t('ivUsdtRealCash')}</div>
+                      <div className="text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('ivUsdtRebateDesc').replace('{rate}', String(profitSharePct(profile?.partner?.is_partner ? profile.partner.rate_pct : null)))}</div>
+                    </div>
+                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                      <div className="text-xs font-medium text-primary mb-1">🪂 $NoobCoin {i18nService.t('ivNoobAirdropLabel')}</div>
+                      <div className="text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('ivNoobAirdropDesc').replace('{min}', String(purchaseMin)).replace('{max}', String(purchaseMax))}</div>
+                    </div>
+                    </div>
+                  </>
+                )}
               </div>
-              {/* USDT 总返佣 + NoobCoin 奖励统计 — 国内版隐藏(HIDE_WEB3) */}
-              {!HIDE_WEB3 && (
-              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary tabular-nums">${animUsdt.toFixed(2)}</div>
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
-              </div>
-              )}
-              {/* v6.x→: CNY 总返佣已从这排统计移走 —— 改成「收到返佣 (CNY) + 提现」放到顶部我的钱包卡框的右侧(用户要求)。 */}
-              {!HIDE_WEB3 && (
-              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNoob).toLocaleString()}</div>
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteNoobReward')}</div>
-              </div>
-              )}
             </div>
+          </div>
+          {/* 邀请奖励档位(原来那块:直接邀请 ≥50% / 间接邀请 10%),改成一行两格放在三步下面 */}
+          <div className="p-3 rounded-xl dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+            <span className="font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('inviteRewardTitle')}</span>
+            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel1')} <span className="ml-1 text-primary font-semibold">&ge;50%</span></span>
+            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel2_6')} <span className="ml-1 dark:text-claude-darkText text-claude-text font-semibold">10%</span></span>
+          </div>
+        </div>
 
-            {/* ── Invite Details / Rewards ── */}
-            <div className="flex-1 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border flex flex-col min-h-0">
+        {/* 绑定上级弹窗(原来的绑定逻辑 bindInvite / inviteCode / bindResult 不变) */}
+        {showBindUpline && !hasReferrer && createPortal(
+          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4" onClick={() => !binding && setShowBindUpline(false)}>
+            <div className="w-full max-w-md rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+              <div className="text-base font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('inviteBindUpper')}</div>
+              <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteBindUpperDesc')}</div>
+              <input type="text" autoFocus value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && bindInvite()}
+                placeholder={i18nService.t('inviteBindUpperPlaceholder')}
+                className="h-11 px-3.5 rounded-[10px] border dark:border-claude-darkBorder border-claude-border bg-transparent text-sm dark:text-claude-darkText text-claude-text focus:border-primary outline-none" />
+              {bindResult && <p className={`text-xs ${bindResult.success ? 'text-primary' : 'text-red-400'}`}>{bindResult.message}</p>}
+              <div className="flex justify-end gap-2 mt-1">
+                <button type="button" onClick={() => setShowBindUpline(false)} disabled={binding} className="h-10 px-4 rounded-[10px] border dark:border-claude-darkBorder border-claude-border text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary disabled:opacity-50">{i18nService.t('cancel')}</button>
+                <button type="button" onClick={bindInvite} disabled={binding || !inviteCode.trim()} className="h-10 px-5 rounded-[10px] text-sm font-bold bg-primary hover:bg-primary-hover text-black disabled:opacity-40">{binding ? '...' : i18nService.t('inviteBind')}</button>
+              </div>
+            </div>
+          </div>
+        , document.body)}
+
+        {/* ③ 邀请明细 / 返佣明细 */}
+            <div className="rounded-2xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border flex flex-col min-h-[320px]">
           {/* Top-level tabs: Records vs Rebate. Rebate has its own sub-menu
               (USDT real-cash + NoobCoin) rendered below this row when active. */}
           <div className="flex border-b dark:border-claude-darkBorder border-claude-border shrink-0">
@@ -1252,9 +1159,6 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               onSuccess={() => { if (rebateSubTab === 'cny') loadCnyRebate(cnyEarningsPage); }}
             />
           )}
-        </div>
-          </div>
-
         </div>
       </div>
     </div>

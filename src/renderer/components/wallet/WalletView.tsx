@@ -35,7 +35,7 @@ const ORDER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 // 平台代币只挂账不发放(留在待发),绑定后下一个发放批次自动补发历史累计。
 // 钱包登录的账号不渲染这块 —— 他们的 payout 已在迁移时自动等于登录地址。
 // 国内版 HIDE_WEB3 下整块隐藏(CN 佣金走 CNY 提现,与链上钱包无关)。
-const PayoutWalletRow: React.FC<{ current: string | null; onSaved?: (wallet: string) => void }> = ({ current, onSaved }) => {
+export const PayoutWalletRow: React.FC<{ current: string | null; onSaved?: (wallet: string) => void }> = ({ current, onSaved }) => {
   // 2026-10-29 精简:平时只占邮箱下面一行(未绑定 → 「绑定」;已绑定 → 地址缩写 + 「修改」),点了才弹窗填写。保存逻辑不变。
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(current || '');
