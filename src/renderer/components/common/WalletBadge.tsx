@@ -113,8 +113,9 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
         </button>
       )}
 
-      {/* 积分余额(可消费总额) */}
-      <span className={`${txt} dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap`}>
+      {/* 积分余额(可消费总额)— 点了进「我的充值」,默认会员订阅(同简洁版顶栏) */}
+      <span role="button" tabIndex={0} onClick={() => openWallet('subscription')} onKeyDown={(e) => { if (e.key === 'Enter') openWallet('subscription'); }}
+        className={`non-draggable cursor-pointer hover:opacity-80 ${txt} dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap`}>
         {i18nService.t('wbCredits')}{' '}
         <span className={`font-semibold ${low ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>
           {authState.tokenBalance.toLocaleString()}

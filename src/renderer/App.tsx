@@ -25,7 +25,7 @@ import { apiService } from './services/api';
 import { themeService } from './services/theme';
 import { coworkService } from './services/cowork';
 import { scheduledTaskService } from './services/scheduledTask';
-import { openWallet } from './services/walletNav';
+import { openWallet, resetWalletTab } from './services/walletNav';
 import { checkForAppUpdate, type AppUpdateInfo, type AppUpdateDownloadProgress, UPDATE_POLL_INTERVAL_MS, UPDATE_HEARTBEAT_INTERVAL_MS } from './services/appUpdate';
 import { defaultConfig } from './config';
 import { setAvailableModels, setSelectedModel } from './store/slices/modelSlice';
@@ -1026,7 +1026,7 @@ const App: React.FC = () => {
   }
 
   const handleShowHome = () => setMainView('home');
-  const handleShowWallet = () => setMainView('wallet');
+  const handleShowWallet = () => { resetWalletTab(); setMainView('wallet'); };
   const handleShowInvite = () => setMainView('invite');
   // v6.x: 菜单拆分 ——「一键涨粉」(新建页)= 'scenarioCreate';「我的涨粉任务」(管理页)= 'quickuse'。
   // 「一键涨粉」create 页(可带平台,落到对应平台的新建 tab)。

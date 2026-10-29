@@ -16,6 +16,11 @@ export function openWallet(tab: WalletTab = 'subscription'): void {
   window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'));
 }
 
+/** 从菜单进「我的充值」时回到默认的会员订阅(否则上次点过「购买积分」会一直停在积分 tab)。 */
+export function resetWalletTab(): void {
+  _pendingTab = 'subscription';
+}
+
 /** 跳到「邀请与分销」页的每日签到卡(头部「签到送积分」链接、积分不足弹窗用)。App 监听 'noobclaw:show-checkin'。 */
 export function openCheckin(): void {
   window.dispatchEvent(new CustomEvent('noobclaw:show-checkin'));
