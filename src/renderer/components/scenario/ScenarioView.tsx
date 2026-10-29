@@ -2044,6 +2044,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="text-xl font-bold dark:text-white mb-1">🎯 {platLabel} · {i18nService.t('svCardEngageTitle')}</div>
             <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
               {i18nService.t('svCardEngageDesc1')}<strong>{i18nService.t('svCardEngageDescStrong')}</strong>{i18nService.t('svCardEngageDesc2')}
+              {/* 抖音 / 小红书 / TikTok 精准模式支持博主主页链接(2026-10-29) */}
+              {['douyin', 'xhs', 'tiktok'].includes(String(currentPlatform)) && i18nService.t('svCardEngageDescProfile')}
             </div>
             <div className="mt-auto flex items-center flex-wrap pt-1">
               <button
