@@ -2042,9 +2042,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         {/* 顶部 tab:会员订阅 / 购买积分。仅 select 步骤显示;支付/成功时隐藏让支付屏干净。
             选中 = 实心绿底黑字(2026-10-29,和下面「按季/按年/按月」一致) */}
         {step === 'select' && (
-        <div className="flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          <button onClick={() => setTopTab('subscription')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'subscription' ? 'bg-primary text-black' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabSubscription')}</button>
-          <button onClick={() => setTopTab('topup')} className={`flex-1 py-2 rounded-md text-sm font-semibold transition-all ${topTab === 'topup' ? 'bg-primary text-black' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabTopup')}</button>
+        <div className="self-start inline-flex gap-1 p-1 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+          <button onClick={() => setTopTab('subscription')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${topTab === 'subscription' ? 'bg-primary text-black' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabSubscription')}</button>
+          <button onClick={() => setTopTab('topup')} className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${topTab === 'topup' ? 'bg-primary text-black' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}>{i18nService.t('wvTabTopup')}</button>
         </div>
         )}
 
@@ -2052,8 +2052,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         {step === 'select' && topTab === 'subscription' && (
         <div>
           {/* 标题行:对齐「购买积分」那行(左标题 + 右「购买记录」入口,走同一套订单历史子页) */}
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('wvSubscribeMembership')}</h3>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-2xl font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('wvSubscribeMembership')}</h2>
             <button
               onClick={() => { setSubPage('orderHistory'); setStatusFilter(''); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(''); }}
               className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors flex items-center gap-1"
@@ -2062,14 +2062,15 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
+          <p className="mb-5 text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')}</p>
           <MembershipPanel onPay={startSubscriptionPay} payMethods={payMethodsEff} autoRenew={paymentInfo?.autoRenew} usdCnyRate={paymentInfo?.usdCnyRate} />
         </div>
         )}
 
         {step === 'select' && topTab === 'topup' && (
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('wvBuyCredits')}</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('wvBuyCredits')}</h2>
             <button
               onClick={() => { setSubPage('orderHistory'); setStatusFilter(''); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(''); }}
               className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors flex items-center gap-1"

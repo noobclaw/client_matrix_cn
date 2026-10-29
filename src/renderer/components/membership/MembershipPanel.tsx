@@ -138,7 +138,7 @@ const periodLabel = (k: string): string => (({ month: i18nService.t('mpUnitMonth
 const PERIOD_MONTHS: Record<Period, number> = { month: 1, quarter: 3, half: 6, year: 12, once: 1 }; // once=单月购买
 const RECOMMENDED = 'pro';
 // 档位主题色:免费灰 / 基础蓝银 / 进阶金 / 旗舰紫。
-const TIER_COLOR: Record<string, string> = { free: '#9aa0aa', basic: '#60a5fa', pro: '#fbbf24', max: '#a78bfa' };
+const TIER_COLOR: Record<string, string> = { free: '#9aa0aa', basic: '#60a5fa', pro: '#fbbf24', max: '#a78bfa', ultra: '#f5d08a' };  // ultra = 至尊版香槟金(同官网)
 
 function fmtCredits(n: number): string {
   n = Number(n) || 0;
@@ -356,7 +356,7 @@ const MembershipPanel: React.FC<{
           const isRec = plan.code === RECOMMENDED;
           const price = plan.prices?.[period];
           // 表里没有的付费档(如至尊版)用尊贵的香槟橙,别落成灰色(像不能点);免费版仍是灰
-          const tier = TIER_COLOR[plan.code] || (isFree ? '#9aa0aa' : '#F2B47E');
+          const tier = TIER_COLOR[plan.code] || (isFree ? '#9aa0aa' : '#f5d08a');
           // 一律美元展示(支付方式在点卡片后的弹窗里选;Dodo 收银台会按用户本币结算,但标价统一 $)。
           //   'once' 取后端下发的单月购买价(prices.once,比连续包月贵)。
           const sym = '$';
@@ -373,7 +373,7 @@ const MembershipPanel: React.FC<{
           const savePerMo = (!isOnce && oncePrice > 0 && perMonth > 0) ? (oncePrice - perMonth) : 0;
           return (
             <div key={plan.code} className={`relative rounded-2xl p-3 flex flex-col dark:bg-claude-darkSurface bg-claude-surface ${isLower ? 'opacity-50' : ''}`}
-              style={{ border: '1px solid', borderColor: isCur ? tier + '88' : 'rgba(255,255,255,0.08)' }}>
+              style={{ border: isCur ? `2px solid ${tier}` : '1px solid rgba(255,255,255,0.08)' }}>  {/* 当前方案:实色框住 */}
               {isRec && <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full text-[10px] font-bold text-black whitespace-nowrap" style={{ background: tier }}>{i18nService.t('mpMostPopular')}</span>}
               {/* 档位名 + 档位色点 + 限时折扣 */}
               <div className="flex items-center gap-2 flex-wrap">
@@ -414,7 +414,7 @@ const MembershipPanel: React.FC<{
         })}
       </div>
 
-      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')} {i18nService.t('cnyRefNote')}</p>
+      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{/* mpFooterNote 已挪到页面标题下(同官网) */}{i18nService.t('cnyRefNote')}</p>
 
       {/* ── 支付方式弹窗:点套餐卡片后选怎么付 ──
           顺序即推荐序:银行卡(推荐,走 Dodo,连续订阅)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。
