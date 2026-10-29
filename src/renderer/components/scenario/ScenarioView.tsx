@@ -110,8 +110,8 @@ const MATRIX_COMMENT_LIKE_PLATFORMS = new Set<PlatformId>(['tiktok']);
 const MATRIX_BLOCK_PLATFORMS = new Set<PlatformId>(['douyin']);
 // 「文件夹定时发布」(folder_post,客户端 runner + matrix driver douyin / douyin_images)。目前仅抖音。
 const MATRIX_FOLDER_POST_PLATFORMS = new Set<PlatformId>(['douyin']);
-// 2026-10-29 用户:先隐藏「文件夹定时发布」卡片(新建页 + 简洁版创建弹窗都不显示);已建的任务照常运行、可在我的任务里编辑。
-const FOLDER_POST_CARD_HIDDEN = true;
+// 2026-10-29 用户:先隐藏过「文件夹定时发布」卡片,当天又要求显示回来(false = 显示)。
+const FOLDER_POST_CARD_HIDDEN = false;
 // 后端 backend/matrix/scenarios 有 <platform>_image_text「图文创作」剧本的平台(N 号各自生成图文+发布)。
 // 抖音(creator.douyin.com)/小红书(creator.xiaohongshu.com)/视频号(channels.weixin.qq.com 助手「发表新动态」,
 // wujie 微前端 shadowRoot 发布)/头条号(mp.toutiao.com 微头条,byte-design 普通页,无标题/封面)。
