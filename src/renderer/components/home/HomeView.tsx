@@ -224,7 +224,8 @@ const HomeView: React.FC<HomeViewProps> = ({
                 )}
               </div>
               {/* 教学视频:一行,和上面一起在第一屏里 */}
-              <div className="w-full pt-2"><HomeVideoTutorials filter={"select"} /></div>
+              {/* 预留视频区的高度(标题行 + 一行卡片):还在加载时是骨架屏,拉取失败时留白 —— 上面的标题 / 4 步 / 创建任务按钮都不会被挪动 */}
+              <div className="w-full pt-2 min-h-[220px]"><HomeVideoTutorials filter={"select"} /></div>
             </div>
           )}
 

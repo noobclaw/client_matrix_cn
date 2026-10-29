@@ -93,6 +93,8 @@ const HomeVideoTutorials: React.FC<{ filter?: 'tags' | 'select' }> = ({ filter =
           <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">
             📺 {i18nService.t('hvVideosTitle')}
           </h2>
+          {/* 下拉框还没数据时先放一个同尺寸的灰条占位,标题行高度不变 */}
+          {filter === 'select' && loading && <span className="w-40 h-[30px] rounded-lg dark:bg-white/[0.06] bg-gray-200/70 animate-pulse" />}
           {filter === 'select' && groups.length > 0 && (
             <SimpleSelect
               size="sm"
