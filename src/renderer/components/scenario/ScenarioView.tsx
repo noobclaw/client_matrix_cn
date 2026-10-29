@@ -2174,7 +2174,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <div className="rounded-2xl border border-pink-500/30 bg-pink-500/5 dark:bg-pink-500/10 p-6 flex flex-col">
               <div className="flex items-center gap-2 text-xs font-semibold text-pink-600 dark:text-pink-400 mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-pink-500" /> {i18nService.currentLanguage === 'zh' ? '评论区互动' : i18nService.currentLanguage === 'zh-TW' ? '留言區互動' : 'Comment engagement'}
-                <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white">{i18nService.currentLanguage === 'zh' ? '👑 会员点赞免费' : i18nService.currentLanguage === 'zh-TW' ? '👑 會員按讚免費' : '👑 Likes free for members'}</span>
+                {/* 2026-10-29 用户:先去掉「会员点赞免费」角标(加了 AI 回复,回复照常扣积分) */}
               </div>
               <div className="text-xl font-bold dark:text-white mb-1">💗 {platLabel} · {i18nService.currentLanguage === 'zh' ? '评论区点赞评论' : i18nService.currentLanguage === 'zh-TW' ? '留言區按讚留言' : 'Comment Like & Reply'}</div>
               <div className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
@@ -2190,7 +2190,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   onClick={() => openMatrixCommentLikeWizard(currentPlatform)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-pink-500 text-white text-sm font-bold hover:bg-pink-600 shadow-sm shadow-pink-500/25 transition-all active:scale-95"
                 >
-                  💗 {i18nService.currentLanguage === 'zh' ? '开始点赞' : i18nService.currentLanguage === 'zh-TW' ? '開始按讚' : 'Start'}
+                  💗 {i18nService.currentLanguage === 'zh' ? '开始互动' : i18nService.currentLanguage === 'zh-TW' ? '開始互動' : 'Start'}
                 </button>
                 <button
                   type="button"
