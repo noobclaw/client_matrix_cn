@@ -136,7 +136,7 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
         type="button"
         disabled={isMaxTier}
         onClick={isMaxTier ? undefined : () => openWallet('subscription')}
-        className={`non-draggable rounded font-bold whitespace-nowrap text-white transition-colors ${isMaxTier ? 'cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}
+        className={`non-draggable rounded font-bold whitespace-nowrap transition-colors ${isMaxTier ? 'cursor-not-allowed text-white' : 'bg-green-500 hover:bg-green-600 text-black'}`}
         style={isMaxTier
           ? { padding: btnPad, fontSize: btnFs, background: 'rgba(255,255,255,0.08)', color: '#777' }
           : { padding: btnPad, fontSize: btnFs }}

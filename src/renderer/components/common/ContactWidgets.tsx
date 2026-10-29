@@ -160,14 +160,17 @@ const HEADSET_ICON = (
 export const ContactFloatWidget: React.FC = () => {
   const contact = useSiteContact();
   const [openId, setOpenId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  // 鼠标移上去 = 临时展开;点一下 = 钉住展开(再点收起);鼠标移开 = 全收起
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const expanded = hovered || pinned;
   const entries = CONTACT_ORDER.filter((k) => contact[k]);
   if (entries.length === 0) return null;
   return (
     <>
       <div className="fixed right-4 top-1/2 -translate-y-5 z-40"
-        onMouseEnter={() => setExpanded(true)} onMouseLeave={() => setExpanded(false)}>
-        <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} aria-label={i18nService.t('contactUsMenu')}
+        onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setPinned(false); }}>
+        <button type="button" onClick={() => { if (pinned) { setPinned(false); setHovered(false); } else setPinned(true); }} aria-expanded={expanded} aria-label={i18nService.t('contactUsMenu')}
           className="inline-flex items-center gap-1.5 pl-3 pr-3.5 h-10 rounded-full bg-primary text-black text-[13px] font-bold shadow-lg shadow-black/30 hover:brightness-105 transition-all">
           {HEADSET_ICON}
           <span className="whitespace-nowrap">{i18nService.t('contactUsMenu')}</span>

@@ -69,7 +69,7 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
           {auth.isAuthenticated ? (
             <>
               <span className="hidden lg:inline-block min-w-0 text-xs font-mono dark:text-claude-darkText text-claude-text truncate max-w-[180px]" title={name}>👤 {name}</span>
-              <button type="button" onClick={() => openWallet('subscription')} className="shrink-0 text-xs whitespace-nowrap dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent" title={L('去充值', '去儲值', 'Top up')}>
+              <button type="button" onClick={() => openWallet('subscription')} className="shrink-0 text-xs whitespace-nowrap dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent" title={L('我的充值', '我的儲值', 'My wallet')}>
                 {L('积分', '積分', 'Credits')} <b className="dark:text-claude-darkText text-claude-text">{Number(auth.tokenBalance || 0).toLocaleString()}</b>
               </button>
             </>
