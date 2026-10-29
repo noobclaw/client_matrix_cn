@@ -576,6 +576,9 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       task.lead_do_comment = le.doComment !== false;
       task.lead_do_follow = le.doFollow !== false;
       if (le.commentPrompt) task.comment_prompt = le.commentPrompt;
+      // 仅 TikTok:获客评论是直接留在潜客的视频下(没有可以「跟着回」的留言)→ 评论语言跟【矩阵账号的内容语言】走
+      //   (账号编辑里的 中文 / English;存量号没这个字段按中文)。任务里强制选了语言的仍以任务为准。
+      if (opts.platform === 'tiktok' && !task.comment_language_hint) task.comment_language_hint = commentLangHint(acc?.contentLang === 'en' ? 'en' : 'zh');
     }
 
     // 写评论等 AI 调用的扣费也累进「本次消耗」(与动作按次扣费相加,二者是不同的账,不重复)。
