@@ -168,9 +168,9 @@ export const ContactFloatWidget: React.FC = () => {
   if (entries.length === 0) return null;
   return (
     <>
-      {/* 一个竖向胶囊,放在页面右下偏上:收起时只有「耳机图标 + 联系我们(两行)」,绿底醒目;
+      {/* 一个竖向胶囊,贴在页面右下角(2026-10-29 改:原来 bottom-[12%] 会挡住首页教程卡片 / 订阅卡片按钮):收起时只有「耳机图标 + 联系我们(两行)」,绿底醒目;
           展开时同一个胶囊【往上】长出各联系方式(同官网浮窗的样子)。底边位置固定,展开不跳。 */}
-      <div className="fixed right-4 bottom-[12%] z-40"
+      <div className="fixed right-4 bottom-4 z-40"
         onMouseEnter={() => setHovered(true)} onMouseLeave={() => { setHovered(false); setPinned(false); }}>
         <div className={`w-[60px] flex flex-col-reverse items-center rounded-[30px] border shadow-lg transition-colors ${expanded ? 'dark:bg-claude-darkSurface/95 bg-claude-surface/95 backdrop-blur dark:border-claude-darkBorder border-claude-border' : 'bg-primary border-transparent'}`}>
           <button type="button" onClick={() => { if (pinned) { setPinned(false); setHovered(false); } else setPinned(true); }} aria-expanded={expanded} aria-label={i18nService.t('contactUsMenu')}
