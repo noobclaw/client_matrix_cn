@@ -436,7 +436,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
     const isBinanceRepost = task.type === 'binance_repost';
     const isReport = task.type === 'report';
     const isBlock = task.type === 'block';               // 批量拉黑(douyin_block):blockTargets + blockKeywords
-    const isCommentLike = task.type === 'comment_like';   // 作品评论区点赞(tiktok_comment_like):urls + comment_like_max
+    const isCommentLike = task.type === 'comment_like';   // 评论区点赞评论(tiktok_comment_like):urls + comment_like_max
     const isFolderPost = task.type === 'folder_post';     // 文件夹定时发布(抖音):到点按顺序取文件夹内容发
     // 三个进度回调:image_text 与 engage 共用同款签名(EngageItemResult / EngageReport),闭包零改动复用。
     const cbOnLog = (accountId: string, msg: string) => { pushLog(accountId, msg); broadcastSSE('matrix:progress', { type: 'log', accountId, msg, taskId: task.id }); };
@@ -585,6 +585,9 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           maxRepliesPerRun: task.maxRepliesPerRun,
           urls: (isVideoDownload || isCommentLike) ? task.urls : undefined,
           commentLikeMax: isCommentLike ? task.commentLikeMax : undefined,
+          commentMode: isCommentLike ? (task.commentMode || 'precise') : undefined,
+          commentDoLike: isCommentLike ? task.commentDoLike : undefined,
+          commentDoReply: isCommentLike ? task.commentDoReply : undefined,
           blockTargets: isBlock ? (task.blockTargets || []) : undefined,
           blockKeywords: isBlock ? (task.blockKeywords || []) : undefined,
           blockMode: isBlock ? task.blockMode : undefined,

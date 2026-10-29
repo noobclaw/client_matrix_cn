@@ -105,7 +105,7 @@ export interface EngageTaskOptions {
   // (抖音创作者中心评论管理,不需关键词、无配额、有引流尾巴);'video_download'=视频无水印下载
   // (单账号,粘贴多个链接逐个下载,不需关键词、无配额)。缺省 'engage' 兼容旧调用。
   // 'report'=举报(白名单功能,可多账号逐个顺序执行、1-4 条链接、只能手动触发;剧本 *_report 下发需登录 + 白名单)。
-  // 'comment_like'=作品评论区点赞(仅 TikTok,剧本 tiktok_comment_like):注入 ctx.task.urls + comment_like_max。
+  // 'comment_like'=评论区点赞评论(仅 TikTok,剧本 tiktok_comment_like):注入 ctx.task.urls + comment_like_max。
   // 'block'=批量拉黑(仅抖音,剧本 douyin_block):注入 ctx.task.block_targets / block_keywords。
   taskType?: 'engage' | 'reply_fan' | 'video_download' | 'lead_engage' | 'report' | 'comment_like' | 'block';
   // 定向获客(lead_engage)配置。任务级(对所有执行账号相同):种子号/关键词/名额等由向导填,
@@ -140,7 +140,10 @@ export interface EngageTaskOptions {
   // 每号本次运行最多回复几条(仅抖音回复粉丝剧本读它;不传 → 剧本按 100 兜底;只管本次运行,不跨运行累计)
   maxRepliesPerRun?: number;
   urls?: string[];                 // video_download:待下载视频链接清单;comment_like:作品链接(注入 ctx.task.urls)
-  commentLikeMax?: number;         // 仅 comment_like:每号本次最多点赞数(注入 ctx.task.comment_like_max)
+  commentLikeMax?: number;         // 仅 comment_like:老字段(剧本已不读)
+  commentMode?: 'precise' | 'keywords'; // 仅 comment_like:注入 ctx.task.comment_mode
+  commentDoLike?: boolean;         // 仅 comment_like:注入 ctx.task.cl_do_like
+  commentDoReply?: boolean;        // 仅 comment_like:注入 ctx.task.cl_do_reply
   blockTargets?: string[];         // 仅 block:名单(注入 ctx.task.block_targets)
   blockKeywords?: string[];        // 仅 block:关键词(注入 ctx.task.block_keywords)
   blockMode?: 'precise' | 'keyword'; // 仅 block:精准=各号名单 / 关键词=各号自己的关键词;缺省=老任务
@@ -513,6 +516,11 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       urls: Array.isArray(opts.urls) ? opts.urls : [],
       // comment_like 剧本读 task.comment_like_max(每号本次最多点赞数;缺省剧本按 100)。
       comment_like_max: opts.commentLikeMax,
+      // comment_like 剧本读 task.comment_mode:precise(链接)/ keywords(用本账号的关键词 task.keywords 搜视频)。
+      comment_mode: opts.commentMode,
+      // 要不要点赞 / 回复(老任务两个都没有:剧本按「只点赞」处理)。
+      cl_do_like: opts.commentDoLike,
+      cl_do_reply: opts.commentDoReply,
       // block 剧本读 task.block_targets / block_keywords。
       block_targets: blockTargetsForAcc,
       block_keywords: blockKeywordsForAcc,

@@ -304,11 +304,11 @@ export interface BinanceRepostConfig {
 // 币安广场批量搬运 = binance_repost(1 个采集号从源平台搜+下 N 条 → N 个币安号各领一条 AI 仿写 + 配图 → 发币安广场)。
 // 举报 = report(白名单功能,admin 配 UID 才可见;目前仅抖音):1-4 条链接各配原因+描述,
 //   只能选【1 个】账号执行,只能手动触发(每次逐条只提交一次),不定时、不重试;可编辑、可再次运行。
-// 作品评论区点赞 = comment_like(目前仅 TikTok,剧本 tiktok_comment_like):粘贴 1-20 条作品链接(urls),
+// 评论区点赞评论 = comment_like(目前仅 TikTok,剧本 tiktok_comment_like):粘贴 1-20 条作品链接(urls),
 //   每个执行账号逐条打开、翻评论区给每位留言者的评论点赞,每号每次最多 commentLikeMax 个。
 export type MatrixTaskType = 'engage' | 'reply_fan' | 'video_download' | 'image_text' | 'viral_rewrite' | 'x_post' | 'binance_post' | 'binance_repost' | 'facebook_post' | 'reddit_post' | 'instagram_post' | 'lead_engage' | 'report' | 'comment_like' | 'block' | 'folder_post';
 
-/** 作品评论区点赞(comment_like)的约束:客户端存盘校验 + 剧本再兜一层。 */
+/** 评论区点赞评论(comment_like)的约束:客户端存盘校验 + 剧本再兜一层。 */
 export const COMMENT_LIKE_LIMITS = { maxLinks: 20, maxMin: 1, maxMax: 5000, maxDefault: 100 } as const;
 // 批量拉黑 = block(目前仅抖音,剧本 douyin_block):名单(主页/作品链接、短链、抖音号)和/或 关键词;不限人数。
 export const BLOCK_LIMITS = { maxTargets: 2000, maxKeywords: 20, keywordMaxLen: 30 } as const;
@@ -402,7 +402,12 @@ export interface MatrixTask {
   binanceRepost?: BinanceRepostConfig; // 仅 binance_repost 用:币安广场批量搬运配置
   leadEngage?: LeadEngageConfig;   // 仅 lead_engage 用:定向获客配置
   urls?: string[];                 // video_download:待下载视频链接清单;comment_like:要点赞评论区的作品链接(1-20)
-  commentLikeMax?: number;         // 仅 comment_like 用:每个账号每次运行最多点赞几条评论(1-5000,默认 100)
+  commentLikeMax?: number;         // 仅 comment_like 用(老字段,2026-10-29 起不再使用:不设上限,翻完评论区为止)
+  // 仅 comment_like 用(2026-10-29):'precise'=粘作品/主页链接逐条处理(每条评论点赞+回复);
+  //   'keywords'=用各执行账号自己的关键词搜视频(每条评论点赞,回复一半)。缺省 = 老任务 = precise。
+  commentMode?: 'precise' | 'keywords';
+  commentDoLike?: boolean;         // 仅 comment_like:要不要给评论点赞(和 commentDoReply 至少开一个)
+  commentDoReply?: boolean;        // 仅 comment_like:要不要回复评论(AI 按评论逐条写)
   blockTargets?: string[];         // 仅 block 用:要拉黑的名单(主页/作品链接、短链、抖音号)
   blockKeywords?: string[];        // 仅 block 用:关键词(搜视频,拉黑相关作者)
   // 仅 block 用:模式。'precise'=各账号自己的名单(blockTargetsByAccount);'keyword'=用各账号自己的关键词

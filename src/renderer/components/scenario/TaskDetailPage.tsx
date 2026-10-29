@@ -223,7 +223,7 @@ const replyStepNames = (center: string): string[] =>
 const videoDownloadStepNames = (name: string): string[] =>
   [i18nService.t('tdSnVdFactory0').replace('{name}', name), i18nService.t('tdSnVdFactory1')];
 // 定向获客 3 步(对齐 tiktok_lead_engage orchestrator 的 stepStart 1/2/3)。仅 TikTok 用,内联中英。
-// 作品评论区点赞 2 步(对齐 tiktok_comment_like orchestrator 的 stepStart 1/2)。内联中/繁/英。
+// 评论区点赞评论 2 步(对齐 tiktok_comment_like orchestrator 的 stepStart 1/2)。内联中/繁/英。
 const COMMENT_LIKE_STEP_NAMES = (): string[] => (i18nService.currentLanguage === 'zh'
   ? ['打开作品,逐条给留言点赞', '汇总报告']
   : i18nService.currentLanguage === 'zh-TW'
@@ -831,7 +831,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       if (sid === 'instagram_lead_engage') return { icon: '🎯', label: leadZh ? 'Instagram 定向获客' : 'Instagram Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       return { icon: '🎯', label: leadZh ? '定向获客' : 'Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
-    if (sid === 'tiktok_comment_like')            return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 作品评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 作品留言區按讚' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (sid === 'tiktok_comment_like')            return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 评论区点赞评论' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 留言區按讚留言' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: i18nService.t('tdTypeKuaishouAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: i18nService.t('tdTypeKuaishouVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
@@ -1292,7 +1292,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     <>
                       <div>{i18nService.t('tdSourceUrls')}: {taskUrls.length} {i18nService.t('tdCountUnit')}</div>
                       {/_comment_like$/.test(String(task.scenario_id || '')) && (
-                        <div>💗 {i18nService.currentLanguage === 'zh' ? `每个账号每次最多点赞 ${(task as any).comment_like_max || 100} 条评论` : i18nService.currentLanguage === 'zh-TW' ? `每個帳號每次最多按讚 ${(task as any).comment_like_max || 100} 則留言` : `Up to ${(task as any).comment_like_max || 100} comment likes per account per run`}</div>
+                        <div>💗 {i18nService.currentLanguage === 'zh' ? '精准模式:逐条打开作品,每条评论点赞并回复,翻完评论区为止' : i18nService.currentLanguage === 'zh-TW' ? '精準模式:逐則打開作品,每則留言按讚並回覆,翻完留言區為止' : 'Precise: open each post, like and reply to every comment until the section ends'}</div>
                       )}
                       {taskUrls.map((u, i) => (
                         <div key={i} className="flex items-start gap-2 pl-4 text-[11px]">
@@ -1328,6 +1328,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           v5.x+: 图文创作(抖音 + 小红书)也跳过 — 只看参考文案,没关键词。
                           v6.x: 3 个 binance source-viral 搬运 — task.keywords 是搜源
                           关键词(不是 Token);Token 单独从 task.cashtags 取。 */}
+                      {/_comment_like$/.test(String(task.scenario_id || '')) && (
+                        <div>💗 {i18nService.currentLanguage === 'zh' ? '关键词模式:用各执行账号自己的关键词搜视频,每条评论点赞、回复其中一半,跑到本次运行时长上限为止' : i18nService.currentLanguage === 'zh-TW' ? '關鍵詞模式:用各執行帳號自己的關鍵詞搜影片,每則留言按讚、回覆其中一半,跑到本次執行時長上限為止' : "Keyword mode: searches videos with each account's own keywords, likes every comment and replies to half, until the run's time limit"}</div>
+                      )}
                       {/* 自动回复粉丝:展示 引流语 + 引流概率(对齐 wizard),不显示关键词 */}
                       {isReplyFan && (() => {
                         const fba2 = (task as any).funnel_by_account as Record<string, any> | undefined;
@@ -1996,7 +1999,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         //   还会退化成小红书,于是抖音的获客任务上挂出「自动发布到小红书」(用户 2026-08-21 实测)。
         const isLeadEngageTask = /_lead_engage$/.test(scenario?.id || '')
           || (scenario?.workflow_type as any) === 'lead_engage';
-        // 作品评论区点赞同理:只点赞,没有草稿/发布。
+        // 评论区点赞评论同理:只点赞,没有草稿/发布。
         const isCommentLikeTask = /_comment_like$/.test(String(task.scenario_id || ''));
         const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask && !isLeadEngageTask && !isCommentLikeTask && !/_block$/.test(String(task.scenario_id || ''));
         const isXhsViral = scenario?.platform === 'xhs';
@@ -2090,8 +2093,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           const sid = String(scenario?.id || '');
                           if (/_reply_fans_comment$/.test(sid)) return <>💬 {ap.comment?.done ?? 0} {i18nService.t('tdRepliesWord')}</>;
                           if (/_report$/.test(sid)) return <>📋 {(ap as any).report?.done ?? 0}/{(ap as any).report?.target ?? 0} {i18nService.t('rpWordSubmitted')}</>;
-                          // 作品评论区点赞:只有点赞这一个动作,别画 ➕ 关注 / 💬 评论的 0/0。
-                          if (/_comment_like$/.test(sid)) return <>👍 {ap.like?.done ?? 0}/{ap.like?.target ?? 0}</>;
+                          // 评论区点赞评论:只有点赞这一个动作,别画 ➕ 关注 / 💬 评论的 0/0。
+                          if (/_comment_like$/.test(sid)) return <>👍 {ap.like?.done ?? 0} · 💬 {ap.comment?.done ?? 0}</>;
                           // 批量拉黑:只有拉黑这一个动作,不限人数(没有 target)。
                           if (/_block$/.test(sid)) return <>🚫 {(ap as any).block?.done ?? 0}</>;
                           if (/_video_download$/.test(sid)) return <span className="text-gray-400 font-sans">⬇️ {i18nService.t('tdVideoDownloadWord')}</span>;
@@ -2384,10 +2387,11 @@ function formatActionBreakdown(
     const posts = counts && typeof counts.post === 'number' ? counts.post : 0;
     return `📤 ${posts} ${i18nService.t('tdPostsWord')}`;
   }
-  // 作品评论区点赞(*_comment_like):只产生「点赞数」,显示 👍 N 点赞,不显示关注/评论。
+  // 评论区点赞评论(*_comment_like):只产生「点赞数」,显示 👍 N 点赞,不显示关注/评论。
   if (/_comment_like$/.test(sid)) {
     const n = counts && typeof counts.like === 'number' ? counts.like : 0;
-    return `👍 ${n} ${i18nService.t('tdLblLike')}`;
+    const c = counts && typeof counts.comment === 'number' ? counts.comment : 0;
+    return `👍 ${n} ${i18nService.t('tdLblLike')} · 💬 ${c} ${i18nService.t('tdLblComment')}`;
   }
   // 批量拉黑(*_block):只产生「拉黑人数」,不显示赞/关注/评论。
   if (/_block$/.test(sid)) {

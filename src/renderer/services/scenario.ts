@@ -230,7 +230,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
   const isRepost = t?.type === 'binance_repost';
   const isLead = t?.type === 'lead_engage';
   const isReport = t?.type === 'report';
-  const isCommentLike = t?.type === 'comment_like';   // 作品评论区点赞(tiktok_comment_like)
+  const isCommentLike = t?.type === 'comment_like';   // 评论区点赞评论(tiktok_comment_like)
   const isBlock = t?.type === 'block';                // 批量拉黑(douyin_block)
   const isFolderPost = t?.type === 'folder_post';     // 文件夹定时发布(客户端 runner,无后端剧本)
   const reportItems: any[] = Array.isArray(t?.reportItems) ? t.reportItems : [];
@@ -279,6 +279,9 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     urls: (isDownload || isCommentLike) ? dlUrls : undefined,
     // comment_like:每号本次最多点赞数(详情页展示 + 编辑回填)。
     comment_like_max: isCommentLike ? (t.commentLikeMax || 100) : undefined,
+    comment_mode: isCommentLike ? (t.commentMode || 'precise') : undefined,
+    comment_do_like: isCommentLike ? t.commentDoLike !== false : undefined,
+    comment_do_reply: isCommentLike ? t.commentDoReply === true : undefined,
     // block:名单 + 关键词(详情页展示 + 编辑回填)。
     block_targets: isBlock ? (Array.isArray(t.blockTargets) ? t.blockTargets : []) : undefined,
     block_keywords: isBlock ? (Array.isArray(t.blockKeywords) ? t.blockKeywords : []) : undefined,
@@ -421,7 +424,7 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       enabled: input.enabled !== false,
     };
   }
-  // 作品评论区点赞(scenario_id 以 _comment_like 结尾):保持 type='comment_like' + 透传 urls / commentLikeMax,
+  // 评论区点赞评论(scenario_id 以 _comment_like 结尾):保持 type='comment_like' + 透传 urls / commentLikeMax,
   // 否则经 updateTask 兜底(如列表里改启用)会被改成 engage、链接清单丢失。
   if (typeof input.scenario_id === 'string' && input.scenario_id.endsWith('_comment_like')) {
     const cPlatform = input.platform || String(input.scenario_id).replace(/_comment_like$/, '') || 'tiktok';
@@ -430,11 +433,14 @@ function scenarioInputToMxSave(input: any, id?: string): any {
       id,
       platform: cPlatform,
       type: 'comment_like',
-      name: input.name || `TikTok 作品评论区点赞 · ${urls.length} 条`,
+      name: input.name || `TikTok 评论区点赞评论 · ${urls.length} 条`,
       accountIds,
       quota: {},
       urls,
       commentLikeMax: (input as any).comment_like_max,
+      commentMode: (input as any).comment_mode,
+      commentDoLike: (input as any).comment_do_like,
+      commentDoReply: (input as any).comment_do_reply,
       concurrency: (input as any).concurrency || 1,
       frequency: input.run_interval || 'once',
       enabled: input.enabled !== false,
@@ -665,7 +671,7 @@ function mxRunScenarioSnapshot(type: string | undefined, platform: string): { id
   const mk = (id: string, name_zh: string, icon: string) => ({ id, name_zh, name_en: '', icon, platform: p });
   switch (type) {
     case 'reply_fan':      return mk(`${p}_reply_fans_comment`, MATRIX_REPLY_META[p]?.name_zh || '自动回复粉丝', MATRIX_REPLY_META[p]?.icon || '💌');
-    case 'comment_like':   return mk(`${p}_comment_like`, 'TikTok 作品评论区点赞', '💗');
+    case 'comment_like':   return mk(`${p}_comment_like`, 'TikTok 评论区点赞评论', '💗');
     case 'block':          return mk(`${p}_block`, '抖音批量拉黑', '🚫');
     case 'folder_post':    return mk(`${p}_folder_post`, '抖音文件夹定时发布', '📅');
     case 'report':         return mk(`${p}_report`, MATRIX_REPORT_META[p]?.name_zh || '抖音Report', MATRIX_REPORT_META[p]?.icon || '📋');
@@ -878,10 +884,10 @@ class ScenarioService {
           id: rsid, version: '1.0.0', platform, workflow_type: 'binance_repost_creation', category: 'creation',
           name_zh: MATRIX_REPOST_META[platform] || '批量搬运', name_en: '', icon: '♻️',
         }));
-      // 「作品评论区点赞」剧本快照(目前仅 TikTok),让 comment_like 任务能归到 TikTok tab、详情页认得出。
+      // 「评论区点赞评论」剧本快照(目前仅 TikTok),让 comment_like 任务能归到 TikTok tab、详情页认得出。
       const synthCommentLike = have.has('tiktok_comment_like') ? [] : [{
         id: 'tiktok_comment_like', version: '1.0.0', platform: 'tiktok', workflow_type: 'comment_like', category: 'engagement',
-        name_zh: 'TikTok 作品评论区点赞', name_en: 'TikTok Comment Liker', icon: '💗',
+        name_zh: 'TikTok 评论区点赞评论', name_en: 'TikTok Comment Like & Reply', icon: '💗',
       }];
       // 「批量拉黑」剧本快照(目前仅抖音),让 block 任务能归到抖音 tab、详情页认得出。
       const synthBlock = have.has('douyin_block') ? [] : [{

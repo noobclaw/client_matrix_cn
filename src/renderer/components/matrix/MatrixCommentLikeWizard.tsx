@@ -1,10 +1,12 @@
 /**
- * MatrixCommentLikeWizard — 矩阵版「TikTok · 作品评论区点赞」向导(type='comment_like')。
+ * MatrixCommentLikeWizard — 矩阵版「TikTok · 评论区点赞评论」向导(type='comment_like')。
  *
- * 对应后端 tiktok_comment_like 剧本:每个执行账号逐条打开用户粘贴的作品(视频/图文),
- * 打开评论区逐屏往下翻,给每位留言者的评论点赞,直到本号本次点赞上限或评论翻完。
+ * 对应后端 tiktok_comment_like 剧本(2026-10-29 改版):
+ *   精准模式 —— 逐条打开用户粘贴的作品 / 主页作品,翻完整个评论区,每条评论点赞 + 回复;
+ *   关键词模式 —— 用各执行账号自己的关键词搜视频,每条评论点赞、回复其中一半,跑到本次运行时长上限。
+ *   点赞 / 回复可勾选,至少一个;不再设数量上限。回复由 AI 按评论逐条写(扣积分),点赞会员免费。
  *
- *   Step 1 — 粘贴作品链接(每行 1 个,1-20 个)+ 每个账号本次最多点赞数(1-5000,默认 100)
+ *   Step 1 — 模式 + 链接(精准)+ 要做的动作
  *   Step 2 — 选执行账号(可多选)
  *   Step 3 — 运行频率 + 摘要 + 条款
  *
@@ -13,7 +15,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
-import { NumBox } from './NumberStepper';
 import { presetAccountIds, usePresetUsed, usePresetPrune } from '../../uiEdition';
 
 type WizardStep = 1 | 2 | 3;
@@ -40,7 +41,7 @@ interface Props {
   accountsLoading?: boolean;
   initialTask?: any | null;
   onCancel: () => void;
-  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; urls: string[]; commentLikeMax: number }) => Promise<void> | void;
+  onSave: (input: { name: string; accountIds: string[]; concurrency: number; frequency: string; urls: string[]; commentMode: 'precise' | 'keywords'; commentDoLike: boolean; commentDoReply: boolean }) => Promise<void> | void;
 }
 
 const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, accounts, accountsLoading, initialTask, onCancel, onSave }) => {
@@ -56,10 +57,10 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
     return out;
   }, [parsedLinks]);
   const badLinks = useMemo(() => parsedLinks.filter((u) => !TIKTOK_LINK_RE.test(u)), [parsedLinks]);
-  const [maxLikes, setMaxLikes] = useState<number>(() => {
-    const n = Number(initialTask?.commentLikeMax);
-    return Number.isFinite(n) && n >= COMMENT_LIKE_MAX_MIN ? Math.min(COMMENT_LIKE_MAX_MAX, Math.round(n)) : COMMENT_LIKE_MAX_DEFAULT;
-  });
+  // 2026-10-29:不再设数量;改成 模式(精准 / 关键词)+ 要不要点赞 / 回复(至少一个)。
+  const [mode, setMode] = useState<'precise' | 'keywords'>(() => (initialTask?.commentMode === 'keywords' ? 'keywords' : 'precise'));
+  const [doLike, setDoLike] = useState<boolean>(() => initialTask ? initialTask.commentDoLike !== false : true);
+  const [doReply, setDoReply] = useState<boolean>(() => initialTask ? initialTask.commentDoReply === true : true);
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask ? (initialTask.accountIds || []) : presetAccountIds(platform)).map(String)));
   // 简洁版预选号:账号加载完后剔除不在本向导列表里的号(见 usePresetPrune)
@@ -69,13 +70,17 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [linksText, maxLikes, selected, runInterval]);
+  useEffect(() => { if (saveError) setSaveError(null); /* eslint-disable-next-line */ }, [linksText, mode, doLike, doReply, selected, runInterval]);
 
   const readyAccounts = accounts.filter((a) => a.status !== 'banned' && a.status !== 'login_required');
   const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: validLinks.length === 0
+    1: !doLike && !doReply
+      ? { ok: false, reason: L('点赞和评论至少选一个', '按讚和留言至少選一個', 'Pick at least one: like or reply') }
+      : mode === 'keywords'
+      ? { ok: true }
+      : validLinks.length === 0
       ? { ok: false, reason: L('请至少粘贴 1 个有效的 TikTok 作品或主页链接', '請至少貼上 1 個有效的 TikTok 作品或主頁連結', 'Paste at least one valid TikTok post or profile link') }
       : validLinks.length > COMMENT_LIKE_MAX_LINKS
         ? { ok: false, reason: L(`最多 ${COMMENT_LIKE_MAX_LINKS} 个链接`, `最多 ${COMMENT_LIKE_MAX_LINKS} 個連結`, `At most ${COMMENT_LIKE_MAX_LINKS} links`) }
@@ -90,12 +95,16 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || L(`${platformLabel} 作品评论区点赞(${validLinks.length} 条作品)`, `${platformLabel} 作品留言區按讚(${validLinks.length} 則作品)`, `${platformLabel} Comment Liker (${validLinks.length} posts)`),
+        name: initialTask?.name || (mode === 'keywords'
+          ? L(`${platformLabel} 评论区点赞评论(关键词)`, `${platformLabel} 留言區按讚留言(關鍵詞)`, `${platformLabel} Comment Like & Reply (keywords)`)
+          : L(`${platformLabel} 评论区点赞评论(${validLinks.length} 条作品)`, `${platformLabel} 留言區按讚留言(${validLinks.length} 則作品)`, `${platformLabel} Comment Like & Reply (${validLinks.length} posts)`)),
         accountIds: Array.from(selected),
         concurrency: Math.max(1, selected.size),   // 勾几个号就几个号一起跑(同互动任务;runner 内部有上限兜底)
         frequency: runInterval,
-        urls: validLinks.slice(0, COMMENT_LIKE_MAX_LINKS),
-        commentLikeMax: maxLikes,
+        urls: mode === 'keywords' ? [] : validLinks.slice(0, COMMENT_LIKE_MAX_LINKS),
+        commentMode: mode,
+        commentDoLike: doLike,
+        commentDoReply: doReply,
       });
     } catch (err) {
       setSaveError(String(err instanceof Error ? err.message : err) || L('保存失败', '儲存失敗', 'Save failed'));
@@ -112,7 +121,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
   return (
     <div className="w-full max-w-2xl mx-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <div className="text-base font-semibold dark:text-white">💗 {editing ? L('编辑', '編輯', 'Edit') + ' · ' : ''}{platformLabel} · {L('作品评论区点赞', '作品留言區按讚', 'Comment Liker')}</div>
+        <div className="text-base font-semibold dark:text-white">💗 {editing ? L('编辑', '編輯', 'Edit') + ' · ' : ''}{platformLabel} · {L('评论区点赞评论', '留言區按讚留言', 'Comment Like & Reply')}</div>
         <div className="flex items-center gap-3">
           <span className="text-xs px-2.5 py-1 rounded-full border border-pink-500/40 text-pink-500 bg-pink-500/5">{L(`第 ${step}/3 步`, `第 ${step}/3 步`, `Step ${step}/3`)}</span>
           <button type="button" onClick={onCancel} disabled={saving} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
@@ -122,13 +131,32 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
         {step === 1 && (
           <>
-            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-pink-500/30 bg-pink-500/5 text-pink-700 dark:text-pink-300">
-              💗 {L(
-                '粘贴 TikTok 作品(视频/图文)链接,或博主主页链接(会自动打开他的主页、跳过置顶作品,逐条处理他最近的作品,每个主页最多 30 条)。开始后每个执行账号会逐条打开作品,打开评论区一屏一屏往下翻,给每位留言者的评论点赞(已赞过的、自己的留言会跳过)。需要开 VPN。',
-                '貼上 TikTok 作品(影片/圖文)連結,或博主主頁連結(會自動打開他的主頁、跳過置頂作品,逐則處理他最近的作品,每個主頁最多 30 則)。開始後每個執行帳號會逐則打開作品,打開留言區一屏一屏往下翻,為每位留言者的留言按讚(已讚過的、自己的留言會跳過)。需要開 VPN。',
-                'Paste TikTok post (video/photo) links or creator profile links (a profile expands to the creator\'s latest posts, pinned ones skipped, up to 30 per profile). Each account opens them one by one, scrolls the comment section page by page and likes every commenter\'s comment (already-liked ones and its own are skipped). VPN required.',
-              )}
+            {/* 模式 */}
+            <div>
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{L('模式', '模式', 'Mode')}</label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ['precise', L('🎯 精准模式', '🎯 精準模式', '🎯 Precise'), L('粘作品 / 主页链接,逐条处理', '貼作品 / 主頁連結,逐則處理', 'Paste post / profile links')],
+                  ['keywords', L('🔍 关键词模式', '🔍 關鍵詞模式', '🔍 Keywords'), L('用各执行账号自己的关键词搜视频', '用各執行帳號自己的關鍵詞搜影片', "Search videos with each account's keywords")],
+                ] as Array<['precise' | 'keywords', string, string]>).map(([v, t, d]) => (
+                  <button key={v} type="button" onClick={() => setMode(v)} disabled={saving}
+                    className={`text-left rounded-lg border px-3 py-2 transition-colors ${mode === v ? 'border-pink-500 bg-pink-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-pink-500/50'}`}>
+                    <div className={`text-sm font-semibold ${mode === v ? 'text-pink-500' : 'dark:text-gray-200'}`}>{t}</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{d}</div>
+                  </button>
+                ))}
+              </div>
             </div>
+            <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-pink-500/30 bg-pink-500/5 text-pink-700 dark:text-pink-300">
+              💗 {mode === 'precise'
+                ? L('每个执行账号逐条打开作品(主页链接会展开成他最近的作品),把评论区从头翻到底,每条评论点赞并回复(自己的、已赞过的跳过),链接用完为止。需要开 VPN。',
+                    '每個執行帳號逐則打開作品(主頁連結會展開成他最近的作品),把留言區從頭翻到底,每則留言按讚並回覆(自己的、已讚過的跳過),連結用完為止。需要開 VPN。',
+                    'Each account opens the posts one by one (profile links expand to recent posts), scrolls the whole comment section, likes and replies to every comment (skipping its own and liked ones) until the links run out. VPN required.')
+                : L('每个执行账号用它自己的关键词(账号卡片「编辑」里设置)搜视频,每条评论点赞、回复其中一半,一直找新视频,跑到本次运行时长上限为止。需要开 VPN。',
+                    '每個執行帳號用它自己的關鍵詞(帳號卡片「編輯」裡設定)搜影片,每則留言按讚、回覆其中一半,一直找新影片,跑到本次執行時長上限為止。需要開 VPN。',
+                    "Each account searches videos with its own keywords (set under Edit on the account card), likes every comment and replies to half, and keeps finding new videos until the run's time limit. VPN required.")}
+            </div>
+            {mode === 'precise' && (
             <div>
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
                 🔗 {L('作品或博主主页链接', '作品或博主主頁連結', 'Post or profile links')}<span className="text-xs text-gray-400 font-normal ml-1">{L(`每行 1 个,最多 ${COMMENT_LIKE_MAX_LINKS} 个`, `每行 1 個,最多 ${COMMENT_LIKE_MAX_LINKS} 個`, `one per line, up to ${COMMENT_LIKE_MAX_LINKS}`)}</span>
@@ -137,8 +165,8 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
                 value={linksText}
                 onChange={(e) => setLinksText(e.target.value)}
                 placeholder={'https://www.tiktok.com/@user/video/...\nhttps://www.tiktok.com/@user/photo/...\nhttps://www.tiktok.com/@user  (博主主页 / profile)\nhttps://vm.tiktok.com/...'}
-                rows={7}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40 resize-y min-h-[130px] font-mono"
+                rows={6}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40 resize-y min-h-[120px] font-mono"
                 disabled={saving}
               />
               <div className="flex items-center gap-3 text-[11px] mt-1">
@@ -147,12 +175,20 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
                 {validLinks.length > COMMENT_LIKE_MAX_LINKS && <span className="text-red-500">{L(`超过 ${COMMENT_LIKE_MAX_LINKS} 条上限`, `超過 ${COMMENT_LIKE_MAX_LINKS} 則上限`, `over the ${COMMENT_LIKE_MAX_LINKS}-link limit`)}</span>}
               </div>
             </div>
+            )}
+            {/* 要做的动作:至少一个 */}
             <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                👍 {L('每个账号本次最多点赞', '每個帳號本次最多按讚', 'Max likes per account per run')}
-                <span className="text-xs text-gray-400 font-normal ml-1">{L(`${COMMENT_LIKE_MAX_MIN}-${COMMENT_LIKE_MAX_MAX},点满或评论翻完就停`, `${COMMENT_LIKE_MAX_MIN}-${COMMENT_LIKE_MAX_MAX},按滿或留言翻完就停`, `${COMMENT_LIKE_MAX_MIN}-${COMMENT_LIKE_MAX_MAX}; stops when reached or comments run out`)}</span>
-              </label>
-              <NumBox value={maxLikes} onChange={setMaxLikes} min={COMMENT_LIKE_MAX_MIN} max={COMMENT_LIKE_MAX_MAX} step={10} accent="pink" disabled={saving} />
+              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{L('对每条评论做什么', '對每則留言做什麼', 'What to do on each comment')}<span className="text-xs text-gray-400 font-normal ml-1">{L('至少选一个', '至少選一個', 'pick at least one')}</span></label>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2 text-sm dark:text-gray-200 cursor-pointer">
+                  <input type="checkbox" checked={doLike} onChange={(e) => setDoLike(e.target.checked)} disabled={saving} className="mt-0.5 h-4 w-4 accent-pink-500" />
+                  <span>👍 {L('点赞', '按讚', 'Like')}<span className="text-[11px] text-gray-400 ml-1">{L('基础版及以上会员免费', '基礎版及以上會員免費', 'free for Basic members and up')}</span></span>
+                </label>
+                <label className="flex items-start gap-2 text-sm dark:text-gray-200 cursor-pointer">
+                  <input type="checkbox" checked={doReply} onChange={(e) => setDoReply(e.target.checked)} disabled={saving} className="mt-0.5 h-4 w-4 accent-pink-500" />
+                  <span>💬 {L('回复评论', '回覆留言', 'Reply')}<span className="text-[11px] text-gray-400 ml-1">{mode === 'keywords' ? L('回复其中一半;AI 按每条评论写,每条回复扣积分', '回覆其中一半;AI 按每則留言寫,每則回覆扣積分', 'replies to half; AI-written, each reply costs credits') : L('AI 按每条评论写,每条回复扣积分', 'AI 按每則留言寫,每則回覆扣積分', 'AI-written per comment; each reply costs credits')}</span></span>
+                </label>
+              </div>
             </div>
           </>
         )}
@@ -189,6 +225,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="font-medium truncate dark:text-white">{title}</span>
                         {a.displayId && <span className="text-[11px] text-gray-500 dark:text-gray-400 shrink-0">@{a.displayId}</span>}
+                        {mode === 'keywords' && ready && !(a.keywords && a.keywords.length) && <span className="text-[11px] text-amber-500 shrink-0">{L('没设关键词', '沒設關鍵詞', 'no keywords')}</span>}
                         {!ready && <span className="text-[11px] text-amber-500 shrink-0">{a.status === 'banned' ? L('已封禁', '已封鎖', 'banned') : L('掉线,需重新登录', '離線,需重新登入', 'logged out')}</span>}
                       </div>
                       <div className="text-[11px] text-gray-400 truncate">{a.displayName}{a.group ? ` · ${a.group}` : ''}</div>
@@ -212,9 +249,9 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
             </div>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
               <div className="font-semibold dark:text-gray-200 mb-1">{L('任务摘要', '任務摘要', 'Summary')}</div>
-              <SummaryRow label={L('作品', '作品', 'Posts')} value={L(`${validLinks.length} 条`, `${validLinks.length} 則`, `${validLinks.length}`)} />
+              <SummaryRow label={L('模式', '模式', 'Mode')} value={mode === 'keywords' ? L('关键词模式(各账号自己的关键词)', '關鍵詞模式(各帳號自己的關鍵詞)', "Keywords (each account's own)") : L(`精准模式 · ${validLinks.length} 条链接`, `精準模式 · ${validLinks.length} 則連結`, `Precise · ${validLinks.length} links`)} />
               <SummaryRow label={L('执行账号', '執行帳號', 'Accounts')} value={L(`${selected.size} 个`, `${selected.size} 個`, `${selected.size}`)} />
-              <SummaryRow label={L('点赞上限', '按讚上限', 'Like cap')} value={L(`每个账号每次最多 ${maxLikes} 个`, `每個帳號每次最多 ${maxLikes} 個`, `${maxLikes} per account per run`)} />
+              <SummaryRow label={L('动作', '動作', 'Actions')} value={[doLike ? L('点赞', '按讚', 'like') : '', doReply ? (mode === 'keywords' ? L('回复一半', '回覆一半', 'reply to half') : L('回复', '回覆', 'reply')) : ''].filter(Boolean).join(' + ')} />
               <SummaryRow label={L('运行频率', '執行頻率', 'Schedule')} value={freqLabel} />
             </div>
           </>

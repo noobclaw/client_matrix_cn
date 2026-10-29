@@ -178,7 +178,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     input = { ...input, reportItems, frequency: 'once', enabled: false, concurrency: 1, quota: {} };
   }
 
-  // 作品评论区点赞(仅 TikTok):1-20 条 TikTok 作品链接(去重)+ 每号点赞上限夹到 1-5000。
+  // 评论区点赞评论(仅 TikTok):1-20 条 TikTok 作品链接(去重)+ 每号点赞上限夹到 1-5000。
   if (input.type === 'comment_like') {
     if (input.platform !== 'tiktok') return { ok: false, error: 'comment_like_platform_unsupported' };
     const seen = new Set<string>();
@@ -188,11 +188,15 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       if (!/^https?:\/\/([\w-]+\.)?tiktok\.com\//i.test(u) || seen.has(u)) continue;
       seen.add(u); urls.push(u);
     }
-    if (urls.length < 1 || urls.length > COMMENT_LIKE_LIMITS.maxLinks) return { ok: false, error: 'comment_like_link_count' };
+    const keywordsMode = input.commentMode === 'keywords';
+    // 关键词模式不需要链接(用各执行账号自己的关键词搜);精准模式仍要 1-20 条链接。
+    if (!keywordsMode && (urls.length < 1 || urls.length > COMMENT_LIKE_LIMITS.maxLinks)) return { ok: false, error: 'comment_like_link_count' };
     if (!(input.accountIds || []).filter(Boolean).length) return { ok: false, error: 'comment_like_no_account' };
     const n = Math.round(Number(input.commentLikeMax));
     const commentLikeMax = Number.isFinite(n) ? Math.min(COMMENT_LIKE_LIMITS.maxMax, Math.max(COMMENT_LIKE_LIMITS.maxMin, n)) : COMMENT_LIKE_LIMITS.maxDefault;
-    input = { ...input, urls, commentLikeMax, quota: {} };
+    const doLike = input.commentDoLike !== false, doReply = input.commentDoReply === true;
+    if (!doLike && !doReply) return { ok: false, error: 'comment_like_no_action' };
+    input = { ...input, urls: keywordsMode ? [] : urls, commentLikeMax, commentMode: keywordsMode ? 'keywords' : 'precise', commentDoLike: doLike, commentDoReply: doReply, quota: {} };
   }
 
   // 批量拉黑(仅抖音):名单 + 关键词去重、裁剪;两者至少一项;至少 1 个执行账号。不限人数。
@@ -281,6 +285,9 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
       leadEngage: input.leadEngage ?? tasks[i].leadEngage,
       urls: input.urls ?? tasks[i].urls,
       commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : tasks[i].commentLikeMax,
+      commentMode: input.type === 'comment_like' ? input.commentMode : tasks[i].commentMode,
+      commentDoLike: input.type === 'comment_like' ? input.commentDoLike : tasks[i].commentDoLike,
+      commentDoReply: input.type === 'comment_like' ? input.commentDoReply : tasks[i].commentDoReply,
       blockTargets: input.type === 'block' ? input.blockTargets : tasks[i].blockTargets,
       blockKeywords: input.type === 'block' ? input.blockKeywords : tasks[i].blockKeywords,
       blockMode: input.type === 'block' ? input.blockMode : tasks[i].blockMode,
@@ -325,6 +332,9 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     leadEngage: input.leadEngage,
     urls: input.urls,
     commentLikeMax: input.type === 'comment_like' ? input.commentLikeMax : undefined,
+    commentMode: input.type === 'comment_like' ? input.commentMode : undefined,
+    commentDoLike: input.type === 'comment_like' ? input.commentDoLike : undefined,
+    commentDoReply: input.type === 'comment_like' ? input.commentDoReply : undefined,
     blockTargets: input.type === 'block' ? input.blockTargets : undefined,
     blockKeywords: input.type === 'block' ? input.blockKeywords : undefined,
     blockMode: input.type === 'block' ? input.blockMode : undefined,

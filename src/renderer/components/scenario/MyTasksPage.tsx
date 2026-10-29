@@ -473,7 +473,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // 没被算进去,导致它在列表里还显示 track 名 + persona 摘要(其实用户没填,
               // 是 wizard fallback 的默认人设),完全跟 X / XHS link 模式不一致。
               // 引入 isAnyLinkRewrite 后:隐藏 track 行 / 隐藏 persona snippet / 改显 URL 列表。
-              // 作品评论区点赞(comment_like):也是「粘 URL 列表」任务,列表里显示链接;但它可以定时跑,不强制显示「手动」。
+              // 评论区点赞评论(comment_like):也是「粘 URL 列表」任务,列表里显示链接;但它可以定时跑,不强制显示「手动」。
               const isCommentLike = /_comment_like$/.test(String(sid || ''));
               const isAnyLinkRewrite = isLinkRewriteTwitter || isXhsLinkMode || isBinanceLinkRewrite || isVideoDownload || isCommentLike;
               // v5.x+: 抖音图文创作场景没有 track / persona / keywords 概念,
@@ -551,7 +551,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', k: 'scnXhsReplyFans', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', k: 'scnXhsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
                 if (sid === 'douyin_report')                return { icon: '📋', k: 'svCardReportTitle', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if (sid === 'tiktok_comment_like')          return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 作品评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 作品留言區按讚' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'tiktok_comment_like')          return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 评论区点赞评论' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 留言區按讚留言' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (sid === 'douyin_folder_post')           return { icon: '📅', label: i18nService.currentLanguage === 'zh' ? '抖音 文件夹定时发布' : i18nService.currentLanguage === 'zh-TW' ? '抖音 資料夾定時發佈' : 'Douyin Folder Scheduled Post', color: 'text-teal-500 bg-teal-500/10 border-teal-500/30' };
                 if (sid === 'douyin_video_download')        return { icon: '⬇️', k: 'scnDyDownload', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', k: 'scnTtDownload', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
@@ -607,7 +607,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const track = TRACK_META[task.track];
               const subTitle = (() => {
                 if (isVideoDownload) return i18nService.t('subVideoLinks');
-                if (isCommentLike) return i18nService.currentLanguage === 'zh' ? '作品链接 · 翻评论区点赞' : i18nService.currentLanguage === 'zh-TW' ? '作品連結 · 翻留言區按讚' : 'Post links · like every comment';
+                if (isCommentLike) return (task as any).comment_mode === 'keywords'
+                  ? (i18nService.currentLanguage === 'zh' ? '关键词搜视频 · 评论点赞 + 回复' : i18nService.currentLanguage === 'zh-TW' ? '關鍵詞搜影片 · 留言按讚 + 回覆' : 'Keyword videos · like & reply to comments')
+                  : (i18nService.currentLanguage === 'zh' ? '作品链接 · 评论点赞 + 回复' : i18nService.currentLanguage === 'zh-TW' ? '作品連結 · 留言按讚 + 回覆' : 'Post links · like & reply to comments');
                 if (/_folder_post$/.test(String(sid || ''))) return i18nService.currentLanguage === 'zh' ? '素材 / 文案 / 话题文件夹 · 按时段依次发' : i18nService.currentLanguage === 'zh-TW' ? '素材 / 文案 / 話題資料夾 · 按時段依序發' : 'Media / caption / topic folders · posted per time slot';
                 if (isLinkRewriteTwitter) return i18nService.t('subManualTweet');
                 if (isXhsLinkMode) return i18nService.t('subManualXhs');
