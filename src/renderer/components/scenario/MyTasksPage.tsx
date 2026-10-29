@@ -551,7 +551,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', k: 'scnXhsReplyFans', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', k: 'scnXhsDownload', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
                 if (sid === 'douyin_report')                return { icon: '📋', k: 'svCardReportTitle', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if (sid === 'tiktok_comment_like')          return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 评论区点赞评论' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 留言區按讚留言' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'tiktok_comment_like')          return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 评论区点赞评论' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 留言區按讚留言' : 'TikTok Comment Like & Reply', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (sid === 'douyin_folder_post')           return { icon: '📅', label: i18nService.currentLanguage === 'zh' ? '抖音 文件夹定时发布' : i18nService.currentLanguage === 'zh-TW' ? '抖音 資料夾定時發佈' : 'Douyin Folder Scheduled Post', color: 'text-teal-500 bg-teal-500/10 border-teal-500/30' };
                 if (sid === 'douyin_video_download')        return { icon: '⬇️', k: 'scnDyDownload', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', k: 'scnTtDownload', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };

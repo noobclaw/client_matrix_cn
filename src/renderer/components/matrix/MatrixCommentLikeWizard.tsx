@@ -95,7 +95,8 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
     setSaving(true);
     try {
       await onSave({
-        name: initialTask?.name || (mode === 'keywords'
+        // 名字是自动生成的(没被用户改过)就跟着模式 / 链接数重新生成;用户自己改过的保持不动。
+        name: (initialTask?.name && !/评论区点赞|留言區按讚|Comment Lik/.test(initialTask.name) ? initialTask.name : '') || (mode === 'keywords'
           ? L(`${platformLabel} 评论区点赞评论(关键词)`, `${platformLabel} 留言區按讚留言(關鍵詞)`, `${platformLabel} Comment Like & Reply (keywords)`)
           : L(`${platformLabel} 评论区点赞评论(${validLinks.length} 条作品)`, `${platformLabel} 留言區按讚留言(${validLinks.length} 則作品)`, `${platformLabel} Comment Like & Reply (${validLinks.length} posts)`)),
         accountIds: Array.from(selected),

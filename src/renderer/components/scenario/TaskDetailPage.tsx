@@ -609,7 +609,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     //     免费任务(无水印下载,2026-10-28 起 0 价)不拦 —— 余额为 0 也能用。
     //     批量拉黑(全免费)、评论区点赞 / 文件夹定时发布(会员免费)对会员也不拦。
     const __sid = String(task.scenario_id || '');
-    const __free = /_video_download$|_block$/.test(__sid) || (/_comment_like$|_folder_post$/.test(__sid) && noobClawAuth.isActiveMember());
+    // 评论区点赞评论:只点赞才对会员免费;勾了回复,每条回复照常扣积分 → 仍要余额检查。
+    const __clReply = /_comment_like$/.test(__sid) && (task as any).comment_do_reply === true;
+    const __free = /_video_download$|_block$/.test(__sid) || (/_comment_like$|_folder_post$/.test(__sid) && !__clReply && noobClawAuth.isActiveMember());
     if (!__free && !noobClawAuth.hasEnoughBalanceForTask()) return;
 
     // 矩阵 edition:互动涨粉走指纹内核 CDP 按号执行(无浏览器插件;账号在「我的矩阵账号」已扫码关联,
@@ -831,7 +833,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       if (sid === 'instagram_lead_engage') return { icon: '🎯', label: leadZh ? 'Instagram 定向获客' : 'Instagram Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
       return { icon: '🎯', label: leadZh ? '定向获客' : 'Lead Finder', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
-    if (sid === 'tiktok_comment_like')            return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 评论区点赞评论' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 留言區按讚留言' : 'TikTok Comment Liker', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (sid === 'tiktok_comment_like')            return { icon: '💗', label: i18nService.currentLanguage === 'zh' ? 'TikTok 评论区点赞评论' : i18nService.currentLanguage === 'zh-TW' ? 'TikTok 留言區按讚留言' : 'TikTok Comment Like & Reply', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: i18nService.t('tdTypeTiktokVideoDownload'), color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: i18nService.t('tdTypeKuaishouAutoEngage'), color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: i18nService.t('tdTypeKuaishouVideoDownload'), color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
@@ -1292,7 +1294,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     <>
                       <div>{i18nService.t('tdSourceUrls')}: {taskUrls.length} {i18nService.t('tdCountUnit')}</div>
                       {/_comment_like$/.test(String(task.scenario_id || '')) && (
-                        <div>💗 {i18nService.currentLanguage === 'zh' ? '精准模式:逐条打开作品,每条评论点赞并回复,翻完评论区为止' : i18nService.currentLanguage === 'zh-TW' ? '精準模式:逐則打開作品,每則留言按讚並回覆,翻完留言區為止' : 'Precise: open each post, like and reply to every comment until the section ends'}</div>
+                        <div>💗 {(() => { const lk = (task as any).comment_do_like !== false, rp = (task as any).comment_do_reply === true; const lang = i18nService.currentLanguage; const act = lang === 'zh' ? (lk && rp ? '点赞并回复' : rp ? '回复' : '点赞') : lang === 'zh-TW' ? (lk && rp ? '按讚並回覆' : rp ? '回覆' : '按讚') : (lk && rp ? 'like and reply to' : rp ? 'reply to' : 'like'); return lang === 'zh' ? `精准模式:逐条打开作品,每条评论${act},翻完评论区为止` : lang === 'zh-TW' ? `精準模式:逐則打開作品,每則留言${act},翻完留言區為止` : `Precise: open each post, ${act} every comment until the section ends`; })()}</div>
                       )}
                       {taskUrls.map((u, i) => (
                         <div key={i} className="flex items-start gap-2 pl-4 text-[11px]">
@@ -1329,7 +1331,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           v6.x: 3 个 binance source-viral 搬运 — task.keywords 是搜源
                           关键词(不是 Token);Token 单独从 task.cashtags 取。 */}
                       {/_comment_like$/.test(String(task.scenario_id || '')) && (
-                        <div>💗 {i18nService.currentLanguage === 'zh' ? '关键词模式:用各执行账号自己的关键词搜视频,每条评论点赞、回复其中一半,跑到本次运行时长上限为止' : i18nService.currentLanguage === 'zh-TW' ? '關鍵詞模式:用各執行帳號自己的關鍵詞搜影片,每則留言按讚、回覆其中一半,跑到本次執行時長上限為止' : "Keyword mode: searches videos with each account's own keywords, likes every comment and replies to half, until the run's time limit"}</div>
+                        <div>💗 {(() => { const lk = (task as any).comment_do_like !== false, rp = (task as any).comment_do_reply === true; const lang = i18nService.currentLanguage; const act = lang === 'zh' ? (lk && rp ? '每条评论点赞、回复其中一半' : rp ? '回复其中一半的评论' : '每条评论点赞') : lang === 'zh-TW' ? (lk && rp ? '每則留言按讚、回覆其中一半' : rp ? '回覆其中一半的留言' : '每則留言按讚') : (lk && rp ? 'likes every comment and replies to half' : rp ? 'replies to half of the comments' : 'likes every comment'); return lang === 'zh' ? `关键词模式:用各执行账号自己的关键词搜视频,${act},跑到本次运行时长上限为止` : lang === 'zh-TW' ? `關鍵詞模式:用各執行帳號自己的關鍵詞搜影片,${act},跑到本次執行時長上限為止` : `Keyword mode: searches videos with each account's own keywords, ${act}, until the run's time limit`; })()}</div>
                       )}
                       {/* 自动回复粉丝:展示 引流语 + 引流概率(对齐 wizard),不显示关键词 */}
                       {isReplyFan && (() => {
