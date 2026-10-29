@@ -610,7 +610,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     //     批量拉黑(全免费)、评论区点赞 / 文件夹定时发布(会员免费)对会员也不拦。
     const __sid = String(task.scenario_id || '');
     // 评论区点赞评论:只点赞才对会员免费;勾了回复,每条回复照常扣积分 → 仍要余额检查。
-    const __clReply = /_comment_like$/.test(__sid) && (task as any).comment_do_reply === true;
+    const __clReply = /_comment_like$/.test(__sid) && (task as any).comment_do_reply !== false;
     const __free = /_video_download$|_block$/.test(__sid) || (/_comment_like$|_folder_post$/.test(__sid) && !__clReply && noobClawAuth.isActiveMember());
     if (!__free && !noobClawAuth.hasEnoughBalanceForTask()) return;
 
@@ -1294,7 +1294,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     <>
                       <div>{i18nService.t('tdSourceUrls')}: {taskUrls.length} {i18nService.t('tdCountUnit')}</div>
                       {/_comment_like$/.test(String(task.scenario_id || '')) && (
-                        <div>💗 {(() => { const lk = (task as any).comment_do_like !== false, rp = (task as any).comment_do_reply === true; const lang = i18nService.currentLanguage; const act = lang === 'zh' ? (lk && rp ? '点赞并回复' : rp ? '回复' : '点赞') : lang === 'zh-TW' ? (lk && rp ? '按讚並回覆' : rp ? '回覆' : '按讚') : (lk && rp ? 'like and reply to' : rp ? 'reply to' : 'like'); return lang === 'zh' ? `精准模式:逐条打开作品,每条评论${act},翻完评论区为止` : lang === 'zh-TW' ? `精準模式:逐則打開作品,每則留言${act},翻完留言區為止` : `Precise: open each post, ${act} every comment until the section ends`; })()}</div>
+                        <div>💗 {(() => { const lk = (task as any).comment_do_like !== false, rp = (task as any).comment_do_reply !== false; const lang = i18nService.currentLanguage; const act = lang === 'zh' ? (lk && rp ? '点赞并回复' : rp ? '回复' : '点赞') : lang === 'zh-TW' ? (lk && rp ? '按讚並回覆' : rp ? '回覆' : '按讚') : (lk && rp ? 'like and reply to' : rp ? 'reply to' : 'like'); return lang === 'zh' ? `精准模式:逐条打开作品,每条评论${act},翻完评论区为止` : lang === 'zh-TW' ? `精準模式:逐則打開作品,每則留言${act},翻完留言區為止` : `Precise: open each post, ${act} every comment until the section ends`; })()}</div>
                       )}
                       {taskUrls.map((u, i) => (
                         <div key={i} className="flex items-start gap-2 pl-4 text-[11px]">
@@ -1331,7 +1331,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           v6.x: 3 个 binance source-viral 搬运 — task.keywords 是搜源
                           关键词(不是 Token);Token 单独从 task.cashtags 取。 */}
                       {/_comment_like$/.test(String(task.scenario_id || '')) && (
-                        <div>💗 {(() => { const lk = (task as any).comment_do_like !== false, rp = (task as any).comment_do_reply === true; const lang = i18nService.currentLanguage; const act = lang === 'zh' ? (lk && rp ? '每条评论点赞、回复其中一半' : rp ? '回复其中一半的评论' : '每条评论点赞') : lang === 'zh-TW' ? (lk && rp ? '每則留言按讚、回覆其中一半' : rp ? '回覆其中一半的留言' : '每則留言按讚') : (lk && rp ? 'likes every comment and replies to half' : rp ? 'replies to half of the comments' : 'likes every comment'); return lang === 'zh' ? `关键词模式:用各执行账号自己的关键词搜视频,${act},跑到本次运行时长上限为止` : lang === 'zh-TW' ? `關鍵詞模式:用各執行帳號自己的關鍵詞搜影片,${act},跑到本次執行時長上限為止` : `Keyword mode: searches videos with each account's own keywords, ${act}, until the run's time limit`; })()}</div>
+                        <div>💗 {(() => { const lk = (task as any).comment_do_like !== false, rp = (task as any).comment_do_reply !== false; const lang = i18nService.currentLanguage; const act = lang === 'zh' ? (lk && rp ? '每条评论点赞、回复其中一半' : rp ? '回复其中一半的评论' : '每条评论点赞') : lang === 'zh-TW' ? (lk && rp ? '每則留言按讚、回覆其中一半' : rp ? '回覆其中一半的留言' : '每則留言按讚') : (lk && rp ? 'likes every comment and replies to half' : rp ? 'replies to half of the comments' : 'likes every comment'); return lang === 'zh' ? `关键词模式:用各执行账号自己的关键词搜视频,${act},跑到本次运行时长上限为止` : lang === 'zh-TW' ? `關鍵詞模式:用各執行帳號自己的關鍵詞搜影片,${act},跑到本次執行時長上限為止` : `Keyword mode: searches videos with each account's own keywords, ${act}, until the run's time limit`; })()}</div>
                       )}
                       {/* 自动回复粉丝:展示 引流语 + 引流概率(对齐 wizard),不显示关键词 */}
                       {isReplyFan && (() => {

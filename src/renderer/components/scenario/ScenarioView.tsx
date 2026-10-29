@@ -766,7 +766,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       commentLikeMax: editTask.comment_like_max,
       commentMode: editTask.comment_mode || 'precise',
       commentDoLike: editTask.comment_do_like !== false,
-      commentDoReply: editTask.comment_do_reply === true,
+      commentDoReply: editTask.comment_do_reply !== false,
       concurrency: editTask.concurrency,
       frequency: editTask.run_interval,
     } : null);

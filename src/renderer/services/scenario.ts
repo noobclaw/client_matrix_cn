@@ -281,7 +281,7 @@ function mxTaskToScenario(t: any): ScenarioTaskIPC {
     comment_like_max: isCommentLike ? (t.commentLikeMax || 100) : undefined,
     comment_mode: isCommentLike ? (t.commentMode || 'precise') : undefined,
     comment_do_like: isCommentLike ? t.commentDoLike !== false : undefined,
-    comment_do_reply: isCommentLike ? t.commentDoReply === true : undefined,
+    comment_do_reply: isCommentLike ? t.commentDoReply !== false : undefined,
     // block:名单 + 关键词(详情页展示 + 编辑回填)。
     block_targets: isBlock ? (Array.isArray(t.blockTargets) ? t.blockTargets : []) : undefined,
     block_keywords: isBlock ? (Array.isArray(t.blockKeywords) ? t.blockKeywords : []) : undefined,

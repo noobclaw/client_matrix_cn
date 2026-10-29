@@ -194,7 +194,7 @@ export function saveTask(input: SaveTaskInput): SaveTaskResult {
     if (!(input.accountIds || []).filter(Boolean).length) return { ok: false, error: 'comment_like_no_account' };
     const n = Math.round(Number(input.commentLikeMax));
     const commentLikeMax = Number.isFinite(n) ? Math.min(COMMENT_LIKE_LIMITS.maxMax, Math.max(COMMENT_LIKE_LIMITS.maxMin, n)) : COMMENT_LIKE_LIMITS.maxDefault;
-    const doLike = input.commentDoLike !== false, doReply = input.commentDoReply === true;
+    const doLike = input.commentDoLike !== false, doReply = input.commentDoReply !== false;
     if (!doLike && !doReply) return { ok: false, error: 'comment_like_no_action' };
     input = { ...input, urls: keywordsMode ? [] : urls, commentLikeMax, commentMode: keywordsMode ? 'keywords' : 'precise', commentDoLike: doLike, commentDoReply: doReply, quota: {} };
   }

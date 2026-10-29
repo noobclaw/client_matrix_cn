@@ -587,7 +587,7 @@ const { runYoutubeDownloadTask } = await import('./libs/matrix/youtubeDownloadRu
           commentLikeMax: isCommentLike ? task.commentLikeMax : undefined,
           commentMode: isCommentLike ? (task.commentMode || 'precise') : undefined,
           commentDoLike: isCommentLike ? task.commentDoLike !== false : undefined,
-          commentDoReply: isCommentLike ? task.commentDoReply === true : undefined,
+          commentDoReply: isCommentLike ? task.commentDoReply !== false : undefined,
           blockTargets: isBlock ? (task.blockTargets || []) : undefined,
           blockKeywords: isBlock ? (task.blockKeywords || []) : undefined,
           blockMode: isBlock ? task.blockMode : undefined,

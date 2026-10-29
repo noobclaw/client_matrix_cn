@@ -518,7 +518,7 @@ async function runOne(opts: EngageTaskOptions, pack: any, accountId: string, cha
       comment_like_max: opts.commentLikeMax,
       // comment_like 剧本读 task.comment_mode:precise(链接)/ keywords(用本账号的关键词 task.keywords 搜视频)。
       comment_mode: opts.commentMode,
-      // 要不要点赞 / 回复(老任务两个都没有:剧本按「只点赞」处理)。
+      // 要不要点赞 / 回复(老任务 / 老客户端没有这两个字段:剧本按「点赞 + 回复」处理)。
       cl_do_like: opts.commentDoLike,
       cl_do_reply: opts.commentDoReply,
       // block 剧本读 task.block_targets / block_keywords。

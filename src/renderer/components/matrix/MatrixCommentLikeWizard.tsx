@@ -60,7 +60,7 @@ const MatrixCommentLikeWizard: React.FC<Props> = ({ platformLabel, platform, acc
   // 2026-10-29:不再设数量;改成 模式(精准 / 关键词)+ 要不要点赞 / 回复(至少一个)。
   const [mode, setMode] = useState<'precise' | 'keywords'>(() => (initialTask?.commentMode === 'keywords' ? 'keywords' : 'precise'));
   const [doLike, setDoLike] = useState<boolean>(() => initialTask ? initialTask.commentDoLike !== false : true);
-  const [doReply, setDoReply] = useState<boolean>(() => initialTask ? initialTask.commentDoReply === true : true);
+  const [doReply, setDoReply] = useState<boolean>(() => initialTask ? initialTask.commentDoReply !== false : true);
 
   const [selected, setSelected] = useState<Set<string>>(() => new Set<string>((initialTask ? (initialTask.accountIds || []) : presetAccountIds(platform)).map(String)));
   // 简洁版预选号:账号加载完后剔除不在本向导列表里的号(见 usePresetPrune)
