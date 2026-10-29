@@ -414,7 +414,7 @@ const MembershipPanel: React.FC<{
         })}
       </div>
 
-      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{/* mpFooterNote 已挪到页面标题下(同官网) */}{i18nService.t('cnyRefNote')}</p>
+      <p className="mt-5 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')} {i18nService.t('cnyRefNote')}</p>
 
       {/* ── 支付方式弹窗:点套餐卡片后选怎么付 ──
           顺序即推荐序:银行卡(推荐,走 Dodo,连续订阅)→(国内版隐藏 USDT / BNB)→ 官方店铺(卡密)。

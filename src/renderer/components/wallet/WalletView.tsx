@@ -1816,7 +1816,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           {/* Avatar + Wallet Info — 所有原内容包一层 relative z-10 让它压在
               effects 之上 */}
           <div className="relative z-10">
-          <div className="flex items-center gap-4 mb-4">
+          {/* 2026-10-29:左 = 头像 + 资料,右 = 数字网格(每行 2 个、列线对齐,同邀请返佣页),整卡少一行 */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
+          <div className="flex items-center gap-4 min-w-0 flex-1 basis-[340px]">
             <div className="relative group shrink-0">
               <button
                 type="button"
@@ -1899,14 +1901,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="text-xs text-primary">{i18nService.t('walletConnected')}</span>
-                </div>
               </div>
               <div className="flex items-center gap-2">
-                <code className="text-sm font-mono dark:text-claude-darkText text-claude-text flex-1 truncate">{walletAddr}</code>
-                <button onClick={() => copyToClipboard(walletAddr)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border hover:border-primary/40 transition-all">
+                <code className="text-sm font-mono dark:text-claude-darkText text-claude-text min-w-0 truncate">{walletAddr}</code>
+                <button onClick={() => copyToClipboard(walletAddr)} className="shrink-0 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-0.5 rounded-lg border dark:border-claude-darkBorder border-claude-border hover:border-primary/40 transition-all">
                   {i18nService.t('walletCopy')}
                 </button>
               </div>
@@ -1951,12 +1949,12 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           {/* v6.x: 2 列扩 3 列 — 加 "收到返佣 (USDT)" 跳邀请页。三列等宽,
               视觉上 Credits / NoobCoin / 返佣 各 1/3。点查看跳邀请返佣页
               (onShowInvite,WalletView 自己不 navigate)。 */}
-          <div className="flex items-stretch gap-4">
+          <div className="shrink-0 ml-auto grid grid-cols-[repeat(2,max-content)] gap-y-3.5">
             {/* Token Balance - Left */}
-            <div className="flex-1">
-              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletTokenBalance')}</p>
+            <div className="px-4 py-0.5 border-l dark:border-claude-darkBorder border-claude-border flex flex-col justify-center gap-1">
+              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap">{i18nService.t('walletTokenBalance')}</p>
               <div className="flex items-center gap-2">
-                <p className="text-2xl font-bold text-primary">
+                <p className="text-xl font-bold text-primary whitespace-nowrap">
                   {(balance / 1_000_000).toFixed(2)}M
                 </p>
                 <button
@@ -1970,10 +1968,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             </div>
             {/* NoobCoin - Middle — 国内版隐藏(HIDE_WEB3) */}
             {!HIDE_WEB3 && (
-            <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
-              <div className="flex items-center gap-2 mb-1">
-                <img src="logo.png" alt="NoobCoin" className="w-6 h-6 rounded-full" />
-                <span className="text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary">NoobCoin{i18nService.t('walletNoobCoinTotal')}</span>
+            <div className="px-4 py-0.5 border-l dark:border-claude-darkBorder border-claude-border flex flex-col justify-center gap-1">
+              <div className="flex items-center gap-1.5">
+                <img src="logo.png" alt="NoobCoin" className="w-4 h-4 rounded-full" />
+                <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap">NoobCoin{i18nService.t('walletNoobCoinTotal')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-bold text-primary">{Number(profile?.totalNoob || 0).toLocaleString()}</span>
@@ -1989,8 +1987,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             )}
             {/* USDT Rebate - Right (v6.x) — 国内版隐藏(HIDE_WEB3),保留 CNY 返佣 */}
             {!HIDE_WEB3 && (
-            <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
-              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletUsdtRebateReceived')}</p>
+            <div className="px-4 py-0.5 border-l dark:border-claude-darkBorder border-claude-border flex flex-col justify-center gap-1">
+              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap">{i18nService.t('walletUsdtRebateReceived')}</p>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-bold text-primary">
                   ${parseFloat(usdtRebateSummary?.total_earned || '0').toFixed(2)}
@@ -2007,8 +2005,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             </div>
             )}
             {/* CNY Rebate - 收到返佣(¥),带提现入口(v6.x CNY 返佣) */}
-            <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
-              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('wvRebateCny')}</p>
+            <div className="px-4 py-0.5 border-l dark:border-claude-darkBorder border-claude-border flex flex-col justify-center gap-1">
+              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary whitespace-nowrap">{i18nService.t('wvRebateCny')}</p>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-bold text-primary">
                   ¥{parseFloat(usdtRebateSummary?.cny_total_earned || '0').toFixed(2)}
@@ -2023,6 +2021,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 </button>
               </div>
             </div>
+          </div>
           </div>
           {showCnyWithdraw && (
             <CnyWithdrawModal
@@ -2052,7 +2051,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         {step === 'select' && topTab === 'subscription' && (
         <div>
           {/* 标题行:对齐「购买积分」那行(左标题 + 右「购买记录」入口,走同一套订单历史子页) */}
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('wvSubscribeMembership')}</h2>
             <button
               onClick={() => { setSubPage('orderHistory'); setStatusFilter(''); setSearchOrderNo(''); setSearchFrom(''); setSearchTo(''); loadOrders(''); }}
@@ -2062,7 +2061,6 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-          <p className="mb-5 text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('mpFooterNote')}</p>
           <MembershipPanel onPay={startSubscriptionPay} payMethods={payMethodsEff} autoRenew={paymentInfo?.autoRenew} usdCnyRate={paymentInfo?.usdCnyRate} />
         </div>
         )}
