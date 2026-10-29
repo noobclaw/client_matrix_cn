@@ -8,6 +8,7 @@ import WindowTitleBar from '../window/WindowTitleBar';
 import { WalletBadge } from '../common/WalletBadge';
 import { ContactFloatWidget } from '../common/ContactWidgets';
 import HomeVideoTutorials from './HomeVideoTutorials';
+import { scenarioService } from '../../services/scenario';
 
 export interface HomeViewProps {
   isSidebarCollapsed?: boolean;
@@ -57,6 +58,20 @@ const HomeView: React.FC<HomeViewProps> = ({
   const openExternal = (url: string) => { try { window.electron?.shell?.openExternal?.(url); } catch { /* noop */ } };
 
   const sh = !!(simple || simpleHome);   // 主体用简洁版样子
+  // 简洁版首页「查看已有任务」:有任务正在执行时换成「● N 个任务运行中 · 查看 ›」(2026-10-29 用户选方案 A)。
+  //   只算【此刻正在跑】的(开了定时、在等下次运行的不算);每 5 秒查一次,页面卸载即停。
+  const [runningCount, setRunningCount] = useState(0);
+  useEffect(() => {
+    if (!sh || !onShowMatrixTasks) return;
+    let alive = true;
+    const tick = async () => {
+      try { const ids = await scenarioService.getRunningTaskIds(); if (alive) setRunningCount(Array.isArray(ids) ? ids.length : 0); }
+      catch { /* 查不到就当没有,保持原文案 */ }
+    };
+    tick();
+    const t = setInterval(tick, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [sh, !!onShowMatrixTasks]);
   return (
     <div className="flex-1 flex flex-col dark:bg-claude-darkBg bg-claude-bg h-full">
       {/* 右侧「联系我们」悬浮小组件 — 与官网浮窗同源同款(无回到顶部小火箭) */}
@@ -219,7 +234,16 @@ const HomeView: React.FC<HomeViewProps> = ({
                 {onShowMatrixTasks && (
                   <button type="button" onClick={onShowMatrixTasks}
                     className="absolute left-full top-1/2 -translate-y-1/2 ml-5 whitespace-nowrap text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-accent dark:hover:text-claude-accent hover:underline underline-offset-4">
-                    {SL('查看已有任务', '查看已有任務', 'View my tasks')} ›
+                    {runningCount > 0 ? (
+                      <>
+                        <span className="relative inline-flex w-2 h-2 mr-2 align-middle">
+                          <span className="absolute inset-0 rounded-full bg-claude-accent opacity-70 animate-ping" />
+                          <span className="relative inline-flex w-2 h-2 rounded-full bg-claude-accent" />
+                        </span>
+                        <span className="font-semibold text-claude-accent">{SL(`${runningCount} 个任务运行中`, `${runningCount} 個任務運行中`, `${runningCount} running`)}</span>
+                        {' · '}{SL('查看', '查看', 'View')} ›
+                      </>
+                    ) : (<>{SL('查看已有任务', '查看已有任務', 'View my tasks')} ›</>)}
                   </button>
                 )}
               </div>
