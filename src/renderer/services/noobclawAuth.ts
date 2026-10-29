@@ -123,7 +123,7 @@ class NoobClawAuthService {
       // Use setTimeout to ensure window.electron is available
       setTimeout(() => {
         this.syncTokenToMain(savedToken);
-        this.reportDeviceInfo(savedToken);
+        this.reportDeviceInfo(savedToken, false);
         // Load cached avatar from local disk first (instant, no network)
         this.loadCachedAvatar();
       }, 0);
@@ -246,7 +246,7 @@ class NoobClawAuthService {
     this.syncTokenToMain(token);
     this.refreshBalance();
     this.refreshAvatar();
-    this.reportDeviceInfo(token);
+    this.reportDeviceInfo(token, true);
     this.startBalancePolling();  // 登录后启动全局心跳,跨 view 拉 pendingRebates
     this.notify();
   }
@@ -370,16 +370,30 @@ class NoobClawAuthService {
   }
 
   // Report device MAC address to backend
-  private async reportDeviceInfo(token: string) {
+  // 同时把「本机登录过几个账号」报给服务端;服务端结合设备账本决定要不要提醒(fromLogin = 这次是刚登录,不是启动恢复登录态)。
+  private async reportDeviceInfo(token: string, fromLogin = false) {
     try {
       const mac = await window.electron?.noobclaw?.getMacAddress();
       const fingerprint = await browserFingerprint();
+      let localAccountCount: number | undefined;
+      try {
+        const uid = this.state.walletAddress || localStorage.getItem('noobclaw_wallet_address') || '';
+        const n = uid ? await (window as any).electron?.appInfo?.deviceAccounts?.(uid) : null;
+        if (typeof n === 'number') localAccountCount = n;
+      } catch { /* 老 sidecar 没这个接口 */ }
       if (!mac && !fingerprint) return;
-      await fetch(`${this.backendUrl}/api/auth/device-info`, {
+      const res = await fetch(`${this.backendUrl}/api/auth/device-info`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ macAddress: mac || undefined, fingerprint: fingerprint || undefined, clientInfo: (await clientTag()) || undefined }),
+        body: JSON.stringify({ macAddress: mac || undefined, fingerprint: fingerprint || undefined, clientInfo: (await clientTag()) || undefined, localAccountCount, fromLogin }),
       });
+      if (!fromLogin) return;
+      const data: any = await res.json().catch(() => null);
+      const w = data && data.deviceWarn;
+      // 弹不弹、弹什么字由服务端说了算
+      if (w && w.show && w.message) {
+        window.dispatchEvent(new CustomEvent('noobclaw:device-account-warn', { detail: { message: String(w.message), count: Number(w.count) || 0, limit: Number(w.limit) || 0 } }));
+      }
     } catch { /* ignore */ }
   }
 

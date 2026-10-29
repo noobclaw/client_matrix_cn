@@ -2543,6 +2543,27 @@ const server = http.createServer(async (req, res) => {
           // ── App info ──
           case 'app:getVersion': return writeJSON(res, 200, '5.4.0');
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
+          case 'app:deviceAccounts': {
+            // 本机登录过的账号(2026-10-29):只记 UID 的哈希,存在用户目录下一个不显眼的文件里(卸载重装不丢)。
+            //   args[0] = 当前登录的 UID;返回本机累计记过的账号数。是否提醒由服务端决定(客户端只把这个数报上去)。
+            try {
+              const fs = require('fs'); const os = require('os'); const pth = require('path'); const crypto = require('crypto');
+              const dir = pth.join(os.homedir(), '.cache');
+              const file = pth.join(dir, '.nc_dk');
+              let list: string[] = [];
+              try { const raw = fs.readFileSync(file, 'utf8'); const j = JSON.parse(Buffer.from(raw, 'base64').toString('utf8')); if (Array.isArray(j)) list = j.filter((x: any) => typeof x === 'string'); } catch { /* 没有 / 坏了就当空 */ }
+              const uid = String(args[0] || '').trim().toLowerCase();
+              if (uid) {
+                const h = crypto.createHash('sha256').update('nc-dk:' + uid).digest('hex').slice(0, 16);
+                if (!list.includes(h)) {
+                  list.push(h);
+                  if (list.length > 500) list = list.slice(-500);
+                  try { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, Buffer.from(JSON.stringify(list), 'utf8').toString('base64')); } catch { /* 写不了就只报内存里的数 */ }
+                }
+              }
+              return writeJSON(res, 200, list.length);
+            } catch { return writeJSON(res, 200, null); }
+          }
           case 'app:installStamp': {
             // 安装指纹(2026-10-28):本 sidecar 可执行文件的时间戳。每次安装 / 重装 / 自动升级都会重写这个文件
             //   → 指纹变化 → 界面再问一次「简洁版 / 专业版」。只读本机文件属性,不联网;读不到返回 null(界面按旧逻辑走)。

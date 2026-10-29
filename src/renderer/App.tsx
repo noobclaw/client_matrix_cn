@@ -605,6 +605,22 @@ const App: React.FC = () => {
     }
   }, [authState.isAuthenticated, authState.authToken]);
 
+  // 一台电脑登录账号过多:登录时服务端判定要提醒 → 弹一个说明框(文案来自服务端)。
+  const [deviceWarnMsg, setDeviceWarnMsg] = useState<string | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (!d.message) return;
+      // 简体中文直接用服务端文案(后台可改);其它语言用本地翻译,数字取服务端给的 count / limit
+      const lang = i18nService.currentLanguage;
+      const msg = lang === 'zh' || !d.count || !d.limit ? String(d.message)
+        : i18nService.t('devWarnBody').split('{count}').join(String(d.count)).split('{limit}').join(String(d.limit));
+      setDeviceWarnMsg(msg);
+    };
+    window.addEventListener('noobclaw:device-account-warn', h);
+    return () => window.removeEventListener('noobclaw:device-account-warn', h);
+  }, []);
+
   // Listen for token-insufficient event from api.ts / noobclawAuth 预检(renderer 内 CustomEvent)
   useEffect(() => {
     const handler = () => setShowTokenDialog(true);
@@ -1101,6 +1117,15 @@ const App: React.FC = () => {
         <LoginWall
           onDismiss={() => setShowLoginWall(false)}
         />
+      )}
+      {deviceWarnMsg && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeviceWarnMsg(null)}>
+          <div className="w-full max-w-sm rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-base font-semibold dark:text-claude-darkText text-claude-text mb-2">⚠️ {i18nService.t('devWarnTitle')}</div>
+            <div className="text-sm leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary mb-4">{deviceWarnMsg}</div>
+            <button type="button" onClick={() => setDeviceWarnMsg(null)} className="w-full py-2.5 rounded-xl text-sm font-semibold" style={{ background: '#00FF88', color: '#04130B' }}>{i18nService.t('devWarnOk')}</button>
+          </div>
+        </div>
       )}
       {showTokenDialog && (
         <TokenInsufficientDialog

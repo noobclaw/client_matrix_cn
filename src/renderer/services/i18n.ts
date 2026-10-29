@@ -415,6 +415,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     pfPwOldRequired: '请输入原密码',
     pfPwLength: '新密码需为 8-72 位',
     pfPwMismatch: '两次输入的新密码不一致',
+    devWarnBody: '这台电脑已经登录过 {count} 个账号了。为了账号安全,一台设备请不要登录太多账号(建议不超过 {limit} 个)。', devWarnTitle: '提示', devWarnOk: '我知道了',
     pfPwChanged: '密码已修改', pfPwErrOld: '原密码不正确', pfPwErrSame: '新密码不能与原密码相同', pfPwErrNoPw: '这个账号还没有密码',
     pfCancel: '取消',
     pfLogout: '退出登录',
@@ -3983,6 +3984,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     pfPwOldRequired: 'Enter your current password',
     pfPwLength: 'New password must be 8-72 characters',
     pfPwMismatch: 'New passwords do not match',
+    devWarnBody: 'This computer has already been used to sign in to {count} accounts. To keep your accounts safe, please don\'t sign in to too many accounts on one device (we suggest no more than {limit}).', devWarnTitle: 'Notice', devWarnOk: 'Got it',
     pfPwChanged: 'Password changed', pfPwErrOld: 'Current password is incorrect', pfPwErrSame: 'The new password must be different', pfPwErrNoPw: 'This account has no password yet',
     pfCancel: 'Cancel',
     pfLogout: 'Log out',
@@ -8231,6 +8233,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     pfPwOldRequired: '請輸入原密碼',
     pfPwLength: '新密碼需為 8-72 位',
     pfPwMismatch: '兩次輸入的新密碼不一致',
+    devWarnBody: '這台電腦已經登入過 {count} 個帳號了。為了帳號安全,一台裝置請不要登入太多帳號(建議不超過 {limit} 個)。', devWarnTitle: '提示', devWarnOk: '我知道了',
     pfPwChanged: '密碼已修改', pfPwErrOld: '原密碼不正確', pfPwErrSame: '新密碼不能與原密碼相同', pfPwErrNoPw: '這個帳號還沒有密碼',
     pfCancel: '取消',
     pfLogout: '登出',
@@ -10237,6 +10240,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
 
   // ── Korean ────────────────────────────────────────────────────
   'ko': {
+    devWarnTitle: '알림', devWarnOk: '확인', devWarnBody: '이 컴퓨터에서 이미 {count}개 계정에 로그인했습니다. 계정 안전을 위해 한 기기에서 너무 많은 계정에 로그인하지 마세요(최대 {limit}개 권장).',
     // LocalMixVideoModal(本地混剪)
     vmixCardTag: "AI 자동 영상 · 로컬 리믹스",
     vmixCardTitle: "로컬 리믹스 · 내 소재로 영상 제작",
@@ -13193,6 +13197,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
 
   // ── Japanese ────────────────────────────────────────────────────
   'ja': {
+    devWarnTitle: 'お知らせ', devWarnOk: '了解', devWarnBody: 'このパソコンでは既に {count} 個のアカウントにログインしています。アカウントの安全のため、1台の端末で多くのアカウントにログインしないでください（{limit} 個以内を推奨）。',
     // LocalMixVideoModal(本地混剪)
     vmixCardTag: "AI自動動画 · ローカルリミックス",
     vmixCardTitle: "ローカルリミックス · 手持ち素材で動画化",
@@ -16149,6 +16154,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
 
   // ── Russian ───────────────────────────────────────────────────
   'ru': {
+    devWarnTitle: 'Уведомление', devWarnOk: 'Понятно', devWarnBody: 'На этом компьютере уже выполнен вход в {count} аккаунтов. Для безопасности не входите в слишком много аккаунтов на одном устройстве (рекомендуем не более {limit}).',
     // LocalMixVideoModal(本地混剪)
     vmixCardTag: "AI-видео · Локальный ремикс",
     vmixCardTitle: "Локальный ремикс · из своих материалов",
@@ -19088,6 +19094,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
 
   // ── French ──────────────────────────────────────────────────
   'fr': {
+    devWarnTitle: 'Avis', devWarnOk: 'Compris', devWarnBody: 'Cet ordinateur a déjà été utilisé pour se connecter à {count} comptes. Pour la sécurité de vos comptes, évitez de vous connecter à trop de comptes sur un même appareil (nous conseillons {limit} au maximum).',
     // LocalMixVideoModal(本地混剪)
     vmixCardTag: "Vidéo IA · Remix local",
     vmixCardTitle: "Remix local · vos propres médias",
@@ -22027,6 +22034,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
 
   // ── German ───────────────────────────────────────────────────
   'de': {
+    devWarnTitle: 'Hinweis', devWarnOk: 'Verstanden', devWarnBody: 'Auf diesem Computer wurde bereits bei {count} Konten angemeldet. Zur Sicherheit Ihrer Konten melden Sie sich bitte nicht bei zu vielen Konten auf einem Gerät an (wir empfehlen höchstens {limit}).',
     // LocalMixVideoModal(本地混剪)
     vmixCardTag: "KI-Video · Lokaler Remix",
     vmixCardTitle: "Lokaler Remix · eigenes Material",
@@ -24964,6 +24972,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioWizardConfirmTerm3: 'Ich akzeptiere, dass das Kontorisiko auf der Plattform in meiner eigenen Verantwortung liegt.',
   },
   vi: {
+    devWarnTitle: 'Thông báo', devWarnOk: 'Đã hiểu', devWarnBody: 'Máy tính này đã đăng nhập {count} tài khoản. Để bảo đảm an toàn tài khoản, vui lòng không đăng nhập quá nhiều tài khoản trên một thiết bị (khuyến nghị không quá {limit}).',
     // LocalMixVideoModal(本地混剪)
     vmixCardTag: "Video AI · Remix cục bộ",
     vmixCardTitle: "Remix cục bộ · từ tư liệu của bạn",

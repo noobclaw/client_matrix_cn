@@ -580,6 +580,7 @@ interface IElectronAPI {
     getVersion: () => Promise<string>;
     getSystemLocale: () => Promise<string>;
     installStamp?: () => Promise<string | null>;
+    deviceAccounts?: (uid: string) => Promise<number | null>;
   };
   appUpdate: {
     download: (url: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
