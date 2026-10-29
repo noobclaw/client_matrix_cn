@@ -65,6 +65,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const [profile, setProfile] = useState<any>(() => readCachedProfile(noobClawAuth.getState().walletAddress));
   // 2026-10-29:绑定上级改成弹窗(点「我的上级」里的「绑定」才弹)
   const [showBindUpline, setShowBindUpline] = useState(false);
+  const [rateTip, setRateTip] = useState(false);   // 返佣比例标签的说明气泡
+  const [rewardInfo, setRewardInfo] = useState<{ label: string; desc: string } | null>(null);   // 「如何运作」第 3 步奖励说明弹窗
   const [copied, setCopied] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [bindResult, setBindResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -662,9 +664,17 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="min-w-0 flex flex-col gap-1">
                   <div className="flex items-start gap-2 min-w-0">
                     <span className="text-lg font-bold dark:text-claude-darkText text-claude-text truncate">{nick}</span>
-                    <span tabIndex={0} title={i18nService.t('partnerApplyRateHint').replace(/^[(（]|[)）]$/g, '')}
-                      className="shrink-0 -mt-1 text-[11px] font-bold text-primary border border-primary/40 rounded-full px-2 py-px cursor-help whitespace-nowrap">
-                      {rate}% {i18nService.currentLanguage === 'zh' ? '返佣比例' : i18nService.currentLanguage === 'zh-TW' ? '返傭比例' : 'rebate'} ⓘ
+                    {/* 返佣比例标签:鼠标移上去 / 点一下弹出说明(桌面端 webview 不一定显示原生 title 提示,所以自己画一个) */}
+                    <span className="relative shrink-0 -mt-1" onMouseEnter={() => setRateTip(true)} onMouseLeave={() => setRateTip(false)}>
+                      <button type="button" onClick={() => setRateTip((v) => !v)} aria-expanded={rateTip}
+                        className="text-[11px] font-bold text-primary border border-primary/40 rounded-full px-2 py-px cursor-help whitespace-nowrap">
+                        {rate}% {i18nService.currentLanguage === 'zh' ? '返佣比例' : i18nService.currentLanguage === 'zh-TW' ? '返傭比例' : 'rebate'} ⓘ
+                      </button>
+                      {rateTip && (
+                        <span role="tooltip" className="absolute left-0 top-full mt-1.5 z-30 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium shadow-lg dark:bg-claude-darkSurfaceHover bg-white border dark:border-claude-darkBorder border-claude-border dark:text-claude-darkText text-claude-text">
+                          {i18nService.t('partnerApplyRateHint').replace(/^[(（]|[)）]$/g, '')}
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
@@ -742,14 +752,16 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 ) : (
                   <>
                     <div className="text-sm font-semibold dark:text-claude-darkText text-claude-text">{i18nService.t('ivDualRewardsTitle')}</div>
-                    {/* 简化(2026-10-29):两种奖励各一段 —— 绿色小标题 + 原文说明(完整显示,不截断) */}
+                    {/* 简化(2026-10-29):两种奖励各一行绿色小标题 + 问号,点问号弹窗看原文说明 */}
                     {[
                       { label: `💰 USDT ${i18nService.t('ivUsdtRealCash')}`, desc: i18nService.t('ivUsdtRebateDesc').replace('{rate}', String(profitSharePct(profile?.partner?.is_partner ? profile.partner.rate_pct : null))) },
                       { label: `🪂 $NoobCoin ${i18nService.t('ivNoobAirdropLabel')}`, desc: i18nService.t('ivNoobAirdropDesc').replace('{min}', String(purchaseMin)).replace('{max}', String(purchaseMax)) },
                     ].map((x) => (
-                      <div key={x.label} className="mt-1.5">
-                        <div className="text-xs font-semibold text-primary">{x.label}</div>
-                        <div className="mt-0.5 text-xs leading-relaxed dark:text-claude-darkTextSecondary text-claude-textSecondary">{x.desc}</div>
+                      <div key={x.label} className="mt-1.5 flex items-center gap-1.5">
+                        <span className="text-xs font-semibold text-primary">{x.label}</span>
+                        {/* 说明文字收进问号:点了弹窗看全文 */}
+                        <button type="button" onClick={() => setRewardInfo(x)} aria-label={x.label}
+                          className="w-4 h-4 rounded-full border border-primary/50 text-primary text-[10px] font-bold leading-none flex items-center justify-center hover:bg-primary/10">?</button>
                       </div>
                     ))}
                   </>
@@ -764,6 +776,18 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel2_6')} <span className="ml-1 dark:text-claude-darkText text-claude-text font-semibold">10%</span></span>
           </div>
         </div>
+
+        {/* 「如何运作」第 3 步的奖励说明弹窗(原文) */}
+        {rewardInfo && createPortal(
+          <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4" onClick={() => setRewardInfo(null)}>
+            <div className="w-full max-w-sm rounded-2xl p-5 dark:bg-claude-darkSurface bg-white border dark:border-claude-darkBorder border-claude-border shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="text-sm font-bold text-primary">{rewardInfo.label}</div>
+              <div className="mt-2 text-sm leading-relaxed dark:text-claude-darkText text-claude-text">{rewardInfo.desc}</div>
+              <div className="mt-4 flex justify-end">
+                <button type="button" onClick={() => setRewardInfo(null)} className="h-9 px-5 rounded-lg text-sm font-bold bg-primary hover:bg-primary-hover text-black">{i18nService.t('cuClose')}</button>
+              </div>
+            </div>
+          </div>, document.body)}
 
         {/* 绑定上级弹窗(原来的绑定逻辑 bindInvite / inviteCode / bindResult 不变) */}
         {showBindUpline && !hasReferrer && createPortal(
