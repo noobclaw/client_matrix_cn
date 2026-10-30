@@ -5,7 +5,7 @@ import { noobClawAuth } from '../../services/noobclawAuth';
 
 /**
  * 雲手機 — phones running NoobClaw Mobile on this account: status, their tasks (same list as on the phone),
- * run / stop from the desktop, run history and logs. Commands reach the phone with its next heartbeat (≤ 1 min).
+ * run / stop from the desktop, run history and logs. Commands reach the phone with its next heartbeat (~15 s on app 0.4.1+).
  */
 
 type Counts = Record<string, number>;
@@ -188,7 +188,7 @@ const PhoneDetail: React.FC<{ id: string; onBack: () => void }> = ({ id, onBack 
   const command = async (action: string, taskId?: string) => {
     try {
       await api(`/devices/${id}/command`, { method: 'POST', body: JSON.stringify({ action, task_id: taskId }) });
-      flash(T('已發送，手機 1 分鐘內執行', 'Sent — the phone acts within a minute'));
+      flash(T('已發送，手機約 15 秒內執行', 'Sent — the phone acts within ~15 s'));
     } catch (e: any) {
       const m = e.message === 'phone_offline' ? T('手機離線', 'Phone is offline')
         : e.message === 'app_update_required' ? T('請先把手機 App 更新到 0.4.0 以上', 'Update the phone app to 0.4.0+ first')
