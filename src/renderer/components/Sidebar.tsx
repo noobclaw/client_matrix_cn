@@ -15,7 +15,7 @@ import { HIDE_WEB3 } from '../buildFlags';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'contact' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns';
+  activeView: 'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'contact' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns' | 'cloudPhone';
   onShowHome: () => void;
   onShowSkills: () => void;
   onShowCowork: () => void;

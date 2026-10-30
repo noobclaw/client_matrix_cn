@@ -16,6 +16,7 @@ import { Web3View } from './components/web3/Web3View';
 import Web3NewsPage from './components/web3/Web3NewsPage';
 import GlobalHotSearchPage from './components/web3/GlobalHotSearchPage';
 import MatrixView from './components/matrix/MatrixView';
+import MyPhonesView from './components/mobile/MyPhonesView';
 import HomeView from './components/home/HomeView';
 import MembershipExpiryModal from './components/membership/MembershipExpiryModal';
 import CoworkPermissionModal from './components/cowork/CoworkPermissionModal';
@@ -75,7 +76,7 @@ const App: React.FC = () => {
   // 启动默认落到「一键涨粉」(scenarioCreate),而不是 AI 对话(cowork)。副作用:Sidebar 的
   // 「AI对话」二级折叠组只在其子项(cowork/mcp/web3news/scheduledTasks)激活时才强制展开,
   // 默认页非该组子项 → 该组保持收起(aiChatOpen 初始 false),正好满足「AI对话菜单默认收起」。
-  const [mainView, setMainView] = useState<'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'contact' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns'>(MATRIX_EDITION ? 'home' : 'scenarioCreate');
+  const [mainView, setMainView] = useState<'home' | 'cowork' | 'coworkHistory' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality' | 'contact' | 'matrix' | 'matrixTaskNew' | 'matrixTasks' | 'matrixRuns' | 'cloudPhone'>(MATRIX_EDITION ? 'home' : 'scenarioCreate');
   // 从「所有 AI 对话」列表点进某条对话时置 true:此时侧栏仍高亮「所有 AI 对话」、详情页左上显示返回按钮。
   const [coworkFromHistory, setCoworkFromHistory] = useState(false);
   // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
@@ -703,11 +704,12 @@ const App: React.FC = () => {
     return () => { alive = false; };
   }, []);
   // 简洁版里没有的页面 → 切过去时回首页
-  const SIMPLE_VIEWS = ['home', 'matrix', 'matrixTasks', 'matrixTaskNew', 'wallet', 'invite', 'contact'];
+  const SIMPLE_VIEWS = ['home', 'matrix', 'matrixTasks', 'matrixTaskNew', 'wallet', 'invite', 'contact', 'cloudPhone'];
   const switchEdition = (e: UiEdition) => {
     clearPresetAccounts();   // 切版本一律清预选,免得简洁版选的号带进专业版向导
     setUiEdition(e);
     if (e === 'simple') setMainView('home');   // 切到简洁版一律回首页
+    else if (mainView === 'cloudPhone') setMainView('home');   // 雲手機只在简洁版菜单里,切专业版回首页
   };
   // 简洁版「创建任务」弹窗点取消 → 回到进来之前的页面
   const lastNonCreateViewRef = useRef<string>('home');
@@ -1091,6 +1093,8 @@ const App: React.FC = () => {
   const handleShowMatrixTaskNew = () => { setMatrixPlatform(''); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); };
   const handleShowMatrixTasks = () => { setMatrixPlatform(''); setMainView('matrixTasks'); setScenarioNavNonce((n) => n + 1); };
   const handleShowMatrixRuns = () => { setMatrixPlatform(''); setMainView('matrixRuns'); setScenarioNavNonce((n) => n + 1); };
+  // 雲手機:安卓手機上的 NoobClaw Mobile(狀態 / 任務 / 遠程運行),只在簡潔版頂部菜單露出。
+  const handleShowCloudPhone = () => setMainView('cloudPhone');
 
   return (
     <div className="relative h-screen overflow-hidden flex flex-col dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
@@ -1164,6 +1168,7 @@ const App: React.FC = () => {
             { key: 'home', icon: '🏠', label: i18nService.t('home'), onClick: handleShowHome },
             { key: 'matrix', icon: '👥', label: i18nService.t('matrixMyAccounts'), onClick: handleShowMatrix, badge: matrixExpiredTotal || undefined },
             { key: 'matrixTasks', icon: '📋', label: i18nService.currentLanguage === 'zh' ? '我的任务' : i18nService.currentLanguage === 'zh-TW' ? '我的任務' : 'My Tasks', onClick: handleShowMatrixTasks },
+            { key: 'cloudPhone', icon: '📱', label: i18nService.currentLanguage === 'zh' ? '云手机' : i18nService.currentLanguage === 'zh-TW' ? '雲手機' : 'Cloud Phones', onClick: handleShowCloudPhone },
             { key: 'wallet', icon: '💰', label: i18nService.t('myWallet'), onClick: handleShowWallet },
             { key: 'invite', icon: '🎁', label: i18nService.t('inviteRebateMenu'), onClick: handleShowInvite },
             { key: 'contact', icon: '💬', label: i18nService.t('contactUsMenu'), onClick: handleShowContact },
@@ -1357,6 +1362,8 @@ const App: React.FC = () => {
                 onNewChat={handleNewChat}
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
               />
+            ) : mainView === 'cloudPhone' ? (
+              <MyPhonesView />
             ) : (mainView === 'matrix') ? (
               // 「我的矩阵账号」= 账号管理(增删/登录/配赛道关键词人设),仍走 MatrixView。
               <MatrixView
