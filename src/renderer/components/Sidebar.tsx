@@ -37,6 +37,7 @@ interface SidebarProps {
   onShowMatrixTaskNew?: () => void;
   onShowMatrixTasks?: () => void;
   onShowMatrixRuns?: () => void;
+  onShowCloudPhone?: () => void;
   /** 简洁版(2026-10-28):侧栏只留 首页 / 我的矩阵账号 / 我的任务 / 我的充值 / 邀请返佣 / 联系我们 */
   simple?: boolean;
   /** 专业版:左下角的「简洁版 | 专业版」切换(简洁版的切换在顶部横条) */
@@ -71,6 +72,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowMatrixTaskNew,
   onShowMatrixTasks,
   onShowMatrixRuns,
+  onShowCloudPhone,
   simple,
   onSwitchEdition,
   onNewChat,
@@ -271,7 +273,9 @@ const Sidebar: React.FC<SidebarProps> = ({
               ['matrixTaskNew', '✨ ' + i18nService.t('matrixNewFanTask'), onShowMatrixTaskNew],
               ['matrixTasks', '📋 ' + (simple ? (i18nService.currentLanguage === 'zh' ? '我的任务' : i18nService.currentLanguage === 'zh-TW' ? '我的任務' : 'My Tasks') : i18nService.t('matrixMyFanTasks')), onShowMatrixTasks],
               ['matrixRuns', '📊 ' + i18nService.t('matrixRunHistory'), onShowMatrixRuns],
-            ] as const).filter(([key]) => !simple || key === 'matrix' || key === 'matrixTasks')).map(([key, label, handler]) => (
+              // 雲手機:安卓手機上的 NoobClaw Mobile(簡潔版在頂部菜單)
+              ['cloudPhone', '📱 ' + (i18nService.currentLanguage === 'zh' ? '云手机' : i18nService.currentLanguage === 'zh-TW' ? '雲手機' : 'Cloud Phones'), onShowCloudPhone],
+            ] as const).filter(([key, , handler]) => (key !== 'cloudPhone' || !!handler) && (!simple || key === 'matrix' || key === 'matrixTasks'))).map(([key, label, handler]) => (
               <button
                 key={key}
                 type="button"

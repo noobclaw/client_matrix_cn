@@ -709,7 +709,6 @@ const App: React.FC = () => {
     clearPresetAccounts();   // 切版本一律清预选,免得简洁版选的号带进专业版向导
     setUiEdition(e);
     if (e === 'simple') setMainView('home');   // 切到简洁版一律回首页
-    else if (mainView === 'cloudPhone') setMainView('home');   // 雲手機只在简洁版菜单里,切专业版回首页
   };
   // 简洁版「创建任务」弹窗点取消 → 回到进来之前的页面
   const lastNonCreateViewRef = useRef<string>('home');
@@ -1093,7 +1092,7 @@ const App: React.FC = () => {
   const handleShowMatrixTaskNew = () => { setMatrixPlatform(''); setMainView('matrixTaskNew'); setScenarioNavNonce((n) => n + 1); };
   const handleShowMatrixTasks = () => { setMatrixPlatform(''); setMainView('matrixTasks'); setScenarioNavNonce((n) => n + 1); };
   const handleShowMatrixRuns = () => { setMatrixPlatform(''); setMainView('matrixRuns'); setScenarioNavNonce((n) => n + 1); };
-  // 雲手機:安卓手機上的 NoobClaw Mobile(狀態 / 任務 / 遠程運行),只在簡潔版頂部菜單露出。
+  // 雲手機:安卓手機上的 NoobClaw Mobile(狀態 / 任務 / 遠程運行)。簡潔版在頂部菜單,專業版在左側菜單。
   const handleShowCloudPhone = () => setMainView('cloudPhone');
 
   return (
@@ -1217,6 +1216,7 @@ const App: React.FC = () => {
           onShowMatrixTaskNew={handleShowMatrixTaskNew}
           onShowMatrixTasks={handleShowMatrixTasks}
           onShowMatrixRuns={handleShowMatrixRuns}
+          onShowCloudPhone={handleShowCloudPhone}
           onNewChat={handleNewChat}
           isCollapsed={simpleUi ? false : isSidebarCollapsed}
           onToggleCollapse={handleToggleSidebar}
