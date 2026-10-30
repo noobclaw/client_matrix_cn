@@ -24,7 +24,7 @@ interface LogLine { ts: number; level: string; msg: string; run_id: string | nul
 const isZh = () => i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 // 文案按繁體寫;簡體(zh)界面在運行時逐字轉成簡體(只覆蓋本文件用到的字)。
 const T2S: Record<string, string> = Object.fromEntries(
-  ('覆复帳账個个內内刪删劇剧動动務务區区執执帳帐戶户後后敗败數数時时暫暂會会東东機机權权沒没無无獲获現现發发線线編编號号裝装裡里記记設设評评詞词試试誌志請请論论讚赞載载輯辑這这運运選选還还錄录鍵键鏈链鐘钟關关離离點点卻却雲云')
+  ('確确認认覆复帳账個个內内刪删劇剧動动務务區区執执帳帐戶户後后敗败數数時时暫暂會会東东機机權权沒没無无獲获現现發发線线編编號号裝装裡里記记設设評评詞词試试誌志請请論论讚赞載载輯辑這这運运選选還还錄录鍵键鏈链鐘钟關关離离點点卻却雲云')
     .match(/../g)!.map((p) => [p[0], p[1]]),
 );
 const toSimp = (s: string) => s.replace(/[\u4e00-\u9fff]/g, (c) => T2S[c] || c);
@@ -75,7 +75,7 @@ function deviceStatus(d: Device): React.ReactNode {
   if (d.running) return <Pill color="green">{T('運行中', 'Running')}</Pill>;
   if (!d.a11y) return <Pill color="amber">{T('缺權限', 'Permission needed')}</Pill>;
   if (d.cooldown_until > Date.now()) return <Pill color="red">{T('冷卻中', 'Cooling down')}</Pill>;
-  return <Pill color="purple">{T('待命', 'Standby')}</Pill>;
+  return <Pill color="green">{T('在線', 'Online')}</Pill>;
 }
 
 const btn = 'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors';
@@ -291,6 +291,14 @@ const MyPhonesView: React.FC = () => {
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(() => { api('/devices').then((r) => { setDevices(r.devices || []); setErr(''); }).catch((e) => setErr(e.message)); }, []);
+  // 離線手機可移除(點兩下確認);在線的手機服務器會拒絕(它下次心跳又會冒出來)。
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const remove = async (id: string) => {
+    if (confirmDel !== id) { setConfirmDel(id); setTimeout(() => setConfirmDel((c) => (c === id ? null : c)), 4000); return; }
+    setConfirmDel(null);
+    try { await api(`/devices/${id}`, { method: 'DELETE' }); load(); }
+    catch (e: any) { setErr(e.message === 'phone_online' ? T('手機在線，不能移除', 'The phone is online and cannot be removed') : e.message); }
+  };
   useEffect(() => { if (openId) return; load(); const t = setInterval(load, 15_000); return () => clearInterval(t); }, [load, openId]);
 
   if (openId) return <div className="h-full overflow-y-auto"><PhoneDetail id={openId} onBack={() => setOpenId(null)} /></div>;
@@ -316,7 +324,18 @@ const MyPhonesView: React.FC = () => {
               <div>{T('今天：', 'Today: ')}{fmtCounts(d.today)}</div>
               <div>{T('最近：', 'Last run: ')}{d.last_run ? `${fmtTime(d.last_run.at)} · ${d.last_run.status === 'done' ? T('完成', 'done') : d.last_run.reason || d.last_run.status}` : '—'}</div>
               <div>{T('任務：', 'Tasks: ')}{d.task_count}</div>
+              {!d.online && <div>{T('最後在線：', 'Last seen: ')}{fmtTime(d.last_seen)}</div>}
             </div>
+            {!d.online && (
+              <div className="mt-2 text-right">
+                <span role="button" tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); remove(d.id); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); remove(d.id); } }}
+                  className={`text-xs px-2 py-1 rounded-md ${confirmDel === d.id ? 'bg-red-500 text-white' : 'text-red-500 hover:bg-red-500/10'}`}>
+                  {confirmDel === d.id ? T('再點一次確認移除', 'Click again to remove') : T('移除', 'Remove')}
+                </span>
+              </div>
+            )}
           </button>
         ))}
       </div>
