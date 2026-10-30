@@ -10,7 +10,7 @@ import { noobClawAuth } from '../../services/noobclawAuth';
 
 type Counts = Record<string, number>;
 interface Device {
-  id: string; vendor: string; ip?: string; app_ver: string; online: boolean; last_seen: number; a11y: boolean; running: boolean;
+  id: string; vendor: string; ip?: string; over_limit?: boolean; app_ver: string; online: boolean; last_seen: number; a11y: boolean; running: boolean;
   cooldown_until: number; account: string; task_count: number; today: Counts;
   last_run: { status: string; reason: string; dry_run: boolean; counts: Counts; at: number } | null;
 }
@@ -24,7 +24,7 @@ interface LogLine { ts: number; level: string; msg: string; run_id: string | nul
 const isZh = () => i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 // 文案按繁體寫;簡體(zh)界面在運行時逐字轉成簡體(只覆蓋本文件用到的字)。
 const T2S: Record<string, string> = Object.fromEntries(
-  ('確确認认覆复帳账個个內内刪删劇剧動动務务區区執执帳帐戶户後后敗败數数時时暫暂會会東东機机權权沒没無无獲获現现發发線线編编號号裝装裡里記记設设評评詞词試试誌志請请論论讚赞載载輯辑這这運运選选還还錄录鍵键鏈链鐘钟關关離离點点卻却雲云')
+  ('臺台員员級级確确認认覆复帳账個个內内刪删劇剧動动務务區区執执帳帐戶户後后敗败數数時时暫暂會会東东機机權权沒没無无獲获現现發发線线編编號号裝装裡里記记設设評评詞词試试誌志請请論论讚赞載载輯辑這这運运選选還还錄录鍵键鏈链鐘钟關关離离點点卻却雲云')
     .match(/../g)!.map((p) => [p[0], p[1]]),
 );
 const toSimp = (s: string) => s.replace(/[\u4e00-\u9fff]/g, (c) => T2S[c] || c);
@@ -72,6 +72,7 @@ const Pill: React.FC<{ color: 'green' | 'gray' | 'amber' | 'purple' | 'red'; chi
 
 function deviceStatus(d: Device): React.ReactNode {
   if (!d.online) return <Pill color="gray">{T('離線', 'Offline')}</Pill>;
+  if (d.over_limit) return <Pill color="amber">{T('超出會員數量', 'Over plan limit')}</Pill>;
   if (d.running) return <Pill color="green">{T('運行中', 'Running')}</Pill>;
   if (!d.a11y) return <Pill color="amber">{T('缺權限', 'Permission needed')}</Pill>;
   if (d.cooldown_until > Date.now()) return <Pill color="red">{T('冷卻中', 'Cooling down')}</Pill>;
@@ -191,6 +192,7 @@ const PhoneDetail: React.FC<{ id: string; onBack: () => void }> = ({ id, onBack 
       flash(T('已發送，手機約 15 秒內執行', 'Sent — the phone acts within ~15 s'));
     } catch (e: any) {
       const m = e.message === 'phone_offline' ? T('手機離線', 'Phone is offline')
+        : e.message === 'phone_over_limit' ? T('超出會員可用手機數，升級會員或移除不用的手機', 'Over the plan\'s phone limit — upgrade or remove unused phones')
         : e.message === 'app_update_required' ? T('請先把手機 App 更新到 0.4.0 以上', 'Update the phone app to 0.4.0+ first')
         : e.message;
       flash(T('發送失敗：', 'Failed: ') + m);
@@ -287,10 +289,11 @@ const PhoneDetail: React.FC<{ id: string; onBack: () => void }> = ({ id, onBack 
 // ───────────────────────── phone list ─────────────────────────
 const MyPhonesView: React.FC = () => {
   const [devices, setDevices] = useState<Device[] | null>(null);
+  const [limit, setLimit] = useState(0);
   const [err, setErr] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const load = useCallback(() => { api('/devices').then((r) => { setDevices(r.devices || []); setErr(''); }).catch((e) => setErr(e.message)); }, []);
+  const load = useCallback(() => { api('/devices').then((r) => { setDevices(r.devices || []); setLimit(Number(r.phone_limit) || 0); setErr(''); }).catch((e) => setErr(e.message)); }, []);
   // 離線手機可移除(點兩下確認);在線的手機服務器會拒絕(它下次心跳又會冒出來)。
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const remove = async (id: string) => {
@@ -305,7 +308,10 @@ const MyPhonesView: React.FC = () => {
 
   return (
     <div className="h-full overflow-y-auto p-6">
-      <h2 className="text-lg font-semibold dark:text-claude-darkText text-claude-text mb-4">📱 {T('雲手機', 'Cloud Phones')}</h2>
+      <div className="flex items-baseline gap-3 mb-4">
+        <h2 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">📱 {T('雲手機', 'Cloud Phones')}</h2>
+        {limit > 0 && devices && <span className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{T('已用', 'Using')} {devices.length} / {limit} {T('臺', 'phones')}</span>}
+      </div>
       {err && <div className="text-sm text-red-500 mb-3">{err}</div>}
       {devices && devices.length === 0 && (
         <div className={`${card} text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary`}>
