@@ -10,7 +10,7 @@ import { noobClawAuth } from '../../services/noobclawAuth';
 
 type Counts = Record<string, number>;
 interface Device {
-  id: string; vendor: string; app_ver: string; online: boolean; last_seen: number; a11y: boolean; running: boolean;
+  id: string; vendor: string; ip?: string; app_ver: string; online: boolean; last_seen: number; a11y: boolean; running: boolean;
   cooldown_until: number; account: string; task_count: number; today: Counts;
   last_run: { status: string; reason: string; dry_run: boolean; counts: Counts; at: number } | null;
 }
@@ -209,7 +209,7 @@ const PhoneDetail: React.FC<{ id: string; onBack: () => void }> = ({ id, onBack 
     <div className="p-6 space-y-5">
       <div className="flex items-center gap-3">
         <button type="button" className={btnGhost} onClick={onBack}>← {T('返回', 'Back')}</button>
-        <h2 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">📱 {d.vendor || d.id.slice(0, 8)}</h2>
+        <h2 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">📱 {d.vendor || d.id.slice(0, 8)}{d.ip ? <span className="ml-2 text-sm font-normal font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{d.ip}</span> : null}</h2>
         {deviceStatus(d)}
         <span className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{d.account || 'TikTok'} · v{d.app_ver}</span>
         <div className="flex-1" />
@@ -308,7 +308,7 @@ const MyPhonesView: React.FC = () => {
         {(devices || []).map((d) => (
           <button key={d.id} type="button" onClick={() => setOpenId(d.id)} className={`${card} text-left hover:border-claude-accent transition-colors`}>
             <div className="flex items-center gap-2 mb-2">
-              <span className="font-medium dark:text-claude-darkText text-claude-text flex-1 truncate">📱 {d.vendor || d.id.slice(0, 8)}</span>
+              <span className="font-medium dark:text-claude-darkText text-claude-text flex-1 truncate">📱 {d.vendor || d.id.slice(0, 8)}{d.ip ? <span className="ml-2 text-xs font-normal font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{d.ip}</span> : null}</span>
               {deviceStatus(d)}
             </div>
             <div className="text-sm dark:text-claude-darkText text-claude-text mb-1">{d.account || 'TikTok'}</div>
