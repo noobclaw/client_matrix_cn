@@ -34,8 +34,10 @@ type WizardStep = number;
 // 收藏上限跟点赞同量级(它比关注安全得多,但仍是可被风控的动作)。
 const FAVORITE_HARDCAP = 100;
 // 精准模式一次最多粘 50 条链接(与定向获客的种子上限同口径)。
-// 精准模式也收博主主页链接的平台(剧本侧:打开主页取最近 5 条作品逐条互动)。
+// 精准模式也收博主主页链接的平台(剧本侧:打开主页取最近几条作品逐条互动,条数见 profileLatestN)。
 const PROFILE_LINK_PLATFORMS = new Set<string>(['douyin', 'xhs', 'tiktok']);
+// 主页展开取几条:小红书 3 条(2026-10-30),其余 5 条。须与剧本 LATEST_N 一致。
+const profileLatestN = (p?: string | null) => (p === 'xhs' ? 3 : 5);
 const PRECISE_URL_MAX = 50;
 // 步骤(动态):1 选账号 / 2 点赞+关注 / 3 评论(数量+语言) / [4 引流(平台支持且评论>0 才有)] / 末步 频率+条款。
 // 引流独立成一步:支持「所有账号共用」与「各账号各自配置」两种模式(用户需求 2026-08-09)。
@@ -455,7 +457,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
             <>
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                  {/* 抖音 / 小红书 / TikTok 精准模式也收博主主页链接:剧本打开主页取最近 5 条作品逐条互动,互动过的跳过(2026-10-29) */}
+                  {/* 抖音 / 小红书 / TikTok 精准模式也收博主主页链接:剧本打开主页取最近几条作品逐条互动(条数见 profileLatestN),互动过的跳过 */}
                   {PROFILE_LINK_PLATFORMS.has(platform || '')
                     ? (zh ? '作品 / 帖子 / 博主主页链接' : 'Post or profile links')
                     : (zh ? '作品 / 帖子链接' : 'Post links')}
@@ -471,7 +473,7 @@ const MatrixTaskWizard: React.FC<Props> = ({ platformLabel, platform, accounts, 
                   disabled={saving}
                   rows={7}
                   placeholder={PROFILE_LINK_PLATFORMS.has(platform || '')
-                    ? (zh ? '把要互动的作品链接粘在这里,一行一个\n也可以粘博主主页链接:会打开主页,依次互动他最近的 5 条作品(互动过的跳过)' : 'Paste the post links here, one per line\nA profile link also works: its latest 5 posts are engaged one by one (already-engaged ones are skipped)')
+                    ? (zh ? `把要互动的作品链接粘在这里,一行一个\n也可以粘博主主页链接:会打开主页,依次互动他最近的 ${profileLatestN(platform)} 条作品(互动过的跳过)` : `Paste the post links here, one per line\nA profile link also works: its latest ${profileLatestN(platform)} posts are engaged one by one (already-engaged ones are skipped)`)
                     : (zh ? '把要互动的作品链接粘在这里,一行一个' : 'Paste the post links here, one per line')}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm font-mono dark:text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-violet-500"
                 />
