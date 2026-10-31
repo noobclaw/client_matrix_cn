@@ -3,6 +3,7 @@ import {
   Device, L, Run, Step, taskName, accountOf, api, bd, btnGhost, btnPrimary, capsText, countKeys, deleteTask, errText, fmtCost, fmtCountsIcons,
   fmtDuration, fmtNext, fmtRelFuture, fmtTotals, fmtWhen, isManual, lastWarn, modeName, num, runStatus, scheduleText, sendCommand,
   shortTarget, stepLines, stepText, sub, surface, surface2, targetLabel, txt,
+  normDevice,
 } from './cloudPhoneShared';
 import { ConfirmDialog } from './cloudPhoneUi';
 import PhoneTaskEditor from './PhoneTaskEditor';
@@ -69,7 +70,7 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
     try {
       const r = await api<{ device: Device; runs: Run[] }>(`/devices/${encodeURIComponent(deviceId)}`);
       if (!alive.current || my !== seq.current) return;
-      setData({ device: r.device, runs: r.runs || [] });
+      setData({ device: normDevice(r.device), runs: Array.isArray(r.runs) ? r.runs : [] });
       setLoadErr('');
     } catch (e) {
       if (alive.current && my === seq.current) setLoadErr(errText(e));

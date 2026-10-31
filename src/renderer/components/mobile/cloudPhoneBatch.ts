@@ -1,4 +1,4 @@
-import { Device, L, PlatformId, RawTask, api, accountOf, errText, putTasks, sendCommand } from './cloudPhoneShared';
+import { Device, normDevice, L, PlatformId, RawTask, api, accountOf, errText, putTasks, sendCommand } from './cloudPhoneShared';
 
 /**
  * 云手机批量操作:每台手机的资格判断 + 执行(最多 4 台并发)。
@@ -46,8 +46,9 @@ const freshId = (): string => 't' + Date.now().toString(36) + Math.random().toSt
 /** Fresh device state (falls back to the snapshot fields the server didn't send) + its raw task list. */
 async function fresh(d: Device): Promise<{ dev: Device; list: RawTask[] }> {
   const r = await api<{ device: Device }>(`/devices/${encodeURIComponent(d.id)}`);
-  const dev: Device = r.device ? { ...d, ...r.device, tasks: r.device.tasks || [] } : d;
-  const list = (r.device?.tasks || []).map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
+  const nd = r.device ? normDevice(r.device) : null;
+  const dev: Device = nd ? { ...d, ...nd } : d;
+  const list = (nd?.tasks || []).map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
   return { dev, list };
 }
 /** Stop when the (fresh) phone runs a task of one of `pfs`; then save `build(list)`. */

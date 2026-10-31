@@ -48,6 +48,38 @@ export interface Device {
   tasks: TaskView[];
   progress: Progress | null;
 }
+/** Fills in fields an older or partial server response may lack, so rendering never hits undefined. */
+export function normTask(t: any): TaskView {
+  const o = t && typeof t === 'object' ? t : {};
+  const arr = (x: any) => (Array.isArray(x) ? x.map(String) : []);
+  const obj = (x: any) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+  return {
+    ...o,
+    id: String(o.id || ''), name: String(o.name || ''), script_id: String(o.script_id || ''), platform: String(o.platform || 'tiktok'),
+    schedule: o.schedule && typeof o.schedule === 'object' ? o.schedule : null, tz: String(o.tz || ''),
+    mode: o.mode === 'keywords' ? 'keywords' : 'precise', keywords: arr(o.keywords), targets: arr(o.targets),
+    level: String(o.level || ''), persona: String(o.persona || ''),
+    caps: { likes: 0, comments: 0, follows: 0, leads: 0, ...obj(o.caps) },
+    last_run_at: o.last_run_at ?? null, last_status: o.last_status ?? null, next_run_at: o.next_run_at ?? null,
+    totals: obj(o.totals), credits_total: Number(o.credits_total) || 0, usd_total: Number(o.usd_total) || 0,
+    last_counts: obj(o.last_counts), last_credits: Number(o.last_credits) || 0, last_usd: Number(o.last_usd) || 0,
+    runs: Number(o.runs) || 0,
+    raw: o.raw && typeof o.raw === 'object' ? o.raw : (o.id ? o : { id: '', name: '', script_id: '' }),
+  } as TaskView;
+}
+export function normDevice(d: any): Device {
+  const o = d && typeof d === 'object' ? d : {};
+  return {
+    ...o,
+    id: String(o.id || ''), vendor: String(o.vendor || ''), app_ver: String(o.app_ver || ''),
+    online: o.online === true, last_seen: Number(o.last_seen) || 0, created_at: Number(o.created_at) || 0,
+    a11y: o.a11y === true, running: o.running === true,
+    apps: o.apps && typeof o.apps === 'object' ? o.apps : {},
+    accounts: o.accounts && typeof o.accounts === 'object' ? o.accounts : {},
+    tasks: (Array.isArray(o.tasks) ? o.tasks : []).filter((t: any) => t && typeof t === 'object' && t.id).map(normTask),
+    progress: o.progress && typeof o.progress === 'object' ? o.progress : null,
+  } as Device;
+}
 export interface Run {
   run_id: string; status: string; reason: string; dry_run: boolean; task_id: string; counts: Counts;
   credits: number; usd: number; duration_ms: number; at: number;
@@ -120,7 +152,7 @@ export async function putTasks(deviceId: string, tasks: RawTask[]): Promise<void
 /** Fresh raw task list of a phone, read right before a write so we never PUT a stale snapshot. */
 async function freshRawTasks(deviceId: string): Promise<RawTask[]> {
   const r = await api<{ device: Device }>(`/devices/${encodeURIComponent(deviceId)}`);
-  return (r.device?.tasks || []).map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
+  return normDevice(r.device).tasks.map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
 }
 /** Replace (same id) or append one task; every other task is sent back exactly as the server has it now. */
 export async function saveTask(device: Device, task: RawTask): Promise<void> {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { openWallet } from '../../services/walletNav';
 import {
   ConsoleConfig, Device, L, PlatformId, taskName, TaskView, api, bd, deleteTask, errText, sendCommand, sub, surface, txt, visiblePlatforms,
+  normDevice,
 } from './cloudPhoneShared';
 import { AndroidIcon, ConfirmDialog, useComplianceHidden } from './cloudPhoneUi';
 import { AddCard, GuideCard, PhoneCard } from './PhoneCard';
@@ -69,7 +70,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
     try {
       const r = await api<{ devices: Device[]; phone_limit: number; plan: string }>('/devices');
       if (!alive.current || my !== seq.current) return;
-      setDevices(r.devices || []);
+      setDevices((Array.isArray(r.devices) ? r.devices : []).map(normDevice).filter((x) => x.id));
       setLimit(Number(r.phone_limit) || 0);
       setPlan(String(r.plan || ''));
       setErr('');
