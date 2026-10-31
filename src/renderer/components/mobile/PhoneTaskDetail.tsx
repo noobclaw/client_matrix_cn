@@ -70,7 +70,7 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
     try {
       const r = await api<{ device: Device; runs: Run[] }>(`/devices/${encodeURIComponent(deviceId)}`);
       if (!alive.current || my !== seq.current) return;
-      setData({ device: normDevice(r.device), runs: Array.isArray(r.runs) ? r.runs : [] });
+      setData({ device: normDevice(r.device), runs: Array.isArray(r.runs) ? r.runs.filter((x) => x && typeof x === 'object') : [] });
       setLoadErr('');
     } catch (e) {
       if (alive.current && my === seq.current) setLoadErr(errText(e));

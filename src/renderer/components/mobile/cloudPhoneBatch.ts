@@ -1,4 +1,4 @@
-import { Device, normDevice, L, PlatformId, RawTask, api, accountOf, errText, putTasks, sendCommand } from './cloudPhoneShared';
+import { Device, normDevice, rawListOf, L, PlatformId, RawTask, api, accountOf, errText, putTasks, sendCommand } from './cloudPhoneShared';
 
 /**
  * 云手机批量操作:每台手机的资格判断 + 执行(最多 4 台并发)。
@@ -43,13 +43,11 @@ export function createBlock(d: Device, pfName: string): string {
 
 const freshId = (): string => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-/** Fresh device state (falls back to the snapshot fields the server didn't send) + its raw task list. */
+/** Fresh device state + its raw task list (throws if the server didn't send a full list). */
 async function fresh(d: Device): Promise<{ dev: Device; list: RawTask[] }> {
   const r = await api<{ device: Device }>(`/devices/${encodeURIComponent(d.id)}`);
-  const nd = r.device ? normDevice(r.device) : null;
-  const dev: Device = nd ? { ...d, ...nd } : d;
-  const list = (nd?.tasks || []).map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
-  return { dev, list };
+  const list = rawListOf(r.device);
+  return { dev: { ...d, ...normDevice(r.device) }, list };
 }
 /** Stop when the (fresh) phone runs a task of one of `pfs`; then save `build(list)`. */
 async function stopThenPut(d: Device, pfs: string[], build: (list: RawTask[]) => RawTask[]): Promise<void> {

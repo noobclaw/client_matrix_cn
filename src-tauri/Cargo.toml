@@ -1,6 +1,6 @@
 [package]
 name = "noobclaw"
-version = "3.4.75"
+version = "3.4.76"
 description = "NoobClaw - AI Desktop Assistant"
 authors = ["NoobClaw"]
 edition = "2021"

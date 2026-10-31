@@ -31,7 +31,8 @@ export interface TaskView {
   last_run_at: number | null; last_status: string | null; next_run_at: number | null;
   totals: Counts; credits_total: number; usd_total: number;
   last_counts: Counts; last_credits: number; last_usd: number; runs: number;
-  raw: RawTask;
+  /** The stored task; absent only if the server didn't send it (then the phone's list must not be written). */
+  raw?: RawTask;
 }
 /** Full task object as stored (mobile_tasks.data.tasks[]); unknown fields are kept untouched. */
 export interface RawTask {
@@ -64,7 +65,7 @@ export function normTask(t: any): TaskView {
     totals: obj(o.totals), credits_total: Number(o.credits_total) || 0, usd_total: Number(o.usd_total) || 0,
     last_counts: obj(o.last_counts), last_credits: Number(o.last_credits) || 0, last_usd: Number(o.last_usd) || 0,
     runs: Number(o.runs) || 0,
-    raw: o.raw && typeof o.raw === 'object' ? o.raw : (o.id ? o : { id: '', name: '', script_id: '' }),
+    raw: o.raw && typeof o.raw === 'object' && !Array.isArray(o.raw) && typeof o.raw.id === 'string' ? o.raw : undefined,
   } as TaskView;
 }
 export function normDevice(d: any): Device {
@@ -138,6 +139,7 @@ export function errText(e: unknown): string {
     case 'invalid_tasks': return L('任务设置有误', '任務設定有誤', 'Invalid task settings');
     case 'timeout': return L('请求超时，请检查网络后重试', '請求逾時，請檢查網路後重試', 'The request timed out — check the network and try again');
     case 'network_error': return L('网络连接失败，请稍后重试', '網路連線失敗，請稍後重試', 'Network error — try again later');
+    case 'server_outdated': return L('服务器版本过旧，请先更新后台', '伺服器版本過舊，請先更新後台', 'The server is outdated — update the backend first');
     case 'server_error': return L('服务器出错，请稍后重试', '伺服器出錯，請稍後重試', 'Server error — try again later');
     default:
       if (/^HTTP 5\d\d$/.test(code)) return L('服务器出错，请稍后重试', '伺服器出錯，請稍後重試', 'Server error — try again later');
@@ -152,7 +154,15 @@ export async function putTasks(deviceId: string, tasks: RawTask[]): Promise<void
 /** Fresh raw task list of a phone, read right before a write so we never PUT a stale snapshot. */
 async function freshRawTasks(deviceId: string): Promise<RawTask[]> {
   const r = await api<{ device: Device }>(`/devices/${encodeURIComponent(deviceId)}`);
-  return normDevice(r.device).tasks.map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
+  return rawListOf(r.device);
+}
+/** The phone's stored task list from a device response. Throws rather than returning a partial / empty list,
+ *  so a write can never wipe tasks the server didn't send us (e.g. an older backend). */
+export function rawListOf(dev: any): RawTask[] {
+  if (!dev || typeof dev !== 'object' || !Array.isArray(dev.tasks)) throw new ApiError('server_outdated', 0);
+  const ts = normDevice(dev).tasks;
+  if (ts.length !== dev.tasks.length || ts.some((t) => !t.raw)) throw new ApiError('server_outdated', 0);
+  return ts.map((t) => t.raw as RawTask);
 }
 /** Replace (same id) or append one task; every other task is sent back exactly as the server has it now. */
 export async function saveTask(device: Device, task: RawTask): Promise<void> {
@@ -341,7 +351,7 @@ export function stepText(step: Step): string {
 }
 /** Steps → [{time, text}] with unknown codes dropped. */
 export function stepLines(steps: Step[] | null | undefined): { time: string; text: string }[] {
-  return (steps || []).map((s) => ({ time: s.ts ? hhmm(s.ts) : '', text: stepText(s) })).filter((x) => x.text);
+  return (Array.isArray(steps) ? steps : []).filter((s) => s && typeof s === 'object').map((s) => ({ time: s.ts ? hhmm(s.ts) : '', text: stepText(s) })).filter((x) => x.text);
 }
 
 // ───────────────────────── account avatar ─────────────────────────
@@ -355,7 +365,8 @@ export function avatarColor(handle: string): string {
 export function accountOf(d: Device): { handle: string; nickname: string } | null {
   const a = d.accounts?.tiktok;
   if (!a || !a.handle) return null;
-  const handle = a.handle.startsWith('@') ? a.handle : `@${a.handle}`;
+  const h = String(a.handle);
+  const handle = h.startsWith('@') ? h : `@${h}`;
   return { handle, nickname: a.nickname || '' };
 }
 
