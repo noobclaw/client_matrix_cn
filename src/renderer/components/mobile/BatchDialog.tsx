@@ -33,7 +33,9 @@ export interface BatchDialogProps {
 
 const BatchDialog: React.FC<BatchDialogProps> = ({ act, devices, picked, platforms, onClose, onFinished }) => {
   const live = platforms.filter((p) => p.live);
-  const [pf, setPf] = useState<PlatformId | ''>(live[0]?.id || '');
+  const [pfSel, setPf] = useState<PlatformId | ''>(live[0]?.id || '');
+  // The chosen platform may get hidden by the compliance config later: fall back to the first live one.
+  const pf: PlatformId | '' = live.some((x) => x.id === pfSel) ? pfSel : (live[0]?.id || '');
   const [pfs, setPfs] = useState<Set<PlatformId>>(() => new Set(live[0] ? [live[0].id] : []));
   const [type, setType] = useState<ScriptId>(TYPES[0]);
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -53,7 +55,7 @@ const BatchDialog: React.FC<BatchDialogProps> = ({ act, devices, picked, platfor
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
-    if (phase === 'running' || (act === 'new' && step === 2)) return;
+    if (act === 'new' && step === 2) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRef.current(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -63,10 +65,10 @@ const BatchDialog: React.FC<BatchDialogProps> = ({ act, devices, picked, platfor
     setPhase('running');
     setProg({ done: 0, total: targets.length });
     const r = await runPool(targets, fn, (done, total) => { if (alive.current) setProg({ done, total }); });
+    onFinished(); // refresh the list even when the dialog was closed meanwhile
     if (!alive.current) return;
     setResult(r);
     setPhase('done');
-    onFinished();
   };
 
   // Step 2 of 批量创建任务: the task editor in batch mode (its own modal).
@@ -97,8 +99,8 @@ const BatchDialog: React.FC<BatchDialogProps> = ({ act, devices, picked, platfor
       {p(<>{L('将在 ', '將在 ', `Runs the ${pfName} task now on `)}<B n={ok.length} />{L(` 台手机上立即运行 ${pfName} 任务`, ` 台手機上立即運行 ${pfName} 任務`, ' phone(s)')}
         {skip ? L(`；另外 ${skip} 台会跳过（离线 / 缺权限 / 运行中 / 没有该平台任务）`, `；另外 ${skip} 台會跳過（離線 / 缺權限 / 運行中 / 沒有該平台任務）`, `; ${skip} other(s) are skipped (offline / permission needed / running / no task for this platform)`) : ''}{L('。', '。', '.')}</>)}
     </>);
-    actions = (<>{cancelBtn}<button type="button" className={`${btnPrimary} flex-1 py-2 text-[12.5px]`} disabled={!ok.length}
-      onClick={() => { const id = pf as PlatformId; void exec(ok, (d) => batchRun(d, id)); }}>{L(`运行 ${ok.length} 台`, `運行 ${ok.length} 台`, `Run ${ok.length}`)}</button></>);
+    actions = (<>{cancelBtn}<button type="button" className={`${btnPrimary} flex-1 py-2 text-[12.5px]`} disabled={!ok.length || !pf}
+      onClick={() => { if (!pf) return; const id = pf; void exec(ok, (d) => batchRun(d, id)); }}>{L(`运行 ${ok.length} 台`, `運行 ${ok.length} 台`, `Run ${ok.length}`)}</button></>);
   } else if (act === 'stop') {
     const ok = pickedPhones.filter(canStop);
     const rest = pickedPhones.length - ok.length;
@@ -175,8 +177,8 @@ const BatchDialog: React.FC<BatchDialogProps> = ({ act, devices, picked, platfor
     </>);
     actions = (<>
       <button type="button" className={`${btnGhost} flex-1 py-2 text-[12.5px]`} onClick={() => setStep(2)}>{L('上一步', '上一步', 'Back')}</button>
-      <button type="button" className={`${btnPrimary} flex-1 py-2 text-[12.5px]`} disabled={!chosen.length || !seed}
-        onClick={() => { const t = seed!; const id = pf; void exec(chosen, (d) => batchCreate(d, id, t)); }}>
+      <button type="button" className={`${btnPrimary} flex-1 py-2 text-[12.5px]`} disabled={!chosen.length || !seed || !pf}
+        onClick={() => { if (!pf || !seed) return; const t = seed; const id = pf; void exec(chosen, (d) => batchCreate(d, id, t)); }}>
         {L(`创建到 ${chosen.length} 台`, `建立到 ${chosen.length} 台`, `Create on ${chosen.length}`)}
       </button>
     </>);
@@ -184,13 +186,17 @@ const BatchDialog: React.FC<BatchDialogProps> = ({ act, devices, picked, platfor
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label={title}
-      onClick={(e) => { if (e.target === e.currentTarget && phase !== 'running') onClose(); }}>
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className={`w-full max-w-[520px] max-h-[calc(100vh-32px)] overflow-auto rounded-2xl border ${bd} ${surface} p-5 flex flex-col gap-3 shadow-modal`}>
         <h2 className={`m-0 text-base font-bold ${txt}`}>{title}</h2>
         <fieldset disabled={phase !== 'form'} className="contents">{body}</fieldset>
         {phase === 'form' && <div className="flex gap-1.5 mt-1">{actions}</div>}
         {phase === 'running' && (
-          <div className={`text-[12.5px] ${txt}`}>{L(`处理中 ${prog.done}/${prog.total}`, `處理中 ${prog.done}/${prog.total}`, `Working ${prog.done}/${prog.total}`)}</div>
+          <div className="flex items-center gap-2">
+            <div className={`flex-1 text-[12.5px] ${txt}`}>{L(`处理中 ${prog.done}/${prog.total}`, `處理中 ${prog.done}/${prog.total}`, `Working ${prog.done}/${prog.total}`)}</div>
+            <button type="button" className={`${btnGhost} px-3 py-1.5 text-[12px]`} onClick={onClose}
+              title={L('关闭后会在后台继续处理完', '關閉後會在背景繼續處理完', 'Keeps going in the background')}>{L('关闭', '關閉', 'Close')}</button>
+          </div>
         )}
         {phase === 'done' && result && (<>
           <div className="text-[12.5px]">

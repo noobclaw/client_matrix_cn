@@ -43,28 +43,40 @@ export function createBlock(d: Device, pfName: string): string {
 
 const freshId = (): string => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-async function freshRaw(deviceId: string): Promise<RawTask[]> {
-  const r = await api<{ device: Device }>(`/devices/${encodeURIComponent(deviceId)}`);
-  return (r.device?.tasks || []).map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
+/** Fresh device state (falls back to the snapshot fields the server didn't send) + its raw task list. */
+async function fresh(d: Device): Promise<{ dev: Device; list: RawTask[] }> {
+  const r = await api<{ device: Device }>(`/devices/${encodeURIComponent(d.id)}`);
+  const dev: Device = r.device ? { ...d, ...r.device, tasks: r.device.tasks || [] } : d;
+  const list = (r.device?.tasks || []).map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
+  return { dev, list };
+}
+/** Stop when the (fresh) phone runs a task of one of `pfs`; then save `build(list)`. */
+async function stopThenPut(d: Device, pfs: string[], build: (list: RawTask[]) => RawTask[]): Promise<void> {
+  const { dev, list } = await fresh(d);
+  let stopped = false;
+  if (isRunning(dev)) {
+    const rp = runningPlatform(dev);
+    if (rp === null || pfs.includes(rp)) { await sendCommand(dev.id, 'stop', dev.progress?.task_id || undefined); stopped = true; }
+  }
+  try {
+    await putTasks(dev.id, build(list));
+  } catch (e) {
+    if (!stopped) throw e;
+    throw new Error(L('已停止，但保存任务失败：', '已停止，但儲存任務失敗：', 'Stopped, but saving the tasks failed: ') + errText(e));
+  }
 }
 
 export const batchRun = (d: Device, pf: PlatformId) => sendCommand(d.id, 'run', taskOfPlatform(d, pf)!.id);
 export const batchStop = (d: Device) => sendCommand(d.id, 'stop', d.progress?.task_id || undefined);
 
 /** Remove the tasks of `pfs` (stops first when the phone is running one of them). */
-export async function batchDelete(d: Device, pfs: string[]): Promise<void> {
-  const rp = runningPlatform(d);
-  if (isRunning(d) && (rp === null || pfs.includes(rp))) await sendCommand(d.id, 'stop', d.progress?.task_id || undefined);
-  const list = await freshRaw(d.id);
-  await putTasks(d.id, list.filter((t) => !pfs.includes(platOf(t))));
+export function batchDelete(d: Device, pfs: string[]): Promise<void> {
+  return stopThenPut(d, pfs, (list) => list.filter((t) => !pfs.includes(platOf(t))));
 }
 
 /** Replace the phone's task of `pf` with `task` (fresh id); stops first when that platform is running. */
-export async function batchCreate(d: Device, pf: string, task: RawTask): Promise<void> {
-  const rp = runningPlatform(d);
-  if (isRunning(d) && (rp === null || rp === pf)) await sendCommand(d.id, 'stop', d.progress?.task_id || undefined);
-  const list = await freshRaw(d.id);
-  await putTasks(d.id, [...list.filter((t) => platOf(t) !== pf), { ...task, id: freshId(), platform: pf }]);
+export function batchCreate(d: Device, pf: string, task: RawTask): Promise<void> {
+  return stopThenPut(d, [pf], (list) => [...list.filter((t) => platOf(t) !== pf), { ...task, id: freshId(), platform: pf }]);
 }
 
 export interface BatchResult { ok: number; fails: { device: Device; reason: string }[] }

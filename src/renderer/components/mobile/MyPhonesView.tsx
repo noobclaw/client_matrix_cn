@@ -43,6 +43,9 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
   const hidden = useComplianceHidden();
   const platforms = visiblePlatforms(hidden);
   const tiktokVisible = platforms.some((p) => p.id === 'tiktok');
+  // Batch: run / create need a live visible platform; with no visible platform at all there is nothing to do.
+  const liveVisible = platforms.some((p) => p.live);
+  const batchOn = platforms.length > 0;
   const upgrade = useCallback(() => { if (onUpgrade) onUpgrade(); else openWallet('subscription'); }, [onUpgrade]);
 
   const flash = useCallback((t: string) => {
@@ -135,8 +138,8 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
       onDeleteTask={(t) => setConfirm({ kind: 'task', device: d, task: t })}
       onRemove={() => setConfirm({ kind: 'remove', device: d })}
       onUpgrade={upgrade}
-      picked={picked.has(d.id)}
-      onPick={(on) => setPicked((s) => { const n = new Set(s); if (on) n.add(d.id); else n.delete(d.id); return n; })} />
+      picked={batchOn && picked.has(d.id)}
+      onPick={!batchOn ? undefined : (on) => setPicked((s) => { const n = new Set(s); if (on) n.add(d.id); else n.delete(d.id); return n; })} />
   ));
   const selectableIds = list.filter(selectable).map((d) => d.id);
   const allPicked = selectableIds.length > 0 && selectableIds.every((id) => picked.has(id));
@@ -167,7 +170,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
             </nav>
           )}
         </div>
-        {!detail && devices && (
+        {!detail && devices && batchOn && (
           <div className={`flex items-center gap-1.5 flex-wrap -mt-1 px-2.5 py-2 rounded-xl border ${bd} ${surface} text-[12.5px]`}>
             <label className={`inline-flex items-center gap-1.5 mr-1.5 cursor-pointer ${sub}`}>
               <input type="checkbox" className="w-[15px] h-[15px] m-0 cursor-pointer accent-[#00ff88]" checked={allPicked} disabled={!selectableIds.length}
@@ -176,10 +179,10 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
             </label>
             <span className={sub}>{L('已选', '已選', 'Selected')} <b className="text-green-600 dark:text-claude-accent">{nPicked}</b> {L('台', '台', '')}</span>
             <span className="ml-auto" />
-            <button type="button" disabled={!nPicked} onClick={() => setBatch('run')} className={`${barBtn} ${bd} dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover ${txt}`}>▶ {L('批量运行', '批量運行', 'Run')}</button>
+            {liveVisible && <button type="button" disabled={!nPicked} onClick={() => setBatch('run')} className={`${barBtn} ${bd} dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover ${txt}`}>▶ {L('批量运行', '批量運行', 'Run')}</button>}
             <button type="button" disabled={!nPicked} onClick={() => setBatch('stop')} className={`${barBtn} border-[#ff5c7a]/45 dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover text-[#ff5c7a]`}>■ {L('批量停止', '批量停止', 'Stop')}</button>
             <button type="button" disabled={!nPicked} onClick={() => setBatch('del')} className={`${barBtn} ${bd} dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover text-[#ff5c7a]`}>{L('批量删除任务', '批量刪除任務', 'Delete tasks')}</button>
-            <button type="button" onClick={() => setBatch('new')} className={`${barBtn} border-claude-accent bg-claude-accent text-[#04140c]`}>＋ {L('批量创建任务', '批量建立任務', 'Create tasks')}</button>
+            {liveVisible && <button type="button" onClick={() => setBatch('new')} className={`${barBtn} border-claude-accent bg-claude-accent text-[#04140c]`}>＋ {L('批量创建任务', '批量建立任務', 'Create tasks')}</button>}
           </div>
         )}
         {err && <div className="text-sm text-[#ff5c7a]">{err}</div>}
@@ -194,7 +197,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
         )}
       </div>
 
-      {batch && devices && (
+      {batch && devices && batchOn && (
         <BatchDialog act={batch} devices={devices} picked={picked} platforms={platforms}
           onClose={() => setBatch(null)} onFinished={() => { void load(true); }} />
       )}

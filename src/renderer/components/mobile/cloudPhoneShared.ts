@@ -60,15 +60,33 @@ export class ApiError extends Error {
   constructor(code: string, status: number) { super(code); this.status = status; }
 }
 
+const API_TIMEOUT_MS = 20_000;
+
 export async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${getBackendApiUrl()}/api/mobile-console${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...noobClawAuth.getAuthHeaders(), ...((init?.headers as Record<string, string>) || {}) },
-  });
-  if (res.status === 401) noobClawAuth.handleAuthExpired();
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(String(j?.error || `HTTP ${res.status}`), res.status);
-  return j as T;
+  // Every request gives up after 20 s so nothing (e.g. a batch in progress) can hang forever.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS);
+  try {
+    let res: Response;
+    try {
+      res = await fetch(`${getBackendApiUrl()}/api/mobile-console${path}`, {
+        ...init,
+        signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', ...noobClawAuth.getAuthHeaders(), ...((init?.headers as Record<string, string>) || {}) },
+      });
+    } catch {
+      throw new ApiError(ctrl.signal.aborted ? 'timeout' : 'network_error', 0);
+    }
+    if (res.status === 401) noobClawAuth.handleAuthExpired();
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(String(j?.error || `HTTP ${res.status}`), res.status);
+    return j as T;
+  } catch (e) {
+    if (ctrl.signal.aborted && !(e instanceof ApiError && e.message === 'timeout')) throw new ApiError('timeout', 0);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Turns an API error code into a short sentence. */
@@ -86,6 +104,8 @@ export function errText(e: unknown): string {
     case 'duplicate_task_id': return L('任务编号重复，请刷新后重试', '任務編號重複，請重新整理後重試', 'Duplicate task id — refresh and try again');
     case 'invalid_action': return L('不支持的操作', '不支援的操作', 'Unsupported action');
     case 'invalid_tasks': return L('任务设置有误', '任務設定有誤', 'Invalid task settings');
+    case 'timeout': return L('请求超时，请检查网络后重试', '請求逾時，請檢查網路後重試', 'The request timed out — check the network and try again');
+    case 'network_error': return L('网络连接失败，请稍后重试', '網路連線失敗，請稍後重試', 'Network error — try again later');
     case 'server_error': return L('服务器出错，请稍后重试', '伺服器出錯，請稍後重試', 'Server error — try again later');
     default:
       if (/^HTTP 5\d\d$/.test(code)) return L('服务器出错，请稍后重试', '伺服器出錯，請稍後重試', 'Server error — try again later');
