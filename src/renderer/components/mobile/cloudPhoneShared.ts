@@ -190,6 +190,9 @@ export function openExternal(url: string | undefined): void {
 
 // ───────────────────────── scripts / levels ─────────────────────────
 export interface Platform { id: PlatformId; name: () => string; live: boolean }
+/** Short device id for display: the first block of the id (e.g. "c520ac72"); full id stays in tooltips. */
+export const shortId = (id: string): string => { const h = String(id || '').split('-')[0]; return h.length >= 6 ? h : String(id || '').slice(0, 12); };
+
 export const PLATFORMS: Platform[] = [
   { id: 'tiktok', name: () => 'TikTok', live: true },
   { id: 'douyin', name: () => L('抖音', '抖音', 'Douyin'), live: false },

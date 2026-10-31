@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { openWallet } from '../../services/walletNav';
 import {
   ConsoleConfig, Device, L, PlatformId, taskName, TaskView, api, bd, deleteTask, errText, sendCommand, sub, surface, txt, visiblePlatforms,
-  normDevice,
+  normDevice, shortId,
 } from './cloudPhoneShared';
 import { AndroidIcon, ConfirmDialog, useComplianceHidden } from './cloudPhoneUi';
 import { AddCard, GuideCard, PhoneCard } from './PhoneCard';
@@ -209,12 +209,12 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
       {confirm && (confirm.kind === 'remove' ? (
         <ConfirmDialog busy={busy} title={L('移除这台手机？', '移除這台手機？', 'Remove this phone?')}
           body={tiktokVisible
-            ? L(`${confirm.device.vendor || confirm.device.id} 已离线。移除后会清空它的任务和绑定的 TikTok 账号，运行记录保留；空出 1 个手机槽位。这台手机以后重新上线，会自动回到列表。`,
-              `${confirm.device.vendor || confirm.device.id} 已離線。移除後會清空它的任務和綁定的 TikTok 帳號，運行記錄保留；空出 1 個手機槽位。這台手機以後重新上線，會自動回到列表。`,
-              `${confirm.device.vendor || confirm.device.id} is offline. Removing it clears its tasks and linked TikTok account (run history is kept) and frees 1 phone slot. If the phone comes back online it returns to the list.`)
-            : L(`${confirm.device.vendor || confirm.device.id} 已离线。移除后会清空它的任务和绑定的账号，运行记录保留；空出 1 个手机槽位。这台手机以后重新上线，会自动回到列表。`,
-              `${confirm.device.vendor || confirm.device.id} 已離線。移除後會清空它的任務和綁定的帳號，運行記錄保留；空出 1 個手機槽位。這台手機以後重新上線，會自動回到列表。`,
-              `${confirm.device.vendor || confirm.device.id} is offline. Removing it clears its tasks and linked account (run history is kept) and frees 1 phone slot. If the phone comes back online it returns to the list.`)}
+            ? L(`${confirm.device.vendor || shortId(confirm.device.id)} 已离线。移除后会清空它的任务和绑定的 TikTok 账号，运行记录保留；空出 1 个手机槽位。这台手机以后重新上线，会自动回到列表。`,
+              `${confirm.device.vendor || shortId(confirm.device.id)} 已離線。移除後會清空它的任務和綁定的 TikTok 帳號，運行記錄保留；空出 1 個手機槽位。這台手機以後重新上線，會自動回到列表。`,
+              `${confirm.device.vendor || shortId(confirm.device.id)} is offline. Removing it clears its tasks and linked TikTok account (run history is kept) and frees 1 phone slot. If the phone comes back online it returns to the list.`)
+            : L(`${confirm.device.vendor || shortId(confirm.device.id)} 已离线。移除后会清空它的任务和绑定的账号，运行记录保留；空出 1 个手机槽位。这台手机以后重新上线，会自动回到列表。`,
+              `${confirm.device.vendor || shortId(confirm.device.id)} 已離線。移除後會清空它的任務和綁定的帳號，運行記錄保留；空出 1 個手機槽位。這台手機以後重新上線，會自動回到列表。`,
+              `${confirm.device.vendor || shortId(confirm.device.id)} is offline. Removing it clears its tasks and linked account (run history is kept) and frees 1 phone slot. If the phone comes back online it returns to the list.`)}
           confirmText={L('移除', '移除', 'Remove')} onCancel={() => setConfirm(null)} onConfirm={doConfirm} />
       ) : (
         <ConfirmDialog busy={busy} title={L('删除这个任务？', '刪除這個任務？', 'Delete this task?')}

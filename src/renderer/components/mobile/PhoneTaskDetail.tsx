@@ -3,7 +3,7 @@ import {
   Device, L, Run, Step, taskName, accountOf, api, bd, btnGhost, btnPrimary, capsText, countKeys, deleteTask, errText, fmtCost, fmtCountsIcons,
   fmtDuration, fmtNext, fmtRelFuture, fmtTotals, fmtWhen, isManual, lastWarn, modeName, num, runStatus, scheduleText, sendCommand,
   shortTarget, stepLines, stepText, sub, surface, surface2, targetLabel, txt,
-  normDevice,
+  normDevice, shortId,
 } from './cloudPhoneShared';
 import { ConfirmDialog } from './cloudPhoneUi';
 import PhoneTaskEditor from './PhoneTaskEditor';
@@ -171,7 +171,7 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-black text-white border border-[#25f4ee]">TikTok</span>
                 <b className={`text-[17px] ${txt}`}>{taskName(task)}</b>
-                <span className={`font-mono text-[11px] ${sub}`}>{L('设备ID', '設備ID', 'Device ID')} {device.id}</span>
+                <span className={`font-mono text-[11px] ${sub}`}>{L('设备ID', '設備ID', 'Device ID')} {shortId(device.id)}</span>
               </div>
               <div className="grid grid-cols-1 gap-1.5 text-[12.5px]">
                 {row(L('账号', '帳號', 'Account'), [acct ? `${acct.nickname} ${acct.handle}`.trim() : '—', device.vendor].filter(Boolean).join(' · '))}

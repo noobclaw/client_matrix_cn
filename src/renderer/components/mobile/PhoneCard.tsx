@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  ConsoleConfig, Device, L, Platform, PlatformId, taskName, TaskView, accountOf, bd, btnGhost, btnPrimary, countKeys, fmtCost, fmtTotals,
+  ConsoleConfig, Device, L, Platform, PlatformId, shortId, taskName, TaskView, accountOf, bd, btnGhost, btnPrimary, countKeys, fmtCost, fmtTotals,
   fmtWhen, lastWarn, modeName, nextRunText, num, openExternal, shortTarget, stepLines, sub, surface, surface2, targetLabel, txt,
 } from './cloudPhoneShared';
 import { AccountRow } from './cloudPhoneUi';
@@ -78,7 +78,7 @@ export const PhoneCard: React.FC<PhoneCardProps> = (p) => {
               onChange={(e) => p.onPick?.(e.target.checked)} aria-label={`${L('选择', '選擇', 'Select')} ${d.id}`} />
           )}
           <span className={`min-w-0 font-mono text-[10.5px] font-semibold px-[7px] py-0.5 rounded-[7px] border ${bd} truncate ${offline ? `${sub} bg-gray-500/10` : `${txt} bg-black/[.04] dark:bg-white/[.06]`}`} title={d.id}>
-            {L('设备ID', '設備ID', 'Device ID')}: {d.id}
+            {L('设备ID', '設備ID', 'Device ID')}: {shortId(d.id)}
           </span>
         </div>
         <div className="cp-top flex items-center justify-between gap-2 min-w-0">

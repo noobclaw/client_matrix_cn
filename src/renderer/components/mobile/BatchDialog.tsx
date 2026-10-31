@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Device, L, Platform, PlatformId, RawTask, ScriptId, accountOf, bd, btnGhost, btnPrimary, scriptName, sub, surface, surface2, taskName, txt,
+  Device, L, Platform, PlatformId, RawTask, ScriptId, accountOf, shortId, bd, btnGhost, btnPrimary, scriptName, sub, surface, surface2, taskName, txt,
 } from './cloudPhoneShared';
 import {
   BatchAct, BatchResult, batchCreate, batchDelete, batchRun, batchStop, canStop, createBlock, hasTasksOf, runPool, runSkip,
@@ -161,7 +161,7 @@ const BatchDialog: React.FC<BatchDialogProps> = ({ act, devices, picked, platfor
             <li key={d.id} className={`grid grid-cols-[18px_1fr_auto] gap-2 items-center px-[9px] py-[7px] border ${bd} rounded-[10px] text-xs ${bad ? 'opacity-45' : ''}`}>
               <input type="checkbox" className="w-[15px] h-[15px] accent-[#00ff88] cursor-pointer m-0" checked={on} disabled={!!bad}
                 aria-label={d.id} onChange={(e) => { const c = e.target.checked; setDevs((s) => { const n = new Set(s); if (c) n.add(d.id); else n.delete(d.id); return n; }); }} />
-              <span className="min-w-0 truncate"><span className={`font-mono text-[11px] ${txt}`}>{d.id}</span> <span className={`text-[11px] ${sub}`}>{acct ? `${acct.nickname} ${acct.handle}`.trim() : (d.vendor || '')}</span></span>
+              <span className="min-w-0 truncate"><span className={`font-mono text-[11px] ${txt}`} title={d.id}>{shortId(d.id)}</span> <span className={`text-[11px] ${sub}`}>{acct ? `${acct.nickname} ${acct.handle}`.trim() : (d.vendor || '')}</span></span>
               {tag}
             </li>
           );
