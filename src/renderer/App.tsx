@@ -1175,6 +1175,8 @@ const App: React.FC = () => {
           activeKey={mainView === 'matrixTaskNew' ? (scenarioInDetail ? 'matrixTasks' : 'home') : mainView}
           subPage={mainView === 'matrixTaskNew' && !scenarioInDetail ? { icon: '✨', label: i18nService.currentLanguage === 'zh' ? '创建任务' : i18nService.currentLanguage === 'zh-TW' ? '建立任務' : 'Create a task' } : undefined}
           updateBadge={simpleUi ? updateBadge : null}
+          // 云手机页不显示指纹浏览器入口(与该页无关)
+          hideKernelPicker={mainView === 'cloudPhone'}
         />
       )}
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -1363,7 +1365,7 @@ const App: React.FC = () => {
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
               />
             ) : mainView === 'cloudPhone' ? (
-              <MyPhonesView />
+              <MyPhonesView onUpgrade={() => openWallet('subscription')} />
             ) : (mainView === 'matrix') ? (
               // 「我的矩阵账号」= 账号管理(增删/登录/配赛道关键词人设),仍走 MatrixView。
               <MatrixView

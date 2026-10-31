@@ -1,350 +1,168 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { i18nService } from '../../services/i18n';
-import { getBackendApiUrl } from '../../services/endpoints';
-import { noobClawAuth } from '../../services/noobclawAuth';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { openWallet } from '../../services/walletNav';
+import {
+  ConsoleConfig, Device, L, PlatformId, TaskView, api, bd, deleteTask, errText, sendCommand, sub, surface, txt, visiblePlatforms,
+} from './cloudPhoneShared';
+import { AndroidIcon, ConfirmDialog, useComplianceHidden } from './cloudPhoneUi';
+import { AddCard, GuideCard, PhoneCard } from './PhoneCard';
+import PhoneTaskDetail from './PhoneTaskDetail';
+import PhoneTaskEditor from './PhoneTaskEditor';
+import './cloudPhone.css';
 
 /**
- * 雲手機 — phones running NoobClaw Mobile on this account: status, their tasks (same list as on the phone),
- * run / stop from the desktop, run history and logs. Commands reach the phone with its next heartbeat (~15 s on app 0.4.1+).
+ * 云手机 — phones running NoobClaw Mobile on this account, drawn as vertical phone cards. Slot count = plan's
+ * phone_limit; every empty slot shows the setup guide; an "add slots" card follows unless the plan is ultra.
+ * Commands reach the phone with its next heartbeat (~15 s). The task detail opens inline in this page.
  */
 
-type Counts = Record<string, number>;
-interface Device {
-  id: string; vendor: string; ip?: string; over_limit?: boolean; app_ver: string; online: boolean; last_seen: number; a11y: boolean; running: boolean;
-  cooldown_until: number; account: string; task_count: number; today: Counts;
-  last_run: { status: string; reason: string; dry_run: boolean; counts: Counts; at: number } | null;
-}
-interface Task {
-  id: string; name: string; script_id: string; enabled: boolean; slots: string[]; tz: string;
-  max_likes: number; max_comments: number; max_follows: number; persona: string; config: any;
-}
-interface Run { run_id: string; status: string; reason: string; dry_run: boolean; task_id: string; counts: Counts; duration_ms: number; at: number }
-interface LogLine { ts: number; level: string; msg: string; run_id: string | null }
+const PAGE = 9;
 
-const isZh = () => i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
-// 文案按繁體寫;簡體(zh)界面在運行時逐字轉成簡體(只覆蓋本文件用到的字)。
-const T2S: Record<string, string> = Object.fromEntries(
-  ('臺台員员級级確确認认覆复帳账個个內内刪删劇剧動动務务區区執执帳帐戶户後后敗败數数時时暫暂會会東东機机權权沒没無无獲获現现發发線线編编號号裝装裡里記记設设評评詞词試试誌志請请論论讚赞載载輯辑這这運运選选還还錄录鍵键鏈链鐘钟關关離离點点卻却雲云')
-    .match(/../g)!.map((p) => [p[0], p[1]]),
-);
-const toSimp = (s: string) => s.replace(/[\u4e00-\u9fff]/g, (c) => T2S[c] || c);
-const T = (zh: string, en: string) => (i18nService.currentLanguage === 'zh' ? toSimp(zh) : isZh() ? zh : en);
+type Confirm = { kind: 'remove'; device: Device } | { kind: 'task'; device: Device; task: TaskView };
 
-const SCRIPTS: Record<string, { zh: string; en: string; icon: string }> = {
-  tiktok_comment_like: { zh: '評論區點讚', en: 'Comment likes', icon: '💬' },
-  tiktok_lead_engage: { zh: '定向獲客', en: 'Lead engage', icon: '🎯' },
-};
-const LEVELS: Record<string, Record<string, { likes: number; comments: number; follows: number; leads: number }>> = {
-  tiktok_comment_like: { low: { likes: 30, comments: 5, follows: 0, leads: 0 }, mid: { likes: 100, comments: 15, follows: 0, leads: 0 }, high: { likes: 300, comments: 30, follows: 0, leads: 0 } },
-  tiktok_lead_engage: { low: { likes: 10, comments: 5, follows: 10, leads: 10 }, mid: { likes: 30, comments: 15, follows: 30, leads: 30 }, high: { likes: 100, comments: 30, follows: 50, leads: 100 } },
-};
-const COUNT_LABELS: Record<string, [string, string]> = {
-  like: ['點讚', 'likes'], comment: ['評論', 'comments'], follow: ['關注', 'follows'], lead_new: ['新客戶', 'leads'],
-};
-
-async function api(path: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(`${getBackendApiUrl()}/api/mobile-console${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...noobClawAuth.getAuthHeaders(), ...(init?.headers || {}) },
-  });
-  if (res.status === 401) noobClawAuth.handleAuthExpired();
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(j?.error || `HTTP ${res.status}`);
-  return j;
-}
-
-const fmtCounts = (c: Counts) => Object.keys(COUNT_LABELS).filter((k) => (c?.[k] || 0) > 0)
-  .map((k) => `${T(COUNT_LABELS[k][0], COUNT_LABELS[k][1])} ${c[k]}`).join(' · ') || '—';
-const fmtTime = (ms: number) => (ms ? new Date(ms).toLocaleString(isZh() ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
-const levelOf = (t: Task) => t.config?.level || (t.max_likes <= 30 ? 'low' : t.max_likes >= 200 ? 'high' : 'mid');
-const whereOf = (t: Task): string[] => [...(t.config?.urls || []), ...(t.config?.seed_accounts || []), ...(t.config?.keywords || [])];
-
-const Pill: React.FC<{ color: 'green' | 'gray' | 'amber' | 'purple' | 'red'; children: React.ReactNode }> = ({ color, children }) => {
-  const c = {
-    green: 'bg-green-500/10 text-green-600 dark:text-green-400',
-    gray: 'bg-gray-500/10 text-gray-500',
-    amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-    purple: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
-    red: 'bg-red-500/10 text-red-600 dark:text-red-400',
-  }[color];
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${c}`}>{children}</span>;
-};
-
-function deviceStatus(d: Device): React.ReactNode {
-  if (!d.online) return <Pill color="gray">{T('離線', 'Offline')}</Pill>;
-  if (d.over_limit) return <Pill color="amber">{T('超出會員數量', 'Over plan limit')}</Pill>;
-  if (d.running) return <Pill color="green">{T('運行中', 'Running')}</Pill>;
-  if (!d.a11y) return <Pill color="amber">{T('缺權限', 'Permission needed')}</Pill>;
-  if (d.cooldown_until > Date.now()) return <Pill color="red">{T('冷卻中', 'Cooling down')}</Pill>;
-  return <Pill color="green">{T('在線', 'Online')}</Pill>;
-}
-
-const btn = 'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors';
-const btnPrimary = `${btn} bg-claude-accent text-black hover:opacity-90`;
-const btnGhost = `${btn} border dark:border-claude-darkBorder border-claude-border dark:text-claude-darkText text-claude-text hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover`;
-const card = 'rounded-xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface p-4';
-
-// ───────────────────────── task editor ─────────────────────────
-const TaskEditor: React.FC<{ initial: Task | null; onCancel: () => void; onSave: (t: Task) => void }> = ({ initial, onCancel, onSave }) => {
-  const [script, setScript] = useState(LEVELS[initial?.script_id || ''] ? initial!.script_id : 'tiktok_comment_like');
-  const [where, setWhere] = useState(initial ? whereOf(initial).join('\n') : '');
-  const [level, setLevel] = useState<string>(initial && ['low', 'mid', 'high'].includes(levelOf(initial)) ? levelOf(initial) : 'mid');
-  const [persona, setPersona] = useState(initial?.persona || '');
-  const [auto, setAuto] = useState(initial ? initial.enabled : true);
-  const [slots, setSlots] = useState<string[]>(initial?.slots?.length ? initial.slots : ['09:30', '20:00']);
-  const [err, setErr] = useState('');
-  const lv = (LEVELS[script] || LEVELS.tiktok_comment_like)[level] || LEVELS.tiktok_comment_like.mid;
-
-  const save = () => {
-    const items = Array.from(new Set(where.split(/[\n,，]/).map((x) => x.trim()).filter(Boolean)));
-    if (!items.length) { setErr(T('請填關鍵詞', 'Enter keywords')); return; }
-    const links = items.filter((x) => /^https?:/i.test(x) || x.startsWith('@'));
-    const words = items.filter((x) => !links.includes(x));
-    // Editing keeps every setting the editor does not show (replies off, run minutes, …).
-    const prev = initial?.config || {};
-    const config: any = { ...prev, level };
-    if (script === 'tiktok_comment_like') {
-      const urls = links.map((x) => (x.startsWith('@') ? `https://www.tiktok.com/${x}` : x));
-      Object.assign(config, { comment_mode: urls.length ? 'precise' : 'keywords', urls, keywords: words,
-        cl_do_like: prev.cl_do_like !== false, cl_do_reply: prev.cl_do_reply !== false });
-    } else {
-      Object.assign(config, { mode: links.length ? 'accounts' : 'keywords', seed_accounts: links, keywords: words, leads_per_run: lv.leads,
-        lead_do_like: prev.lead_do_like !== false, lead_do_follow: prev.lead_do_follow !== false, lead_do_comment: prev.lead_do_comment !== false });
-    }
-    onSave({
-      ...(initial || {}),
-      id: initial?.id || 't' + Date.now().toString(36),
-      name: initial?.name || `${T(SCRIPTS[script].zh, SCRIPTS[script].en)} · ${items[0].replace('https://www.tiktok.com/', '').slice(0, 20)}`,
-      script_id: script, enabled: auto, slots: [...slots].sort(), tz: initial?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      max_likes: lv.likes, max_comments: lv.comments, max_follows: lv.follows, persona: persona.slice(0, 400), config,
-    });
-  };
-
-  const chip = (on: boolean) => `${btn} ${on ? 'bg-claude-accent text-black' : 'border dark:border-claude-darkBorder border-claude-border dark:text-claude-darkText text-claude-text'}`;
-  const label = 'text-xs font-semibold dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1.5 block';
-  const input = 'w-full rounded-lg border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurfaceInset bg-claude-surfaceInset px-3 py-2 text-sm dark:text-claude-darkText text-claude-text outline-none focus:border-claude-accent';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div className={`${card} w-[460px] max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text mb-4">{initial ? T('編輯任務', 'Edit task') : T('新建任務', 'New task')}</h3>
-        <span className={label}>{T('劇本', 'Script')}</span>
-        <div className="flex gap-2 mb-4">
-          {Object.entries(SCRIPTS).map(([id, s]) => (
-            <button key={id} type="button" disabled={!!initial} className={chip(script === id)} onClick={() => setScript(id)}>{s.icon} {T(s.zh, s.en)}</button>
-          ))}
-        </div>
-        <span className={label}>{script === 'tiktok_comment_like' ? T('關鍵詞 / 鏈接', 'Keywords / links') : T('關鍵詞 / 同行帳號', 'Keywords / @accounts')}</span>
-        <textarea className={`${input} mb-4`} rows={3} value={where} onChange={(e) => setWhere(e.target.value)}
-          placeholder={script === 'tiktok_comment_like' ? T('每行一個，例如 latte art', 'One per line, e.g. latte art') : T('每行一個，例如 latte art 或 @rival', 'One per line, e.g. latte art or @rival')} />
-        <span className={label}>{T('數量', 'Amount')}</span>
-        <div className="flex gap-2 mb-1.5">
-          {(['low', 'mid', 'high'] as const).map((k) => (
-            <button key={k} type="button" className={`${chip(level === k)} flex-1`} onClick={() => setLevel(k)}>{T({ low: '少', mid: '中', high: '多' }[k], { low: 'Few', mid: 'Normal', high: 'Many' }[k])}</button>
-          ))}
-        </div>
-        <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-4">
-          {script === 'tiktok_comment_like' ? `${T('點讚', 'Likes')} ${lv.likes} · ${T('回覆', 'Replies')} ${lv.comments}`
-            : `${T('客戶', 'Leads')} ${lv.leads} · ${T('關注', 'Follows')} ${lv.follows} · ${T('點讚', 'Likes')} ${lv.likes} · ${T('評論', 'Comments')} ${lv.comments}`}
-        </p>
-        <span className={label}>{T('人設（選填）', 'Persona (optional)')}</span>
-        <input className={`${input} mb-4`} value={persona} onChange={(e) => setPersona(e.target.value)} placeholder={T('例如：東京咖啡店', 'e.g. a coffee shop in Tokyo')} />
-        <span className={label}>{T('定時', 'Schedule')}</span>
-        <div className="flex gap-2 mb-2">
-          <button type="button" className={`${chip(auto)} flex-1`} onClick={() => setAuto(true)}>{T('每天', 'Daily')}</button>
-          <button type="button" className={`${chip(!auto)} flex-1`} onClick={() => setAuto(false)}>{T('手動', 'Manual')}</button>
-        </div>
-        {auto && (
-          <div className="flex gap-2 mb-4">
-            {slots.map((s, i) => (
-              <input key={i} type="time" className={input} value={s} onChange={(e) => setSlots(slots.map((x, j) => (j === i ? e.target.value : x)))} />
-            ))}
-          </div>
-        )}
-        {err && <p className="text-sm text-red-500 mb-3">{err}</p>}
-        <div className="flex justify-end gap-2 mt-2">
-          <button type="button" className={btnGhost} onClick={onCancel}>{T('取消', 'Cancel')}</button>
-          <button type="button" className={btnPrimary} onClick={save}>{T('保存', 'Save')}</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ───────────────────────── phone detail ─────────────────────────
-const PhoneDetail: React.FC<{ id: string; onBack: () => void }> = ({ id, onBack }) => {
-  const [data, setData] = useState<{ device: Device; tasks: Task[]; runs: Run[] } | null>(null);
-  const [editing, setEditing] = useState<Task | null | 'new'>(null);
-  const [logs, setLogs] = useState<{ run: Run; lines: LogLine[] } | null>(null);
-  const [msg, setMsg] = useState('');
-
-  const load = useCallback(() => { api(`/devices/${id}`).then(setData).catch((e) => setMsg(e.message)); }, [id]);
-  useEffect(() => { load(); const t = setInterval(load, 10_000); return () => clearInterval(t); }, [load]);
-
-  const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(''), 4000); };
-  const saveTasks = async (tasks: Task[]) => {
-    try { await api(`/devices/${id}/tasks`, { method: 'PUT', body: JSON.stringify({ tasks }) }); flash(T('已保存，手機 1 分鐘內同步', 'Saved — the phone syncs within a minute')); load(); }
-    catch (e: any) { flash(T('保存失敗：', 'Save failed: ') + e.message); }
-  };
-  const command = async (action: string, taskId?: string) => {
-    try {
-      await api(`/devices/${id}/command`, { method: 'POST', body: JSON.stringify({ action, task_id: taskId }) });
-      flash(T('已發送，手機約 15 秒內執行', 'Sent — the phone acts within ~15 s'));
-    } catch (e: any) {
-      const m = e.message === 'phone_offline' ? T('手機離線', 'Phone is offline')
-        : e.message === 'phone_over_limit' ? T('超出會員可用手機數，升級會員或移除不用的手機', 'Over the plan\'s phone limit — upgrade or remove unused phones')
-        : e.message === 'app_update_required' ? T('請先把手機 App 更新到 0.4.0 以上', 'Update the phone app to 0.4.0+ first')
-        : e.message;
-      flash(T('發送失敗：', 'Failed: ') + m);
-    }
-  };
-  const openLogs = async (run: Run) => {
-    try { const r = await api(`/devices/${id}/logs?run_id=${encodeURIComponent(run.run_id)}`); setLogs({ run, lines: r.logs || [] }); }
-    catch (e: any) { flash(e.message); }
-  };
-
-  if (!data) return <div className="p-6 text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{msg || T('加載中…', 'Loading…')}</div>;
-  const d = data.device;
-  const taskName = (tid: string) => data.tasks.find((t) => t.id === tid)?.name || '';
-
-  return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center gap-3">
-        <button type="button" className={btnGhost} onClick={onBack}>← {T('返回', 'Back')}</button>
-        <h2 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">📱 {d.vendor || d.id.slice(0, 8)}{d.ip ? <span className="ml-2 text-sm font-normal font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{d.ip}</span> : null}</h2>
-        {deviceStatus(d)}
-        <span className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{d.account || 'TikTok'} · v{d.app_ver}</span>
-        <div className="flex-1" />
-        {d.running && <button type="button" className={`${btn} bg-red-500 text-white`} onClick={() => command('stop')}>■ {T('停止', 'Stop')}</button>}
-      </div>
-      {msg && <div className="text-sm text-claude-accent">{msg}</div>}
-
-      <div>
-        <div className="flex items-center mb-2">
-          <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text flex-1">{T('任務', 'Tasks')}</h3>
-          <button type="button" className={btnPrimary} onClick={() => setEditing('new')}>＋ {T('新建任務', 'New task')}</button>
-        </div>
-        {data.tasks.length === 0 && <div className={`${card} text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary`}>{T('還沒有任務', 'No tasks yet')}</div>}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {data.tasks.map((t) => (
-            <div key={t.id} className={card}>
-              <div className="flex items-center gap-2 mb-1">
-                <span>{SCRIPTS[t.script_id]?.icon || '📋'}</span>
-                <span className="font-medium dark:text-claude-darkText text-claude-text flex-1 truncate">{t.name || (SCRIPTS[t.script_id] ? T(SCRIPTS[t.script_id].zh, SCRIPTS[t.script_id].en) : t.script_id)}</span>
-                {t.enabled ? <Pill color="purple">{T('定時', 'Daily')}</Pill> : <Pill color="gray">{T('手動', 'Manual')}</Pill>}
-              </div>
-              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">
-                {[whereOf(t)[0]?.replace('https://www.tiktok.com/', ''), T({ low: '少', mid: '中', high: '多' }[levelOf(t) as 'low'] || '中', ({ low: 'Few', mid: 'Normal', high: 'Many' } as Record<string, string>)[levelOf(t)] || 'Normal'), t.enabled ? t.slots.join(' / ') : ''].filter(Boolean).join('  ·  ')}
-              </p>
-              <div className="flex gap-2">
-                <button type="button" className={btnPrimary} onClick={() => command('run', t.id)}>▶ {T('運行', 'Run')}</button>
-                <button type="button" className={btnGhost} onClick={() => command('dry_run', t.id)}>{T('試跑', 'Dry run')}</button>
-                <button type="button" className={btnGhost} onClick={() => setEditing(t)}>{T('編輯', 'Edit')}</button>
-                <button type="button" className={`${btnGhost} text-red-500`} onClick={() => { if (window.confirm(T('刪除這個任務？', 'Delete this task?'))) saveTasks(data.tasks.filter((x) => x.id !== t.id)); }}>{T('刪除', 'Delete')}</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text mb-2">{T('運行記錄', 'Runs')}</h3>
-        <div className={`${card} p-0 overflow-hidden`}>
-          {data.runs.length === 0 && <div className="p-4 text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{T('暫無記錄', 'No runs yet')}</div>}
-          {data.runs.map((r) => (
-            <button key={r.run_id} type="button" onClick={() => openLogs(r)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm border-b last:border-b-0 dark:border-claude-darkBorder border-claude-border hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover">
-              <span className="w-28 shrink-0 dark:text-claude-darkTextSecondary text-claude-textSecondary">{fmtTime(r.at)}</span>
-              <span className="w-40 shrink-0 truncate dark:text-claude-darkText text-claude-text">{taskName(r.task_id) || '—'}{r.dry_run ? T('（試跑）', ' (dry)') : ''}</span>
-              <span className="flex-1 dark:text-claude-darkText text-claude-text">{fmtCounts(r.counts)}</span>
-              {r.status === 'done' ? <Pill color="green">{T('完成', 'Done')}</Pill>
-                : r.status === 'stopped' ? <Pill color="gray">{T('已停止', 'Stopped')}</Pill>
-                : <Pill color="red">{r.reason || r.status}</Pill>}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {editing && (
-        <TaskEditor initial={editing === 'new' ? null : editing} onCancel={() => setEditing(null)}
-          onSave={(t) => { const list = data.tasks.some((x) => x.id === t.id) ? data.tasks.map((x) => (x.id === t.id ? t : x)) : [...data.tasks, t]; setEditing(null); saveTasks(list); }} />
-      )}
-      {logs && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setLogs(null)}>
-          <div className={`${card} w-[640px] max-h-[80vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text mb-3">{fmtTime(logs.run.at)} · {fmtCounts(logs.run.counts)}</h3>
-            {logs.lines.length === 0 && <p className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{T('暫無日誌', 'No log lines')}</p>}
-            {logs.lines.map((l, i) => (
-              <div key={i} className={`text-xs font-mono py-0.5 ${l.level === 'error' ? 'text-red-500' : l.level === 'warn' ? 'text-amber-500' : 'dark:text-claude-darkText text-claude-text'}`}>
-                <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary mr-2">{new Date(l.ts).toLocaleTimeString()}</span>{l.msg}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ───────────────────────── phone list ─────────────────────────
-const MyPhonesView: React.FC = () => {
+const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [limit, setLimit] = useState(0);
+  const [plan, setPlan] = useState('');
   const [err, setErr] = useState('');
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [msg, setMsg] = useState('');
+  const [config, setConfig] = useState<ConsoleConfig | null>(null);
+  const [page, setPage] = useState(1);
+  const [sel, setSel] = useState<Record<string, PlatformId>>({});
+  const [detail, setDetail] = useState<{ deviceId: string; taskId: string } | null>(null);
+  const [editor, setEditor] = useState<{ device: Device; task: TaskView | null } | null>(null);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  const [busy, setBusy] = useState(false);
+  const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(() => { api('/devices').then((r) => { setDevices(r.devices || []); setLimit(Number(r.phone_limit) || 0); setErr(''); }).catch((e) => setErr(e.message)); }, []);
-  // 離線手機可移除(點兩下確認);在線的手機服務器會拒絕(它下次心跳又會冒出來)。
-  const [confirmDel, setConfirmDel] = useState<string | null>(null);
-  const remove = async (id: string) => {
-    if (confirmDel !== id) { setConfirmDel(id); setTimeout(() => setConfirmDel((c) => (c === id ? null : c)), 4000); return; }
-    setConfirmDel(null);
-    try { await api(`/devices/${id}`, { method: 'DELETE' }); load(); }
-    catch (e: any) { setErr(e.message === 'phone_online' ? T('手機在線，不能移除', 'The phone is online and cannot be removed') : e.message); }
+  const hidden = useComplianceHidden();
+  const platforms = visiblePlatforms(hidden);
+  const tiktokVisible = platforms.some((p) => p.id === 'tiktok');
+  const upgrade = useCallback(() => { if (onUpgrade) onUpgrade(); else openWallet('subscription'); }, [onUpgrade]);
+
+  const flash = useCallback((t: string) => {
+    setMsg(t);
+    if (msgTimer.current) clearTimeout(msgTimer.current);
+    msgTimer.current = setTimeout(() => setMsg(''), 5000);
+  }, []);
+  useEffect(() => () => { if (msgTimer.current) clearTimeout(msgTimer.current); }, []);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api<{ devices: Device[]; phone_limit: number; plan: string }>('/devices');
+      setDevices(r.devices || []);
+      setLimit(Number(r.phone_limit) || 0);
+      setPlan(String(r.plan || ''));
+      setErr('');
+    } catch (e) { setErr(errText(e)); }
+  }, []);
+  // List polls every 10 s (paused while the task detail is open — it polls on its own).
+  useEffect(() => {
+    if (detail) return;
+    void load();
+    const t = setInterval(() => { void load(); }, 10_000);
+    return () => clearInterval(t);
+  }, [load, detail]);
+  useEffect(() => { api<ConsoleConfig>('/config').then(setConfig).catch(() => { /* guide buttons stay disabled */ }); }, []);
+  // The detail page is a TikTok task: close it if the compliance config hides TikTok.
+  useEffect(() => { if (detail && !tiktokVisible) setDetail(null); }, [detail, tiktokVisible]);
+
+  const closeDetail = useCallback(() => setDetail(null), []);
+
+  const platformOf = (d: Device): PlatformId => {
+    const s = sel[d.id];
+    if (s && platforms.some((p) => p.id === s)) return s;
+    return platforms[0]?.id || 'tiktok';
   };
-  useEffect(() => { if (openId) return; load(); const t = setInterval(load, 15_000); return () => clearInterval(t); }, [load, openId]);
+  const command = async (d: Device, action: 'run' | 'stop', taskId?: string) => {
+    try {
+      await sendCommand(d.id, action, taskId);
+      flash(L('已发送，手机约 15 秒内执行', '已發送，手機約 15 秒內執行', 'Sent — the phone acts within ~15 s'));
+      void load();
+    } catch (e) { flash(L('发送失败：', '發送失敗：', 'Failed: ') + errText(e)); }
+  };
+  const doConfirm = async () => {
+    if (!confirm) return;
+    setBusy(true);
+    try {
+      if (confirm.kind === 'remove') await api(`/devices/${encodeURIComponent(confirm.device.id)}`, { method: 'DELETE' });
+      else await deleteTask(confirm.device, confirm.task.id);
+      setConfirm(null);
+      void load();
+    } catch (e) {
+      setConfirm(null);
+      flash((confirm.kind === 'remove' ? L('移除失败：', '移除失敗：', 'Remove failed: ') : L('删除失败：', '刪除失敗：', 'Delete failed: ')) + errText(e));
+    } finally { setBusy(false); }
+  };
 
-  if (openId) return <div className="h-full overflow-y-auto"><PhoneDetail id={openId} onBack={() => setOpenId(null)} /></div>;
+  // Slots: phones, then one guide card per empty slot, then "add slots" (not on the top plan).
+  const list = devices || [];
+  const cards: React.ReactNode[] = list.map((d) => (
+    <PhoneCard key={d.id} device={d} platforms={platforms} platform={platformOf(d)}
+      onPlatform={(p) => setSel((s) => ({ ...s, [d.id]: p }))}
+      onCreate={() => setEditor({ device: d, task: null })}
+      onView={(t) => setDetail({ deviceId: d.id, taskId: t.id })}
+      onRun={(t) => command(d, 'run', t.id)}
+      onStop={(taskId) => command(d, 'stop', taskId)}
+      onDeleteTask={(t) => setConfirm({ kind: 'task', device: d, task: t })}
+      onRemove={() => setConfirm({ kind: 'remove', device: d })}
+      onUpgrade={upgrade} />
+  ));
+  if (devices) {
+    for (let i = list.length; i < limit; i++) cards.push(<GuideCard key={`slot-${i}`} n={i + 1} config={config} />);
+    if (plan !== 'ultra') cards.push(<AddCard key="add" onUpgrade={upgrade} />);
+  }
+  const pages = Math.max(1, Math.ceil(cards.length / PAGE));
+  const cur = Math.min(page, pages);
+  const pagerBtn = `min-w-[30px] h-[30px] px-2 rounded-lg border ${bd} ${surface} ${txt} text-[12.5px] tabular-nums disabled:opacity-35 disabled:cursor-default`;
 
   return (
-    <div className="h-full overflow-y-auto p-6">
-      <div className="flex items-baseline gap-3 mb-4">
-        <h2 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">📱 {T('雲手機', 'Cloud Phones')}</h2>
-        {limit > 0 && devices && <span className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">{T('已用', 'Using')} {devices.length} / {limit} {T('臺', 'phones')}</span>}
-      </div>
-      {err && <div className="text-sm text-red-500 mb-3">{err}</div>}
-      {devices && devices.length === 0 && (
-        <div className={`${card} text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary`}>
-          {T('還沒有手機。在安卓手機上安裝 NoobClaw Mobile，用這個帳號登錄後會出現在這裡。', 'No phones yet. Install NoobClaw Mobile on an Android phone and log in with this account.')}
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-[1180px] mx-auto px-5 pt-[18px] pb-6 flex flex-col gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className={`m-0 text-xl font-bold flex items-center gap-1.5 ${txt}`}><AndroidIcon />{L('我的云手机', '我的雲手機', 'My Cloud Phones')}</h1>
+          {!detail && (
+            <nav className="ml-auto flex items-center gap-1 flex-wrap" aria-label={L('手机分页', '手機分頁', 'Phone pages')}>
+              <span className={`text-xs mr-2 tabular-nums ${sub}`}>{L('已用', '已用', 'Used')} {list.length} / {limit}</span>
+              <button type="button" className={pagerBtn} disabled={cur <= 1} onClick={() => setPage(cur - 1)} aria-label={L('上一页', '上一頁', 'Previous page')}>‹</button>
+              {Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
+                <button key={n} type="button" aria-current={n === cur ? 'page' : undefined} onClick={() => setPage(n)}
+                  className={n === cur ? `${pagerBtn} !bg-claude-accent !border-claude-accent !text-[#04140c] font-bold` : pagerBtn}>{n}</button>
+              ))}
+              <button type="button" className={pagerBtn} disabled={cur >= pages} onClick={() => setPage(cur + 1)} aria-label={L('下一页', '下一頁', 'Next page')}>›</button>
+            </nav>
+          )}
         </div>
-      )}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {(devices || []).map((d) => (
-          <button key={d.id} type="button" onClick={() => setOpenId(d.id)} className={`${card} text-left hover:border-claude-accent transition-colors`}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="font-medium dark:text-claude-darkText text-claude-text flex-1 truncate">📱 {d.vendor || d.id.slice(0, 8)}{d.ip ? <span className="ml-2 text-xs font-normal font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{d.ip}</span> : null}</span>
-              {deviceStatus(d)}
-            </div>
-            <div className="text-sm dark:text-claude-darkText text-claude-text mb-1">{d.account || 'TikTok'}</div>
-            <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary space-y-0.5">
-              <div>{T('今天：', 'Today: ')}{fmtCounts(d.today)}</div>
-              <div>{T('最近：', 'Last run: ')}{d.last_run ? `${fmtTime(d.last_run.at)} · ${d.last_run.status === 'done' ? T('完成', 'done') : d.last_run.reason || d.last_run.status}` : '—'}</div>
-              <div>{T('任務：', 'Tasks: ')}{d.task_count}</div>
-              {!d.online && <div>{T('最後在線：', 'Last seen: ')}{fmtTime(d.last_seen)}</div>}
-            </div>
-            {!d.online && (
-              <div className="mt-2 text-right">
-                <span role="button" tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); remove(d.id); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); remove(d.id); } }}
-                  className={`text-xs px-2 py-1 rounded-md ${confirmDel === d.id ? 'bg-red-500 text-white' : 'text-red-500 hover:bg-red-500/10'}`}>
-                  {confirmDel === d.id ? T('再點一次確認移除', 'Click again to remove') : T('移除', 'Remove')}
-                </span>
-              </div>
-            )}
-          </button>
-        ))}
+        {err && <div className="text-sm text-[#ff5c7a]">{err}</div>}
+        {msg && <div className="text-[12.5px] text-green-600 dark:text-claude-accent">{msg}</div>}
+
+        {detail ? (
+          <PhoneTaskDetail deviceId={detail.deviceId} taskId={detail.taskId} onBack={closeDetail} />
+        ) : !devices ? (
+          <div className={`text-sm ${sub}`}>{err ? '' : L('加载中…', '載入中…', 'Loading…')}</div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(208px,1fr))] gap-4">{cards.slice((cur - 1) * PAGE, cur * PAGE)}</div>
+        )}
       </div>
+
+      {editor && (
+        <PhoneTaskEditor device={editor.device} initial={editor.task} onCancel={() => setEditor(null)}
+          onSaved={(m) => { setEditor(null); flash(m); void load(); }} />
+      )}
+      {confirm && (confirm.kind === 'remove' ? (
+        <ConfirmDialog busy={busy} title={L('移除这台手机？', '移除這台手機？', 'Remove this phone?')}
+          body={tiktokVisible
+            ? L(`${confirm.device.vendor || confirm.device.id} 已离线。移除后会清空它的任务和绑定的 TikTok 账号，运行记录保留；空出 1 个手机槽位。这台手机以后重新上线，会自动回到列表。`,
+              `${confirm.device.vendor || confirm.device.id} 已離線。移除後會清空它的任務和綁定的 TikTok 帳號，運行記錄保留；空出 1 個手機槽位。這台手機以後重新上線，會自動回到列表。`,
+              `${confirm.device.vendor || confirm.device.id} is offline. Removing it clears its tasks and linked TikTok account (run history is kept) and frees 1 phone slot. If the phone comes back online it returns to the list.`)
+            : L(`${confirm.device.vendor || confirm.device.id} 已离线。移除后会清空它的任务和绑定的账号，运行记录保留；空出 1 个手机槽位。这台手机以后重新上线，会自动回到列表。`,
+              `${confirm.device.vendor || confirm.device.id} 已離線。移除後會清空它的任務和綁定的帳號，運行記錄保留；空出 1 個手機槽位。這台手機以後重新上線，會自動回到列表。`,
+              `${confirm.device.vendor || confirm.device.id} is offline. Removing it clears its tasks and linked account (run history is kept) and frees 1 phone slot. If the phone comes back online it returns to the list.`)}
+          confirmText={L('移除', '移除', 'Remove')} onCancel={() => setConfirm(null)} onConfirm={doConfirm} />
+      ) : (
+        <ConfirmDialog busy={busy} title={L('删除这个任务？', '刪除這個任務？', 'Delete this task?')}
+          body={L(`「${confirm.task.name}」会从这台手机上删除，运行记录保留。`, `「${confirm.task.name}」會從這台手機上刪除，運行記錄保留。`, `“${confirm.task.name}” will be removed from this phone. Run history is kept.`)}
+          confirmText={L('删除', '刪除', 'Delete')} onCancel={() => setConfirm(null)} onConfirm={doConfirm} />
+      ))}
     </div>
   );
 };

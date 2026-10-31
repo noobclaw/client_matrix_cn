@@ -1,0 +1,115 @@
+/* 云手机页:手机外形、运行中呼吸光、走马灯、日志渐隐、Android 图标(遮罩着色)。
+   颜色走 Tailwind 主题里的 claude-* / 霓虹绿;这里只放 Tailwind 不好写的部分。 */
+
+.cp-ico {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+  background: #00ff88;
+  /* mask-image is set inline from the imported android.png */
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* 竖放手机外形 */
+.cp-phone {
+  position: relative;
+  aspect-ratio: 9 / 19.5;
+  border-radius: 30px;
+  padding: 10px;
+  background: linear-gradient(160deg, #eceef3, #dfe2e8);
+  border: 1px solid #d3d6de;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+}
+.dark .cp-phone {
+  background: linear-gradient(160deg, #23233a, #15151f);
+  border-color: #30304a;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+.cp-phone::before {
+  content: "";
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 46px;
+  height: 5px;
+  margin-left: -23px;
+  border-radius: 3px;
+  background: #c7cad2;
+  z-index: 2;
+}
+.dark .cp-phone::before { background: #08080d; }
+.cp-scr {
+  height: 100%;
+  border-radius: 22px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 26px 12px 12px;
+  gap: 8px;
+}
+.cp-scr > * { min-width: 0; }
+.cp-phone.cp-offline .cp-scr > *:not(.cp-top) { opacity: 0.55; }
+
+/* 运行中:外壳绿光,缓慢呼吸 */
+.cp-phone.cp-running {
+  border-color: rgba(0, 255, 136, 0.7);
+  animation: cpGlow 2.4s ease-in-out infinite;
+}
+@keyframes cpGlow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.35), 0 0 14px rgba(0, 255, 136, 0.28), 0 0 34px rgba(0, 255, 136, 0.10); }
+  50% { box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.55), 0 0 24px rgba(0, 255, 136, 0.45), 0 0 56px rgba(0, 255, 136, 0.20); }
+}
+
+/* 空槽位 / 增加槽位 */
+.cp-phone.cp-empty, .dark .cp-phone.cp-empty { background: transparent; border: 1.5px dashed #c3c6d0; box-shadow: none; }
+.dark .cp-phone.cp-empty { border-color: #34344f; }
+.dark .cp-phone.cp-empty::before { background: #23233a; }
+.cp-phone.cp-add, .dark .cp-phone.cp-add {
+  background: linear-gradient(160deg, rgba(139, 108, 255, 0.18), rgba(0, 255, 136, 0.08));
+  border: 1px solid rgba(139, 108, 255, 0.45);
+}
+.dark .cp-phone.cp-add::before { background: rgba(8, 8, 13, 0.6); }
+
+/* 走马灯 */
+.cp-mq-track {
+  display: flex;
+  gap: 40px;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: cpMarquee 9s linear infinite;
+}
+@keyframes cpMarquee { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+/* 运行日志:顶部渐隐,最新一行带闪烁绿点 */
+.cp-runlog {
+  -webkit-mask: linear-gradient(to bottom, transparent, #000 30%);
+  mask: linear-gradient(to bottom, transparent, #000 30%);
+}
+.cp-now::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: #00ff88;
+  vertical-align: middle;
+  animation: cpBlink 1.2s ease-in-out infinite;
+}
+@keyframes cpBlink { 50% { opacity: 0.2; } }
+
+.cp-details > summary { list-style: none; }
+.cp-details > summary::-webkit-details-marker { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cp-phone.cp-running { animation: none; box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.45), 0 0 18px rgba(0, 255, 136, 0.3); }
+  .cp-mq-track { animation: none; padding-left: 10px; }
+  .cp-mq-track > span + span { display: none; }
+  .cp-now::after { animation: none; }
+}

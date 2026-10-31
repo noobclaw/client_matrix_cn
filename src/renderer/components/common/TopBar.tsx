@@ -19,7 +19,7 @@ const shortAddr = (a: string) => (a && a.length > 12 ? `${a.slice(0, 6)}…${a.s
 
 export interface TopBarMenuItem { key: string; icon: string; label: string; onClick: () => void; badge?: number }
 
-const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; onShowSettings?: () => void; menu?: TopBarMenuItem[]; activeKey?: string; updateBadge?: React.ReactNode; subPage?: { icon: string; label: string } }> = ({ edition, onSwitch, onShowSettings, menu, activeKey, updateBadge, subPage }) => {
+const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; onShowSettings?: () => void; menu?: TopBarMenuItem[]; activeKey?: string; updateBadge?: React.ReactNode; subPage?: { icon: string; label: string }; hideKernelPicker?: boolean }> = ({ edition, onSwitch, onShowSettings, menu, activeKey, updateBadge, subPage, hideKernelPicker }) => {
   const [auth, setAuth] = useState(noobClawAuth.getState());
   const [menuOpen, setMenuOpen] = useState(false);
   const active = (menu || []).find((m) => m.key === activeKey);
@@ -76,7 +76,7 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
           ) : (
             <button type="button" onClick={() => noobClawAuth.requireLoginUI()} className="text-xs font-semibold px-3 py-1 rounded-lg bg-claude-accent text-[#04130B]">{i18nService.t('coworkConnectWallet')}</button>
           )}
-          <KernelPicker />
+          {!hideKernelPicker && <KernelPicker />}
           {/* 收纳菜单:原左侧菜单 + 设置 */}
           {menu && menu.length > 0 && (
             <div className="relative shrink-0">
