@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  ConsoleConfig, Device, L, Platform, PlatformId, TaskView, accountOf, bd, btnGhost, btnPrimary, countKeys, fmtCost, fmtTotals,
+  ConsoleConfig, Device, L, Platform, PlatformId, taskName, TaskView, accountOf, bd, btnGhost, btnPrimary, countKeys, fmtCost, fmtTotals,
   fmtWhen, lastWarn, modeName, nextRunText, num, openExternal, shortTarget, stepLines, sub, surface, surface2, targetLabel, txt,
 } from './cloudPhoneShared';
 import { AccountRow } from './cloudPhoneUi';
@@ -110,7 +110,7 @@ const PlatformPanel: React.FC<PhoneCardProps> = ({ device: d, platforms, platfor
   if (d.online && d.running && tiktokVisible) {
     const pr = d.progress;
     const t = d.tasks.find((x) => x.id === pr?.task_id) || d.tasks.find((x) => (x.platform || 'tiktok') === 'tiktok');
-    const msg = `${L('正在运行', '正在運行', 'Running')} TikTok${t ? ` · ${t.name}` : ''}`;
+    const msg = `${L('正在运行', '正在運行', 'Running')} TikTok${t ? ` · ${taskName(t)}` : ''}`;
     const items = countKeys(t?.script_id || '').filter(({ k }) => (pr?.targets?.[k] || 0) > 0 || (pr?.counts?.[k] || 0) > 0);
     const lines = stepLines(pr?.steps).slice(-8);
     return (
@@ -205,7 +205,7 @@ const PlatformPanel: React.FC<PhoneCardProps> = ({ device: d, platforms, platfor
   return wrap(<>
     {acctRow}
     <div className="flex flex-col gap-[3px]">
-      <div className="flex justify-between items-baseline gap-1.5 mb-0.5"><b className={`text-xs truncate ${txt}`} title={t.name}>{t.name}</b></div>
+      <div className="flex justify-between items-baseline gap-1.5 mb-0.5"><b className={`text-xs truncate ${txt}`} title={taskName(t)}>{taskName(t)}</b></div>
       <Kv k={L('模式', '模式', 'Mode')} v={modeName(t.mode)} />
       <Kv k={targetLabel(t.script_id, t.mode)} v={where.map(shortTarget).join('、') || '—'} />
       <Kv k={L('最近运行', '最近運行', 'Last run')} v={fmtWhen(t.last_run_at)} />

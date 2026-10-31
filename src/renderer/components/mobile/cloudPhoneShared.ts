@@ -80,7 +80,15 @@ export function errText(e: unknown): string {
     case 'app_update_required': return L('请先把手机上的 NoobClaw App 更新到最新版', '請先把手機上的 NoobClaw App 更新到最新版', 'Update the NoobClaw app on the phone first');
     case 'phone_online': return L('手机在线，不能移除', '手機在線，不能移除', 'The phone is online and cannot be removed');
     case 'one_task_per_platform': return L('每个平台只能建 1 个任务', '每個平台只能建 1 個任務', 'Only one task per platform');
+    case 'task_not_found': return L('任务不存在，可能已被删除', '任務不存在，可能已被刪除', 'Task not found — it may have been deleted');
+    case 'device_not_found': return L('手机不存在，可能已被移除', '手機不存在，可能已被移除', 'Phone not found — it may have been removed');
+    case 'too_many_tasks': return L('任务数量超出上限', '任務數量超出上限', 'Too many tasks on this phone');
+    case 'duplicate_task_id': return L('任务编号重复，请刷新后重试', '任務編號重複，請重新整理後重試', 'Duplicate task id — refresh and try again');
+    case 'invalid_action': return L('不支持的操作', '不支援的操作', 'Unsupported action');
+    case 'invalid_tasks': return L('任务设置有误', '任務設定有誤', 'Invalid task settings');
+    case 'server_error': return L('服务器出错，请稍后重试', '伺服器出錯，請稍後重試', 'Server error — try again later');
     default:
+      if (/^HTTP 5\d\d$/.test(code)) return L('服务器出错，请稍后重试', '伺服器出錯，請稍後重試', 'Server error — try again later');
       if (code.startsWith('invalid_')) return L('任务设置有误：', '任務設定有誤：', 'Invalid task settings: ') + code.slice(8);
       return code;
   }
@@ -89,21 +97,29 @@ export function errText(e: unknown): string {
 export async function putTasks(deviceId: string, tasks: RawTask[]): Promise<void> {
   await api(`/devices/${encodeURIComponent(deviceId)}/tasks`, { method: 'PUT', body: JSON.stringify({ tasks }) });
 }
-/** Replace (same id) or append one task; every other task is sent back exactly as the server gave it. */
-export function saveTask(device: Device, task: RawTask): Promise<void> {
-  const list = device.tasks.map((t) => t.raw).filter(Boolean);
-  const next = list.some((t) => t.id === task.id) ? list.map((t) => (t.id === task.id ? task : t)) : [...list, task];
-  return putTasks(device.id, next);
+/** Fresh raw task list of a phone, read right before a write so we never PUT a stale snapshot. */
+async function freshRawTasks(deviceId: string): Promise<RawTask[]> {
+  const r = await api<{ device: Device }>(`/devices/${encodeURIComponent(deviceId)}`);
+  return (r.device?.tasks || []).map((t) => t.raw).filter((t): t is RawTask => !!t && typeof t.id === 'string');
 }
-export function deleteTask(device: Device, taskId: string): Promise<void> {
-  return putTasks(device.id, device.tasks.map((t) => t.raw).filter((t) => t && t.id !== taskId));
+/** Replace (same id) or append one task; every other task is sent back exactly as the server has it now. */
+export async function saveTask(device: Device, task: RawTask): Promise<void> {
+  const list = await freshRawTasks(device.id);
+  const next = list.some((t) => t.id === task.id) ? list.map((t) => (t.id === task.id ? task : t)) : [...list, task];
+  await putTasks(device.id, next);
+}
+export async function deleteTask(device: Device, taskId: string): Promise<void> {
+  const list = await freshRawTasks(device.id);
+  await putTasks(device.id, list.filter((t) => t.id !== taskId));
 }
 export async function sendCommand(deviceId: string, action: 'run' | 'stop', taskId?: string): Promise<void> {
   await api(`/devices/${encodeURIComponent(deviceId)}/command`, { method: 'POST', body: JSON.stringify({ action, task_id: taskId }) });
 }
 
+/** Opens an https: URL in the system browser; anything else is ignored. */
 export function openExternal(url: string | undefined): void {
   if (!url) return;
+  try { if (new URL(url).protocol !== 'https:') return; } catch { return; }
   try {
     if (window.electron?.shell?.openExternal) { void window.electron.shell.openExternal(url); return; }
   } catch { /* fall through */ }
@@ -127,6 +143,8 @@ export const isLead = (scriptId: string): boolean => scriptId === 'tiktok_lead_e
 export const scriptName = (scriptId: string): string => (isLead(scriptId)
   ? L('定向获客任务', '定向獲客任務', 'Lead engage task')
   : L('评论区点赞任务', '評論區點讚任務', 'Comment likes task'));
+/** Task name, or the script's name when the task has none. */
+export const taskName = (t: { name?: string; script_id: string }): string => t.name || scriptName(t.script_id);
 export const scriptShort = (scriptId: string): string => (isLead(scriptId)
   ? L('定向获客', '定向獲客', 'Lead engage')
   : L('评论区点赞', '評論區點讚', 'Comment likes'));

@@ -34,30 +34,58 @@ function toSchedule(k: SchedKey, at: string): Schedule {
   return { kind: 'every', hours: Number(k) };
 }
 const splitList = (s: string): string[] => Array.from(new Set(s.split(/[\n,，、]/).map((x) => x.trim()).filter(Boolean)));
-const levelOf = (t: TaskView | null): Level => {
-  const lv = t?.level || (t?.raw?.config as { level?: string } | undefined)?.level;
-  return lv === 'low' || lv === 'high' ? lv : 'mid';
+/** Level stored on the task; null = custom caps (no level) — those are kept unless the user picks a level. */
+const levelOf = (t: TaskView | null): Level | null => {
+  if (!t) return 'mid';
+  const lv = (t.raw?.config as { level?: string } | undefined)?.level || t.level;
+  return lv === 'low' || lv === 'mid' || lv === 'high' ? lv : null;
 };
+/** The server keeps only these video links (normalizeTask). */
+const TIKTOK_URL = /^https:\/\/(www\.|m\.|vm\.|vt\.)?tiktok\.com\/\S+$/i;
+/** "@user" / "user" → profile URL, missing scheme → https://, http → https. */
+function normalizeLink(x: string): string {
+  const v = x.trim();
+  if (v.startsWith('@')) return `https://www.tiktok.com/${v}`;
+  if (/^http:\/\//i.test(v)) return v.replace(/^http:\/\//i, 'https://');
+  if (/^https:\/\//i.test(v)) return v;
+  if (!/[./]/.test(v)) return `https://www.tiktok.com/@${v}`;
+  return `https://${v.replace(/^\/+/, '')}`;
+}
 
 const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCancel: () => void; onSaved: (msg: string) => void }> = ({ device, initial, onCancel, onSaved }) => {
   const [script, setScript] = useState<ScriptId>((SCRIPT_IDS as readonly string[]).includes(initial?.script_id || '') ? (initial!.script_id as ScriptId) : 'tiktok_comment_like');
   const [mode, setMode] = useState<'keywords' | 'precise'>(initial?.mode === 'precise' ? 'precise' : 'keywords');
   const [keywords, setKeywords] = useState((initial?.keywords || []).join('\n'));
   const [targets, setTargets] = useState((initial?.targets || []).join('\n'));
-  const [level, setLevel] = useState<Level>(levelOf(initial));
+  const [level, setLevel] = useState<Level | null>(() => levelOf(initial));
+  const [levelTouched, setLevelTouched] = useState(false);
   const [sched, setSched] = useState<SchedKey>(schedKeyOf(initial?.schedule));
   const [at, setAt] = useState(() => { const s = initial?.schedule; return s && s.kind === 'daily' ? s.at : '09:30'; });
   const [persona, setPersona] = useState(initial?.persona || '');
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
-  const caps = LEVELS[script][level];
   const lead = isLead(script);
+  // Level table applies to new tasks, a changed script, or once the user picks a level; otherwise the
+  // task's current caps (possibly custom, set on the phone) are kept as they are.
+  const useTable = !initial || levelTouched || initial.script_id !== script;
+  const caps = useTable ? LEVELS[script][level || 'mid'] : initial.caps;
+  const custom = !useTable && !level;
+  const pickLevel = (k: Level) => { setLevel(k); setLevelTouched(true); };
 
   const save = async () => {
     const kw = splitList(keywords);
     let tg = splitList(targets);
     if (lead) tg = tg.map((x) => (/^https?:/i.test(x) || x.startsWith('@') ? x : `@${x}`));
-    else tg = tg.map((x) => (x.startsWith('@') ? `https://www.tiktok.com/${x}` : x));
+    else {
+      const raw = tg;
+      tg = raw.map(normalizeLink);
+      const bad = raw.filter((_, i) => !TIKTOK_URL.test(tg[i]));
+      tg = tg.filter((x) => TIKTOK_URL.test(x));
+      if (mode === 'precise' && bad.length) {
+        setErr(L('这些不是 TikTok 作品链接：', '這些不是 TikTok 作品連結：', 'Not TikTok video links: ') + bad.join('、'));
+        return;
+      }
+    }
     if (mode === 'keywords' && !kw.length) { setErr(L('请填写关键词', '請填寫關鍵詞', 'Enter at least one keyword')); return; }
     if (mode === 'precise' && !tg.length) { setErr(lead ? L('请填写同行账号', '請填寫同行帳號', 'Enter at least one rival account') : L('请填写作品链接', '請填寫作品連結', 'Enter at least one video link')); return; }
     if (sched === 'daily' && !/^\d{2}:\d{2}$/.test(at)) { setErr(L('请选择每天运行的时间', '請選擇每天運行的時間', 'Pick a time of day')); return; }
@@ -65,10 +93,12 @@ const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCa
     const prev = initial?.raw;
     const sameScript = !!prev && prev.script_id === script;
     const prevCfg: Record<string, unknown> = sameScript ? { ...(prev!.config || {}) } : {};
-    const config: Record<string, unknown> = { ...prevCfg, level };
+    const config: Record<string, unknown> = { ...prevCfg };
+    if (useTable) config.level = level || 'mid';
     if (lead) {
+      if (useTable) config.leads_per_run = caps.leads;
       Object.assign(config, {
-        mode: mode === 'precise' ? 'accounts' : 'keywords', keywords: kw, seed_accounts: tg, leads_per_run: caps.leads,
+        mode: mode === 'precise' ? 'accounts' : 'keywords', keywords: kw, seed_accounts: tg,
         lead_do_like: prevCfg.lead_do_like !== false, lead_do_follow: prevCfg.lead_do_follow !== false, lead_do_comment: prevCfg.lead_do_comment !== false,
       });
     } else {
@@ -84,8 +114,9 @@ const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCa
       script_id: script,
       platform: 'tiktok',
       schedule: toSchedule(sched, at),
-      tz: prev?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      max_likes: caps.likes, max_comments: caps.comments, max_follows: caps.follows,
+      // A daily time picked here means this computer's local time (old tasks often carry tz 'UTC').
+      tz: sched === 'daily' || !prev?.tz ? Intl.DateTimeFormat().resolvedOptions().timeZone : prev.tz,
+      ...(useTable ? { max_likes: caps.likes, max_comments: caps.comments, max_follows: caps.follows } : {}),
       persona: persona.trim().slice(0, 400),
       config,
     };
@@ -140,12 +171,16 @@ const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCa
         <span className={label}>{L('数量', '數量', 'Amount')}</span>
         <div className="flex gap-2 mb-1.5">
           {(['low', 'mid', 'high'] as const).map((k) => (
-            <button key={k} type="button" className={`${chip(level === k)} flex-1`} onClick={() => setLevel(k)}>
+            <button key={k} type="button" className={`${chip(!custom && (level || 'mid') === k)} flex-1`} onClick={() => pickLevel(k)}>
               {k === 'low' ? L('少', '少', 'Few') : k === 'mid' ? L('中', '中', 'Normal') : L('多', '多', 'Many')}
             </button>
           ))}
         </div>
-        <p className={`text-xs ${sub} mb-4`}>{L('每次上限：', '每次上限：', 'Per run: ')}{capsText(script, caps)}</p>
+        <p className={`text-xs ${sub} mb-4`}>
+          {custom && <span className="mr-1.5 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-500 dark:text-amber-400 font-semibold">{L('自定义', '自訂', 'Custom')}</span>}
+          {L('每次上限：', '每次上限：', 'Per run: ')}{capsText(script, caps)}
+          {custom && <span className="block mt-1">{L('保持手机上设置的数量；点 少/中/多 会改用对应数量', '保持手機上設定的數量；點 少/中/多 會改用對應數量', 'Keeps the amounts set on the phone; pick Few/Normal/Many to replace them')}</span>}
+        </p>
 
         <span className={label}>{L('运行频率', '運行頻率', 'Schedule')}</span>
         <div className="grid grid-cols-3 gap-2 mb-2">

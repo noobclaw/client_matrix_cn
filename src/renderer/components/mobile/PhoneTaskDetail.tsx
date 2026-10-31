@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Device, L, Run, Step, accountOf, api, bd, btnGhost, btnPrimary, capsText, countKeys, deleteTask, errText, fmtCost, fmtCountsIcons,
+  Device, L, Run, Step, taskName, accountOf, api, bd, btnGhost, btnPrimary, capsText, countKeys, deleteTask, errText, fmtCost, fmtCountsIcons,
   fmtDuration, fmtNext, fmtRelFuture, fmtTotals, fmtWhen, isManual, lastWarn, modeName, num, runStatus, scheduleText, sendCommand,
   shortTarget, stepLines, stepText, sub, surface, surface2, targetLabel, txt,
 } from './cloudPhoneShared';
@@ -55,18 +55,33 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
   }, []);
   useEffect(() => () => { if (msgTimer.current) clearTimeout(msgTimer.current); }, []);
 
-  const load = useCallback(async () => {
+  // Polling guards: newest request wins, timer ticks skip while one is in flight, nothing is set after unmount.
+  const seq = useRef(0);
+  const inFlight = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  /** `force` = after a user action: run even if a poll is in flight (its stale answer is then ignored). */
+  const load = useCallback(async (force = false) => {
+    if (inFlight.current && !force) return;
+    inFlight.current = true;
+    const my = ++seq.current;
     try {
       const r = await api<{ device: Device; runs: Run[] }>(`/devices/${encodeURIComponent(deviceId)}`);
+      if (!alive.current || my !== seq.current) return;
       setData({ device: r.device, runs: r.runs || [] });
       setLoadErr('');
-    } catch (e) { setLoadErr(errText(e)); }
+    } catch (e) {
+      if (alive.current && my === seq.current) setLoadErr(errText(e));
+    } finally {
+      if (my === seq.current) inFlight.current = false;
+    }
   }, [deviceId]);
 
   const fetchSteps = useCallback(async (runId: string) => {
     try {
       const r = await api<{ steps: Step[] }>(`/devices/${encodeURIComponent(deviceId)}/steps?run_id=${encodeURIComponent(runId)}`);
-      setSteps((s) => ({ ...s, [runId]: r.steps || [] }));
+      if (alive.current) setSteps((s) => ({ ...s, [runId]: r.steps || [] }));
     } catch { /* keep what we have */ }
   }, [deviceId]);
 
@@ -78,6 +93,8 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
   const runs = (data?.runs || []).filter((r) => r.task_id === taskId);
   const liveRunId = running && pr ? pr.run_id : '';
   const lastRunId = runs[0]?.run_id || '';
+  const lastRunAt = runs[0]?.at || 0;
+  const prevLiveRunId = useRef('');
 
   // Poll: 5 s while running, 15 s otherwise.
   useEffect(() => {
@@ -86,9 +103,24 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
     return () => clearInterval(t);
   }, [load, running]);
 
-  // Current run: full step list refreshed with every poll; otherwise the latest run's steps (fetched once).
+  // Current run: full step list refreshed with every poll; otherwise the latest run's steps
+  // (refetched whenever the latest run changes).
   useEffect(() => { if (liveRunId) void fetchSteps(liveRunId); }, [liveRunId, data, fetchSteps]);
-  useEffect(() => { if (!liveRunId && lastRunId && !steps[lastRunId]) void fetchSteps(lastRunId); }, [liveRunId, lastRunId, steps, fetchSteps]);
+  useEffect(() => { if (!liveRunId && lastRunId) void fetchSteps(lastRunId); }, [liveRunId, lastRunId, lastRunAt, fetchSteps]);
+  // A live run just ended: fetch its final steps (the last poll may have missed the closing lines).
+  useEffect(() => {
+    const prev = prevLiveRunId.current;
+    prevLiveRunId.current = liveRunId;
+    if (prev && prev !== liveRunId) void fetchSteps(prev);
+  }, [liveRunId, fetchSteps]);
+
+  // Escape closes the detail (dialogs handle their own Escape first).
+  useEffect(() => {
+    if (editing || confirmDel) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing, confirmDel, onBack]);
 
   // Task removed elsewhere (phone / other window) → back to the list.
   useEffect(() => { if (data && !task) onBack(); }, [data, task, onBack]);
@@ -102,7 +134,7 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
     try {
       await sendCommand(device.id, action, task.id);
       flash(L('已发送，手机约 15 秒内执行', '已發送，手機約 15 秒內執行', 'Sent — the phone acts within ~15 s'));
-      void load();
+      void load(true);
     } catch (e) { flash(L('发送失败：', '發送失敗：', 'Failed: ') + errText(e)); }
     finally { setBusy(false); }
   };
@@ -137,7 +169,7 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
             <div className="min-w-0 flex-1 flex flex-col gap-2.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-black text-white border border-[#25f4ee]">TikTok</span>
-                <b className={`text-[17px] ${txt}`}>{task.name}</b>
+                <b className={`text-[17px] ${txt}`}>{taskName(task)}</b>
                 <span className={`font-mono text-[11px] ${sub}`}>{L('设备ID', '設備ID', 'Device ID')} {device.id}</span>
               </div>
               <div className="grid grid-cols-1 gap-1.5 text-[12.5px]">
@@ -162,6 +194,7 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
             </div>
           </div>
           {msg && <div className="text-[12.5px] text-green-600 dark:text-claude-accent">{msg}</div>}
+          {loadErr && <div className="text-[12.5px] px-3 py-2 rounded-lg border border-[#ff5c7a]/40 bg-[#ff5c7a]/[.08] text-[#ff5c7a]">{L('刷新失败：', '重新整理失敗：', 'Refresh failed: ')}{loadErr}</div>}
           {!device.online && <div className="text-[12px] text-amber-500 dark:text-amber-400">{L('手机离线，上线后才能运行', '手機離線，上線後才能運行', 'The phone is offline — it can run once it is back online')}</div>}
           {device.online && !device.a11y && <div className="text-[12px] text-amber-500 dark:text-amber-400">{L('需要您回到手机，为 NoobClaw App 打开无障碍服务权限', '需要您回到手機，為 NoobClaw App 打開無障礙服務權限', 'Turn on the Accessibility service for the NoobClaw app on the phone')}</div>}
         </div>
@@ -237,11 +270,11 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
 
       {editing && (
         <PhoneTaskEditor device={device} initial={task} onCancel={() => setEditing(false)}
-          onSaved={(m) => { setEditing(false); flash(m); void load(); }} />
+          onSaved={(m) => { setEditing(false); flash(m); void load(true); }} />
       )}
       {confirmDel && (
         <ConfirmDialog busy={busy} title={L('删除这个任务？', '刪除這個任務？', 'Delete this task?')}
-          body={L(`「${task.name}」会从这台手机上删除，运行记录保留。`, `「${task.name}」會從這台手機上刪除，運行記錄保留。`, `“${task.name}” will be removed from this phone. Run history is kept.`)}
+          body={L(`「${taskName(task)}」会从这台手机上删除，运行记录保留。`, `「${taskName(task)}」會從這台手機上刪除，運行記錄保留。`, `“${taskName(task)}” will be removed from this phone. Run history is kept.`)}
           confirmText={L('删除', '刪除', 'Delete')} onCancel={() => setConfirmDel(false)} onConfirm={doDelete} />
       )}
     </div>

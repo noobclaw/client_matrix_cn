@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { openWallet } from '../../services/walletNav';
 import {
-  ConsoleConfig, Device, L, PlatformId, TaskView, api, bd, deleteTask, errText, sendCommand, sub, surface, txt, visiblePlatforms,
+  ConsoleConfig, Device, L, PlatformId, taskName, TaskView, api, bd, deleteTask, errText, sendCommand, sub, surface, txt, visiblePlatforms,
 } from './cloudPhoneShared';
 import { AndroidIcon, ConfirmDialog, useComplianceHidden } from './cloudPhoneUi';
 import { AddCard, GuideCard, PhoneCard } from './PhoneCard';
@@ -16,6 +16,8 @@ import './cloudPhone.css';
  */
 
 const PAGE = 9;
+/** Highest tier's phone limit (旗舰版 / 至尊版): no "add slots" card once the plan already has it. */
+const TOP_LIMIT = 50;
 
 type Confirm = { kind: 'remove'; device: Device } | { kind: 'task'; device: Device; task: TaskView };
 
@@ -46,14 +48,29 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
   }, []);
   useEffect(() => () => { if (msgTimer.current) clearTimeout(msgTimer.current); }, []);
 
-  const load = useCallback(async () => {
+  // Polling guards: newest request wins, timer ticks skip while one is in flight, nothing is set after unmount.
+  const seq = useRef(0);
+  const inFlight = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  /** `force` = after a user action: run even if a poll is in flight (its stale answer is then ignored). */
+  const load = useCallback(async (force = false) => {
+    if (inFlight.current && !force) return;
+    inFlight.current = true;
+    const my = ++seq.current;
     try {
       const r = await api<{ devices: Device[]; phone_limit: number; plan: string }>('/devices');
+      if (!alive.current || my !== seq.current) return;
       setDevices(r.devices || []);
       setLimit(Number(r.phone_limit) || 0);
       setPlan(String(r.plan || ''));
       setErr('');
-    } catch (e) { setErr(errText(e)); }
+    } catch (e) {
+      if (alive.current && my === seq.current) setErr(errText(e));
+    } finally {
+      if (my === seq.current) inFlight.current = false;
+    }
   }, []);
   // List polls every 10 s (paused while the task detail is open — it polls on its own).
   useEffect(() => {
@@ -62,7 +79,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
     const t = setInterval(() => { void load(); }, 10_000);
     return () => clearInterval(t);
   }, [load, detail]);
-  useEffect(() => { api<ConsoleConfig>('/config').then(setConfig).catch(() => { /* guide buttons stay disabled */ }); }, []);
+  useEffect(() => { api<ConsoleConfig>('/config').then((c) => { if (alive.current) setConfig(c); }).catch(() => { /* guide buttons stay disabled */ }); }, []);
   // The detail page is a TikTok task: close it if the compliance config hides TikTok.
   useEffect(() => { if (detail && !tiktokVisible) setDetail(null); }, [detail, tiktokVisible]);
 
@@ -77,7 +94,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
     try {
       await sendCommand(d.id, action, taskId);
       flash(L('已发送，手机约 15 秒内执行', '已發送，手機約 15 秒內執行', 'Sent — the phone acts within ~15 s'));
-      void load();
+      void load(true);
     } catch (e) { flash(L('发送失败：', '發送失敗：', 'Failed: ') + errText(e)); }
   };
   const doConfirm = async () => {
@@ -87,7 +104,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
       if (confirm.kind === 'remove') await api(`/devices/${encodeURIComponent(confirm.device.id)}`, { method: 'DELETE' });
       else await deleteTask(confirm.device, confirm.task.id);
       setConfirm(null);
-      void load();
+      void load(true);
     } catch (e) {
       setConfirm(null);
       flash((confirm.kind === 'remove' ? L('移除失败：', '移除失敗：', 'Remove failed: ') : L('删除失败：', '刪除失敗：', 'Delete failed: ')) + errText(e));
@@ -109,7 +126,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
   ));
   if (devices) {
     for (let i = list.length; i < limit; i++) cards.push(<GuideCard key={`slot-${i}`} n={i + 1} config={config} />);
-    if (plan !== 'ultra') cards.push(<AddCard key="add" onUpgrade={upgrade} />);
+    if (plan !== 'ultra' && plan !== 'max' && limit < TOP_LIMIT) cards.push(<AddCard key="add" onUpgrade={upgrade} />);
   }
   const pages = Math.max(1, Math.ceil(cards.length / PAGE));
   const cur = Math.min(page, pages);
@@ -146,7 +163,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
 
       {editor && (
         <PhoneTaskEditor device={editor.device} initial={editor.task} onCancel={() => setEditor(null)}
-          onSaved={(m) => { setEditor(null); flash(m); void load(); }} />
+          onSaved={(m) => { setEditor(null); flash(m); void load(true); }} />
       )}
       {confirm && (confirm.kind === 'remove' ? (
         <ConfirmDialog busy={busy} title={L('移除这台手机？', '移除這台手機？', 'Remove this phone?')}
@@ -160,7 +177,7 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
           confirmText={L('移除', '移除', 'Remove')} onCancel={() => setConfirm(null)} onConfirm={doConfirm} />
       ) : (
         <ConfirmDialog busy={busy} title={L('删除这个任务？', '刪除這個任務？', 'Delete this task?')}
-          body={L(`「${confirm.task.name}」会从这台手机上删除，运行记录保留。`, `「${confirm.task.name}」會從這台手機上刪除，運行記錄保留。`, `“${confirm.task.name}” will be removed from this phone. Run history is kept.`)}
+          body={L(`「${taskName(confirm.task)}」会从这台手机上删除，运行记录保留。`, `「${taskName(confirm.task)}」會從這台手機上刪除，運行記錄保留。`, `“${taskName(confirm.task)}” will be removed from this phone. Run history is kept.`)}
           confirmText={L('删除', '刪除', 'Delete')} onCancel={() => setConfirm(null)} onConfirm={doConfirm} />
       ))}
     </div>

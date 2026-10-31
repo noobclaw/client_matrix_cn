@@ -76,7 +76,8 @@ const TopBar: React.FC<{ edition: UiEdition; onSwitch: (e: UiEdition) => void; o
           ) : (
             <button type="button" onClick={() => noobClawAuth.requireLoginUI()} className="text-xs font-semibold px-3 py-1 rounded-lg bg-claude-accent text-[#04130B]">{i18nService.t('coworkConnectWallet')}</button>
           )}
-          {!hideKernelPicker && <KernelPicker />}
+          {/* 只做视觉隐藏:KernelPicker 必须保持挂载,下载完成后的选中 / noobclaw:kernel-changed 广播都在它里面 */}
+          <div className={hideKernelPicker ? 'hidden' : 'contents'}><KernelPicker /></div>
           {/* 收纳菜单:原左侧菜单 + 设置 */}
           {menu && menu.length > 0 && (
             <div className="relative shrink-0">
