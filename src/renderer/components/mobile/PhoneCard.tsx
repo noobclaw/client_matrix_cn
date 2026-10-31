@@ -163,11 +163,11 @@ const PlatformPanel: React.FC<PhoneCardProps> = ({ device: d, platforms, platfor
   }
 
   const tabs = (
-    <div className="mx-2 mt-2 flex gap-1 p-[3px] rounded-[10px] bg-black/[.05] dark:bg-black/35 border dark:border-claude-darkBorder border-claude-border" role="tablist">
+    <div className="mx-2 mt-2 flex gap-1 p-[3px] rounded-[10px] bg-black/[.05] dark:bg-black/35 border dark:border-claude-darkBorder border-claude-border" role="radiogroup">
       {platforms.map((x) => {
         const on = x.id === platform;
         return (
-          <button key={x.id} type="button" role="tab" aria-selected={on} onClick={() => onPlatform(x.id)}
+          <button key={x.id} type="button" role="radio" aria-checked={on} onClick={() => onPlatform(x.id)}
             title={x.live ? x.name() : `${x.name()} · ${L('即将推出', '即將推出', 'coming soon')}`}
             className={`flex-1 h-7 px-0.5 rounded-lg text-[11.5px] font-bold whitespace-nowrap transition-colors ${on
               ? 'bg-claude-accent text-[#04140c] shadow-[0_2px_8px_rgba(0,255,136,.25)]'
@@ -255,7 +255,7 @@ export const GuideCard: React.FC<{ n: number; config: ConsoleConfig | null }> = 
             <li className={li}>{stepNo(1)}<div className="min-w-0">
               {L('购买一台安卓真/云机', '購買一台安卓真機/雲機', 'Get an Android phone or cloud phone')}
               <button type="button" disabled={!config?.vmos_url} onClick={() => openExternal(config?.vmos_url)}
-                className={`whitespace-nowrap inline-flex items-center gap-1 mt-[5px] px-2 py-1 rounded-lg bg-claude-accent/[.07] border border-claude-accent/25 text-[10px] ${txt} disabled:opacity-50`}>
+                className={`whitespace-nowrap inline-flex items-center gap-1 mt-[5px] px-2 py-1 rounded-lg bg-[rgba(0,255,136,.07)] border border-[rgba(0,255,136,.25)] text-[10px] ${txt} disabled:opacity-50`}>
                 {L('推荐云机', '推薦雲機', 'Recommended')} <b className="text-green-600 dark:text-claude-accent">VMOSCloud ›</b>
               </button>
             </div></li>
