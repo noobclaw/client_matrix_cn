@@ -47,6 +47,9 @@ export interface PhoneCardProps {
   onDeleteTask: (t: TaskView) => void;
   onRemove: () => void;
   onUpgrade: () => void;
+  /** Batch selection; no checkbox when `onPick` is missing or the phone is over the plan limit. */
+  picked?: boolean;
+  onPick?: (on: boolean) => void;
 }
 
 export const PhoneCard: React.FC<PhoneCardProps> = (p) => {
@@ -55,7 +58,7 @@ export const PhoneCard: React.FC<PhoneCardProps> = (p) => {
   const running = d.online && d.running;
   const perm = d.online && !d.a11y && !running;
   return (
-    <article className={`cp-phone${offline ? ' cp-offline' : ''}${running ? ' cp-running' : ''}`} aria-label={d.vendor || d.id}>
+    <article className={`cp-phone${offline ? ' cp-offline' : ''}${running ? ' cp-running' : ''}${p.picked ? ' outline outline-2 outline-offset-2 outline-claude-accent' : ''}`} aria-label={d.vendor || d.id}>
       {offline && (
         <button type="button" onClick={p.onRemove} aria-label={L('移除这台手机', '移除這台手機', 'Remove this phone')} title={L('移除这台手机', '移除這台手機', 'Remove this phone')}
           className={`absolute -top-2 -right-2 z-[3] w-[26px] h-[26px] rounded-full border ${bd} ${surface2} ${sub} text-base leading-none grid place-items-center hover:text-[#ff5c7a] hover:border-[#ff5c7a]`}>×</button>
@@ -69,7 +72,11 @@ export const PhoneCard: React.FC<PhoneCardProps> = (p) => {
         </div>
       )}
       <div className={`cp-scr ${offline ? 'bg-claude-surfaceMuted dark:bg-[#101018]' : surface}`}>
-        <div className="cp-top flex items-center min-w-0">
+        <div className="cp-top flex items-center gap-1.5 min-w-0">
+          {p.onPick && !d.over_limit && (
+            <input type="checkbox" className="flex-none w-[15px] h-[15px] m-0 cursor-pointer accent-[#00ff88]" checked={!!p.picked}
+              onChange={(e) => p.onPick?.(e.target.checked)} aria-label={`${L('选择', '選擇', 'Select')} ${d.id}`} />
+          )}
           <span className={`min-w-0 font-mono text-[10.5px] font-semibold px-[7px] py-0.5 rounded-[7px] border ${bd} truncate ${offline ? `${sub} bg-gray-500/10` : `${txt} bg-black/[.04] dark:bg-white/[.06]`}`} title={d.id}>
             {L('设备ID', '設備ID', 'Device ID')}: {d.id}
           </span>

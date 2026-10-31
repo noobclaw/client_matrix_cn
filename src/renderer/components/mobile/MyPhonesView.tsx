@@ -7,6 +7,8 @@ import { AndroidIcon, ConfirmDialog, useComplianceHidden } from './cloudPhoneUi'
 import { AddCard, GuideCard, PhoneCard } from './PhoneCard';
 import PhoneTaskDetail from './PhoneTaskDetail';
 import PhoneTaskEditor from './PhoneTaskEditor';
+import BatchDialog from './BatchDialog';
+import { BatchAct, selectable } from './cloudPhoneBatch';
 import './cloudPhone.css';
 
 /**
@@ -34,6 +36,8 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
   const [editor, setEditor] = useState<{ device: Device; task: TaskView | null } | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const [batch, setBatch] = useState<BatchAct | null>(null);
   const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hidden = useComplianceHidden();
@@ -84,6 +88,14 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
   useEffect(() => { if (detail && !tiktokVisible) setDetail(null); }, [detail, tiktokVisible]);
 
   const closeDetail = useCallback(() => setDetail(null), []);
+  // Selection survives polling; phones that disappear (or go over the limit) drop out.
+  useEffect(() => {
+    if (!devices) return;
+    setPicked((s) => {
+      const keep = new Set(devices.filter((d) => selectable(d) && s.has(d.id)).map((d) => d.id));
+      return keep.size === s.size ? s : keep;
+    });
+  }, [devices]);
 
   const platformOf = (d: Device): PlatformId => {
     const s = sel[d.id];
@@ -122,8 +134,14 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
       onStop={(taskId) => command(d, 'stop', taskId)}
       onDeleteTask={(t) => setConfirm({ kind: 'task', device: d, task: t })}
       onRemove={() => setConfirm({ kind: 'remove', device: d })}
-      onUpgrade={upgrade} />
+      onUpgrade={upgrade}
+      picked={picked.has(d.id)}
+      onPick={(on) => setPicked((s) => { const n = new Set(s); if (on) n.add(d.id); else n.delete(d.id); return n; })} />
   ));
+  const selectableIds = list.filter(selectable).map((d) => d.id);
+  const allPicked = selectableIds.length > 0 && selectableIds.every((id) => picked.has(id));
+  const nPicked = picked.size;
+  const barBtn = 'inline-flex items-center justify-center font-bold rounded-[10px] border px-3 py-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
   if (devices) {
     for (let i = list.length; i < limit; i++) cards.push(<GuideCard key={`slot-${i}`} n={i + 1} config={config} />);
     if (plan !== 'ultra' && plan !== 'max' && limit < TOP_LIMIT) cards.push(<AddCard key="add" onUpgrade={upgrade} />);
@@ -149,6 +167,21 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
             </nav>
           )}
         </div>
+        {!detail && devices && (
+          <div className={`flex items-center gap-1.5 flex-wrap -mt-1 px-2.5 py-2 rounded-xl border ${bd} ${surface} text-[12.5px]`}>
+            <label className={`inline-flex items-center gap-1.5 mr-1.5 cursor-pointer ${sub}`}>
+              <input type="checkbox" className="w-[15px] h-[15px] m-0 cursor-pointer accent-[#00ff88]" checked={allPicked} disabled={!selectableIds.length}
+                onChange={(e) => setPicked(e.target.checked ? new Set(selectableIds) : new Set())} />
+              {L('全选', '全選', 'Select all')}
+            </label>
+            <span className={sub}>{L('已选', '已選', 'Selected')} <b className="text-green-600 dark:text-claude-accent">{nPicked}</b> {L('台', '台', '')}</span>
+            <span className="ml-auto" />
+            <button type="button" disabled={!nPicked} onClick={() => setBatch('run')} className={`${barBtn} ${bd} dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover ${txt}`}>▶ {L('批量运行', '批量運行', 'Run')}</button>
+            <button type="button" disabled={!nPicked} onClick={() => setBatch('stop')} className={`${barBtn} border-[#ff5c7a]/45 dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover text-[#ff5c7a]`}>■ {L('批量停止', '批量停止', 'Stop')}</button>
+            <button type="button" disabled={!nPicked} onClick={() => setBatch('del')} className={`${barBtn} ${bd} dark:bg-claude-darkSurfaceHover bg-claude-surfaceHover text-[#ff5c7a]`}>{L('批量删除任务', '批量刪除任務', 'Delete tasks')}</button>
+            <button type="button" onClick={() => setBatch('new')} className={`${barBtn} border-claude-accent bg-claude-accent text-[#04140c]`}>＋ {L('批量创建任务', '批量建立任務', 'Create tasks')}</button>
+          </div>
+        )}
         {err && <div className="text-sm text-[#ff5c7a]">{err}</div>}
         {msg && <div className="text-[12.5px] text-green-600 dark:text-claude-accent">{msg}</div>}
 
@@ -161,6 +194,10 @@ const MyPhonesView: React.FC<{ onUpgrade?: () => void }> = ({ onUpgrade }) => {
         )}
       </div>
 
+      {batch && devices && (
+        <BatchDialog act={batch} devices={devices} picked={picked} platforms={platforms}
+          onClose={() => setBatch(null)} onFinished={() => { void load(true); }} />
+      )}
       {editor && (
         <PhoneTaskEditor device={editor.device} initial={editor.task} onCancel={() => setEditor(null)}
           onSaved={(m) => { setEditor(null); flash(m); void load(true); }} />

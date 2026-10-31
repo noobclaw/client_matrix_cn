@@ -7,7 +7,16 @@ import {
 /**
  * Create / edit the TikTok task of one phone (one task per platform). Saves the phone's full task list via
  * PUT /devices/:id/tasks; fields of the existing task that the editor does not show are kept from `raw`.
+ * Batch mode (no device): the task type is fixed, nothing is saved — the built task goes to `batch.onNext`.
  */
+
+export interface BatchEditorMode {
+  scriptId: ScriptId;
+  /** Task built on a previous visit of this step (going back from the phone picker keeps the settings). */
+  seed: RawTask | null;
+  onBack: () => void;
+  onNext: (task: RawTask) => void;
+}
 
 type Level = 'low' | 'mid' | 'high';
 type SchedKey = '0.5' | '1' | '3' | '6' | 'daily' | 'manual';
@@ -52,16 +61,30 @@ function normalizeLink(x: string): string {
   return `https://${v.replace(/^\/+/, '')}`;
 }
 
-const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCancel: () => void; onSaved: (msg: string) => void }> = ({ device, initial, onCancel, onSaved }) => {
-  const [script, setScript] = useState<ScriptId>((SCRIPT_IDS as readonly string[]).includes(initial?.script_id || '') ? (initial!.script_id as ScriptId) : 'tiktok_comment_like');
-  const [mode, setMode] = useState<'keywords' | 'precise'>(initial?.mode === 'precise' ? 'precise' : 'keywords');
-  const [keywords, setKeywords] = useState((initial?.keywords || []).join('\n'));
-  const [targets, setTargets] = useState((initial?.targets || []).join('\n'));
-  const [level, setLevel] = useState<Level | null>(() => levelOf(initial));
+type SeedCfg = { comment_mode?: string; mode?: string; keywords?: string[]; urls?: string[]; seed_accounts?: string[]; level?: string };
+const strList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+
+const PhoneTaskEditor: React.FC<{
+  device?: Device; initial: TaskView | null; onCancel: () => void; onSaved?: (msg: string) => void; batch?: BatchEditorMode;
+}> = ({ device, initial, onCancel, onSaved, batch }) => {
+  const seed = batch?.seed && batch.seed.script_id === batch.scriptId ? batch.seed : null;
+  const seedCfg = (seed?.config || {}) as SeedCfg;
+  const [script, setScript] = useState<ScriptId>(batch ? batch.scriptId
+    : (SCRIPT_IDS as readonly string[]).includes(initial?.script_id || '') ? (initial!.script_id as ScriptId) : 'tiktok_comment_like');
+  const [mode, setMode] = useState<'keywords' | 'precise'>(initial ? (initial.mode === 'precise' ? 'precise' : 'keywords')
+    : seedCfg.comment_mode === 'precise' || seedCfg.mode === 'accounts' ? 'precise' : 'keywords');
+  const [keywords, setKeywords] = useState((initial ? initial.keywords || [] : strList(seedCfg.keywords)).join('\n'));
+  const [targets, setTargets] = useState((initial ? initial.targets || [] : strList(seedCfg.urls).concat(strList(seedCfg.seed_accounts))).join('\n'));
+  const [level, setLevel] = useState<Level | null>(() => {
+    if (initial) return levelOf(initial);
+    const lv = seedCfg.level;
+    return lv === 'low' || lv === 'high' ? lv : 'mid';
+  });
   const [levelTouched, setLevelTouched] = useState(false);
-  const [sched, setSched] = useState<SchedKey>(schedKeyOf(initial?.schedule));
-  const [at, setAt] = useState(() => { const s = initial?.schedule; return s && s.kind === 'daily' ? s.at : '09:30'; });
-  const [persona, setPersona] = useState(initial?.persona || '');
+  const firstSchedule = initial ? initial.schedule : seed?.schedule;
+  const [sched, setSched] = useState<SchedKey>(schedKeyOf(firstSchedule));
+  const [at, setAt] = useState(() => { const s = firstSchedule; return s && s.kind === 'daily' ? s.at : '09:30'; });
+  const [persona, setPersona] = useState(initial?.persona || seed?.persona || '');
   const [err, setErr] = useState('');
   const [saving, setSaving] = useState(false);
   const lead = isLead(script);
@@ -124,10 +147,13 @@ const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCa
     delete task.enabled;
     delete task.slots;
 
+    if (batch) { batch.onNext(task); return; }
+    if (!device) return;
+
     setSaving(true); setErr('');
     try {
       await saveTask(device, task);
-      onSaved(L('已保存，手机 1 分钟内同步', '已儲存，手機 1 分鐘內同步', 'Saved — the phone syncs within a minute'));
+      onSaved?.(L('已保存，手机 1 分钟内同步', '已儲存，手機 1 分鐘內同步', 'Saved — the phone syncs within a minute'));
     } catch (e) {
       setErr(L('保存失败：', '儲存失敗：', 'Save failed: ') + errText(e));
     } finally {
@@ -141,17 +167,21 @@ const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCa
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true"
-      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      onClick={(e) => { if (!batch && e.target === e.currentTarget) onCancel(); }}>
       <div className={`w-full max-w-[480px] max-h-[90vh] overflow-y-auto rounded-2xl border ${bd} ${surface} p-5 shadow-modal`}>
-        <h3 className={`text-base font-bold ${txt} mb-1`}>{initial ? L('编辑任务', '編輯任務', 'Edit task') : L('创建任务', '建立任務', 'Create task')}</h3>
-        <p className={`text-xs ${sub} mb-4`}>TikTok · {device.vendor || device.id}</p>
+        <h3 className={`text-base font-bold ${txt} mb-1`}>{batch ? L('批量创建任务', '批量建立任務', 'Batch create task') : initial ? L('编辑任务', '編輯任務', 'Edit task') : L('创建任务', '建立任務', 'Create task')}</h3>
+        <p className={`text-xs ${sub} mb-4`}>{batch
+          ? `${L('第 2 步 / 共 3 步 · 配置任务', '第 2 步 / 共 3 步 · 設定任務', 'Step 2 of 3 · Set up the task')} · TikTok · ${scriptName(script)}`
+          : `TikTok · ${device?.vendor || device?.id || ''}`}</p>
 
+        {!batch && <>
         <span className={label}>{L('任务类型', '任務類型', 'Task type')}</span>
         <div className="flex gap-2 mb-4">
           {SCRIPT_IDS.map((id) => (
             <button key={id} type="button" className={`${chip(script === id)} flex-1`} onClick={() => setScript(id)}>{isLead(id) ? '🎯' : '💬'} {scriptShort(id)}</button>
           ))}
         </div>
+        </>}
 
         <span className={label}>{L('模式', '模式', 'Mode')}</span>
         <div className="flex gap-2 mb-2">
@@ -197,8 +227,13 @@ const PhoneTaskEditor: React.FC<{ device: Device; initial: TaskView | null; onCa
 
         {err && <p className="text-sm text-[#ff5c7a] mb-3">{err}</p>}
         <div className="flex justify-end gap-2 mt-2">
-          <button type="button" className={`${btnGhost} px-4 py-2 text-sm`} onClick={onCancel}>{L('取消', '取消', 'Cancel')}</button>
-          <button type="button" className={`${btnPrimary} px-4 py-2 text-sm`} disabled={saving} onClick={save}>{saving ? L('保存中…', '儲存中…', 'Saving…') : L('保存', '儲存', 'Save')}</button>
+          {batch ? (<>
+            <button type="button" className={`${btnGhost} px-4 py-2 text-sm`} onClick={batch.onBack}>{L('上一步', '上一步', 'Back')}</button>
+            <button type="button" className={`${btnPrimary} px-4 py-2 text-sm`} onClick={save}>{L('下一步：选择手机', '下一步：選擇手機', 'Next: pick phones')}</button>
+          </>) : (<>
+            <button type="button" className={`${btnGhost} px-4 py-2 text-sm`} onClick={onCancel}>{L('取消', '取消', 'Cancel')}</button>
+            <button type="button" className={`${btnPrimary} px-4 py-2 text-sm`} disabled={saving} onClick={save}>{saving ? L('保存中…', '儲存中…', 'Saving…') : L('保存', '儲存', 'Save')}</button>
+          </>)}
         </div>
       </div>
     </div>
