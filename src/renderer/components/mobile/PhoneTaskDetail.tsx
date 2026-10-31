@@ -171,7 +171,7 @@ const PhoneTaskDetail: React.FC<{ deviceId: string; taskId: string; onBack: () =
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-black text-white border border-[#25f4ee]">TikTok</span>
                 <b className={`text-[17px] ${txt}`}>{taskName(task)}</b>
-                <span className={`font-mono text-[11px] ${sub}`}>{L('设备ID', '設備ID', 'Device ID')} {shortId(device.id)}</span>
+                <span className={`font-mono text-[11px] ${sub}`} title={device.id}>{L('设备ID', '設備ID', 'Device ID')} {shortId(device.id)}</span>
               </div>
               <div className="grid grid-cols-1 gap-1.5 text-[12.5px]">
                 {row(L('账号', '帳號', 'Account'), [acct ? `${acct.nickname} ${acct.handle}`.trim() : '—', device.vendor].filter(Boolean).join(' · '))}

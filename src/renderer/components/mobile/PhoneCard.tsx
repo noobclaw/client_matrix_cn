@@ -283,16 +283,12 @@ export const GuideCard: React.FC<{ n: number; config: ConsoleConfig | null }> = 
 
 // ───────────────────────── add slots ─────────────────────────
 export const AddCard: React.FC<{ onUpgrade: () => void }> = ({ onUpgrade }) => (
-  <article className="cp-phone cp-add" aria-label={L('增加手机槽位', '增加手機槽位', 'Add phone slots')}>
-    <div className="cp-scr items-center justify-center text-center !gap-2.5">
-      <div className="w-[52px] h-[52px] rounded-2xl bg-neon-purple text-white text-[28px] grid place-items-center" aria-hidden="true">+</div>
-      <div className={`text-sm font-bold ${txt}`}>{L('增加手机槽位', '增加手機槽位', 'Add phone slots')}</div>
-      <div className={`text-[11.5px] leading-relaxed ${sub}`}>{L('升级会员，同时运行更多手机', '升級會員，同時運行更多手機', 'Upgrade to run more phones at once')}</div>
-      <div className={`text-[11px] leading-[1.8] tabular-nums ${sub}`}>
-        {L('基础版', '基礎版', 'Basic')} <em className={`not-italic ${txt}`}>4</em> · {L('进阶版', '進階版', 'Pro')} <em className={`not-italic ${txt}`}>15</em><br />
-        {L('旗舰版', '旗艦版', 'Flagship')} <em className={`not-italic ${txt}`}>50</em> · {L('至尊版', '至尊版', 'Ultra')} <em className={`not-italic ${txt}`}>50</em>
-      </div>
-      <button type="button" className={`${btnPrimary} px-[18px] py-2 text-[12.5px]`} onClick={onUpgrade}>{L('升级会员', '升級會員', 'Upgrade')}</button>
-    </div>
-  </article>
+  // Not phone-shaped: just a + button and an upgrade button, centred in the grid cell.
+  <div className="self-center justify-self-center flex flex-col items-center gap-3 py-6">
+    <button type="button" onClick={onUpgrade} aria-label={L('升级会员，增加手机槽位', '升級會員，增加手機槽位', 'Upgrade to add phone slots')}
+      className="w-14 h-14 rounded-2xl bg-neon-purple text-white text-[30px] leading-none grid place-items-center hover:opacity-90 transition-opacity">+</button>
+    <button type="button" className={`${btnPrimary} px-[18px] py-2 text-[12.5px]`} onClick={onUpgrade}>
+      {L('升级会员，增加槽位', '升級會員，增加槽位', 'Upgrade for more slots')}
+    </button>
+  </div>
 );
